@@ -3,8 +3,8 @@ import dotenv from 'dotenv';
 
 import path from 'path';
 
-// Force load .env from project root (apps/api/.env)
-dotenv.config({ path: path.join(__dirname, '../../.env') });
+// Try to load .env, but don't fail if missing (Vercel provides env vars directly)
+dotenv.config();
 
 console.log('[DB] Loading database config...');
 console.log('[DB] DATABASE_URL present:', !!process.env.DATABASE_URL);

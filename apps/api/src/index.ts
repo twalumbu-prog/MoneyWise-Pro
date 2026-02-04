@@ -57,10 +57,14 @@ const runMigration = async () => {
     }
 };
 
-// Run migrations on startup
-runMigration().catch(err => {
-    console.error('[Migration] Critical failure during startup:', err);
-});
+// Run migrations on startup - only in non-production or if explicitly requested
+if (process.env.NODE_ENV !== 'production' || process.env.RUN_MIGRATIONS === 'true') {
+    runMigration().catch(err => {
+        console.error('[Migration] Critical failure during startup:', err);
+    });
+} else {
+    console.log('[Migration] Skipping auto-migration in production mode.');
+}
 
 const app = express();
 const port = process.env.PORT || 3000;

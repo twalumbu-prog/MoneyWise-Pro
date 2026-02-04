@@ -1,9 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-import path from 'path';
-
-// Load .env from current directory (apps/api)
-const result = dotenv.config();
+// Load .env
+dotenv.config();
 
 console.log('[Supabase] Loading environment variables...');
 console.log('[Supabase] CWD:', process.cwd());
