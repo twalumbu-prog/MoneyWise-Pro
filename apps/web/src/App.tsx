@@ -11,7 +11,6 @@ import { RequisitionDetail } from './pages/RequisitionDetail';
 import { Vouchers } from './pages/Vouchers';
 import { VoucherDetail } from './pages/VoucherDetail';
 import CashLedger from './pages/CashLedger';
-import CashReconciliation from './pages/CashReconciliation';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -118,14 +117,6 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <CashLedger />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/cashbook/reconcile"
-                        element={
-                            <ProtectedRoute>
-                                <CashReconciliation />
                             </ProtectedRoute>
                         }
                     />

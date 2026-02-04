@@ -124,3 +124,29 @@ export const returnExcessCash = async (req: any, res: any): Promise<any> => {
         res.status(500).json({ error: 'Failed to log cash return', details: error.message });
     }
 };
+
+/**
+ * Close the cashbook
+ */
+export const closeBook = async (req: any, res: any): Promise<any> => {
+    try {
+        const { date, physicalCount, notes } = req.body;
+        const userId = (req as any).user.id; // Correctly get user from auth middleware
+
+        if (!date || physicalCount === undefined) {
+            return res.status(400).json({ error: 'Date and physicalCount are required' });
+        }
+
+        const result = await cashbookService.closeBook(
+            date,
+            parseFloat(physicalCount),
+            notes || '',
+            userId
+        );
+
+        res.json(result);
+    } catch (error: any) {
+        console.error('Error closing book:', error);
+        res.status(500).json({ error: 'Failed to close book', details: error.message });
+    }
+};

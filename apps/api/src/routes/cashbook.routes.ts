@@ -5,7 +5,8 @@ import {
     getCashBalance,
     getCashbookSummary,
     reconcileCash,
-    returnExcessCash
+    returnExcessCash,
+    closeBook
 } from '../controllers/cashbook.controller';
 
 const router = Router();
@@ -27,5 +28,8 @@ router.post('/reconcile', requireRole(['CASHIER', 'ADMIN']), reconcileCash);
 
 // Return excess cash (Cashier, Admin)
 router.post('/return', requireRole(['CASHIER', 'ADMIN']), returnExcessCash);
+
+// Close book (Cashier, Admin)
+router.post('/close', requireRole(['CASHIER', 'ADMIN']), closeBook);
 
 export default router;

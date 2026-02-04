@@ -8,7 +8,7 @@ export interface CashbookEntry {
     debit: number;
     credit: number;
     balance_after: number;
-    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE';
+    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE';
     requisition_id?: string;
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
@@ -253,5 +253,61 @@ export const cashbookService = {
                 .eq('id', entry.id);
             runningBalance = newBalance;
         }
+    },
+
+    /**
+     * Close the cashbook for a specific date
+     */
+    async closeBook(
+        date: string,
+        physicalCount: number,
+        notes: string,
+        userId: string
+    ) {
+        // 1. Calculate system balance
+        const currentBalance = await this.getCurrentBalance();
+        const variance = physicalCount - currentBalance;
+
+        // 2. If variance > 0.01, create ADJUSTMENT entry
+        if (Math.abs(variance) > 0.01) {
+            await this.createEntry({
+                entry_type: 'ADJUSTMENT',
+                description: `Closing Adjustment (${variance > 0 ? 'Surplus' : 'Shortage'}): ${notes}`,
+                debit: variance > 0 ? variance : 0,
+                credit: variance < 0 ? Math.abs(variance) : 0,
+                date: date,
+                created_by: userId
+            });
+        }
+
+        // 3. Create CLOSING_BALANCE entry
+        // Use createEntry but with 0 debit/credit so it just checkpoints the balance
+        // Wait, createEntry updates balance based on prev balance + debit - credit.
+        // If we just adjusted, current balance IS physical count.
+        // So a 0-value entry will just show the balance.
+        await this.createEntry({
+            entry_type: 'CLOSING_BALANCE',
+            description: `Closing Balance as at ${date}`,
+            debit: 0,
+            credit: 0,
+            date: date,
+            created_by: userId
+        });
+
+        // 4. Create OPENING_BALANCE entry for next day
+        const nextDay = new Date(date);
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDayStr = nextDay.toISOString().split('T')[0];
+
+        await this.createEntry({
+            entry_type: 'OPENING_BALANCE',
+            description: `Opening Balance`,
+            debit: 0,
+            credit: 0,
+            date: nextDayStr,
+            created_by: userId
+        });
+
+        return { success: true, closingBalance: physicalCount };
     }
 };

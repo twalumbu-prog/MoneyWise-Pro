@@ -10,7 +10,7 @@ export interface CashbookEntry {
     debit: number;
     credit: number;
     balance_after: number;
-    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE';
+    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE';
     requisition_id?: string;
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
@@ -94,6 +94,17 @@ export const cashbookService = {
         const response = await axios.post(
             `${API_URL}/cashbook/return`,
             { requisitionId, amount, description },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
+    },
+
+    async closeBook(physicalCount: number, date: string, notes?: string) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        const response = await axios.post(
+            `${API_URL}/cashbook/close`,
+            { physicalCount, date, notes },
             { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data;

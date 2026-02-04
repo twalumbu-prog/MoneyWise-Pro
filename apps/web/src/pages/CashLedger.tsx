@@ -11,10 +11,13 @@ import {
     Calendar,
     Wallet,
     ArrowDownCircle,
+    ArrowDownCircle,
     ArrowUpCircle,
-    CheckCircle
+    CheckCircle,
+    Lock
 } from 'lucide-react';
 import '../styles/cashbook.css';
+import CloseBalanceModal from '../components/CloseBalanceModal';
 
 const CashLedger: React.FC = () => {
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
@@ -25,6 +28,7 @@ const CashLedger: React.FC = () => {
         new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0]
     );
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
 
     useEffect(() => {
         loadData();
@@ -58,6 +62,8 @@ const CashLedger: React.FC = () => {
     };
 
     const getEntryStatus = (entry: CashbookEntry) => {
+        if (entry.entry_type === 'CLOSING_BALANCE') return <span className="status-badge completed flex items-center"><Lock size={10} className="mr-1" /> Closed</span>;
+        if (entry.entry_type === 'OPENING_BALANCE') return <span className="status-badge pending">Opening</span>;
         if (entry.entry_type !== 'DISBURSEMENT') return null;
         const status = entry.requisitions?.status || 'PENDING';
 
@@ -169,11 +175,27 @@ const CashLedger: React.FC = () => {
                         </div>
                         <h1 className="text-2xl font-bold text-gray-900 m-0">Cash Ledger</h1>
                     </div>
-                    <div className="balance-display">
-                        <span className="balance-label">Verified Main Petty Cash Balance</span>
-                        <span className="balance-amount">{formatCurrency(balance)}</span>
+                    <div className="balance-display flex items-center space-x-4">
+                        <div className="text-right">
+                            <span className="balance-label block">Verified Main Petty Cash Balance</span>
+                            <span className="balance-amount">{formatCurrency(balance)}</span>
+                        </div>
+                        <button
+                            onClick={() => setIsCloseModalOpen(true)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-all flex items-center"
+                        >
+                            <Lock size={16} className="mr-2" />
+                            Close Balance
+                        </button>
                     </div>
                 </div>
+
+                <CloseBalanceModal
+                    isOpen={isCloseModalOpen}
+                    onClose={() => setIsCloseModalOpen(false)}
+                    onSuccess={loadData}
+                    currentSystemBalance={balance}
+                />
 
                 <div className="filters flex items-center justify-between mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
                     <div className="flex space-x-4">
@@ -230,7 +252,7 @@ const CashLedger: React.FC = () => {
                                 entries.map((entry) => (
                                     <React.Fragment key={entry.id}>
                                         <tr
-                                            className={`clickable-row transition-colors group ${expandedRows[entry.id] ? 'bg-indigo-50/30' : ''}`}
+                                            className={`clickable-row transition-colors group ${expandedRows[entry.id] ? 'bg-indigo-50/30' : ''} ${entry.entry_type === 'CLOSING_BALANCE' ? 'bg-indigo-50 border-l-4 border-indigo-500' : ''} ${entry.entry_type === 'OPENING_BALANCE' ? 'bg-green-50/50' : ''}`}
                                             onClick={() => entry.requisition_id && toggleRow(entry.id)}
                                         >
                                             <td className="p-4">
