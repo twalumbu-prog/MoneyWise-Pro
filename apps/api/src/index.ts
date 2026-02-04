@@ -57,7 +57,10 @@ const runMigration = async () => {
     }
 };
 
-runMigration();
+// Run migrations on startup
+runMigration().catch(err => {
+    console.error('[Migration] Critical failure during startup:', err);
+});
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -75,6 +78,12 @@ app.get('/', (req, res) => {
     res.send('AE&CF API is running');
 });
 
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+    app.listen(port, () => {
+        console.log(`Server is running on port ${port}`);
+    });
+}
+
+// Export for Vercel
+export default app;
