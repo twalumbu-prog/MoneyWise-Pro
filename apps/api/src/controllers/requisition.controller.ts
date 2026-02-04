@@ -312,7 +312,7 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             .select('actual_amount')
             .eq('requisition_id', id);
 
-        const actualTotal = allItems?.reduce((sum, item) => sum + (item.actual_amount || 0), 0) || 0;
+        const actualTotal = allItems?.reduce((sum: number, item: any) => sum + (item.actual_amount || 0), 0) || 0;
 
         await supabase
             .from('requisitions')
