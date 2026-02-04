@@ -11,7 +11,6 @@ import {
     Calendar,
     Wallet,
     ArrowDownCircle,
-    ArrowDownCircle,
     ArrowUpCircle,
     CheckCircle,
     Lock
