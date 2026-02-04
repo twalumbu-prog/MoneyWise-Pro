@@ -6,7 +6,7 @@ import { cashbookService } from '../services/cashbook.service';
 
 export const createRequisition = async (req: any, res: any): Promise<any> => {
     try {
-        const { description, estimated_total, items } = req.body;
+        const { description, estimated_total, items, department } = req.body;
         const requestor_id = (req as any).user.id;
 
         // 1. Insert Requisition
@@ -16,7 +16,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
                 requestor_id,
                 description,
                 estimated_total,
-                status: 'DRAFT'
+                status: 'DRAFT',
+                department
             })
             .select()
             .single();

@@ -13,6 +13,7 @@ interface CreateRequisitionData {
     description: string;
     estimated_total: number;
     items: LineItem[];
+    department: string;
 }
 
 export interface Requisition {
@@ -24,6 +25,7 @@ export interface Requisition {
     created_at: string;
     items?: LineItem[];
     requestor_name?: string;
+    department?: string;
 }
 
 export const requisitionService = {

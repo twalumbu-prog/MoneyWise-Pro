@@ -12,6 +12,7 @@ interface Requisition {
     status: string;
     created_at: string;
     requestor_name?: string;
+    department?: string;
 }
 
 const TAB_FILTERS = ['ALL', 'DRAFT', 'SUBMITTED', 'AUTHORISED', 'DISBURSED', 'RECEIVED', 'REJECTED'];
@@ -149,7 +150,10 @@ export const RequisitionList: React.FC = () => {
                                 >
                                     {/* Top Row: Title | Amount | Kebab */}
                                     <div className="flex justify-between items-start">
-                                        <h3 className="text-base font-semibold text-gray-900 mr-2 flex-grow truncate">{req.description}</h3>
+                                        <div className="flex-grow mr-2 min-w-0">
+                                            <div className="text-xs text-gray-500 font-medium mb-0.5">{req.department}</div>
+                                            <h3 className="text-base font-semibold text-gray-900 truncate">{req.description}</h3>
+                                        </div>
 
                                         <div className="flex items-center space-x-3 flex-shrink-0">
                                             <span className="text-lg font-bold text-gray-900">K{req.estimated_total.toLocaleString()}</span>
@@ -235,6 +239,9 @@ export const RequisitionList: React.FC = () => {
                                             Requestor
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Department
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Description
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -259,6 +266,9 @@ export const RequisitionList: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-900">
                                                 {req.requestor_name || 'Self'}
+                                            </td>
+                                            <td className="px-6 py-4 text-sm text-gray-500">
+                                                {req.department || '-'}
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-900">
                                                 {req.description}
