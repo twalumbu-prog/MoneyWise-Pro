@@ -1,7 +1,7 @@
 {
-    "buildCommand": "pnpm build",
+    "buildCommand": "npx turbo build",
     "outputDirectory": "dist",
     "installCommand": "pnpm install",
     "framework": "vite",
-    "devCommand": "pnpm dev"
+    "devCommand": "npx turbo dev"
 }

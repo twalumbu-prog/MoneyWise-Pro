@@ -5,7 +5,6 @@ import {
     ChevronDown,
     ChevronUp,
     User,
-    ArrowRight,
     Receipt,
     AlertCircle,
     Info,

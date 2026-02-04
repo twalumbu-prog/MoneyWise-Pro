@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Home, FileText, CheckCircle, FileSpreadsheet, Settings, LogOut, Wallet, Menu, X } from 'lucide-react';
 import { useState } from 'react';
@@ -10,7 +10,6 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
     const { user, userRole, signOut } = useAuth();
-    const navigate = useNavigate();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const handleSignOut = async () => {

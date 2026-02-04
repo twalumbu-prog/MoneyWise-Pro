@@ -15,7 +15,7 @@ import CashReconciliation from './pages/CashReconciliation';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    const { session, loading, userRole } = useAuth();
+    const { session, loading } = useAuth();
 
     if (loading) {
         return (

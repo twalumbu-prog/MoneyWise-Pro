@@ -12,13 +12,13 @@ const calculateTotal = (denominations: Record<string, number>) => {
 };
 
 export const CashierDashboard: React.FC = () => {
-    const { user } = useAuth();
+    const { } = useAuth();
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [selectedReq, setSelectedReq] = useState<Requisition | null>(null);
     const [denominations, setDenominations] = useState<Record<string, number>>({
         '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '1': 0
     });
-    const [loading, setLoading] = useState(true);
+    const [isDataLoading, setIsDataLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [processing, setProcessing] = useState(false);
 
@@ -28,7 +28,7 @@ export const CashierDashboard: React.FC = () => {
 
     const loadRequisitions = async () => {
         try {
-            setLoading(true);
+            setIsDataLoading(true);
             // In a real app, we'd have a specific endpoint for ready-to-disburse items
             // For MVP, reusing admin getAll and filtering client-side
             const all = await requisitionService.getAllAdmin();
@@ -38,7 +38,7 @@ export const CashierDashboard: React.FC = () => {
             console.error('Failed to load requisitions', err);
             setError('Failed to load requisitions');
         } finally {
-            setLoading(false);
+            setIsDataLoading(false);
         }
     };
 
@@ -103,6 +103,9 @@ export const CashierDashboard: React.FC = () => {
                             <h2 className="text-lg font-medium text-gray-900">Ready for Disbursement</h2>
                         </div>
                         <ul className="divide-y divide-gray-200 h-96 overflow-y-auto">
+                            {isDataLoading && (
+                                <li className="px-6 py-4 text-gray-500 text-sm italic">Loading requisitions...</li>
+                            )}
                             {error && (
                                 <li className="px-6 py-4 text-red-600 text-sm font-medium bg-red-50">
                                     Error: {error}
