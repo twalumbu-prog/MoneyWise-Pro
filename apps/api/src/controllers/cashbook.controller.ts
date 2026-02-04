@@ -5,7 +5,7 @@ import { cashbookService } from '../services/cashbook.service';
 /**
  * Get all cashbook entries with optional filters
  */
-export const getCashbookEntries = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
     try {
         const { startDate, endDate, entryType, limit } = req.query;
 
@@ -26,7 +26,7 @@ export const getCashbookEntries = async (req: AuthRequest, res: Response): Promi
 /**
  * Get current cash balance
  */
-export const getCashBalance = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getCashBalance = async (req: any, res: any): Promise<any> => {
     try {
         const balance = await cashbookService.getCurrentBalance();
         res.json({ balance });
@@ -39,7 +39,7 @@ export const getCashBalance = async (req: AuthRequest, res: Response): Promise<a
 /**
  * Get cashbook summary for a date range
  */
-export const getCashbookSummary = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getCashbookSummary = async (req: any, res: any): Promise<any> => {
     try {
         const { startDate, endDate } = req.query;
 
@@ -62,7 +62,7 @@ export const getCashbookSummary = async (req: AuthRequest, res: Response): Promi
 /**
  * Reconcile cash (compare system balance vs physical count)
  */
-export const reconcileCash = async (req: AuthRequest, res: Response): Promise<any> => {
+export const reconcileCash = async (req: any, res: any): Promise<any> => {
     try {
         const { physicalCount, denominations, notes } = req.body;
         const userId = (req as any).user.id;
@@ -102,7 +102,7 @@ export const reconcileCash = async (req: AuthRequest, res: Response): Promise<an
 /**
  * Log cash return (excess)
  */
-export const returnExcessCash = async (req: AuthRequest, res: Response): Promise<any> => {
+export const returnExcessCash = async (req: any, res: any): Promise<any> => {
     try {
         const { requisitionId, amount, description } = req.body;
         const userId = (req as any).user.id;

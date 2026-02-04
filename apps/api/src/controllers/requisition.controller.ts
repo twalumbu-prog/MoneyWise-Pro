@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase';
 import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
 
-export const createRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
+export const createRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { description, estimated_total, items } = req.body;
         const requestor_id = (req as any).user.id;
@@ -56,7 +56,7 @@ export const createRequisition = async (req: AuthRequest, res: Response): Promis
     }
 };
 
-export const getRequisitions = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getRequisitions = async (req: any, res: any): Promise<any> => {
     try {
         const userId = (req as any).user.id;
 
@@ -94,7 +94,7 @@ export const getRequisitions = async (req: AuthRequest, res: Response): Promise<
     }
 };
 
-export const getRequisitionById = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getRequisitionById = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
 
@@ -126,7 +126,7 @@ export const getRequisitionById = async (req: AuthRequest, res: Response): Promi
     }
 };
 
-export const updateRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
+export const updateRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { description, estimated_total } = req.body;
@@ -155,7 +155,7 @@ export const updateRequisition = async (req: AuthRequest, res: Response): Promis
     }
 };
 
-export const getAllRequisitionsAdmin = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getAllRequisitionsAdmin = async (req: any, res: any): Promise<any> => {
     try {
         // Check if user is accountant/admin
         // Note: We use the SERVICE ROLE key in the backend client, so we must manually check the role.
@@ -212,7 +212,7 @@ export const getAllRequisitionsAdmin = async (req: AuthRequest, res: Response): 
     }
 };
 
-export const updateRequisitionStatus = async (req: AuthRequest, res: Response): Promise<any> => {
+export const updateRequisitionStatus = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -262,7 +262,7 @@ export const updateRequisitionStatus = async (req: AuthRequest, res: Response): 
     }
 };
 
-export const updateRequisitionExpenses = async (req: AuthRequest, res: Response): Promise<any> => {
+export const updateRequisitionExpenses = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { items } = req.body; // Array of { id, actual_amount, receipt_url }
@@ -330,7 +330,7 @@ export const updateRequisitionExpenses = async (req: AuthRequest, res: Response)
     }
 };
 
-export const submitChange = async (req: AuthRequest, res: Response): Promise<any> => {
+export const submitChange = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { denominations, change_amount } = req.body;
@@ -386,7 +386,7 @@ export const submitChange = async (req: AuthRequest, res: Response): Promise<any
     }
 };
 
-export const confirmChange = async (req: AuthRequest, res: Response): Promise<any> => {
+export const confirmChange = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { confirmed_denominations, confirmed_change_amount } = req.body;

@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 
-export const getVouchers = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getVouchers = async (req: any, res: any): Promise<any> => {
     try {
         const { data, error } = await supabase
             .from('vouchers')
@@ -17,7 +17,7 @@ export const getVouchers = async (req: AuthRequest, res: Response): Promise<any>
     }
 };
 
-export const getVoucherById = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getVoucherById = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { data, error } = await supabase
@@ -38,7 +38,7 @@ export const getVoucherById = async (req: AuthRequest, res: Response): Promise<a
     }
 };
 
-export const createVoucherFromRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
+export const createVoucherFromRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { requisition_id } = req.body;
         const user_id = (req as any).user.id;
@@ -132,7 +132,7 @@ export const createVoucherFromRequisition = async (req: AuthRequest, res: Respon
     }
 };
 
-export const postVoucher = async (req: AuthRequest, res: Response): Promise<any> => {
+export const postVoucher = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
 

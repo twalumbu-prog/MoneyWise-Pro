@@ -3,7 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 
-export const disburseRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
+export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { denominations, total_prepared } = req.body;
@@ -86,7 +86,7 @@ export const disburseRequisition = async (req: AuthRequest, res: Response): Prom
     }
 };
 
-export const acknowledgeReceipt = async (req: AuthRequest, res: Response): Promise<any> => {
+export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const requestor_id = (req as any).user.id;

@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import express from 'express';
 import { supabase } from '../lib/supabase';
 
 interface RegisterUserRequest {
@@ -9,7 +9,7 @@ interface RegisterUserRequest {
     role: 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
 }
 
-export const registerUser = async (req: Request, res: Response): Promise<any> => {
+export const registerUser = async (req: express.Request, res: express.Response): Promise<any> => {
     try {
         const { email, password, employeeId, name, role }: RegisterUserRequest = req.body;
 
@@ -79,7 +79,7 @@ export const registerUser = async (req: Request, res: Response): Promise<any> =>
         if (dbError) {
             console.error('Database error:', dbError);
             // Rollback: delete the auth user if database insert fails
-            await supabase.auth.admin.deleteUser(authData.user.id);
+            await (supabase.auth as any).admin.deleteUser(authData.user.id);
             return res.status(500).json({
                 error: 'Failed to create user profile: ' + dbError.message,
             });
@@ -97,7 +97,7 @@ export const registerUser = async (req: Request, res: Response): Promise<any> =>
     }
 };
 
-export const simpleSignup = async (req: Request, res: Response): Promise<any> => {
+export const simpleSignup = async (req: express.Request, res: express.Response): Promise<any> => {
     try {
         const { email, password } = req.body;
 
