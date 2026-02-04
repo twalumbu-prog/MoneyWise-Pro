@@ -82,7 +82,7 @@ export const getRequisitions = async (req: any, res: any): Promise<any> => {
         if (error) throw error;
 
         // Flatten requestor name for frontend convenience
-        const formatted = data.map(r => ({
+        const formatted = data.map((r: any) => ({
             ...r,
             requestor_name: r.requestor?.name
         }));

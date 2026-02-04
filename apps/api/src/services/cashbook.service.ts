@@ -150,8 +150,8 @@ export const cashbookService = {
         if (error) throw new Error(`Failed to fetch summary: ${error.message}`);
 
         const openingBalance = data[0]?.balance_after - data[0]?.debit + data[0]?.credit || 0;
-        const totalReceipts = data.reduce((sum, entry) => sum + parseFloat(entry.debit || '0'), 0);
-        const totalPayments = data.reduce((sum, entry) => sum + parseFloat(entry.credit || '0'), 0);
+        const totalReceipts = data.reduce((sum: number, entry: any) => sum + parseFloat(entry.debit || '0'), 0);
+        const totalPayments = data.reduce((sum: number, entry: any) => sum + parseFloat(entry.credit || '0'), 0);
         const closingBalance = data[data.length - 1]?.balance_after || openingBalance;
 
         return {

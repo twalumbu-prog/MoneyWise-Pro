@@ -9,7 +9,7 @@ interface RegisterUserRequest {
     role: 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
 }
 
-export const registerUser = async (req: express.Request, res: express.Response): Promise<any> => {
+export const registerUser = async (req: any, res: any): Promise<any> => {
     try {
         const { email, password, employeeId, name, role }: RegisterUserRequest = req.body;
 
@@ -97,7 +97,7 @@ export const registerUser = async (req: express.Request, res: express.Response):
     }
 };
 
-export const simpleSignup = async (req: express.Request, res: express.Response): Promise<any> => {
+export const simpleSignup = async (req: any, res: any): Promise<any> => {
     try {
         const { email, password } = req.body;
 
