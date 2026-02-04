@@ -5,7 +5,7 @@ import { cashbookService } from '../services/cashbook.service';
 /**
  * Get all cashbook entries with optional filters
  */
-export const getCashbookEntries = async (req: AuthRequest, res: Response) => {
+export const getCashbookEntries = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { startDate, endDate, entryType, limit } = req.query;
 
@@ -26,7 +26,7 @@ export const getCashbookEntries = async (req: AuthRequest, res: Response) => {
 /**
  * Get current cash balance
  */
-export const getCashBalance = async (req: AuthRequest, res: Response) => {
+export const getCashBalance = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const balance = await cashbookService.getCurrentBalance();
         res.json({ balance });
@@ -39,7 +39,7 @@ export const getCashBalance = async (req: AuthRequest, res: Response) => {
 /**
  * Get cashbook summary for a date range
  */
-export const getCashbookSummary = async (req: AuthRequest, res: Response) => {
+export const getCashbookSummary = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { startDate, endDate } = req.query;
 
@@ -62,10 +62,10 @@ export const getCashbookSummary = async (req: AuthRequest, res: Response) => {
 /**
  * Reconcile cash (compare system balance vs physical count)
  */
-export const reconcileCash = async (req: AuthRequest, res: Response) => {
+export const reconcileCash = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { physicalCount, denominations, notes } = req.body;
-        const userId = req.user.id;
+        const userId = (req as any).user.id;
 
         if (typeof physicalCount !== 'number' || physicalCount < 0) {
             return res.status(400).json({ error: 'Valid physicalCount is required' });
@@ -102,10 +102,10 @@ export const reconcileCash = async (req: AuthRequest, res: Response) => {
 /**
  * Log cash return (excess)
  */
-export const returnExcessCash = async (req: AuthRequest, res: Response) => {
+export const returnExcessCash = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { requisitionId, amount, description } = req.body;
-        const userId = req.user.id;
+        const userId = (req as any).user.id;
 
         if (!requisitionId || typeof amount !== 'number' || amount <= 0) {
             return res.status(400).json({ error: 'Valid requisitionId and amount are required' });

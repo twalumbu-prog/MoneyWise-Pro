@@ -9,7 +9,7 @@ interface RegisterUserRequest {
     role: 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
 }
 
-export const registerUser = async (req: Request, res: Response) => {
+export const registerUser = async (req: Request, res: Response): Promise<any> => {
     try {
         const { email, password, employeeId, name, role }: RegisterUserRequest = req.body;
 
@@ -49,7 +49,7 @@ export const registerUser = async (req: Request, res: Response) => {
         }
 
         // Create user in Supabase Auth with password
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
             email,
             password,
             email_confirm: true, // Auto-confirm email to enable immediate login
@@ -97,7 +97,7 @@ export const registerUser = async (req: Request, res: Response) => {
     }
 };
 
-export const simpleSignup = async (req: Request, res: Response) => {
+export const simpleSignup = async (req: Request, res: Response): Promise<any> => {
     try {
         const { email, password } = req.body;
 
@@ -116,7 +116,7 @@ export const simpleSignup = async (req: Request, res: Response) => {
         }
 
         // Create user in Supabase Auth with password
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
             email,
             password,
             email_confirm: true, // Auto-confirm email to enable immediate login
@@ -146,7 +146,7 @@ export const simpleSignup = async (req: Request, res: Response) => {
         if (dbError) {
             console.error('Database error:', dbError);
             // Rollback: delete the auth user if database insert fails
-            await supabase.auth.admin.deleteUser(authData.user.id);
+            await (supabase.auth as any).admin.deleteUser(authData.user.id);
             return res.status(500).json({
                 error: 'Failed to create user profile: ' + dbError.message,
             });

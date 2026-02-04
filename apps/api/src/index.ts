@@ -74,7 +74,7 @@ app.use('/accounts', accountRoutes);
 app.use('/vouchers', voucherRoutes);
 app.use('/cashbook', cashbookRoutes);
 
-app.get('/', (req, res) => {
+app.get('/', (req: express.Request, res: express.Response) => {
     res.send('AE&CF API is running');
 });
 

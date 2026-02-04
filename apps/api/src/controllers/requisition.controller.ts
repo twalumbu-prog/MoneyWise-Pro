@@ -4,10 +4,10 @@ import { supabase } from '../lib/supabase';
 import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
 
-export const createRequisition = async (req: AuthRequest, res: Response) => {
+export const createRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { description, estimated_total, items } = req.body;
-        const requestor_id = req.user.id;
+        const requestor_id = (req as any).user.id;
 
         // 1. Insert Requisition
         const { data: requisition, error: reqError } = await supabase
@@ -56,9 +56,9 @@ export const createRequisition = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const getRequisitions = async (req: AuthRequest, res: Response) => {
+export const getRequisitions = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
-        const userId = req.user.id;
+        const userId = (req as any).user.id;
 
         // 1. Get user role
         const { data: userRecord } = await supabase.from('users').select('role').eq('id', userId).single();
@@ -94,7 +94,7 @@ export const getRequisitions = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const getRequisitionById = async (req: AuthRequest, res: Response) => {
+export const getRequisitionById = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
 
@@ -126,7 +126,7 @@ export const getRequisitionById = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const updateRequisition = async (req: AuthRequest, res: Response) => {
+export const updateRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
         const { description, estimated_total } = req.body;
@@ -139,7 +139,7 @@ export const updateRequisition = async (req: AuthRequest, res: Response) => {
                 updated_at: new Date().toISOString()
             })
             .eq('id', id)
-            .eq('requestor_id', req.user.id)
+            .eq('requestor_id', (req as any).user.id)
             .eq('status', 'DRAFT')
             .select()
             .single();
@@ -155,14 +155,14 @@ export const updateRequisition = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const getAllRequisitionsAdmin = async (req: AuthRequest, res: Response) => {
+export const getAllRequisitionsAdmin = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         // Check if user is accountant/admin
         // Note: We use the SERVICE ROLE key in the backend client, so we must manually check the role.
         const { data: userRecord, error: userError } = await supabase
             .from('users')
             .select('role')
-            .eq('id', req.user.id)
+            .eq('id', (req as any).user.id)
             .single();
 
         if (userError || !userRecord) {
@@ -212,7 +212,7 @@ export const getAllRequisitionsAdmin = async (req: AuthRequest, res: Response) =
     }
 };
 
-export const updateRequisitionStatus = async (req: AuthRequest, res: Response) => {
+export const updateRequisitionStatus = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
         const { status } = req.body;
@@ -221,7 +221,7 @@ export const updateRequisitionStatus = async (req: AuthRequest, res: Response) =
         const { data: userRecord, error: userError } = await supabase
             .from('users')
             .select('role')
-            .eq('id', req.user.id)
+            .eq('id', (req as any).user.id)
             .single();
 
         const userRole = userRecord?.role;
@@ -262,7 +262,7 @@ export const updateRequisitionStatus = async (req: AuthRequest, res: Response) =
     }
 };
 
-export const updateRequisitionExpenses = async (req: AuthRequest, res: Response) => {
+export const updateRequisitionExpenses = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
         const { items } = req.body; // Array of { id, actual_amount, receipt_url }
@@ -278,7 +278,7 @@ export const updateRequisitionExpenses = async (req: AuthRequest, res: Response)
             return res.status(404).json({ error: 'Requisition not found' });
         }
 
-        if (requisition.requestor_id !== req.user.id) {
+        if (requisition.requestor_id !== (req as any).user.id) {
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
@@ -330,11 +330,11 @@ export const updateRequisitionExpenses = async (req: AuthRequest, res: Response)
     }
 };
 
-export const submitChange = async (req: AuthRequest, res: Response) => {
+export const submitChange = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
         const { denominations, change_amount } = req.body;
-        const user_id = req.user.id;
+        const user_id = (req as any).user.id;
 
         // 1. Verify Requisition
         const { data: requisition, error: reqError } = await supabase
@@ -386,11 +386,11 @@ export const submitChange = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const confirmChange = async (req: AuthRequest, res: Response) => {
+export const confirmChange = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
         const { confirmed_denominations, confirmed_change_amount } = req.body;
-        const cashier_id = req.user.id;
+        const cashier_id = (req as any).user.id;
 
         // 1. Verify Role
         const { data: userRecord } = await supabase.from('users').select('role').eq('id', cashier_id).single();

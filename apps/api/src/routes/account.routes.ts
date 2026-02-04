@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getAccounts, createAccount, updateAccount, suggestAccount, runAccountsMigration } from '../controllers/account.controller';
+import { getAccounts, createAccount, updateAccount, suggestAccount } from '../controllers/account.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();

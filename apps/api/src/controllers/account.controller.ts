@@ -5,7 +5,7 @@ import { aiService } from '../services/ai/ai.service';
 import pool from '../db';
 
 
-export const getAccounts = async (req: AuthRequest, res: Response) => {
+export const getAccounts = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { data, error } = await supabase
             .from('accounts')
@@ -21,7 +21,7 @@ export const getAccounts = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const createAccount = async (req: AuthRequest, res: Response) => {
+export const createAccount = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { code, name, type, description } = req.body;
 
@@ -48,7 +48,7 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const updateAccount = async (req: AuthRequest, res: Response) => {
+export const updateAccount = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
         const { code, name, type, description, is_active } = req.body;
@@ -77,7 +77,7 @@ export const updateAccount = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const suggestAccount = async (req: AuthRequest, res: Response) => {
+export const suggestAccount = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { description, amount, line_items, requisition_id } = req.body;
 

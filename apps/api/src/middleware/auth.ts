@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 
-export interface AuthRequest extends Request {
+export interface AuthRequest<P = any, ResBody = any, ReqBody = any, ReqQuery = any>
+    extends Request<P, ResBody, ReqBody, ReqQuery> {
     user?: any;
 }
 
@@ -20,7 +21,8 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
     if (token === process.env.SUPABASE_SERVICE_ROLE_KEY) {
         console.log('[Auth] Authenticated via Service Role Key (Bypass)');
         req.user = { id: 'service-role-admin', role: 'ADMIN' };
-        return next();
+        (next as any)();
+        return;
     }
 
     try {
@@ -32,7 +34,7 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
 
         while (retries > 0) {
             try {
-                const result = await supabase.auth.getUser(token);
+                const result = await (supabase.auth as any).getUser(token);
                 user = result.data.user;
                 authError = result.error;
 
@@ -64,7 +66,7 @@ export const requireAuth = async (req: AuthRequest, res: Response, next: NextFun
 
         console.log(`[Auth] User authenticated: ${user.id}`);
         req.user = user;
-        next();
+        (next as any)();
     } catch (err: any) {
         console.error('[Auth] Internal error:', err);
         return res.status(500).json({
@@ -85,7 +87,8 @@ export const requireRole = (allowedRoles: string[]) => {
             // Service role bypass
             if (req.user.id === 'service-role-admin') {
                 console.log('[Auth] requireRole: Service role bypass');
-                return next();
+                (next as any)();
+                return;
             }
 
             // Fetch user role from database
@@ -110,7 +113,7 @@ export const requireRole = (allowedRoles: string[]) => {
 
             // Attach role to user object for downstream use
             req.user.role = userRole;
-            next();
+            (next as any)();
         } catch (err: any) {
             console.error('[Auth] Role verification error:', err);
             return res.status(500).json({ error: 'Internal server error during role verification' });

@@ -3,11 +3,11 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 
-export const disburseRequisition = async (req: AuthRequest, res: Response) => {
+export const disburseRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
         const { denominations, total_prepared } = req.body;
-        const cashier_id = req.user.id;
+        const cashier_id = (req as any).user.id;
 
         // 1. Verify Requisition is APPROVED
         // Using single() to get one record
@@ -86,10 +86,10 @@ export const disburseRequisition = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const acknowledgeReceipt = async (req: AuthRequest, res: Response) => {
+export const acknowledgeReceipt = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
-        const requestor_id = req.user.id;
+        const requestor_id = (req as any).user.id;
         const { signature } = req.body;
 
         // 1. Verify Requisition is DISBURSED and user is the requestor
