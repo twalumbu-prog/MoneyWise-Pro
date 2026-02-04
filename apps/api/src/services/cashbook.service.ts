@@ -214,6 +214,7 @@ export const cashbookService = {
 
         const oldCredit = parseFloat(originalEntry.credit);
         const newCredit = actualExpenditure + discrepancy;
+        console.log(`[Cashbook] Finalizing with credit: ${newCredit} (Exp: ${actualExpenditure}, Disc: ${discrepancy})`);
         const totalImpact = oldCredit - newCredit;
 
         const newDescription = discrepancy !== 0

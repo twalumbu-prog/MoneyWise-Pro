@@ -416,16 +416,19 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         // actualExpenditure = what was spent (receipts)
         // confirmed_change_amount = what actually came back to the box
         // discrepancy = what is missing overall (Total - Spent - Returned)
-        const totalDisbursed = parseFloat(disbursement.total_prepared || 0);
-        const actualExpenditure = parseFloat(requisition.actual_total || 0);
-        const discrepancy = totalDisbursed - actualExpenditure - confirmed_change_amount;
+        const totalDisbursed = Number(disbursement.total_prepared || 0);
+        const actualExpenditure = Number(requisition.actual_total || 0);
+        const confirmedChange = Number(confirmed_change_amount || 0);
+        const discrepancy = totalDisbursed - actualExpenditure - confirmedChange;
+
+        console.log(`[ConfirmChange] Req ${id}: Total=${totalDisbursed}, Actual=${actualExpenditure}, Change=${confirmedChange}, Disc=${discrepancy}`);
 
         // 3. Update Disbursement Table with confirmation
         const { error: disbUpdateError } = await supabase
             .from('disbursements')
             .update({
                 confirmed_denominations,
-                confirmed_change_amount,
+                confirmed_change_amount: confirmedChange,
                 confirmed_by: cashier_id,
                 confirmed_at: new Date().toISOString(),
                 discrepancy_amount: discrepancy
