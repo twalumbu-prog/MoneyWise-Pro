@@ -2,9 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { supabase } from '../lib/supabase';
 
 // Simplified for direct ANY access to bypass Vercel TS environment issues
-export interface AuthRequest extends any {
-    user?: any;
-}
+export type AuthRequest = any;
 
 export const requireAuth = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
