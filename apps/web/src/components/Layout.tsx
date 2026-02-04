@@ -112,14 +112,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                 Cash Ledger
                             </Link>
                             <Link
-                                to="/cashbook/reconcile"
-                                className="flex items-center px-6 py-3 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <Wallet className="h-5 w-5 mr-3" />
-                                Cash Reconciliation
-                            </Link>
-                            <Link
                                 to="/settings"
                                 className="flex items-center px-6 py-3 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600"
                                 onClick={() => setIsMobileMenuOpen(false)}
@@ -199,13 +191,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                         >
                             <Wallet className="h-5 w-5 mr-3" />
                             Cash Ledger
-                        </Link>
-                        <Link
-                            to="/cashbook/reconcile"
-                            className="flex items-center px-6 py-3 text-gray-700 hover:bg-indigo-50 hover:text-indigo-600"
-                        >
-                            <Wallet className="h-5 w-5 mr-3" />
-                            Cash Reconciliation
                         </Link>
                         <Link
                             to="/settings"

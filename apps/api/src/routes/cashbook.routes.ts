@@ -29,7 +29,7 @@ router.post('/reconcile', requireRole(['CASHIER', 'ADMIN']), reconcileCash);
 // Return excess cash (Cashier, Admin)
 router.post('/return', requireRole(['CASHIER', 'ADMIN']), returnExcessCash);
 
-// Close book (Cashier, Admin)
-router.post('/close', requireRole(['CASHIER', 'ADMIN']), closeBook);
+// Close book (Cashier, Accountant, Admin)
+router.post('/close', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), closeBook);
 
 export default router;
