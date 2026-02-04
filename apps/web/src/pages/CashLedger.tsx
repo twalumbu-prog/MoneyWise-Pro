@@ -95,24 +95,25 @@ const CashLedger: React.FC = () => {
                         <h4><Receipt className="inline h-3 w-3 mr-1" /> Spending Breakdown</h4>
                         <table className="line-items-mini">
                             <tbody>
-                                <tr key={idx}>
-                                    <td className="text-gray-600">
-                                        <div>{item.description}</div>
-                                        {item.accounts && (
-                                            <div className="mt-1 flex items-center">
-                                                <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
-                                                    {item.accounts.code}
-                                                </span>
-                                                <span className="ml-1.5 text-[10px] text-gray-400 truncate max-w-[150px]">
-                                                    {item.accounts.name}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </td>
-                                    <td className="text-right font-semibold align-top pt-3">
-                                        {formatCurrency(item.actual_amount || item.estimated_amount)}
-                                    </td>
-                                </tr>
+                                {items.map((item, idx) => (
+                                    <tr key={idx}>
+                                        <td className="text-gray-600">
+                                            <div>{item.description}</div>
+                                            {item.accounts && (
+                                                <div className="mt-1 flex items-center">
+                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                                                        {item.accounts.code}
+                                                    </span>
+                                                    <span className="ml-1.5 text-[10px] text-gray-400 truncate max-w-[150px]">
+                                                        {item.accounts.name}
+                                                    </span>
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="text-right font-semibold align-top pt-3">
+                                            {formatCurrency(item.actual_amount || item.estimated_amount)}
+                                        </td>
+                                    </tr>
                                 ))}
                                 {Math.abs(discrepancy) > 0.01 && (
                                     <tr className="bg-red-50/50">
@@ -130,7 +131,7 @@ const CashLedger: React.FC = () => {
                                 )}
                             </tbody>
                         </table>
-                    </div>
+                    </div >
 
                     <div className="breakdown-section">
                         <h4><Info className="inline h-3 w-3 mr-1" /> Transaction Reconciliation</h4>
@@ -165,8 +166,8 @@ const CashLedger: React.FC = () => {
                             </div>
                         )}
                     </div>
-                </div>
-            </div>
+                </div >
+            </div >
         );
     };
 
