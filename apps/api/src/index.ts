@@ -10,6 +10,10 @@ import cashbookRoutes from './routes/cashbook.routes';
 
 dotenv.config();
 
+console.log('[API] Server starting up...');
+console.log('[API] NODE_ENV:', process.env.NODE_ENV);
+console.log('[API] PORT:', process.env.PORT);
+
 import pool from './db';
 
 const runMigration = async () => {
