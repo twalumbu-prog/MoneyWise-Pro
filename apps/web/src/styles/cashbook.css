@@ -1,0 +1,475 @@
+.cashbook-container,
+.reconciliation-container {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.cashbook-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+}
+
+.cashbook-header h1 {
+    font-size: 2rem;
+    color: #1e293b;
+}
+
+.balance-display {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    padding: 1rem 1.5rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.balance-label {
+    font-size: 0.875rem;
+    color: rgba(255, 255, 255, 0.9);
+    margin-bottom: 0.25rem;
+}
+
+.balance-amount {
+    font-size: 2rem;
+    font-weight: 700;
+    color: white;
+}
+
+.filters {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.filter-group label {
+    font-weight: 500;
+    color: #64748b;
+}
+
+.filter-group input[type="date"] {
+    padding: 0.5rem 0.5rem 0.5rem 2.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.875rem;
+    color: #1e293b;
+    width: 160px;
+}
+
+/* Hide default calendar icon in webkit to avoid collision with our custom icon */
+.filter-group input[type="date"]::-webkit-calendar-picker-indicator {
+    background: transparent;
+    bottom: 0;
+    color: transparent;
+    cursor: pointer;
+    height: auto;
+    left: 0;
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: auto;
+}
+
+.cashbook-table {
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.cashbook-table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.cashbook-table thead {
+    background: #f8fafc;
+}
+
+.cashbook-table th {
+    padding: 1rem;
+    text-align: left;
+    font-weight: 600;
+    color: #475569;
+    border-bottom: 2px solid #e2e8f0;
+}
+
+.cashbook-table td {
+    padding: 1rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.amount-col {
+    text-align: right;
+    font-family: 'Courier New', monospace;
+}
+
+.debit {
+    color: #059669;
+}
+
+.credit {
+    color: #dc2626;
+}
+
+.balance {
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.entry-type {
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.entry-type.disbursement {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.entry-type.return {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.entry-type.adjustment {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.entry-type.opening_balance {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.details-row td {
+    padding: 0 !important;
+    background: #f8fafc;
+}
+
+.details-content {
+    padding: 1.5rem;
+    border-left: 4px solid #6366f1;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.spending-breakdown {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.breakdown-section h4 {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+}
+
+.line-items-mini {
+    width: 100%;
+    font-size: 0.875rem;
+}
+
+.line-items-mini td {
+    padding: 0.5rem 0 !important;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+}
+
+.summary-card {
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+}
+
+.summary-card .label {
+    display: block;
+    font-size: 0.7rem;
+    color: #94a3b8;
+    margin-bottom: 0.25rem;
+}
+
+.summary-card .value {
+    font-size: 1.125rem;
+    font-weight: 700;
+}
+
+.value.expenditure {
+    color: #dc2626;
+}
+
+.value.change {
+    color: #059669;
+}
+
+.value.discrepancy {
+    color: #f97316;
+}
+
+.clickable-row {
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.clickable-row:hover {
+    background: #f1f5f9 !important;
+}
+
+.status-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.status-badge.completed {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.status-badge.pending {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+.status-badge.disbursed {
+    background: #e0f2fe;
+    color: #0369a1;
+}
+
+/* Reconciliation Page Styles */
+.reconciliation-grid {
+    display: grid;
+    grid-template-columns: 1fr 350px;
+    gap: 2rem;
+    align-items: start;
+    margin-top: 2rem;
+}
+
+.reconciliation-card {
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+
+.section-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #1e293b;
+    margin-bottom: 1.5rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid #f1f5f9;
+}
+
+.denominations-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.denomination-row {
+    display: grid;
+    grid-template-columns: 80px 30px 120px 30px 100px;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border-radius: 8px;
+    background: #f8fafc;
+    border: 1px solid #f1f5f9;
+    transition: all 0.2s;
+}
+
+.denomination-row:hover {
+    border-color: #e2e8f0;
+    background: #f1f5f9;
+}
+
+.denom-label {
+    font-weight: 700;
+    color: #475569;
+    font-size: 1rem;
+}
+
+.denom-times,
+.denom-equals {
+    color: #94a3b8;
+    text-align: center;
+    font-weight: 600;
+}
+
+.denom-input {
+    padding: 0.5rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 600;
+    color: #0f172a;
+    width: 100%;
+}
+
+.denom-input:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    background: white;
+}
+
+.denom-total {
+    font-weight: 700;
+    color: #1e293b;
+    text-align: right;
+    font-family: 'Courier New', monospace;
+    font-size: 1.125rem;
+}
+
+.balance-comparison-vertical {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.balance-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.balance-item label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.balance-item .balance-value {
+    font-size: 1.75rem;
+    font-weight: 800;
+}
+
+.balance-item .balance-value.system {
+    color: #4f46e5;
+}
+
+.balance-item .balance-value.physical {
+    color: #0f172a;
+}
+
+.balance-item.variance.over .balance-value {
+    color: #059669;
+}
+
+.balance-item.variance.short .balance-value {
+    color: #dc2626;
+}
+
+.reconciliation-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.form-group label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 0.5rem;
+}
+
+.form-group textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    resize: none;
+    font-size: 0.875rem;
+}
+
+.reconcile-button {
+    background: #4f46e5;
+    color: white;
+    padding: 1rem;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 1rem;
+    transition: all 0.2s;
+    box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+}
+
+.reconcile-button:hover:not(:disabled) {
+    background: #4338ca;
+    transform: translateY(-1px);
+    box-shadow: 0 6px 8px -1px rgba(79, 70, 229, 0.3);
+}
+
+.reconcile-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.result {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    border-radius: 10px;
+}
+
+.result.balanced {
+    background: #ecfdf5;
+    border: 1px solid #10b981;
+    color: #065f46;
+}
+
+.result.unbalanced {
+    background: #fff7ed;
+    border: 1px solid #f97316;
+    color: #9a3412;
+}
+
+.result h3 {
+    font-weight: 800;
+    font-size: 1.125rem;
+    margin-bottom: 0.75rem;
+}
