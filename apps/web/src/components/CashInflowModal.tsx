@@ -96,10 +96,10 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                         </div>
                     )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        {/* Person Details */}
-                        <div className="space-y-4">
-                            <div>
+                    <div className="space-y-6 mb-8">
+                        {/* Source Details & Purpose */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
                                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
                                     Source Details
                                 </label>
@@ -146,13 +146,13 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                                         onChange={(e) => setPurpose(e.target.value)}
                                         placeholder="Reason for inflow..."
                                         rows={3}
-                                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none"
+                                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none h-[92px]"
                                     />
                                 </div>
                             </div>
                         </div>
 
-                        {/* Denominations */}
+                        {/* Denominations (Full Width Below) */}
                         <div className="bg-gray-50/50 rounded-3xl p-6 border-2 border-gray-100">
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
                                 Cash Denominations
