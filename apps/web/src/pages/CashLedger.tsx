@@ -32,8 +32,8 @@ const CashLedger: React.FC = () => {
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
     const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
-    const { user } = useAuth();
-    const isRequestor = user?.role === 'REQUESTOR';
+    const { userRole } = useAuth();
+    const isRequestor = userRole === 'REQUESTOR';
 
     useEffect(() => {
         loadData();
