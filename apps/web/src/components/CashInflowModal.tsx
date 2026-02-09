@@ -68,9 +68,9 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
             />
 
             {/* Modal Container */}
-            <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-500">
-                {/* Header */}
-                <div className="bg-emerald-600 px-8 py-6 text-white flex justify-between items-center">
+            <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-500 flex flex-col max-h-[90vh]">
+                {/* Header - Fixed */}
+                <div className="bg-emerald-600 px-8 py-6 text-white flex justify-between items-center shrink-0">
                     <div className="flex items-center space-x-3">
                         <div className="p-2 bg-white/20 rounded-xl">
                             <Wallet className="h-6 w-6" />
@@ -88,85 +88,89 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-8">
-                    {error && (
-                        <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center text-red-700 text-sm animate-in shake-1">
-                            <AlertCircle className="h-5 w-5 mr-3 flex-shrink-0" />
-                            {error}
-                        </div>
-                    )}
+                <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
+                    {/* Scrollable Content */}
+                    <div className="p-8 overflow-y-auto custom-scrollbar">
+                        {error && (
+                            <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center text-red-700 text-sm animate-in shake-1">
+                                <AlertCircle className="h-5 w-5 mr-3 flex-shrink-0" />
+                                {error}
+                            </div>
+                        )}
 
-                    <div className="space-y-6 mb-8">
-                        {/* Source Details & Purpose */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-4">
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
-                                    Source Details
-                                </label>
-                                <div className="space-y-3">
-                                    <div className="relative group">
-                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
-                                            <User size={18} />
+                        <div className="space-y-6 mb-2">
+                            {/* Source Details & Purpose */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="space-y-4">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
+                                        Source Details
+                                    </label>
+                                    <div className="space-y-3">
+                                        <div className="relative group">
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
+                                                <User size={18} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                required
+                                                value={personName}
+                                                onChange={(e) => setPersonName(e.target.value)}
+                                                placeholder="Depositor Name"
+                                                className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400"
+                                            />
                                         </div>
-                                        <input
-                                            type="text"
+                                        <div className="relative group">
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
+                                                <Phone size={18} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                value={contactDetails}
+                                                onChange={(e) => setContactDetails(e.target.value)}
+                                                placeholder="Contact Details (Optional)"
+                                                className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
+                                        Purpose
+                                    </label>
+                                    <div className="relative group">
+                                        <div className="absolute top-4 left-0 pl-4 flex items-start pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
+                                            <FileText size={18} />
+                                        </div>
+                                        <textarea
                                             required
-                                            value={personName}
-                                            onChange={(e) => setPersonName(e.target.value)}
-                                            placeholder="Depositor Name"
-                                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400"
-                                        />
-                                    </div>
-                                    <div className="relative group">
-                                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
-                                            <Phone size={18} />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={contactDetails}
-                                            onChange={(e) => setContactDetails(e.target.value)}
-                                            placeholder="Contact Details (Optional)"
-                                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400"
+                                            value={purpose}
+                                            onChange={(e) => setPurpose(e.target.value)}
+                                            placeholder="Reason for inflow..."
+                                            rows={3}
+                                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none h-[92px]"
                                         />
                                     </div>
                                 </div>
                             </div>
 
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
-                                    Purpose
+                            {/* Denominations (Full Width Below) */}
+                            <div className="bg-gray-50/50 rounded-3xl p-6 border-2 border-gray-100">
+                                <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
+                                    Cash Denominations
                                 </label>
-                                <div className="relative group">
-                                    <div className="absolute top-4 left-0 pl-4 flex items-start pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
-                                        <FileText size={18} />
-                                    </div>
-                                    <textarea
-                                        required
-                                        value={purpose}
-                                        onChange={(e) => setPurpose(e.target.value)}
-                                        placeholder="Reason for inflow..."
-                                        rows={3}
-                                        className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none h-[92px]"
-                                    />
-                                </div>
+                                <DenominationInput
+                                    denominations={denominations}
+                                    onChange={setDenominations}
+                                />
                             </div>
-                        </div>
-
-                        {/* Denominations (Full Width Below) */}
-                        <div className="bg-gray-50/50 rounded-3xl p-6 border-2 border-gray-100">
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
-                                Cash Denominations
-                            </label>
-                            <DenominationInput
-                                denominations={denominations}
-                                onChange={setDenominations}
-                            />
                         </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-6 border-t border-gray-100">
+                    {/* Footer Actions - Fixed */}
+                    <div className="px-8 py-6 border-t border-gray-100 flex items-center justify-between shrink-0 bg-white">
                         <div className="flex flex-col">
-                            <span className="text-gray-400 text-xs font-medium tracking-tight">Total Inflow Amount</span>
+                            <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Total Inflow Amount</span>
                             <span className="text-2xl font-black text-emerald-600">
                                 K {totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </span>
