@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
+import { emailService } from '../services/email.service';
 
 export const createRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -70,6 +71,11 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         res.status(201).json(requisition);
+
+        // 3. Trigger notification
+        emailService.notifyRequisitionEvent(requisition.id, 'NEW_REQUISITION').catch(err =>
+            console.error('[Notification Error] Failed to send NEW_REQUISITION email:', err)
+        );
     } catch (error: any) {
         console.error('Error creating requisition:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
@@ -275,6 +281,21 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
             );
         }
 
+        // Trigger notifications
+        if (status === 'AUTHORISED') {
+            emailService.notifyRequisitionEvent(id, 'REQUISITION_APPROVED').catch(err =>
+                console.error('[Notification Error] Failed to send REQUISITION_APPROVED email:', err)
+            );
+        } else if (status === 'REJECTED') {
+            emailService.notifyRequisitionEvent(id, 'REQUISITION_REJECTED').catch(err =>
+                console.error('[Notification Error] Failed to send REQUISITION_REJECTED email:', err)
+            );
+        } else if (status === 'DISBURSED') {
+            emailService.notifyRequisitionEvent(id, 'CASH_DISBURSED').catch(err =>
+                console.error('[Notification Error] Failed to send CASH_DISBURSED email:', err)
+            );
+        }
+
         res.json(data);
     } catch (error: any) {
         console.error('Error updating requisition status:', error);
@@ -395,6 +416,11 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
 
         console.log(`[SubmitChange] Success for Req ${id}`);
         res.json({ message: 'Change submitted successfully' });
+
+        // 4. Trigger Notification
+        emailService.notifyRequisitionEvent(id, 'CHANGE_SUBMITTED').catch(err =>
+            console.error('[Notification Error] Failed to send CHANGE_SUBMITTED email:', err)
+        );
     } catch (error: any) {
         console.error('Error submitting change:', error);
         res.status(500).json({
@@ -495,6 +521,11 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
             .eq('id', id);
 
         res.json({ message: 'Change confirmed, voucher created, and ledger updated', discrepancy, voucher_id: voucher.id });
+
+        // 7. Trigger Notification
+        emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+            console.error('[Notification Error] Failed to send REQUISITION_COMPLETED email:', err)
+        );
     } catch (error: any) {
         console.error('Error confirming change:', error);
         res.status(500).json({ error: 'Failed to confirm change', details: error.message });

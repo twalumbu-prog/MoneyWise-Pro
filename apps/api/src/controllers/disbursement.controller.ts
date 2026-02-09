@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
+import { emailService } from '../services/email.service';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -79,6 +80,11 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             message: 'Requisition disbursed successfully',
             disbursement_id: disbursementData.id
         });
+
+        // 6. Trigger notification
+        emailService.notifyRequisitionEvent(id, 'CASH_DISBURSED').catch(err =>
+            console.error('[Notification Error] Failed to send CASH_DISBURSED email:', err)
+        );
 
     } catch (error: any) {
         console.error('Error disbursing requisition:', error);
