@@ -6,7 +6,19 @@ import { cashbookService } from '../services/cashbook.service';
 
 export const createRequisition = async (req: any, res: any): Promise<any> => {
     try {
-        const { description, estimated_total, items, department } = req.body;
+        const {
+            description,
+            estimated_total,
+            items,
+            department,
+            type = 'EXPENSE',
+            staff_name,
+            employee_id,
+            loan_amount,
+            repayment_period,
+            interest_rate,
+            monthly_deduction
+        } = req.body;
         const requestor_id = (req as any).user.id;
 
         // 1. Insert Requisition
@@ -17,7 +29,14 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
                 description,
                 estimated_total,
                 status: 'DRAFT',
-                department
+                department,
+                type,
+                staff_name,
+                employee_id,
+                loan_amount,
+                repayment_period,
+                interest_rate,
+                monthly_deduction
             })
             .select()
             .single();

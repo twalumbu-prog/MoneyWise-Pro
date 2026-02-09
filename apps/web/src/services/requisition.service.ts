@@ -12,8 +12,15 @@ interface LineItem {
 interface CreateRequisitionData {
     description: string;
     estimated_total: number;
-    items: LineItem[];
+    items?: LineItem[];
     department: string;
+    type?: string;
+    staff_name?: string;
+    employee_id?: string;
+    loan_amount?: number;
+    repayment_period?: number;
+    interest_rate?: number;
+    monthly_deduction?: number;
 }
 
 export interface Requisition {
@@ -26,6 +33,13 @@ export interface Requisition {
     items?: LineItem[];
     requestor_name?: string;
     department?: string;
+    type?: 'EXPENSE' | 'ADVANCE' | 'LOAN';
+    staff_name?: string;
+    employee_id?: string;
+    loan_amount?: number;
+    repayment_period?: number;
+    interest_rate?: number;
+    monthly_deduction?: number;
 }
 
 export const requisitionService = {

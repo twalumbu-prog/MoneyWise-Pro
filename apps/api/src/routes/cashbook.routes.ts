@@ -6,6 +6,7 @@ import {
     getCashbookSummary,
     reconcileCash,
     returnExcessCash,
+    logCashInflow,
     closeBook
 } from '../controllers/cashbook.controller';
 
@@ -28,6 +29,9 @@ router.post('/reconcile', requireRole(['CASHIER', 'ADMIN']), reconcileCash);
 
 // Return excess cash (Cashier, Admin)
 router.post('/return', requireRole(['CASHIER', 'ADMIN']), returnExcessCash);
+
+// Log cash inflow (Cashier, Accountant, Admin)
+router.post('/inflow', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logCashInflow);
 
 // Close book (Cashier, Accountant, Admin)
 router.post('/close', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), closeBook);

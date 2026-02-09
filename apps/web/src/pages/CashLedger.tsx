@@ -13,10 +13,13 @@ import {
     ArrowDownCircle,
     ArrowUpCircle,
     CheckCircle,
-    Lock
+    Lock,
+    PlusCircle
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
+import CashInflowModal from '../components/CashInflowModal';
+import { useAuth } from '../context/AuthContext';
 
 const CashLedger: React.FC = () => {
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
@@ -28,6 +31,9 @@ const CashLedger: React.FC = () => {
     );
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
+    const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
+    const { user } = useAuth();
+    const isRequestor = user?.role === 'REQUESTOR';
 
     useEffect(() => {
         loadData();
@@ -190,13 +196,24 @@ const CashLedger: React.FC = () => {
                             <span className="balance-label block">Verified Main Petty Cash Balance</span>
                             <span className="balance-amount">{formatCurrency(balance)}</span>
                         </div>
-                        <button
-                            onClick={() => setIsCloseModalOpen(true)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-all flex items-center"
-                        >
-                            <Lock size={16} className="mr-2" />
-                            Close Balance
-                        </button>
+                        <div className="flex items-center space-x-3">
+                            {!isRequestor && (
+                                <button
+                                    onClick={() => setIsInflowModalOpen(true)}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-all flex items-center"
+                                >
+                                    <PlusCircle size={16} className="mr-2" />
+                                    Log Inflow
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setIsCloseModalOpen(true)}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-all flex items-center"
+                            >
+                                <Lock size={16} className="mr-2" />
+                                Close Balance
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -205,6 +222,12 @@ const CashLedger: React.FC = () => {
                     onClose={() => setIsCloseModalOpen(false)}
                     onSuccess={loadData}
                     currentSystemBalance={balance}
+                />
+
+                <CashInflowModal
+                    isOpen={isInflowModalOpen}
+                    onClose={() => setIsInflowModalOpen(false)}
+                    onSuccess={loadData}
                 />
 
                 <div className="filters flex items-center justify-between mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
@@ -281,6 +304,14 @@ const CashLedger: React.FC = () => {
                                                     <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
                                                         {entry.requisitions?.description || entry.description}
                                                     </div>
+                                                    {entry.requisitions?.type && entry.requisitions.type !== 'EXPENSE' && (
+                                                        <div className="mt-1">
+                                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${entry.requisitions.type === 'LOAN' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+                                                                }`}>
+                                                                {entry.requisitions.type}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                     {entry.requisitions?.requestor?.name && (
                                                         <div className="flex items-center mt-1.5 text-[10px] text-gray-400">
                                                             <User className="h-3 w-3 mr-1" />

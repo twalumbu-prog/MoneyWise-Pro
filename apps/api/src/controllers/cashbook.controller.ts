@@ -126,6 +126,30 @@ export const returnExcessCash = async (req: any, res: any): Promise<any> => {
 };
 
 /**
+ * Log cash inflow
+ */
+export const logCashInflow = async (req: any, res: any): Promise<any> => {
+    try {
+        const { personName, purpose, contactDetails, amount, denominations } = req.body;
+        const userId = (req as any).user.id;
+
+        if (!personName || !purpose || typeof amount !== 'number' || amount <= 0) {
+            return res.status(400).json({ error: 'personName, purpose, and a valid amount are required' });
+        }
+
+        const entry = await cashbookService.logInflow(
+            { personName, purpose, contactDetails, amount, denominations },
+            userId
+        );
+
+        res.json(entry);
+    } catch (error: any) {
+        console.error('Error logging cash inflow:', error);
+        res.status(500).json({ error: 'Failed to log cash inflow', details: error.message });
+    }
+};
+
+/**
  * Close the cashbook
  */
 export const closeBook = async (req: any, res: any): Promise<any> => {

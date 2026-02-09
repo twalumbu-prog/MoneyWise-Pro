@@ -8,7 +8,7 @@ export interface CashbookEntry {
     debit: number;
     credit: number;
     balance_after: number;
-    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE';
+    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE' | 'INFLOW';
     requisition_id?: string;
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
@@ -89,6 +89,49 @@ export const cashbookService = {
             requisition_id: requisitionId,
             created_by: userId
         });
+    },
+
+    /**
+     * Log cash inflow
+     */
+    async logInflow(
+        data: {
+            personName: string;
+            purpose: string;
+            contactDetails?: string;
+            amount: number;
+            denominations?: any;
+        },
+        userId: string
+    ): Promise<CashbookEntry> {
+        // 1. Create cashbook entry
+        const entry = await this.createEntry({
+            entry_type: 'INFLOW',
+            description: `Cash Inflow: ${data.personName} - ${data.purpose}`,
+            debit: data.amount,
+            credit: 0,
+            date: new Date().toISOString().split('T')[0],
+            created_by: userId
+        });
+
+        // 2. Create inflow metadata
+        const { error: inflowError } = await supabase
+            .from('cash_inflows')
+            .insert({
+                cashbook_entry_id: entry.id,
+                person_name: data.personName,
+                purpose: data.purpose,
+                contact_details: data.contactDetails,
+                denominations: data.denominations
+            });
+
+        if (inflowError) {
+            console.error('Failed to create inflow metadata:', inflowError);
+            // We don't throw here to avoid rolling back the ledger entry, 
+            // but we might want to log it heavily.
+        }
+
+        return entry;
     },
 
     /**

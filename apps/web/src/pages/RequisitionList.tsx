@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Eye, Edit, Trash2, MoreVertical, FileText, History } from 'lucide-react';
+import { Plus, Eye, Edit, Trash2, MoreVertical, FileText, History, ChevronDown, XCircle } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { useAuth } from '../context/AuthContext';
 
@@ -13,6 +13,7 @@ interface Requisition {
     created_at: string;
     requestor_name?: string;
     department?: string;
+    type?: string;
 }
 
 const TAB_FILTERS = ['ALL', 'DRAFT', 'SUBMITTED', 'AUTHORISED', 'DISBURSED', 'RECEIVED', 'REJECTED'];
@@ -26,6 +27,7 @@ export const RequisitionList: React.FC = () => {
     const [filterStatus, setFilterStatus] = useState('ALL');
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
     const [currentView, setCurrentView] = useState<'active' | 'history'>('active');
+    const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false);
 
     const isRequestor = userRole === 'REQUESTOR';
 
@@ -75,24 +77,68 @@ export const RequisitionList: React.FC = () => {
         <Layout>
             <div className={`space-y-6 ${isRequestor ? 'pb-32' : ''}`}>
                 {/* Page Header */}
-                {isRequestor ? (
-                    <div className="md:hidden">
-                        <h1 className="text-2xl font-bold text-gray-900">
-                            {currentView === 'active' ? 'Active Requisitions' : 'Requisition History'}
-                        </h1>
-                    </div>
-                ) : (
-                    <div className="flex justify-between items-center">
-                        <h1 className="text-2xl font-bold text-gray-900">Requisitions</h1>
-                        <Link
-                            to="/requisitions/new"
-                            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                <div className="flex justify-between items-center">
+                    <h1 className="text-2xl font-bold text-gray-900">
+                        {isRequestor
+                            ? (currentView === 'active' ? 'Active Requisitions' : 'Requisition History')
+                            : 'Requisitions'
+                        }
+                    </h1>
+                    <div className={`relative ${isRequestor ? 'hidden md:block' : ''}`}>
+                        <button
+                            onClick={() => setIsNewRequisitionOpen(!isNewRequisitionOpen)}
+                            className="flex items-center px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors shadow-sm"
                         >
                             <Plus className="h-5 w-5 mr-2" />
-                            New Requisition
-                        </Link>
+                            <span className="hidden sm:inline">New Requisition</span>
+                            <span className="sm:hidden text-xs">New</span>
+                            <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${isNewRequisitionOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isNewRequisitionOpen && (
+                            <>
+                                <div
+                                    className="fixed inset-0 z-10"
+                                    onClick={() => setIsNewRequisitionOpen(false)}
+                                ></div>
+                                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl ring-1 ring-black ring-opacity-5 z-20 overflow-hidden">
+                                    <div className="py-1">
+                                        <button
+                                            onClick={() => {
+                                                setIsNewRequisitionOpen(false);
+                                                navigate('/requisitions/new?type=EXPENSE');
+                                            }}
+                                            className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center transition-colors border-b border-gray-50"
+                                        >
+                                            <FileText className="h-4 w-4 mr-3 text-indigo-500" />
+                                            New Expense
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setIsNewRequisitionOpen(false);
+                                                navigate('/requisitions/new?type=ADVANCE');
+                                            }}
+                                            className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center transition-colors border-b border-gray-50"
+                                        >
+                                            <History className="h-4 w-4 mr-3 text-emerald-500" />
+                                            Salary Advance
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setIsNewRequisitionOpen(false);
+                                                navigate('/requisitions/new?type=LOAN');
+                                            }}
+                                            className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-600 flex items-center transition-colors"
+                                        >
+                                            <Plus className="h-4 w-4 mr-3 text-blue-500" />
+                                            Staff Loan
+                                        </button>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
-                )}
+                </div>
 
                 {/* Status Filters - Hide for requestors in active view */}
                 {!(isRequestor && currentView === 'active') && (
@@ -242,6 +288,9 @@ export const RequisitionList: React.FC = () => {
                                             Department
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Type
+                                        </th>
+                                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                             Description
                                         </th>
                                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -269,6 +318,14 @@ export const RequisitionList: React.FC = () => {
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-500">
                                                 {req.department || '-'}
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                                <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${req.type === 'LOAN' ? 'bg-blue-100 text-blue-700' :
+                                                    req.type === 'ADVANCE' ? 'bg-emerald-100 text-emerald-700' :
+                                                        'bg-gray-100 text-gray-600'
+                                                    }`}>
+                                                    {req.type || 'EXPENSE'}
+                                                </span>
                                             </td>
                                             <td className="px-6 py-4 text-sm text-gray-900">
                                                 {req.description}
@@ -310,14 +367,98 @@ export const RequisitionList: React.FC = () => {
                 )}
             </div>
 
-            {/* Fixed Bottom Bar - Requestor Mobile Only */}
+            {/* Premium Bottom Sheet - Mobile Only */}
             {isRequestor && (
-                <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white shadow-lg border-t border-gray-200 p-4 space-y-2 z-30">
-                    <button
-                        onClick={() => navigate('/requisitions/new')}
-                        className="w-full flex items-center justify-center px-4 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium shadow-sm"
+                <>
+                    {/* Backdrop */}
+                    <div
+                        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] transition-opacity duration-300 md:hidden ${isNewRequisitionOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                            }`}
+                        onClick={() => setIsNewRequisitionOpen(false)}
+                    />
+
+                    {/* Bottom Sheet Container */}
+                    <div
+                        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-[2.5rem] shadow-2xl z-[70] transition-transform duration-500 ease-out md:hidden flex flex-col max-h-[85vh] ${isNewRequisitionOpen ? 'translate-y-0' : 'translate-y-full'
+                            }`}
                     >
-                        <FileText className="h-5 w-5 mr-2" />
+                        {/* Drag Handle */}
+                        <div className="flex justify-center pt-3 pb-1">
+                            <div className="w-12 h-1.5 bg-gray-200 rounded-full" />
+                        </div>
+
+                        {/* Sheet Header */}
+                        <div className="px-6 py-4 flex items-center justify-between border-b border-gray-50">
+                            <h2 className="text-lg font-bold text-gray-900">New Requisition</h2>
+                            <button
+                                onClick={() => setIsNewRequisitionOpen(false)}
+                                className="p-2 bg-gray-100 rounded-full text-gray-500 hover:bg-gray-200 transition-colors"
+                            >
+                                <XCircle className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        {/* Sheet Content */}
+                        <div className="p-5 space-y-3 overflow-y-auto pb-10">
+                            <button
+                                onClick={() => {
+                                    setIsNewRequisitionOpen(false);
+                                    navigate('/requisitions/new?type=EXPENSE');
+                                }}
+                                className="w-full flex items-center p-4 text-left bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100/50 rounded-2xl transition-all group active:scale-[0.98]"
+                            >
+                                <div className="p-2.5 bg-indigo-600 rounded-xl mr-4 shadow-lg shadow-indigo-200 group-hover:scale-105 transition-transform">
+                                    <FileText className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                    <div className="font-bold text-gray-900 text-sm">General Expense</div>
+                                    <div className="text-xs text-indigo-600/70 font-medium">Office items, services, or equipment</div>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    setIsNewRequisitionOpen(false);
+                                    navigate('/requisitions/new?type=ADVANCE');
+                                }}
+                                className="w-full flex items-center p-4 text-left bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100/50 rounded-2xl transition-all group active:scale-[0.98]"
+                            >
+                                <div className="p-2.5 bg-emerald-600 rounded-xl mr-4 shadow-lg shadow-emerald-200 group-hover:scale-105 transition-transform">
+                                    <History className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                    <div className="font-bold text-gray-900 text-sm">Salary Advance</div>
+                                    <div className="text-xs text-emerald-600/70 font-medium">Quick funds from your next payroll</div>
+                                </div>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    setIsNewRequisitionOpen(false);
+                                    navigate('/requisitions/new?type=LOAN');
+                                }}
+                                className="w-full flex items-center p-4 text-left bg-blue-50/50 hover:bg-blue-50 border border-blue-100/50 rounded-2xl transition-all group active:scale-[0.98]"
+                            >
+                                <div className="p-3 bg-blue-600 rounded-xl mr-4 shadow-lg shadow-blue-200 group-hover:scale-105 transition-transform">
+                                    <Plus className="h-6 w-6 text-white" />
+                                </div>
+                                <div>
+                                    <div className="font-bold text-gray-900 text-sm">Staff Loan</div>
+                                    <div className="text-xs text-blue-600/70 font-medium">Long-term loan with fixed 15% interest</div>
+                                </div>
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
+
+            {isRequestor && (
+                <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl shadow-[0_-8px_30px_rgba(0,0,0,0.12)] border-t border-gray-100 p-4 px-6 space-x-4 flex z-[55] rounded-t-3xl">
+                    <button
+                        onClick={() => setIsNewRequisitionOpen(!isNewRequisitionOpen)}
+                        className="flex-[2.5] flex items-center justify-center px-6 py-3 bg-indigo-600 text-white rounded-2xl transition-all font-bold text-base shadow-xl shadow-indigo-200 active:scale-95"
+                    >
+                        <Plus className={`h-5 w-5 mr-2 transition-transform duration-300 ${isNewRequisitionOpen ? 'rotate-45' : ''}`} />
                         New Requisition
                     </button>
                     <button
@@ -325,10 +466,9 @@ export const RequisitionList: React.FC = () => {
                             setCurrentView(currentView === 'active' ? 'history' : 'active');
                             setFilterStatus('ALL');
                         }}
-                        className="w-full flex items-center justify-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 font-medium"
+                        className="flex-1 flex items-center justify-center p-3 bg-white text-gray-700 border-2 border-gray-100 rounded-2xl hover:bg-gray-50 active:scale-95 transition-all shadow-sm"
                     >
-                        <History className="h-5 w-5 mr-2" />
-                        {currentView === 'active' ? 'Requisition History' : 'Active Requisitions'}
+                        <History className="h-5 w-5" />
                     </button>
                 </div>
             )}

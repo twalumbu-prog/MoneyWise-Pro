@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2, Sparkles, Loader2, ChevronDown, ChevronUp, CheckCircle, XCircle } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
@@ -17,8 +17,18 @@ interface LineItem {
 
 export const RequisitionCreate: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const reqType = (searchParams.get('type') || 'EXPENSE').toUpperCase();
+
     const [description, setDescription] = useState('');
     const [department, setDepartment] = useState('');
+
+    // Loan & Advance specific fields
+    const [staffName, setStaffName] = useState('');
+    const [employeeId, setEmployeeId] = useState('');
+    const [amount, setAmount] = useState<number>(0);
+    const [repaymentPeriod, setRepaymentPeriod] = useState<number>(1);
+
     const DEPARTMENTS = [
         'Finance', 'Admin', 'HR', 'IT',
         'Education', 'Transportation', 'Stocks',
@@ -231,12 +241,30 @@ export const RequisitionCreate: React.FC = () => {
         setError(null);
 
         try {
-            await requisitionService.create({
-                description,
+            const payload: any = {
+                description: reqType === 'EXPENSE' ? description : `${reqType}: ${staffName} - ${description || (reqType === 'LOAN' ? 'Staff Loan' : 'Salary Advance')}`,
                 department,
-                estimated_total: getEstimatedTotal(),
-                items: lineItems.map(({ id, ...item }) => item), // Remove the temporary ID
-            });
+                type: reqType,
+                estimated_total: reqType === 'EXPENSE' ? getEstimatedTotal() : Number(amount),
+            };
+
+            if (reqType === 'EXPENSE') {
+                payload.items = lineItems.map(({ id, ...item }) => item);
+            } else {
+                payload.staff_name = staffName;
+                payload.employee_id = employeeId;
+
+                if (reqType === 'LOAN') {
+                    payload.loan_amount = Number(amount);
+                    payload.repayment_period = Number(repaymentPeriod);
+                    payload.interest_rate = 15;
+                    payload.monthly_deduction = (Number(amount) * 1.15) / Number(repaymentPeriod);
+                } else if (reqType === 'ADVANCE') {
+                    payload.loan_amount = Number(amount);
+                }
+            }
+
+            await requisitionService.create(payload);
             navigate('/requisitions');
         } catch (err) {
             setError('Failed to create requisition. Please try again.');
@@ -249,7 +277,9 @@ export const RequisitionCreate: React.FC = () => {
     return (
         <Layout>
             <div className="max-w-4xl mx-auto space-y-6">
-                <h1 className="text-2xl font-bold text-gray-900">New Requisition</h1>
+                <h1 className="text-2xl font-bold text-gray-900">
+                    {reqType === 'LOAN' ? 'New Staff Loan' : reqType === 'ADVANCE' ? 'New Salary Advance' : 'New Requisition'}
+                </h1>
 
                 <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6 space-y-6">
                     {error && (
@@ -330,7 +360,7 @@ export const RequisitionCreate: React.FC = () => {
                         </div>
                     )}
 
-                    {/* Department */}
+                    {/* Common Fields: Department */}
                     <div>
                         <label htmlFor="department" className="block text-sm font-medium text-gray-700">
                             Department
@@ -349,157 +379,245 @@ export const RequisitionCreate: React.FC = () => {
                         </select>
                     </div>
 
-                    {/* Description */}
-                    <div>
-                        <label htmlFor="description" className="block text-sm font-medium text-gray-700">
-                            Description
-                        </label>
-                        <input
-                            type="text"
-                            id="description"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            required
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                            placeholder="Enter requisition description"
-                        />
-                    </div>
+                    {reqType === 'EXPENSE' ? (
+                        <>
+                            {/* Description */}
+                            <div>
+                                <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+                                    General Description
+                                </label>
+                                <textarea
+                                    id="description"
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    rows={3}
+                                    placeholder="Briefly describe the purpose of this requisition..."
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                                />
+                            </div>
 
-                    {/* Line Items */}
-                    <div>
-                        <div className="flex justify-between items-center mb-4">
-                            <label className="block text-sm font-medium text-gray-700">Line Items</label>
-                            <div className="flex items-center space-x-2">
-                                <button
-                                    type="button"
-                                    onClick={handleBatchAiSuggest}
-                                    disabled={batchSuggesting}
-                                    className="flex items-center px-3 py-1 text-sm bg-amber-50 text-amber-700 border border-amber-200 rounded-md hover:bg-amber-100 disabled:opacity-50"
-                                >
-                                    {batchSuggesting ? (
-                                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                                    ) : (
-                                        <Sparkles className="h-4 w-4 mr-1" />
-                                    )}
-                                    Auto-set Accounts
-                                </button>
+                            {/* Line Items Table */}
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-lg font-medium text-gray-900">Line Items</h3>
+                                    <button
+                                        type="button"
+                                        onClick={handleBatchAiSuggest}
+                                        disabled={batchSuggesting || lineItems.length === 0}
+                                        className="inline-flex items-center px-3 py-1.5 border border-amber-300 shadow-sm text-sm font-medium rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors disabled:opacity-50"
+                                    >
+                                        {batchSuggesting ? (
+                                            <>
+                                                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                                                Analyzing...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Sparkles className="-ml-1 mr-2 h-4 w-4" />
+                                                Auto-Classify All
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+
+                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                    <table className="min-w-full divide-y divide-gray-200">
+                                        <thead className="bg-gray-50">
+                                            <tr>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Qty</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32">Price</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32">Amount</th>
+                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-48">Account</th>
+                                                <th className="px-4 py-3 w-10"></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-200">
+                                            {lineItems.map((item) => (
+                                                <tr key={item.id}>
+                                                    <td className="px-4 py-3">
+                                                        <div className="flex items-center space-x-1">
+                                                            <input
+                                                                type="text"
+                                                                value={item.description}
+                                                                onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
+                                                                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                                placeholder="Item name"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleAiSuggest(item.id, item.description, item.estimated_amount)}
+                                                                disabled={suggesting === item.id || !item.description}
+                                                                className="p-1.5 text-amber-500 hover:text-amber-600 transition-colors disabled:opacity-30"
+                                                                title="AI Categorize"
+                                                            >
+                                                                {suggesting === item.id ? (
+                                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Sparkles className="h-4 w-4" />
+                                                                )}
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.quantity}
+                                                            onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)}
+                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <input
+                                                            type="number"
+                                                            value={item.unit_price}
+                                                            onChange={(e) => updateLineItem(item.id, 'unit_price', e.target.value)}
+                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                        />
+                                                    </td>
+                                                    <td className="px-4 py-3 text-sm text-gray-900 font-medium">
+                                                        K{item.estimated_amount.toLocaleString()}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <select
+                                                            value={item.account_id}
+                                                            onChange={(e) => updateLineItem(item.id, 'account_id', e.target.value)}
+                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                        >
+                                                            <option value="">Select Account</option>
+                                                            {accounts.map((acc) => (
+                                                                <option key={acc.id} value={acc.id}>
+                                                                    {acc.code} - {acc.name}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-right">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => removeLineItem(item.id)}
+                                                            className="text-red-400 hover:text-red-600"
+                                                        >
+                                                            <Trash2 className="h-5 w-5" />
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                        <tfoot className="bg-gray-50">
+                                            <tr>
+                                                <td colSpan={3} className="px-4 py-3 text-sm font-medium text-gray-900 text-right">
+                                                    Total Estimated:
+                                                </td>
+                                                <td className="px-4 py-3 text-sm font-bold text-indigo-600">
+                                                    K{getEstimatedTotal().toLocaleString()}
+                                                </td>
+                                                <td colSpan={2}></td>
+                                            </tr>
+                                        </tfoot>
+                                    </table>
+                                </div>
+
                                 <button
                                     type="button"
                                     onClick={addLineItem}
-                                    className="flex items-center px-3 py-1 text-sm bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+                                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                                 >
-                                    <Plus className="h-4 w-4 mr-1" />
+                                    <Plus className="-ml-1 mr-2 h-5 w-5" />
                                     Add Item
                                 </button>
                             </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            {lineItems.map((item) => (
-                                <div key={item.id} className="grid grid-cols-12 gap-4 items-end">
-                                    <div className="col-span-3">
-                                        <label className="block text-xs text-gray-600">Description</label>
-                                        <input
-                                            type="text"
-                                            value={item.description}
-                                            onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
-                                            required
-                                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                                        />
+                        </>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="col-span-1 md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700">Staff Member Name</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={staffName}
+                                    onChange={(e) => setStaffName(e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                                    placeholder="Enter full name"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">Employee ID</label>
+                                <input
+                                    type="text"
+                                    required
+                                    value={employeeId}
+                                    onChange={(e) => setEmployeeId(e.target.value)}
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                                    placeholder="EMP-001"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">
+                                    {reqType === 'LOAN' ? 'Loan Amount' : 'Advance Amount'}
+                                </label>
+                                <div className="mt-1 relative rounded-md shadow-sm">
+                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                        <span className="text-gray-500 sm:text-sm">K</span>
                                     </div>
-                                    <div className="col-span-3">
-                                        <label className="block text-xs text-gray-600">Account</label>
+                                    <input
+                                        type="number"
+                                        required
+                                        value={amount || ''}
+                                        onChange={(e) => setAmount(Number(e.target.value))}
+                                        className="block w-full pl-7 rounded-md border-gray-300 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm px-3 py-2 border"
+                                        placeholder="0.00"
+                                    />
+                                </div>
+                            </div>
+                            {reqType === 'LOAN' && (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700">Repayment Period (Months)</label>
                                         <select
-                                            value={item.account_id}
-                                            onChange={(e) => updateLineItem(item.id, 'account_id', e.target.value)}
-                                            required
+                                            value={repaymentPeriod}
+                                            onChange={(e) => setRepaymentPeriod(Number(e.target.value))}
                                             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
                                         >
-                                            <option value="">Select Account</option>
-                                            {accounts.map((acc) => (
-                                                <option key={acc.id} value={acc.id}>
-                                                    {acc.code} - {acc.name}
-                                                </option>
+                                            {[1, 2, 3, 4, 5, 6, 12, 18, 24].map(m => (
+                                                <option key={m} value={m}>{m} {m === 1 ? 'Month' : 'Months'}</option>
                                             ))}
                                         </select>
                                     </div>
-                                    <div className="col-span-1 flex items-end pb-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleAiSuggest(item.id, item.description, item.estimated_amount)}
-                                            disabled={!item.description || suggesting === item.id}
-                                            className="p-2 text-indigo-600 hover:text-indigo-900 disabled:opacity-50 disabled:cursor-not-allowed"
-                                            title="Auto-categorize with AI"
-                                        >
-                                            {suggesting === item.id ? (
-                                                <Loader2 className="h-5 w-5 animate-spin" />
-                                            ) : (
-                                                <Sparkles className="h-5 w-5" />
-                                            )}
-                                        </button>
+                                    <div className="col-span-1 md:col-span-2 bg-indigo-50 p-4 rounded-lg border border-indigo-100">
+                                        <div className="flex justify-between items-center">
+                                            <div>
+                                                <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider">Estimated Deduction</p>
+                                                <p className="text-2xl font-black text-indigo-900">
+                                                    K{((amount * 1.15) / repaymentPeriod).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                    <span className="text-sm font-normal text-indigo-500 ml-1">/ month</span>
+                                                </p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider">Total Repayment</p>
+                                                <p className="text-lg font-bold text-indigo-800">
+                                                    K{(amount * 1.15).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </p>
+                                                <p className="text-[10px] text-indigo-400">Includes 15% Interest</p>
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="col-span-2">
-                                        <label className="block text-xs text-gray-600">Quantity</label>
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            value={item.quantity}
-                                            onChange={(e) => updateLineItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
-                                            required
-                                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                                        />
-                                    </div>
-                                    <div className="col-span-2">
-                                        <label className="block text-xs text-gray-600">Unit Price</label>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={item.unit_price}
-                                            onChange={(e) =>
-                                                updateLineItem(item.id, 'unit_price', parseFloat(e.target.value) || 0)
-                                            }
-                                            required
-                                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                                        />
-                                    </div>
-                                    <div className="col-span-2">
-                                        <label className="block text-xs text-gray-600">Total</label>
-                                        <input
-                                            type="text"
-                                            value={`$${item.estimated_amount.toFixed(2)}`}
-                                            disabled
-                                            className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 sm:text-sm px-3 py-2 border"
-                                        />
-                                    </div>
-                                    <div className="col-span-1">
-                                        {lineItems.length > 1 && (
-                                            <button
-                                                type="button"
-                                                onClick={() => removeLineItem(item.id)}
-                                                className="p-2 text-red-600 hover:text-red-900"
-                                            >
-                                                <Trash2 className="h-5 w-5" />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
+                                </>
+                            )}
+                            <div className="col-span-1 md:col-span-2">
+                                <label className="block text-sm font-medium text-gray-700">Additional Remarks</label>
+                                <textarea
+                                    value={description}
+                                    onChange={(e) => setDescription(e.target.value)}
+                                    rows={2}
+                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                                    placeholder="Optional details..."
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Estimated Total */}
-                    <div className="border-t pt-4">
-                        <div className="flex justify-between items-center">
-                            <span className="text-lg font-semibold text-gray-900">Estimated Total:</span>
-                            <span className="text-2xl font-bold text-indigo-600">
-                                ${getEstimatedTotal().toFixed(2)}
-                            </span>
-                        </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex justify-end space-x-3">
+                    <div className="flex justify-end space-x-3 pt-6 border-t font-semibold">
                         <button
                             type="button"
                             onClick={() => navigate('/requisitions')}
@@ -510,13 +628,13 @@ export const RequisitionCreate: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
                         >
                             {loading ? 'Submitting...' : 'Submit Requisition'}
                         </button>
                     </div>
                 </form>
-            </div >
-        </Layout >
+            </div>
+        </Layout>
     );
 };
