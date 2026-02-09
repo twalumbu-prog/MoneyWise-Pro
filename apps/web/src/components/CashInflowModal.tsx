@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, User, Phone, FileText, Wallet, CheckCircle, AlertCircle } from 'lucide-react';
 import { cashbookService } from '../services/cashbook.service';
-import DenominationInput from './DenominationInput';
+import { DenominationInput } from './DenominationInput';
 
 interface CashInflowModalProps {
     isOpen: boolean;
@@ -13,12 +13,14 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
     const [personName, setPersonName] = useState('');
     const [purpose, setPurpose] = useState('');
     const [contactDetails, setContactDetails] = useState('');
-    const [denominations, setDenominations] = useState<Record<string, number>>({});
+    const [denominations, setDenominations] = useState<any[]>([
+        { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }
+    ]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const totalAmount = Object.entries(denominations).reduce(
-        (sum, [denom, count]) => sum + Number(denom) * count,
+    const totalAmount = denominations.reduce(
+        (sum, d) => sum + d.value * d.count,
         0
     );
 
@@ -45,7 +47,9 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
             setPersonName('');
             setPurpose('');
             setContactDetails('');
-            setDenominations({});
+            setDenominations([
+                { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }
+            ]);
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to log cash inflow');
         } finally {
@@ -154,7 +158,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                                 Cash Denominations
                             </label>
                             <DenominationInput
-                                value={denominations}
+                                denominations={denominations}
                                 onChange={setDenominations}
                             />
                         </div>
