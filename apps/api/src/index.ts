@@ -72,7 +72,7 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS qb_sync_error TEXT,
             ADD COLUMN IF NOT EXISTS qb_sync_at TIMESTAMP WITH TIME ZONE;
 
-            ALTER TABLE chart_of_accounts
+            ALTER TABLE accounts
             ADD COLUMN IF NOT EXISTS qb_account_id VARCHAR(100);
         `);
 
