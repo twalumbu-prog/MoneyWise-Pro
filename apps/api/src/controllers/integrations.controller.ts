@@ -1,9 +1,9 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { supabase } from '../lib/supabase';
 
-export const connectQuickBooks = async (req: any, res: Response) => {
+export const connectQuickBooks = async (req: Request, res: Response) => {
     try {
         const url = QuickBooksService.getAuthUrl();
         res.json({ url });
@@ -12,7 +12,7 @@ export const connectQuickBooks = async (req: any, res: Response) => {
     }
 };
 
-export const quickBooksCallback = async (req: any, res: Response) => {
+export const quickBooksCallback = async (req: Request, res: Response) => {
     const { code, realmId } = req.query;
 
     if (!code || !realmId) {
@@ -31,7 +31,7 @@ export const quickBooksCallback = async (req: any, res: Response) => {
     }
 };
 
-export const getIntegrationStatus = async (req: any, res: Response) => {
+export const getIntegrationStatus = async (req: Request, res: Response) => {
     try {
         const { data, error } = await supabase
             .from('integrations')
@@ -50,7 +50,7 @@ export const getIntegrationStatus = async (req: any, res: Response) => {
     }
 };
 
-export const getQuickBooksAccounts = async (req: any, res: Response) => {
+export const getQuickBooksAccounts = async (req: Request, res: Response) => {
     try {
         const accounts = await QuickBooksService.fetchAccounts();
         res.json(accounts);
@@ -59,7 +59,7 @@ export const getQuickBooksAccounts = async (req: any, res: Response) => {
     }
 };
 
-export const disconnectQuickBooks = async (req: any, res: Response) => {
+export const disconnectQuickBooks = async (req: Request, res: Response) => {
     try {
         const { error } = await supabase
             .from('integrations')
@@ -73,7 +73,7 @@ export const disconnectQuickBooks = async (req: any, res: Response) => {
     }
 };
 
-export const syncRequisition = async (req: any, res: Response) => {
+export const syncRequisition = async (req: Request, res: Response) => {
     const { id } = req.params;
     try {
         await QuickBooksService.createExpense(id);
