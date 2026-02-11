@@ -74,7 +74,7 @@ export const RequisitionDetail: React.FC = () => {
         try {
             setProcessing(true);
             const token = (await import('../lib/supabase')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
-            const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+            const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
             const response = await fetch(`${API_URL}/requisitions/${id}/acknowledge`, {
                 method: 'POST',
