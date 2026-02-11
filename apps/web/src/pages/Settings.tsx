@@ -10,7 +10,6 @@ import {
     AlertCircle,
     ExternalLink,
     RefreshCw,
-    RefreshCw,
     ArrowRightLeft,
     ArrowDownToLine
 } from 'lucide-react';
