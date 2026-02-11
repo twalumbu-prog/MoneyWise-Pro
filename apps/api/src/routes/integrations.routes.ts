@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-quickBooksCallback,
+import {
+    connectQuickBooks,
+    quickBooksCallback,
     getIntegrationStatus,
     getQuickBooksAccounts,
     disconnectQuickBooks,
