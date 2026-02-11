@@ -151,7 +151,7 @@ export const emailService = {
      * Get email address for a specific user ID
      */
     async getUserEmail(userId: string): Promise<string[]> {
-        const { data, error } = await supabase.auth.admin.getUserById(userId);
+        const { data, error } = await (supabase.auth as any).admin.getUserById(userId);
         if (error || !data.user?.email) return [];
         return [data.user.email];
     },
@@ -167,17 +167,17 @@ export const emailService = {
             .in('role', roles);
 
         if (pubError || !publicUsers) return [];
-        const userIds = publicUsers.map(u => u.id);
+        const userIds = publicUsers.map((u: any) => u.id);
 
         // 2. Get emails from auth.users (fetching all for now as listUsers is usually small)
         // In a large org, we'd want to join or filter more efficiently.
-        const { data, error } = await supabase.auth.admin.listUsers();
+        const { data, error } = await (supabase.auth as any).admin.listUsers();
         if (error || !data.users) return [];
 
         return data.users
-            .filter(u => userIds.includes(u.id))
-            .map(u => u.email)
-            .filter((e): e is string => !!e);
+            .filter((u: any) => userIds.includes(u.id))
+            .map((u: any) => u.email)
+            .filter((e: any): e is string => !!e);
     },
 
     /**
