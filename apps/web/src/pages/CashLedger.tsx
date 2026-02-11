@@ -14,12 +14,14 @@ import {
     ArrowUpCircle,
     CheckCircle,
     Lock,
-    PlusCircle
+    PlusCircle,
+    RefreshCw
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
 import { useAuth } from '../context/AuthContext';
+import { integrationService } from '../services/integration.service';
 
 const CashLedger: React.FC = () => {
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
@@ -62,6 +64,15 @@ const CashLedger: React.FC = () => {
         }));
     };
 
+    const handleRetrySync = async (requisitionId: string) => {
+        try {
+            await integrationService.retrySync(requisitionId);
+            await loadData();
+        } catch (error: any) {
+            alert('Failed to retry sync: ' + error.message);
+        }
+    };
+
     const formatCurrency = (amount: number) => {
         return `K${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
@@ -72,7 +83,20 @@ const CashLedger: React.FC = () => {
         if (entry.entry_type !== 'DISBURSEMENT') return null;
         const status = entry.requisitions?.status || 'PENDING';
 
-        if (status === 'COMPLETED') return <span className="status-badge completed">Completed</span>;
+        if (status === 'COMPLETED') {
+            const qbStatus = entry.requisitions?.qb_sync_status;
+            return (
+                <div className="flex flex-col items-end">
+                    <span className="status-badge completed">Completed</span>
+                    {qbStatus && (
+                        <span className={`text-[9px] mt-1 font-bold uppercase tracking-widest ${qbStatus === 'SUCCESS' ? 'text-green-600' : qbStatus === 'FAILED' ? 'text-red-600' : 'text-gray-400'
+                            }`}>
+                            QB: {qbStatus}
+                        </span>
+                    )}
+                </div>
+            );
+        }
         if (status === 'DISBURSED' || status === 'RECEIVED' || status === 'CHANGE_SUBMITTED') {
             return <span className="status-badge disbursed">Disbursed</span>;
         }
@@ -169,6 +193,36 @@ const CashLedger: React.FC = () => {
                             <div className="mt-4 p-3 bg-green-50 border border-green-100 rounded-lg text-xs text-green-700 flex items-center">
                                 <CheckCircle className="h-4 w-4 mr-2" />
                                 <span>Transaction fully reconciled. All funds accounted for.</span>
+                            </div>
+                        )}
+
+                        {req.status === 'COMPLETED' && (
+                            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                                <div className="flex items-center">
+                                    <div className={`p-1.5 rounded-lg mr-3 ${req.qb_sync_status === 'SUCCESS' ? 'bg-green-100 text-green-600' : req.qb_sync_status === 'FAILED' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
+                                        }`}>
+                                        <RefreshCw size={14} className={req.qb_sync_status === 'PENDING' ? 'animate-spin' : ''} />
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">QuickBooks Sync</div>
+                                        <div className="text-xs font-bold text-gray-700">
+                                            {req.qb_sync_status === 'SUCCESS' ? 'Synced successfully' :
+                                                req.qb_sync_status === 'FAILED' ? 'Sync failed' :
+                                                    'Not synced yet'}
+                                        </div>
+                                    </div>
+                                </div>
+                                {req.qb_sync_status === 'FAILED' && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleRetrySync(req.id);
+                                        }}
+                                        className="px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-lg hover:bg-indigo-100 transition-colors"
+                                    >
+                                        Retry Sync
+                                    </button>
+                                )}
                             </div>
                         )}
                     </div>

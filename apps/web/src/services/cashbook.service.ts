@@ -15,6 +15,7 @@ export interface CashbookEntry {
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
     requisitions?: {
+        id: string;
         reference_number: string;
         status: string;
         description: string;
@@ -23,6 +24,9 @@ export interface CashbookEntry {
         line_items: any[];
         disbursements: any[];
         type?: string;
+        qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+        qb_sync_error?: string;
+        qb_sync_at?: string;
     };
     users?: { name: string };
 }

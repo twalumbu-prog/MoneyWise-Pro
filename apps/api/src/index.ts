@@ -7,6 +7,7 @@ import authRoutes from './routes/auth.routes';
 import accountRoutes from './routes/account.routes';
 import voucherRoutes from './routes/voucher.routes';
 import cashbookRoutes from './routes/cashbook.routes';
+import integrationRoutes from './routes/integrations.routes';
 
 dotenv.config();
 
@@ -50,6 +51,31 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'COMPLETED';
         `);
 
+        console.log('[Migration] Checking for QuickBooks integration table and columns...');
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.integrations (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                provider VARCHAR(50) NOT NULL UNIQUE,
+                access_token TEXT,
+                refresh_token TEXT,
+                token_expires_at TIMESTAMP WITH TIME ZONE,
+                refresh_token_expires_at TIMESTAMP WITH TIME ZONE,
+                realm_id VARCHAR(100),
+                config JSONB DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            ALTER TABLE requisitions 
+            ADD COLUMN IF NOT EXISTS qb_expense_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS qb_sync_status VARCHAR(20) DEFAULT 'PENDING',
+            ADD COLUMN IF NOT EXISTS qb_sync_error TEXT,
+            ADD COLUMN IF NOT EXISTS qb_sync_at TIMESTAMP WITH TIME ZONE;
+
+            ALTER TABLE chart_of_accounts
+            ADD COLUMN IF NOT EXISTS qb_account_id VARCHAR(100);
+        `);
+
         console.log('[Migration] Schema update successful.');
     } catch (err) {
         console.error('[Migration] Failed to run startup migration:', err);
@@ -81,6 +107,7 @@ app.use('/requisitions', requisitionRoutes);
 app.use('/accounts', accountRoutes);
 app.use('/vouchers', voucherRoutes);
 app.use('/cashbook', cashbookRoutes);
+app.use('/integrations', integrationRoutes);
 
 app.get('/', (req: any, res: any) => {
     res.send('AE&CF API is running');

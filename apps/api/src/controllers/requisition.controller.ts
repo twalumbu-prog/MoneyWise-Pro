@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
+import { QuickBooksService } from '../services/quickbooks.service';
 
 export const createRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -525,6 +526,11 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         // 7. Trigger Notification
         emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
             console.error('[Notification Error] Failed to send REQUISITION_COMPLETED email:', err)
+        );
+
+        // 8. Trigger QuickBooks Sync
+        QuickBooksService.createExpense(id).catch(err =>
+            console.error('[QuickBooks Sync] Background sync failed:', err)
         );
     } catch (error: any) {
         console.error('Error confirming change:', error);
