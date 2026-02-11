@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import {
     connectQuickBooks,
     quickBooksCallback,
@@ -12,13 +12,13 @@ import {
 const router = Router();
 
 // OAuth flow
-router.get('/quickbooks/connect', authenticate, connectQuickBooks);
+router.get('/quickbooks/connect', requireAuth, connectQuickBooks);
 router.get('/quickbooks/callback', quickBooksCallback); // No auth for callback as it handles redirect
-router.delete('/quickbooks', authenticate, disconnectQuickBooks);
+router.delete('/quickbooks', requireAuth, disconnectQuickBooks);
 
 // Status and Data
-router.get('/status', authenticate, getIntegrationStatus);
-router.get('/quickbooks/accounts', authenticate, getQuickBooksAccounts);
-router.post('/quickbooks/sync/:id', authenticate, syncRequisition);
+router.get('/status', requireAuth, getIntegrationStatus);
+router.get('/quickbooks/accounts', requireAuth, getQuickBooksAccounts);
+router.post('/quickbooks/sync/:id', requireAuth, syncRequisition);
 
 export default router;
