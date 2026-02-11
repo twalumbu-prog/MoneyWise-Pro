@@ -122,6 +122,9 @@ export const emailService = {
                     subject,
                     html: this.wrapTemplate(body)
                 });
+                console.log(`[EmailService] Notification sent successfully to ${recipients.join(', ')} for type ${type}`);
+            } else {
+                console.warn(`[EmailService] No recipients found for notification type ${type} on requisition ${requisitionId}`);
             }
         } catch (error) {
             console.error('[EmailService] Failed to send notification:', error);
@@ -166,18 +169,29 @@ export const emailService = {
             .select('id')
             .in('role', roles);
 
-        if (pubError || !publicUsers) return [];
+        if (pubError || !publicUsers) {
+            console.error('[EmailService] Error fetching public users:', pubError);
+            return [];
+        }
+
+        console.log(`[EmailService] Found ${publicUsers.length} users with roles: ${roles.join(', ')}`);
         const userIds = publicUsers.map((u: any) => u.id);
 
         // 2. Get emails from auth.users (fetching all for now as listUsers is usually small)
         // In a large org, we'd want to join or filter more efficiently.
         const { data, error } = await (supabase.auth as any).admin.listUsers();
-        if (error || !data.users) return [];
+        if (error || !data.users) {
+            console.error('[EmailService] Error fetching auth users:', error);
+            return [];
+        }
 
-        return data.users
+        const recipients = data.users
             .filter((u: any) => userIds.includes(u.id))
             .map((u: any) => u.email)
             .filter((e: any): e is string => !!e);
+
+        console.log(`[EmailService] Matched ${recipients.length} email recipients`);
+        return recipients;
     },
 
     /**
