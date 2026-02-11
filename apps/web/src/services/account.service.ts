@@ -61,6 +61,21 @@ export const accountService = {
         });
 
         if (!response.ok) throw new Error('Failed to update account');
+    },
+
+    async importFromQuickBooks() {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const response = await fetch(`${API_URL}/accounts/import`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (!response.ok) throw new Error('Failed to import accounts');
         return response.json();
     },
 

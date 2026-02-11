@@ -139,3 +139,100 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
 };
 
 
+
+export const importAccounts = async (req: any, res: any): Promise<any> => {
+    try {
+        console.log('[Account Import] Starting import from QuickBooks...');
+        
+        // 1. Fetch all accounts from QB
+        const { QuickBooksService } = require('../services/quickbooks.service');
+        const qbAccounts = await QuickBooksService.fetchAccounts();
+        
+        console.log(`[Account Import] Fetched ${qbAccounts.length} accounts from QB`);
+
+        // 2. Fetch all local accounts to check existing
+        const { data: localAccounts, error: localError } = await supabase
+            .from('accounts')
+            .select('qb_account_id, code, name');
+            
+        if (localError) throw localError;
+
+        const existingQbIds = new Set(localAccounts?.map(a => a.qb_account_id).filter(Boolean));
+        const existingCodes = new Set(localAccounts?.map(a => a.code));
+        const existingNames = new Set(localAccounts?.map(a => a.name));
+
+        const typeMap: Record<string, string> = {
+            'Expense': 'EXPENSE',
+            'Other Expense': 'EXPENSE',
+            'Cost of Goods Sold': 'EXPENSE',
+            'Income': 'INCOME',
+            'Other Income': 'INCOME',
+            'Equity': 'EQUITY',
+            'Liability': 'LIABILITY',
+            'Other Current Liability': 'LIABILITY',
+            'Long Term Liability': 'LIABILITY',
+            'Accounts Payable': 'LIABILITY',
+            'Credit Card': 'LIABILITY',
+            'Bank': 'ASSET',
+            'Other Asset': 'ASSET',
+            'Fixed Asset': 'ASSET',
+            'Other Current Asset': 'ASSET',
+            'Accounts Receivable': 'ASSET'
+        };
+
+        const newAccounts = [];
+
+        for (const qbAcc of qbAccounts) {
+            if (existingQbIds.has(qbAcc.Id)) continue; 
+            if (existingNames.has(qbAcc.Name)) continue; 
+            
+            let localType = 'EXPENSE'; 
+            if (typeMap[qbAcc.AccountType]) {
+                localType = typeMap[qbAcc.AccountType];
+            } else if (typeMap[qbAcc.Classification]) {
+                localType = typeMap[qbAcc.Classification];
+            }
+
+            let code = qbAcc.AcctNum;
+            if (!code) {
+                code = `QB-${qbAcc.Id}`;
+            }
+
+            if (existingCodes.has(code)) {
+                code = `${code}-QB`;
+                if (existingCodes.has(code)) continue; 
+            }
+
+            newAccounts.push({
+                code: code.substring(0, 20),
+                name: qbAcc.Name,
+                type: localType,
+                description: qbAcc.Description || `Imported from QuickBooks (${qbAcc.AccountType})`,
+                is_active: qbAcc.Active !== false,
+                qb_account_id: qbAcc.Id,
+                updated_at: new Date().toISOString()
+            });
+            
+            existingCodes.add(code); 
+        }
+
+        if (newAccounts.length === 0) {
+            return res.json({ message: 'No new accounts to import', count: 0 });
+        }
+
+        console.log(`[Account Import] Importing ${newAccounts.length} new accounts...`);
+
+        const { data, error } = await supabase
+            .from('accounts')
+            .insert(newAccounts)
+            .select();
+
+        if (error) throw error;
+
+        res.json({ message: `Successfully imported ${data.length} accounts`, count: data.length, accounts: data });
+
+    } catch (error: any) {
+        console.error('Error importing accounts:', error);
+        res.status(500).json({ error: 'Failed to import accounts', details: error.message });
+    }
+};

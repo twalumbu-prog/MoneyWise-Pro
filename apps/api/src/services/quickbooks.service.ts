@@ -110,7 +110,7 @@ export class QuickBooksService {
 
     static async fetchAccounts() {
         const { accessToken, realmId } = await this.getValidToken();
-        const query = encodeURIComponent("select * from Account where AccountType = 'Expense'");
+        const query = encodeURIComponent("select * from Account MAXRESULTS 1000");
         const url = `${QB_API_BASE}/${realmId}/query?query=${query}&minorversion=70`;
 
         const response = await fetch(url, {

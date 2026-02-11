@@ -10,7 +10,9 @@ import {
     AlertCircle,
     ExternalLink,
     RefreshCw,
-    ArrowRightLeft
+    RefreshCw,
+    ArrowRightLeft,
+    ArrowDownToLine
 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 
@@ -100,6 +102,19 @@ export const Settings: React.FC = () => {
             alert('Failed to save mapping: ' + err.message);
         } finally {
             setSaving(null);
+        }
+    };
+
+    const handleImport = async () => {
+        try {
+            setActionLoading(true);
+            const result = await accountService.importFromQuickBooks();
+            alert(result.message);
+            await loadData(); // Reload accounts
+        } catch (err: any) {
+            alert('Failed to import accounts: ' + err.message);
+        } finally {
+            setActionLoading(false);
         }
     };
 
@@ -206,6 +221,16 @@ export const Settings: React.FC = () => {
                                                         <div className="ml-3 h-5 w-10 bg-indigo-600 rounded-full relative">
                                                             <div className="absolute right-0.5 top-0.5 h-4 w-4 bg-white rounded-full shadow-sm"></div>
                                                         </div>
+                                                    </div>
+                                                    <div className="flex items-center space-x-3">
+                                                        <button
+                                                            onClick={handleImport}
+                                                            disabled={actionLoading}
+                                                            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                                                        >
+                                                            <ArrowDownToLine className="h-4 w-4 mr-2" />
+                                                            {actionLoading ? 'Importing...' : 'Import from QuickBooks'}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
