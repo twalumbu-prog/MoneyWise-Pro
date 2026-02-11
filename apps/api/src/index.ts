@@ -77,6 +77,11 @@ const runMigration = async () => {
         `);
 
         console.log('[Migration] Schema update successful.');
+
+        // Refresh PostgREST schema cache
+        console.log('[Migration] Reloading PostgREST schema cache...');
+        await migrationPool.query("NOTIFY pgrst, 'reload config';");
+
     } catch (err) {
         console.error('[Migration] Failed to run startup migration:', err);
     } finally {
