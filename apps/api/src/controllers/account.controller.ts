@@ -61,6 +61,7 @@ export const updateAccount = async (req: any, res: any): Promise<any> => {
                 type,
                 description,
                 is_active,
+                qb_account_id: req.body.qb_account_id,
                 updated_at: new Date().toISOString()
             })
             .eq('id', id)

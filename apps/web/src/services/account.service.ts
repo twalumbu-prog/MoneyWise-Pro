@@ -47,6 +47,23 @@ export const accountService = {
         return response.json();
     },
 
+    async update(id: string, data: Partial<Account> & { qb_account_id?: string }) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const response = await fetch(`${API_URL}/accounts/${id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) throw new Error('Failed to update account');
+        return response.json();
+    },
+
     async suggestAccount(description: string, amount?: number) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
