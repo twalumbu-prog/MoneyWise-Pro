@@ -20,6 +20,11 @@ export const integrationService = {
                 'Authorization': `Bearer ${session?.access_token}`
             }
         });
+
+        if (response.status === 404) {
+            return { connected: false, details: null };
+        }
+
         if (!response.ok) throw new Error('Failed to fetch integration status');
         return response.json();
     },
