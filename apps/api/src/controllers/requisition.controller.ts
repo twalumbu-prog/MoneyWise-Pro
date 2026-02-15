@@ -490,6 +490,7 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
             .from('vouchers')
             .insert({
                 requisition_id: id,
+                created_by: cashier_id,
                 reference_number: voucherRef,
                 date: new Date().toISOString().split('T')[0],
                 amount: actualExpenditure,

@@ -114,13 +114,10 @@ const runMigration = async () => {
 };
 
 // Run migrations on startup - only in non-production or if explicitly requested
-if (process.env.NODE_ENV !== 'production' || process.env.RUN_MIGRATIONS === 'true') {
-    runMigration().catch(err => {
-        console.error('[Migration] Critical failure during startup:', err);
-    });
-} else {
-    console.log('[Migration] Skipping auto-migration in production mode.');
-}
+// Run migrations on startup to ensure schema consistency
+runMigration().catch(err => {
+    console.error('[Migration] Critical failure during startup:', err);
+});
 
 const app = express();
 const port = process.env.PORT || 3000;
