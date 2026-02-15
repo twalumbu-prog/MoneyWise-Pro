@@ -1,0 +1,15 @@
+{
+    "mcpServers": {
+        "supabase": {
+            "command": "supabase",
+            "args": [
+                "mcp"
+            ],
+            "env": {
+                "SUPABASE_ACCESS_TOKEN": "sbp_12cfd0b0f1db6bd6313a253fbcd65abad001dbf2",
+                "SUPABASE_URL": "https://klfeluphcutgppkhaxyl.supabase.co",
+                "SUPABASE_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtsZmVsdXBoY3V0Z3Bwa2hheHlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ1OTQwNDUsImV4cCI6MjA4MDE3MDA0NX0.8h15ZYRJlQDiG_m7N03f0WoamR4bq7CMROT62sg3qZ4"
+            }
+        }
+    }
+}
