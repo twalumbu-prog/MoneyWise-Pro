@@ -80,7 +80,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
             <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
                 <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
                     <h2 className="text-xl font-bold text-gray-900 flex items-center">
-                        <Calculator className="mr-2 h-5 w-5 text-indigo-600" />
+                        <Calculator className="mr-2 h-5 w-5 text-brand-navy" />
                         Closing Cash Ledger
                     </h2>
                     <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -98,7 +98,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                                         type="date"
                                         value={date}
                                         onChange={(e) => setDate(e.target.value)}
-                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none"
                                     />
                                     <p className="mt-1 text-xs text-gray-500">The date for which you are closing the books.</p>
                                 </div>
@@ -110,7 +110,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                                 </div>
                             </div>
 
-                            <div className="bg-indigo-50/50 rounded-xl p-4 border border-indigo-100">
+                            <div className="bg-brand-gray rounded-xl p-4 border border-gray-200">
                                 <h3 className="font-semibold text-gray-900 mb-3 text-sm">Physical Cash Count</h3>
                                 <div className="grid grid-cols-3 gap-3 mb-4">
                                     {denominationValues.map((val) => (
@@ -127,9 +127,9 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                                         </div>
                                     ))}
                                 </div>
-                                <div className="flex justify-between items-center pt-2 border-t border-indigo-100">
-                                    <span className="font-medium text-indigo-900">Total Counted</span>
-                                    <span className="text-xl font-black text-indigo-600">
+                                <div className="flex justify-between items-center pt-2 border-t border-gray-200">
+                                    <span className="font-medium text-brand-navy">Total Counted</span>
+                                    <span className="text-xl font-black text-brand-green">
                                         K{parseFloat(physicalCount || '0').toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
                                 </div>
@@ -141,7 +141,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                                     value={notes}
                                     onChange={(e) => setNotes(e.target.value)}
                                     placeholder="Any notes about this closing or discrepancies..."
-                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none h-20 resize-none text-sm"
+                                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-brand-green outline-none h-20 resize-none text-sm"
                                 />
                             </div>
                         </div>
@@ -196,7 +196,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                             <button
                                 onClick={handleNext}
                                 disabled={!physicalCount}
-                                className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-green-600 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 Summary Review
                             </button>
@@ -213,7 +213,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
                             <button
                                 onClick={handleSubmit}
                                 disabled={loading}
-                                className="px-5 py-2.5 text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                                className="px-5 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-green-600 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
                             >
                                 {loading ? 'Processing...' : 'Confirm & Close Books'}
                             </button>

@@ -121,22 +121,22 @@ export const Settings: React.FC = () => {
         <Layout>
             <div className="max-w-5xl mx-auto py-8 px-4">
                 <div className="flex items-center space-x-3 mb-8">
-                    <div className="p-3 bg-indigo-100 rounded-xl text-indigo-600">
+                    <div className="p-3 bg-brand-navy rounded-xl text-white shadow-lg shadow-brand-navy/20">
                         <SettingsIcon className="h-6 w-6" />
                     </div>
-                    <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+                    <h1 className="text-3xl font-bold text-brand-navy">Settings</h1>
                 </div>
 
                 <div className="bg-white shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
                     <div className="flex border-b border-gray-100">
                         <button
-                            className={`px-6 py-4 text-sm font-bold transition-colors ${activeTab === 'profile' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/30' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`px-6 py-4 text-sm font-bold transition-colors ${activeTab === 'profile' ? 'text-brand-navy border-b-2 border-brand-navy bg-brand-navy/5' : 'text-gray-500 hover:text-gray-700'}`}
                             onClick={() => { }}
                         >
                             Profile
                         </button>
                         <button
-                            className={`px-6 py-4 text-sm font-bold transition-colors ${activeTab === 'integrations' ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/30' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`px-6 py-4 text-sm font-bold transition-colors ${activeTab === 'integrations' ? 'text-brand-navy border-b-2 border-brand-navy bg-brand-navy/5' : 'text-gray-500 hover:text-gray-700'}`}
                         >
                             Integrations
                         </button>
@@ -145,7 +145,7 @@ export const Settings: React.FC = () => {
                     <div className="p-8">
                         {loading ? (
                             <div className="flex items-center justify-center py-12">
-                                <RefreshCw className="h-8 w-8 animate-spin text-indigo-600" />
+                                <RefreshCw className="h-8 w-8 animate-spin text-brand-green" />
                             </div>
                         ) : error ? (
                             <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-xl flex items-start text-red-700">
@@ -188,7 +188,7 @@ export const Settings: React.FC = () => {
                                         <button
                                             onClick={handleConnect}
                                             disabled={actionLoading}
-                                            className="inline-flex items-center px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all disabled:opacity-50"
+                                            className="inline-flex items-center px-6 py-2.5 bg-brand-green hover:bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-200 transition-all disabled:opacity-50"
                                         >
                                             <LinkIcon className="h-4 w-4 mr-2" />
                                             {actionLoading ? 'Connecting...' : 'Connect QuickBooks'}
@@ -215,9 +215,9 @@ export const Settings: React.FC = () => {
                                                         <h4 className="text-sm font-bold text-gray-900">Automatic Syncing</h4>
                                                         <p className="text-xs text-gray-500">Completed transactions will be automatically posted as expenses in QuickBooks.</p>
                                                     </div>
-                                                    <div className="flex items-center text-xs font-bold text-indigo-600">
+                                                    <div className="flex items-center text-xs font-bold text-brand-green">
                                                         Enabled
-                                                        <div className="ml-3 h-5 w-10 bg-indigo-600 rounded-full relative">
+                                                        <div className="ml-3 h-5 w-10 bg-brand-green rounded-full relative">
                                                             <div className="absolute right-0.5 top-0.5 h-4 w-4 bg-white rounded-full shadow-sm"></div>
                                                         </div>
                                                     </div>
@@ -225,7 +225,7 @@ export const Settings: React.FC = () => {
                                                         <button
                                                             onClick={handleImport}
                                                             disabled={actionLoading}
-                                                            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                                                            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50"
                                                         >
                                                             <ArrowDownToLine className="h-4 w-4 mr-2" />
                                                             {actionLoading ? 'Importing...' : 'Import from QuickBooks'}
@@ -239,8 +239,8 @@ export const Settings: React.FC = () => {
                                         <div className="pt-8 border-t border-gray-100">
                                             <div className="flex items-center justify-between mb-6">
                                                 <div>
-                                                    <h3 className="text-lg font-bold text-gray-900 flex items-center">
-                                                        <ArrowRightLeft className="h-5 w-5 mr-2 text-indigo-600" />
+                                                    <h3 className="text-lg font-bold text-brand-navy flex items-center">
+                                                        <ArrowRightLeft className="h-5 w-5 mr-2 text-brand-green" />
                                                         Chart of Accounts Mapping
                                                     </h3>
                                                     <p className="text-sm text-gray-500 mt-1">
@@ -295,7 +295,7 @@ export const Settings: React.FC = () => {
                                                                             value={account.qb_account_id || ''}
                                                                             onChange={(e) => handleMapAccount(account.id, e.target.value)}
                                                                             disabled={saving === account.id}
-                                                                            className="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md border"
+                                                                            className="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm rounded-md border"
                                                                         >
                                                                             <option value="">-- Select QuickBooks Account --</option>
                                                                             {qbAccounts
@@ -308,7 +308,7 @@ export const Settings: React.FC = () => {
                                                                                 ))}
                                                                         </select>
                                                                         {saving === account.id && (
-                                                                            <RefreshCw className="h-4 w-4 animate-spin text-indigo-600" />
+                                                                            <RefreshCw className="h-4 w-4 animate-spin text-brand-green" />
                                                                         )}
                                                                     </div>
                                                                 </td>
@@ -330,7 +330,7 @@ export const Settings: React.FC = () => {
                                     <h4 className="text-lg font-bold text-gray-900 mb-4">How it works</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                         <div className="space-y-2">
-                                            <div className="h-8 w-8 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center font-bold">1</div>
+                                            <div className="h-8 w-8 bg-brand-navy text-white rounded-lg flex items-center justify-center font-bold">1</div>
                                             <h5 className="font-bold text-sm">Link Account</h5>
                                             <p className="text-xs text-gray-500 leading-relaxed">Securely connect your QuickBooks Online company using OAuth 2.0.</p>
                                         </div>
@@ -356,7 +356,7 @@ export const Settings: React.FC = () => {
                         href="https://sandbox.qbo.intuit.com"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center text-xs font-bold text-gray-400 hover:text-indigo-600 transition-colors"
+                        className="flex items-center text-xs font-bold text-gray-400 hover:text-brand-green transition-colors"
                     >
                         Access QuickBooks Sandbox
                         <ExternalLink className="h-3 w-3 ml-1.5" />

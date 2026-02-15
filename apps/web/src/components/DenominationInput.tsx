@@ -37,12 +37,12 @@ export const DenominationInput: React.FC<DenominationInputProps> = ({
                                 type="number"
                                 min="0"
                                 placeholder="0"
-                                className="w-16 text-center text-sm font-medium focus:ring-indigo-500 focus:border-indigo-500 border-gray-300 rounded px-1 py-1 border"
+                                className="w-16 text-center text-sm font-medium focus:ring-brand-green focus:border-brand-green border-gray-300 rounded px-1 py-1 border"
                                 value={d.count === 0 ? '' : d.count}
                                 onChange={(e) => handleCountChange(d.value, parseInt(e.target.value) || 0)}
                             />
                         </div>
-                        <span className="text-[10px] text-indigo-600 font-medium mt-1">
+                        <span className="text-[10px] text-brand-navy font-medium mt-1">
                             = K{(d.value * d.count).toFixed(2)}
                         </span>
                     </div>

@@ -93,7 +93,7 @@ export const CashierDashboard: React.FC = () => {
         <Layout>
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-gray-900">Cashier Dashboard</h1>
+                    <h1 className="text-2xl font-bold text-brand-navy">Cashier Dashboard</h1>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -118,7 +118,7 @@ export const CashierDashboard: React.FC = () => {
                                 <li
                                     key={req.id}
                                     onClick={() => setSelectedReq(req)}
-                                    className={`px-6 py-4 cursor-pointer hover:bg-gray-50 ${selectedReq?.id === req.id ? 'bg-indigo-50' : ''}`}
+                                    className={`px-6 py-4 cursor-pointer hover:bg-gray-50 ${selectedReq?.id === req.id ? 'bg-brand-navy/5' : ''}`}
                                 >
                                     <div className="flex justify-between">
                                         <span className="font-medium text-gray-900">#{req.id.slice(0, 6)}</span>
@@ -164,7 +164,7 @@ export const CashierDashboard: React.FC = () => {
                                                 min="0"
                                                 value={count}
                                                 onChange={(e) => handleDenominationChange(value, parseInt(e.target.value) || 0)}
-                                                className="block w-full text-center border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                                                className="block w-full text-center border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm"
                                             />
                                         </div>
                                     ))}
@@ -180,7 +180,7 @@ export const CashierDashboard: React.FC = () => {
                                     <button
                                         onClick={handleDisburse}
                                         disabled={processing || calculateTotal(denominations) !== Number(selectedReq.estimated_total)}
-                                        className="flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className="flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Check className="h-5 w-5 mr-2" />
                                         {processing ? 'Processing...' : 'Confirm Disbursement'}

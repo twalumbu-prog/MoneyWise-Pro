@@ -17,7 +17,8 @@ import {
     PlusCircle,
     RefreshCw,
     Sparkles,
-    AlertTriangle
+    AlertTriangle,
+    X
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -217,7 +218,7 @@ const CashLedger: React.FC = () => {
                         <div className="summary-grid">
                             <div className="summary-card">
                                 <span className="label">Original Disbursed</span>
-                                <span className="value text-indigo-600 font-black">{formatCurrency(totalPrepared)}</span>
+                                <span className="value text-brand-navy font-black">{formatCurrency(totalPrepared)}</span>
                             </div>
                             <div className="summary-card">
                                 <span className="label">Actual Spending</span>
@@ -267,7 +268,7 @@ const CashLedger: React.FC = () => {
                                             e.stopPropagation();
                                             handleRetrySync(req.id);
                                         }}
-                                        className="px-3 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-lg hover:bg-indigo-100 transition-colors"
+                                        className="px-3 py-1 bg-brand-navy text-white text-[10px] font-bold rounded-lg hover:bg-brand-green transition-colors"
                                     >
                                         Retry Sync
                                     </button>
@@ -286,34 +287,34 @@ const CashLedger: React.FC = () => {
 
     return (
         <Layout>
-            <div className="cashbook-container">
-                <div className="cashbook-header">
+            <div className="space-y-6">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-indigo-100 rounded-lg text-indigo-600">
+                        <div className="p-2.5 bg-brand-navy rounded-xl text-white shadow-lg shadow-brand-navy/20">
                             <Wallet className="h-6 w-6" />
                         </div>
-                        <h1 className="text-2xl font-bold text-gray-900 m-0">Cash Ledger</h1>
+                        <h1 className="text-2xl font-bold text-brand-navy m-0">Cash Ledger</h1>
                     </div>
-                    <div className="balance-display flex items-center space-x-4">
-                        <div className="text-right">
-                            <span className="balance-label block">Verified Main Petty Cash Balance</span>
-                            <span className="balance-amount">{formatCurrency(balance)}</span>
+                    <div className="flex flex-col md:flex-row md:items-center gap-4">
+                        <div className="text-right bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Verified Balance</span>
+                            <span className="text-2xl font-black text-brand-navy">{formatCurrency(balance)}</span>
                         </div>
                         <div className="flex items-center space-x-3">
                             {!isRequestor && (
                                 <button
                                     onClick={() => setIsInflowModalOpen(true)}
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-all flex items-center"
+                                    className="bg-brand-green hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-green-200 transition-all flex items-center transform hover:-translate-y-0.5 active:scale-95"
                                 >
-                                    <PlusCircle size={16} className="mr-2" />
+                                    <PlusCircle size={18} className="mr-2" />
                                     Log Inflow
                                 </button>
                             )}
                             <button
                                 onClick={() => setIsCloseModalOpen(true)}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold text-sm shadow-md transition-all flex items-center"
+                                className="bg-brand-navy hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-gray-200 transition-all flex items-center transform hover:-translate-y-0.5 active:scale-95"
                             >
-                                <Lock size={16} className="mr-2" />
+                                <Lock size={18} className="mr-2" />
                                 Close Balance
                             </button>
                         </div>
@@ -333,55 +334,55 @@ const CashLedger: React.FC = () => {
                     onSuccess={loadData}
                 />
 
-                <div className="filters flex items-center justify-between mb-6 bg-gray-50 p-4 rounded-xl border border-gray-100">
-                    <div className="flex space-x-4">
-                        <div className="filter-group">
-                            <label className="text-xs uppercase text-gray-400 font-bold block mb-1">Date From</label>
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-100 shadow-sm gap-4">
+                    <div className="flex flex-wrap gap-4 w-full md:w-auto">
+                        <div className="flex-1 md:flex-none">
+                            <label className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Date From</label>
                             <div className="relative">
-                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-navy" />
                                 <input
                                     type="date"
                                     value={startDate}
                                     onChange={(e) => setStartDate(e.target.value)}
-                                    className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none w-full transition-all"
                                 />
                             </div>
                         </div>
-                        <div className="filter-group">
-                            <label className="text-xs uppercase text-gray-400 font-bold block mb-1">Date To</label>
+                        <div className="flex-1 md:flex-none">
+                            <label className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Date To</label>
                             <div className="relative">
-                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-navy" />
                                 <input
                                     type="date"
                                     value={endDate}
                                     onChange={(e) => setEndDate(e.target.value)}
-                                    className="pl-10 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none w-full transition-all"
                                 />
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center space-x-4">
+                    <div className="flex items-center space-x-4 w-full md:w-auto justify-between md:justify-end">
                         {!isRequestor && (
                             <button
                                 onClick={handleBulkClassify}
                                 disabled={isClassifying}
-                                className={`px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-all flex items-center border ${unclassifiedCount > 0
-                                    ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-200'
-                                    : 'bg-gray-100 text-gray-400 border-gray-200'
+                                className={`px-4 py-2 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center border ${unclassifiedCount > 0
+                                    ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                                    : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
                                     }`}
                             >
                                 <Sparkles size={16} className={`mr-2 ${isClassifying ? 'animate-spin' : ''}`} />
                                 {isClassifying ? 'Classifying...' : (unclassifiedCount > 0 ? `Auto-Classify ${unclassifiedCount} Items` : 'Auto-Classify Items')}
                             </button>
                         )}
-                        <div className="text-right">
-                            <span className="text-[10px] text-gray-400 uppercase font-bold">Showing</span>
-                            <div className="text-sm font-bold text-gray-700">{entries.length} Transactions</div>
+                        <div className="text-right hidden sm:block">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Showing</span>
+                            <div className="text-sm font-bold text-brand-navy">{entries.length} Transactions</div>
                         </div>
                     </div>
                 </div>
 
-                <div className="cashbook-table shadow-xl border border-gray-100 rounded-2xl overflow-hidden bg-white">
+                <div className="shadow-sm border border-gray-100 rounded-2xl overflow-hidden bg-white">
                     <table className="w-full text-left">
                         <thead>
                             <tr className="bg-gray-50 border-b border-gray-100">
@@ -403,7 +404,10 @@ const CashLedger: React.FC = () => {
                                 entries.map((entry) => (
                                     <React.Fragment key={entry.id}>
                                         <tr
-                                            className={`clickable-row transition-colors group ${expandedRows[entry.id] ? 'bg-indigo-50/30' : ''} ${entry.entry_type === 'CLOSING_BALANCE' ? 'bg-indigo-50 border-l-4 border-indigo-500' : ''} ${entry.entry_type === 'OPENING_BALANCE' ? 'bg-green-50/50' : ''}`}
+                                            className={`clickable-row transition-colors group border-b border-gray-50 last:border-b-0 cursor-pointer 
+                                                ${expandedRows[entry.id] ? 'bg-gray-50' : 'hover:bg-gray-50/50'} 
+                                                ${entry.entry_type === 'CLOSING_BALANCE' ? 'bg-brand-navy/5 border-l-4 border-brand-navy' : ''} 
+                                                ${entry.entry_type === 'OPENING_BALANCE' ? 'bg-green-50/30' : ''}`}
                                             onClick={() => entry.requisition_id && toggleRow(entry.id)}
                                         >
                                             <td className="p-4">
@@ -467,7 +471,7 @@ const CashLedger: React.FC = () => {
                                             </td>
                                             <td className="p-4">
                                                 {entry.requisition_id && (
-                                                    <button className="text-gray-400 group-hover:text-indigo-600 transition-colors">
+                                                    <button className="text-gray-300 group-hover:text-brand-navy transition-colors">
                                                         {expandedRows[entry.id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                                                     </button>
                                                 )}
@@ -508,7 +512,7 @@ const CashLedger: React.FC = () => {
                                     onClick={() => setIsResultsModalOpen(false)}
                                     className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
                                 >
-                                    <Lock className="h-5 w-5 rotate-45" /> {/* Close Icon substitute */}
+                                    <X className="h-5 w-5" />
                                 </button>
                             </div>
 

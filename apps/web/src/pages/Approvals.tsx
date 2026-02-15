@@ -21,18 +21,14 @@ export const Approvals: React.FC = () => {
             setError(null);
         } catch (err: any) {
             console.error(err);
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000';
-            let msg = `Failed to load requisitions (API: ${apiUrl}). `;
+            let msg = `Failed to load requisitions`;
             try {
                 const details = JSON.parse(err.message);
                 if (details.debug) {
-                    msg += ` Debug: User=${details.debug.userId}, Role=${details.debug.foundRole}`;
-                } else {
-                    msg += ` Details: ${JSON.stringify(details)}`;
+                    msg += `. User=${details.debug.userId}`;
                 }
             } catch (e) {
-                // If it's not JSON, append the raw message so we see if it's 500 or Network Error
-                msg += ` (Raw: ${err.message || err})`;
+                // Ignore
             }
             setError(msg);
         } finally {
@@ -56,10 +52,10 @@ export const Approvals: React.FC = () => {
 
     const getStatusBadge = (status: string) => {
         const styles = {
-            DRAFT: 'bg-gray-100 text-gray-800',
-            SUBMITTED: 'bg-yellow-100 text-yellow-800',
-            AUTHORISED: 'bg-green-100 text-green-800',
-            REJECTED: 'bg-red-100 text-red-800',
+            DRAFT: 'bg-gray-100 text-gray-600 border border-gray-200',
+            SUBMITTED: 'bg-amber-50 text-amber-700 border border-amber-200',
+            AUTHORISED: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
+            REJECTED: 'bg-red-50 text-red-700 border border-red-200',
         };
         return styles[status as keyof typeof styles] || styles.DRAFT;
     };
@@ -68,80 +64,81 @@ export const Approvals: React.FC = () => {
         <Layout>
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-gray-900">Requisitions for Approval</h1>
+                    <h1 className="text-2xl font-bold text-brand-navy">Approvals</h1>
                 </div>
 
                 {loading && (
-                    <div className="bg-white shadow rounded-lg p-8 text-center">
-                        <p className="text-gray-500">Loading requisitions...</p>
+                    <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-12 text-center">
+                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-brand-green mb-4"></div>
+                        <p className="text-gray-500 font-medium">Loading requisitions...</p>
                     </div>
                 )}
 
                 {error && (
-                    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                        <p className="text-red-800">{error}</p>
+                    <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center text-red-700">
+                        <p className="font-medium">{error}</p>
                     </div>
                 )}
 
                 {!loading && !error && requisitions.length === 0 && (
-                    <div className="bg-white shadow rounded-lg p-8 text-center">
-                        <p className="text-gray-500">No requisitions to review.</p>
+                    <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-12 text-center">
+                        <p className="text-gray-500 font-medium">No requisitions to review.</p>
                     </div>
                 )}
 
                 {!loading && !error && requisitions.length > 0 && (
-                    <div className="bg-white shadow rounded-lg overflow-hidden">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
+                    <div className="bg-white shadow-sm border border-gray-100 rounded-xl overflow-hidden">
+                        <table className="min-w-full divide-y divide-gray-100">
+                            <thead className="bg-gray-50/50">
                                 <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                         ID
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                         Requestor
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                         Description
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                         Amount
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                         Status
                                     </th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                         Date
                                     </th>
-                                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th className="px-6 py-4 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider">
                                         Actions
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
+                            <tbody className="bg-white divide-y divide-gray-50">
                                 {requisitions.map((req) => (
-                                    <tr key={req.id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                            #{req.id.slice(0, 8)}...
+                                    <tr key={req.id} className="hover:bg-gray-50/50 transition-colors group">
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400 font-mono">
+                                            ...{req.id.slice(-4)}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-900">
+                                        <td className="px-6 py-4 text-sm font-medium text-gray-900">
                                             {req.requestor_name || 'Unknown'}
                                         </td>
-                                        <td className="px-6 py-4 text-sm text-gray-900">
+                                        <td className="px-6 py-4 text-sm text-brand-navy font-medium">
                                             {req.description}
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                            ${Number(req.estimated_total).toLocaleString()}
+                                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-brand-navy">
+                                            K{Number(req.estimated_total).toLocaleString()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span
-                                                className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadge(
+                                                className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold rounded-full uppercase tracking-wide ${getStatusBadge(
                                                     req.status
                                                 )}`}
                                             >
                                                 {req.status}
                                             </span>
                                         </td>
-                                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                        <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400">
                                             {new Date(req.created_at).toLocaleDateString()}
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -152,7 +149,7 @@ export const Approvals: React.FC = () => {
                                                         <button
                                                             onClick={() => handleStatusUpdate(req.id, 'AUTHORISED')}
                                                             disabled={processingId === req.id}
-                                                            className="text-green-600 hover:text-green-900 p-1 rounded hover:bg-green-50 disabled:opacity-50"
+                                                            className="text-emerald-600 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 disabled:opacity-50 transition-colors"
                                                             title="Approve"
                                                         >
                                                             <Check className="h-5 w-5" />
@@ -160,14 +157,14 @@ export const Approvals: React.FC = () => {
                                                         <button
                                                             onClick={() => handleStatusUpdate(req.id, 'REJECTED')}
                                                             disabled={processingId === req.id}
-                                                            className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50 disabled:opacity-50"
+                                                            className="text-red-600 hover:text-red-700 p-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
                                                             title="Reject"
                                                         >
                                                             <X className="h-5 w-5" />
                                                         </button>
                                                     </>
                                                 )}
-                                                <button className="text-indigo-600 hover:text-indigo-900 p-1 rounded hover:bg-indigo-50">
+                                                <button className="text-gray-400 hover:text-brand-navy p-1.5 rounded-lg hover:bg-gray-100 transition-colors">
                                                     <Eye className="h-5 w-5" />
                                                 </button>
                                             </div>

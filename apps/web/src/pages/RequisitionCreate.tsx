@@ -120,7 +120,7 @@ export const RequisitionCreate: React.FC = () => {
     return (
         <Layout>
             <div className="max-w-4xl mx-auto space-y-6">
-                <h1 className="text-2xl font-bold text-gray-900">
+                <h1 className="text-2xl font-bold text-brand-navy">
                     {reqType === 'LOAN' ? 'New Staff Loan' : reqType === 'ADVANCE' ? 'New Salary Advance' : 'New Requisition'}
                 </h1>
 
@@ -143,7 +143,7 @@ export const RequisitionCreate: React.FC = () => {
                             value={department}
                             onChange={(e) => setDepartment(e.target.value)}
                             required
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                            className="mt-1 block w-full rounded-xl border-gray-300 shadow-sm focus:border-brand-green focus:ring-brand-green sm:text-sm px-4 py-2.5 border"
                         >
                             <option value="">Select a Department</option>
                             {DEPARTMENTS.map(dept => (
@@ -165,7 +165,7 @@ export const RequisitionCreate: React.FC = () => {
                                     onChange={(e) => setDescription(e.target.value)}
                                     rows={3}
                                     placeholder="Briefly describe the purpose of this requisition..."
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
+                                    className="mt-1 block w-full rounded-xl border-gray-300 shadow-sm focus:border-brand-green focus:ring-brand-green sm:text-sm px-4 py-2.5 border"
                                 />
                             </div>
 
@@ -194,7 +194,7 @@ export const RequisitionCreate: React.FC = () => {
                                                             type="text"
                                                             value={item.description}
                                                             onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
-                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                            className="block w-full border-gray-300 rounded-lg shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm border p-2"
                                                             placeholder="Item name"
                                                         />
                                                     </td>
@@ -203,7 +203,7 @@ export const RequisitionCreate: React.FC = () => {
                                                             type="number"
                                                             value={item.quantity}
                                                             onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)}
-                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                            className="block w-full border-gray-300 rounded-lg shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm border p-2"
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3">
@@ -211,7 +211,7 @@ export const RequisitionCreate: React.FC = () => {
                                                             type="number"
                                                             value={item.unit_price}
                                                             onChange={(e) => updateLineItem(item.id, 'unit_price', e.target.value)}
-                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                            className="block w-full border-gray-300 rounded-lg shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm border p-2"
                                                         />
                                                     </td>
                                                     <td className="px-4 py-3 text-sm text-gray-900 font-medium">
@@ -234,7 +234,7 @@ export const RequisitionCreate: React.FC = () => {
                                                 <td colSpan={3} className="px-4 py-3 text-sm font-medium text-gray-900 text-right">
                                                     Total Estimated:
                                                 </td>
-                                                <td className="px-4 py-3 text-sm font-bold text-indigo-600">
+                                                <td className="px-4 py-3 text-sm font-bold text-brand-green">
                                                     K{getEstimatedTotal().toLocaleString()}
                                                 </td>
                                                 <td colSpan={1}></td>
@@ -298,9 +298,9 @@ export const RequisitionCreate: React.FC = () => {
                                         </div>
                                     ))}
 
-                                    <div className="bg-indigo-50 rounded-lg p-4 flex justify-between items-center border border-indigo-100">
-                                        <span className="text-sm font-bold text-indigo-900">Total Estimated</span>
-                                        <span className="text-xl font-black text-indigo-600">
+                                    <div className="bg-brand-gray rounded-lg p-4 flex justify-between items-center border border-gray-100">
+                                        <span className="text-sm font-bold text-brand-navy">Total Estimated</span>
+                                        <span className="text-xl font-black text-brand-green">
                                             K{getEstimatedTotal().toLocaleString()}
                                         </span>
                                     </div>
@@ -309,7 +309,7 @@ export const RequisitionCreate: React.FC = () => {
                                 <button
                                     type="button"
                                     onClick={addLineItem}
-                                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green"
                                 >
                                     <Plus className="-ml-1 mr-2 h-5 w-5" />
                                     Add Item
@@ -416,7 +416,7 @@ export const RequisitionCreate: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
+                            className="px-6 py-2.5 bg-brand-green text-white font-bold rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-200 transition-all transform hover:-translate-y-0.5"
                         >
                             {loading ? 'Submitting...' : 'Submit Requisition'}
                         </button>

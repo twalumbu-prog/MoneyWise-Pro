@@ -39,7 +39,7 @@ export const VoucherDetail: React.FC = () => {
                 <div className="flex justify-between items-center print:hidden">
                     <button
                         onClick={() => navigate('/vouchers')}
-                        className="flex items-center text-gray-600 hover:text-gray-900"
+                        className="flex items-center text-gray-500 hover:text-brand-navy transition-colors font-medium"
                     >
                         <ArrowLeft className="h-4 w-4 mr-2" />
                         Back to Vouchers
@@ -59,7 +59,7 @@ export const VoucherDetail: React.FC = () => {
                 <div className="bg-white shadow overflow-hidden sm:rounded-lg" id="voucher-print">
                     <div className="px-4 py-5 sm:px-6 border-b border-gray-200 flex justify-between items-center">
                         <div>
-                            <h3 className="text-lg leading-6 font-bold text-gray-900">
+                            <h3 className="text-lg leading-6 font-bold text-brand-navy">
                                 Payment Voucher
                             </h3>
                             <p className="mt-1 max-w-2xl text-sm text-gray-500">
@@ -88,7 +88,7 @@ export const VoucherDetail: React.FC = () => {
                                             }
                                         }
                                     }}
-                                    className="ml-4 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none"
+                                    className="ml-4 inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-bold rounded-lg shadow-sm text-white bg-brand-green hover:bg-green-600 focus:outline-none"
                                 >
                                     Post to Ledger
                                 </button>

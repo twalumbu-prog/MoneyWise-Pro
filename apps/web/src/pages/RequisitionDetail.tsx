@@ -161,7 +161,7 @@ export const RequisitionDetail: React.FC = () => {
         }
     };
 
-    if (loading) return <Layout><div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div></div></Layout>;
+    if (loading) return <Layout><div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green"></div></div></Layout>;
     if (error || !requisition) return <Layout><div className="p-12 text-center text-red-600 bg-red-50 rounded-lg m-6 border border-red-200">Error: {error || 'Requisition not found'}</div></Layout>;
 
     const isRequestor = user?.id === requisition.requestor_id;
@@ -228,7 +228,7 @@ export const RequisitionDetail: React.FC = () => {
             <div className="space-y-6">
                 <button
                     onClick={() => navigate(-1)}
-                    className="flex items-center text-gray-600 hover:text-gray-900"
+                    className="flex items-center text-gray-500 hover:text-brand-navy transition-colors font-medium"
                 >
                     <ArrowLeft className="h-4 w-4 mr-2" />
                     Back
@@ -257,7 +257,7 @@ export const RequisitionDetail: React.FC = () => {
                                 <button
                                     onClick={handleGenerateVoucher}
                                     disabled={processing}
-                                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                                    className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
                                 >
                                     <FileText className="h-4 w-4 mr-1.5" />
                                     Generate Voucher
@@ -318,8 +318,8 @@ export const RequisitionDetail: React.FC = () => {
                                                             <div className="text-xs text-gray-500">
                                                                 {item.quantity} x ${item.unit_price}
                                                                 {item.accounts && (
-                                                                    <span className="ml-2 px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                                                                        {item.accounts.code}: {item.accounts.name}
+                                                                    <span className="ml-2 px-1.5 py-0.5 rounded bg-brand-gray text-gray-500 border border-gray-100">
+                                                                        {item.accounts.code}
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -331,7 +331,7 @@ export const RequisitionDetail: React.FC = () => {
                                                                 <td className="px-4 py-2 text-right">
                                                                     <input
                                                                         type="number"
-                                                                        className="shadow-sm focus:ring-blue-500 focus:border-blue-500 block w-full sm:text-sm border-gray-300 rounded-md text-right"
+                                                                        className="shadow-sm focus:ring-brand-green focus:border-brand-green block w-full sm:text-sm border-gray-300 rounded-md text-right"
                                                                         value={item.actual_amount || ''}
                                                                         placeholder={item.estimated_amount.toString()}
                                                                         onChange={(e) => handleActualChange(item.id, e.target.value)}
@@ -340,7 +340,7 @@ export const RequisitionDetail: React.FC = () => {
                                                                 <td className="px-4 py-2 text-right">
                                                                     <div className="flex flex-col items-end gap-1">
                                                                         {item.receipt_url ? (
-                                                                            <span className="text-xs text-green-600 flex items-center">
+                                                                            <span className="text-xs text-brand-green flex items-center font-medium">
                                                                                 <CheckCircle className="h-3 w-3 mr-1" /> Uploaded
                                                                             </span>
                                                                         ) : (
@@ -379,7 +379,7 @@ export const RequisitionDetail: React.FC = () => {
                             <button
                                 onClick={handleAcknowledge}
                                 disabled={processing}
-                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-lg shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors"
                             >
                                 <CheckCircle className="h-4 w-4 mr-2" />
                                 {processing ? 'Signing...' : 'Acknowledge Receipt'}
@@ -421,7 +421,7 @@ export const RequisitionDetail: React.FC = () => {
                                 </div>
                                 <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4">
                                     <span className="text-sm font-bold text-gray-700">Calculated Change:</span>
-                                    <span className="text-lg font-bold text-indigo-600">
+                                    <span className="text-lg font-bold text-brand-green">
                                         K{(Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0)).toFixed(2)}
                                     </span>
                                 </div>
@@ -436,7 +436,7 @@ export const RequisitionDetail: React.FC = () => {
                                     <button
                                         onClick={handleSubmitChange}
                                         disabled={processing}
-                                        className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+                                        className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-bold rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
                                     >
                                         <RefreshCw className={`h-4 w-4 mr-2 ${processing ? 'animate-spin' : ''}`} />
                                         Submit Change & Complete
@@ -480,7 +480,7 @@ export const RequisitionDetail: React.FC = () => {
                                     <button
                                         onClick={handleConfirmChange}
                                         disabled={processing}
-                                        className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-bold rounded-md shadow-sm text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500"
+                                        className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-bold rounded-xl shadow-lg shadow-amber-200 text-white bg-amber-600 hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-all"
                                     >
                                         <CheckCircle className="h-4 w-4 mr-2" />
                                         Confirm & Finalize Ledger
@@ -498,12 +498,12 @@ export const RequisitionDetail: React.FC = () => {
                             </div>
                             <div className="mt-2 grid grid-cols-2 gap-4 text-xs">
                                 <div>
-                                    <span className="text-gray-400 uppercase tracking-tighter">Final Expenditure:</span>
-                                    <div className="font-bold text-gray-900">K{Number((requisition as any).actual_total || 0).toFixed(2)}</div>
+                                    <span className="text-gray-400 uppercase tracking-wider font-bold text-[10px]">Final Expenditure:</span>
+                                    <div className="font-black text-brand-navy">K{Number((requisition as any).actual_total || 0).toFixed(2)}</div>
                                 </div>
                                 <div>
-                                    <span className="text-gray-400 uppercase tracking-tighter">Confirmed Change:</span>
-                                    <div className="font-bold text-gray-900">K{Number((requisition as any).disbursements?.[0]?.confirmed_change_amount || 0).toFixed(2)}</div>
+                                    <span className="text-gray-400 uppercase tracking-wider font-bold text-[10px]">Confirmed Change:</span>
+                                    <div className="font-black text-brand-navy">K{Number((requisition as any).disbursements?.[0]?.confirmed_change_amount || 0).toFixed(2)}</div>
                                 </div>
                             </div>
                         </div>
