@@ -76,6 +76,27 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS qb_account_id VARCHAR(100);
         `);
 
+        console.log('[Migration] Checking for "vouchers" table and "voucher_id" column...');
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.vouchers (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                requisition_id UUID REFERENCES requisitions(id),
+                created_by UUID REFERENCES users(id),
+                reference_number VARCHAR(50) UNIQUE,
+                date DATE,
+                amount DECIMAL(10, 2) DEFAULT 0,
+                description TEXT,
+                total_debit DECIMAL(10, 2) DEFAULT 0,
+                total_credit DECIMAL(10, 2) DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'POSTED',
+                posted_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            ALTER TABLE cashbook_entries 
+            ADD COLUMN IF NOT EXISTS voucher_id UUID REFERENCES vouchers(id);
+        `);
         console.log('[Migration] Schema update successful.');
 
         // Refresh PostgREST schema cache
