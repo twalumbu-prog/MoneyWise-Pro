@@ -3,8 +3,7 @@ import { Layout } from '../components/Layout';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Trash2 } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
-import { accountService, Account } from '../services/account.service';
-import { useEffect } from 'react';
+
 
 interface LineItem {
     id: string;
@@ -37,21 +36,9 @@ export const RequisitionCreate: React.FC = () => {
     const [lineItems, setLineItems] = useState<LineItem[]>([
         { id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0, account_id: '' },
     ]);
-    const [accounts, setAccounts] = useState<Account[]>([]);
+
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
-    useEffect(() => {
-        const fetchAccounts = async () => {
-            try {
-                const data = await accountService.getAll();
-                setAccounts(data);
-            } catch (err) {
-                console.error('Failed to fetch accounts', err);
-            }
-        };
-        fetchAccounts();
-    }, []);
 
     const addLineItem = () => {
         const newItem: LineItem = {
@@ -188,7 +175,7 @@ export const RequisitionCreate: React.FC = () => {
                                     <h3 className="text-lg font-medium text-gray-900">Line Items</h3>
                                 </div>
 
-                                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                                <div className="hidden md:block border border-gray-200 rounded-lg overflow-hidden">
                                     <table className="min-w-full divide-y divide-gray-200">
                                         <thead className="bg-gray-50">
                                             <tr>
@@ -196,7 +183,6 @@ export const RequisitionCreate: React.FC = () => {
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-24">Qty</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32">Price</th>
                                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-32">Amount</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase w-48">Account</th>
                                                 <th className="px-4 py-3 w-10"></th>
                                             </tr>
                                         </thead>
@@ -231,20 +217,6 @@ export const RequisitionCreate: React.FC = () => {
                                                     <td className="px-4 py-3 text-sm text-gray-900 font-medium">
                                                         K{item.estimated_amount.toLocaleString()}
                                                     </td>
-                                                    <td className="px-4 py-3">
-                                                        <select
-                                                            value={item.account_id}
-                                                            onChange={(e) => updateLineItem(item.id, 'account_id', e.target.value)}
-                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
-                                                        >
-                                                            <option value="">Select Account</option>
-                                                            {accounts.map((acc) => (
-                                                                <option key={acc.id} value={acc.id}>
-                                                                    {acc.code} - {acc.name}
-                                                                </option>
-                                                            ))}
-                                                        </select>
-                                                    </td>
                                                     <td className="px-4 py-3 text-right">
                                                         <button
                                                             type="button"
@@ -265,10 +237,73 @@ export const RequisitionCreate: React.FC = () => {
                                                 <td className="px-4 py-3 text-sm font-bold text-indigo-600">
                                                     K{getEstimatedTotal().toLocaleString()}
                                                 </td>
-                                                <td colSpan={2}></td>
+                                                <td colSpan={1}></td>
                                             </tr>
                                         </tfoot>
                                     </table>
+                                </div>
+
+                                {/* Mobile View (Card Layout) */}
+                                <div className="md:hidden space-y-4">
+                                    {lineItems.map((item) => (
+                                        <div key={item.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => removeLineItem(item.id)}
+                                                className="absolute top-2 right-2 text-red-400 hover:text-red-600 p-2"
+                                            >
+                                                <Trash2 className="h-5 w-5" />
+                                            </button>
+
+                                            <div className="space-y-3 pr-8">
+                                                <div>
+                                                    <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Description</label>
+                                                    <input
+                                                        type="text"
+                                                        value={item.description}
+                                                        onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
+                                                        className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm p-2 border"
+                                                        placeholder="Item name"
+                                                    />
+                                                </div>
+
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Qty</label>
+                                                        <input
+                                                            type="number"
+                                                            value={item.quantity}
+                                                            onChange={(e) => updateLineItem(item.id, 'quantity', e.target.value)}
+                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm p-2 border"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-medium text-gray-500 uppercase mb-1">Price</label>
+                                                        <input
+                                                            type="number"
+                                                            value={item.unit_price}
+                                                            onChange={(e) => updateLineItem(item.id, 'unit_price', e.target.value)}
+                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-sm p-2 border"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="flex justify-between items-center pt-2 border-t border-gray-200 mt-2">
+                                                    <span className="text-sm font-medium text-gray-500">Amount</span>
+                                                    <span className="text-lg font-bold text-indigo-600">
+                                                        K{item.estimated_amount.toLocaleString()}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="bg-indigo-50 rounded-lg p-4 flex justify-between items-center border border-indigo-100">
+                                        <span className="text-sm font-bold text-indigo-900">Total Estimated</span>
+                                        <span className="text-xl font-black text-indigo-600">
+                                            K{getEstimatedTotal().toLocaleString()}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <button
