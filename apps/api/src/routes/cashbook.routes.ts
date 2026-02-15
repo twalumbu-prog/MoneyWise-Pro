@@ -7,7 +7,8 @@ import {
     reconcileCash,
     returnExcessCash,
     logCashInflow,
-    closeBook
+    closeBook,
+    classifyBulk
 } from '../controllers/cashbook.controller';
 
 const router = Router();
@@ -35,5 +36,8 @@ router.post('/inflow', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logCashI
 
 // Close book (Cashier, Accountant, Admin)
 router.post('/close', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), closeBook);
+
+// Bulk classify transactions (Cashier, Accountant, Admin)
+router.post('/classify-bulk', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), classifyBulk);
 
 export default router;

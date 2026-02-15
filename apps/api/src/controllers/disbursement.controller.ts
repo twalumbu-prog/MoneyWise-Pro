@@ -49,17 +49,12 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         if (updateError) throw updateError;
 
         // 4. Log Cash Disbursement in Cashbook
-        try {
-            await cashbookService.logDisbursement(
-                id,
-                total_prepared,
-                cashier_id,
-                `Cash disbursed for Requisition #${id.slice(0, 8)}`
-            );
-        } catch (cashbookError: any) {
-            console.error('Warning: Failed to log cashbook entry:', cashbookError.message);
-            // Don't fail the entire disbursement if cashbook logging fails
-        }
+        await cashbookService.logDisbursement(
+            id,
+            total_prepared,
+            cashier_id,
+            `Cash disbursed for Requisition #${id.slice(0, 8)}`
+        );
 
         // 5. Log Action
         await supabase

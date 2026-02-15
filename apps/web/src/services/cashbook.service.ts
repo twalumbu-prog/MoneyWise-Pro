@@ -130,5 +130,16 @@ export const cashbookService = {
             { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data;
+    },
+
+    async classifyBulk(requisitionIds?: string[]) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        const response = await axios.post(
+            `${API_URL}/cashbook/classify-bulk`,
+            { requisitionIds },
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        return response.data;
     }
 };

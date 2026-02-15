@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Trash2, Sparkles, Loader2, ChevronDown, ChevronUp, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Trash2 } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
 import { useEffect } from 'react';
@@ -39,17 +39,7 @@ export const RequisitionCreate: React.FC = () => {
     ]);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(false);
-    const [batchSuggesting, setBatchSuggesting] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    interface AiFeedbackResult {
-        description: string;
-        account?: string;
-        reasoning: string;
-        method?: string;
-        confidence?: number;
-        success: boolean;
-    }
-    const [aiFeedback, setAiFeedback] = useState<{ show: boolean; expanded: boolean; results: AiFeedbackResult[] }>({ show: false, expanded: false, results: [] });
 
     useEffect(() => {
         const fetchAccounts = async () => {
@@ -96,143 +86,9 @@ export const RequisitionCreate: React.FC = () => {
         );
     };
 
+
     const getEstimatedTotal = () => {
         return lineItems.reduce((sum, item) => sum + Number(item.estimated_amount), 0);
-    };
-
-    const [suggesting, setSuggesting] = useState<string | null>(null);
-
-    const handleAiSuggest = async (itemId: string, description: string, amount: number) => {
-        if (!description) return;
-        setSuggesting(itemId);
-        try {
-            const suggestion = await accountService.suggestAccount(description, amount);
-            if (suggestion && suggestion.account_code) {
-                const targetCode = String(suggestion.account_code).trim().toLowerCase();
-                const matchedAccount = accounts.find(a =>
-                    String(a.code).trim().toLowerCase() === targetCode
-                );
-
-                let success = false;
-                let reasoning = suggestion.reasoning;
-
-                if (matchedAccount) {
-                    updateLineItem(itemId, 'account_id', matchedAccount.id);
-                    success = true;
-                    reasoning = suggestion.reasoning || `Matched via ${suggestion.method}`;
-                } else {
-                    reasoning = `Suggested code "${suggestion.account_code}" not found in active accounts.`;
-                }
-
-                // Update feedback panel for individual suggestion
-                setAiFeedback(prev => ({
-                    show: true,
-                    expanded: true,
-                    results: [
-                        {
-                            description,
-                            account: matchedAccount ? `${matchedAccount.code} - ${matchedAccount.name}` : suggestion.account_code,
-                            reasoning: reasoning,
-                            method: suggestion.method || 'AI',
-                            confidence: suggestion.confidence,
-                            success
-                        },
-                        ...prev.results.filter(r => r.description !== description).slice(0, 4) // Show last 5
-                    ]
-                }));
-            }
-        } catch (err) {
-            console.error('AI Suggestion failed', err);
-            setAiFeedback(prev => ({
-                show: true,
-                expanded: true,
-                results: [
-                    { description, reasoning: 'AI suggestion failed. Please try again.', success: false },
-                    ...prev.results
-                ]
-            }));
-        } finally {
-            setSuggesting(null);
-        }
-    };
-
-    const handleBatchAiSuggest = async () => {
-        if (lineItems.every(it => !it.description)) {
-            setAiFeedback({ show: true, expanded: true, results: [{ description: 'Error', reasoning: 'Please add descriptions to your line items first.', success: false }] });
-            return;
-        }
-
-        setBatchSuggesting(true);
-        setAiFeedback({ show: false, expanded: false, results: [] });
-
-        try {
-            const data = await accountService.suggestBatch(lineItems);
-            const suggestions = data.results;
-
-            let matches = 0;
-            const newLineItems = [...lineItems];
-            const feedbackResults: AiFeedbackResult[] = [];
-
-            suggestions.forEach((itemRes: any, index: number) => {
-                const itemDescription = lineItems[index]?.description || `Item ${index + 1}`;
-
-                if (itemRes.account_code) {
-                    const targetCode = String(itemRes.account_code).trim().toLowerCase();
-                    const matchedAccount = accounts.find(a =>
-                        String(a.code).trim().toLowerCase() === targetCode
-                    );
-
-                    if (matchedAccount) {
-                        newLineItems[index] = {
-                            ...newLineItems[index],
-                            account_id: matchedAccount.id
-                        };
-                        matches++;
-                        feedbackResults.push({
-                            description: itemDescription,
-                            account: `${matchedAccount.code} - ${matchedAccount.name}`,
-                            reasoning: itemRes.reasoning || `Matched via ${itemRes.method}`,
-                            method: itemRes.method,
-                            confidence: itemRes.confidence,
-                            success: true
-                        });
-                    } else {
-                        feedbackResults.push({
-                            description: itemDescription,
-                            account: itemRes.account_code,
-                            reasoning: `Suggested code ${itemRes.account_code} not found in active accounts`,
-                            method: itemRes.method,
-                            confidence: itemRes.confidence,
-                            success: false
-                        });
-                    }
-                } else {
-                    feedbackResults.push({
-                        description: itemDescription,
-                        reasoning: itemRes.reasoning || 'No confident match found',
-                        method: itemRes.method,
-                        confidence: itemRes.confidence,
-                        success: false
-                    });
-                }
-            });
-
-            setLineItems(newLineItems);
-            setAiFeedback({
-                show: true,
-                expanded: true,
-                results: feedbackResults
-            });
-        } catch (err) {
-            console.error('Batch AI Suggestion failed', err);
-            setAiFeedback({
-                show: true,
-                expanded: true,
-                results: [{ description: 'Error', reasoning: 'Batch AI suggestion failed. Please try individually or select manually.', success: false }]
-            });
-        } finally {
-            setBatchSuggesting(false);
-        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -288,77 +144,7 @@ export const RequisitionCreate: React.FC = () => {
                         </div>
                     )}
 
-                    {/* AI Feedback Panel */}
-                    {aiFeedback.show && (
-                        <div className="border border-amber-200 rounded-lg bg-amber-50 overflow-hidden">
-                            <button
-                                type="button"
-                                onClick={() => setAiFeedback(prev => ({ ...prev, expanded: !prev.expanded }))}
-                                className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-amber-100 transition-colors"
-                            >
-                                <div className="flex items-center space-x-2">
-                                    <Sparkles className="h-5 w-5 text-amber-600" />
-                                    <span className="font-medium text-amber-800">
-                                        AI Classification Results
-                                    </span>
-                                    <span className="text-sm text-amber-600">
-                                        ({aiFeedback.results.filter(r => r.success).length}/{aiFeedback.results.length} matched)
-                                    </span>
-                                </div>
-                                {aiFeedback.expanded ? (
-                                    <ChevronUp className="h-5 w-5 text-amber-600" />
-                                ) : (
-                                    <ChevronDown className="h-5 w-5 text-amber-600" />
-                                )}
-                            </button>
-
-                            {aiFeedback.expanded && (
-                                <div className="border-t border-amber-200 divide-y divide-amber-100">
-                                    {aiFeedback.results.map((result, idx) => (
-                                        <div key={idx} className="px-4 py-3 bg-white">
-                                            <div className="flex items-start space-x-3">
-                                                {result.success ? (
-                                                    <CheckCircle className="h-5 w-5 text-green-500 mt-0.5 flex-shrink-0" />
-                                                ) : (
-                                                    <XCircle className="h-5 w-5 text-red-400 mt-0.5 flex-shrink-0" />
-                                                )}
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium text-gray-900 truncate">
-                                                        {result.description}
-                                                    </p>
-                                                    {result.account && (
-                                                        <p className="text-sm text-indigo-600 font-medium">
-                                                            → {result.account}
-                                                        </p>
-                                                    )}
-                                                    <p className="text-xs text-gray-500 mt-1">
-                                                        {result.reasoning}
-                                                    </p>
-                                                    <div className="flex items-center space-x-2 mt-1">
-                                                        {result.method && (
-                                                            <span className={`inline-block px-2 py-0.5 text-xs rounded-full ${result.method === 'RULE'
-                                                                ? 'bg-blue-100 text-blue-700'
-                                                                : result.method === 'AI' || result.method === 'AI-GEMINI'
-                                                                    ? 'bg-purple-100 text-purple-700'
-                                                                    : 'bg-gray-100 text-gray-600'
-                                                                }`}>
-                                                                {result.method}
-                                                            </span>
-                                                        )}
-                                                        {result.confidence !== undefined && result.confidence > 0 && (
-                                                            <span className={`text-xs font-medium ${result.confidence > 0.8 ? 'text-green-600' : result.confidence > 0.5 ? 'text-amber-600' : 'text-gray-500'}`}>
-                                                                {Math.round(result.confidence * 100)}% confidence
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
+                    {/* Common Fields: Department */}
 
                     {/* Common Fields: Department */}
                     <div>
@@ -400,24 +186,6 @@ export const RequisitionCreate: React.FC = () => {
                             <div className="space-y-4">
                                 <div className="flex justify-between items-center">
                                     <h3 className="text-lg font-medium text-gray-900">Line Items</h3>
-                                    <button
-                                        type="button"
-                                        onClick={handleBatchAiSuggest}
-                                        disabled={batchSuggesting || lineItems.length === 0}
-                                        className="inline-flex items-center px-3 py-1.5 border border-amber-300 shadow-sm text-sm font-medium rounded-md text-amber-700 bg-amber-50 hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-500 transition-colors disabled:opacity-50"
-                                    >
-                                        {batchSuggesting ? (
-                                            <>
-                                                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                                                Analyzing...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Sparkles className="-ml-1 mr-2 h-4 w-4" />
-                                                Auto-Classify All
-                                            </>
-                                        )}
-                                    </button>
                                 </div>
 
                                 <div className="border border-gray-200 rounded-lg overflow-hidden">
@@ -436,28 +204,13 @@ export const RequisitionCreate: React.FC = () => {
                                             {lineItems.map((item) => (
                                                 <tr key={item.id}>
                                                     <td className="px-4 py-3">
-                                                        <div className="flex items-center space-x-1">
-                                                            <input
-                                                                type="text"
-                                                                value={item.description}
-                                                                onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
-                                                                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
-                                                                placeholder="Item name"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => handleAiSuggest(item.id, item.description, item.estimated_amount)}
-                                                                disabled={suggesting === item.id || !item.description}
-                                                                className="p-1.5 text-amber-500 hover:text-amber-600 transition-colors disabled:opacity-30"
-                                                                title="AI Categorize"
-                                                            >
-                                                                {suggesting === item.id ? (
-                                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                                ) : (
-                                                                    <Sparkles className="h-4 w-4" />
-                                                                )}
-                                                            </button>
-                                                        </div>
+                                                        <input
+                                                            type="text"
+                                                            value={item.description}
+                                                            onChange={(e) => updateLineItem(item.id, 'description', e.target.value)}
+                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm border p-1"
+                                                            placeholder="Item name"
+                                                        />
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <input

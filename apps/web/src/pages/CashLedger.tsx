@@ -15,7 +15,9 @@ import {
     CheckCircle,
     Lock,
     PlusCircle,
-    RefreshCw
+    RefreshCw,
+    Sparkles,
+    AlertTriangle
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -34,6 +36,7 @@ const CashLedger: React.FC = () => {
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
     const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
+    const [isClassifying, setIsClassifying] = useState(false);
     const { userRole } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
 
@@ -72,6 +75,35 @@ const CashLedger: React.FC = () => {
             alert('Failed to retry sync: ' + error.message);
         }
     };
+
+    const handleBulkClassify = async () => {
+        if (!confirm('This will use AI to classify all completed but unclassified transactions. Continue?')) return;
+
+        setIsClassifying(true);
+        try {
+            const result = await cashbookService.classifyBulk();
+            alert(result.message);
+            loadData(); // Reload to show new classifications
+        } catch (error: any) {
+            console.error('Classification failed', error);
+            alert('Failed to classify transactions: ' + error.message);
+        } finally {
+            setIsClassifying(false);
+        }
+    };
+
+    const countUnclassified = () => {
+        let count = 0;
+        entries.forEach(entry => {
+            if (entry.requisitions?.status === 'COMPLETED' && entry.requisitions.line_items) {
+                const unclassifiedItems = entry.requisitions.line_items.filter((item: any) => !item.accounts);
+                if (unclassifiedItems.length > 0) count++;
+            }
+        });
+        return count;
+    };
+
+    const unclassifiedCount = countUnclassified();
 
     const formatCurrency = (amount: number) => {
         return `K${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -129,7 +161,7 @@ const CashLedger: React.FC = () => {
                                     <tr key={idx}>
                                         <td className="text-gray-600">
                                             <div>{item.description}</div>
-                                            {item.accounts && (
+                                            {item.accounts ? (
                                                 <div className="mt-1 flex items-center">
                                                     <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
                                                         {item.accounts.code}
@@ -137,6 +169,11 @@ const CashLedger: React.FC = () => {
                                                     <span className="ml-1.5 text-[10px] text-gray-400 truncate max-w-[150px]">
                                                         {item.accounts.name}
                                                     </span>
+                                                </div>
+                                            ) : (
+                                                <div className="mt-1 flex items-center text-amber-600 text-[10px] font-medium animate-pulse">
+                                                    <AlertTriangle className="h-3 w-3 mr-1" />
+                                                    Unclassified
                                                 </div>
                                             )}
                                         </td>
@@ -311,9 +348,21 @@ const CashLedger: React.FC = () => {
                             </div>
                         </div>
                     </div>
-                    <div className="text-right">
-                        <span className="text-[10px] text-gray-400 uppercase font-bold">Showing</span>
-                        <div className="text-sm font-bold text-gray-700">{entries.length} Transactions</div>
+                    <div className="flex items-center space-x-4">
+                        {unclassifiedCount > 0 && !isRequestor && (
+                            <button
+                                onClick={handleBulkClassify}
+                                disabled={isClassifying}
+                                className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-all flex items-center border border-amber-200"
+                            >
+                                <Sparkles size={16} className={`mr-2 ${isClassifying ? 'animate-spin' : ''}`} />
+                                {isClassifying ? 'Classifying...' : `Auto-Classify ${unclassifiedCount} Items`}
+                            </button>
+                        )}
+                        <div className="text-right">
+                            <span className="text-[10px] text-gray-400 uppercase font-bold">Showing</span>
+                            <div className="text-sm font-bold text-gray-700">{entries.length} Transactions</div>
+                        </div>
                     </div>
                 </div>
 

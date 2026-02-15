@@ -1,6 +1,8 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { cashbookService } from '../services/cashbook.service';
+import { aiService } from '../services/ai/ai.service';
+import { supabase } from '../lib/supabase';
 
 /**
  * Get all cashbook entries with optional filters
@@ -172,5 +174,91 @@ export const closeBook = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('Error closing book:', error);
         res.status(500).json({ error: 'Failed to close book', details: error.message });
+    }
+};
+
+/**
+ * Bulk classify transactions
+ */
+export const classifyBulk = async (req: any, res: any): Promise<any> => {
+    try {
+        const { requisitionIds } = req.body;
+
+        // 1. Fetch unclassified items for completed requisitions
+        // If requisitionIds provided, use them. Else find all unclassified completed reqs.
+        let query = supabase
+            .from('line_items')
+            .select(`
+                id, 
+                description, 
+                estimated_amount, 
+                requisition:requisitions!inner(id, status, type)
+            `)
+            .is('account_id', null);
+
+        if (requisitionIds && requisitionIds.length > 0) {
+            query = query.in('requisition_id', requisitionIds);
+        } else {
+            // Only classified completed requisitions by default to save tokens
+            query = query.eq('requisition.status', 'COMPLETED');
+        }
+
+        const { data: items, error } = await query;
+
+        if (error) throw error;
+
+        if (!items || items.length === 0) {
+            return res.json({ message: 'No unclassified items found.', count: 0 });
+        }
+
+        // 2. Prepare for AI
+        // Fetch accounts for context
+        const { data: accounts } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('is_active', true);
+
+        const aiInput = items.map((item: any) => ({
+            description: item.description,
+            amount: item.estimated_amount || 0
+        }));
+
+        console.log(`[Classify Bulk] Processing ${items.length} items...`);
+
+        // 3. Call AI Service
+        const suggestions = await aiService.suggestBatch(accounts || [], aiInput);
+
+        // 4. Update Line Items
+        const updates = [];
+        const accountMap = new Map(accounts?.map((a: any) => [String(a.code), a.id]));
+
+        for (let i = 0; i < items.length; i++) {
+            const suggestion = suggestions[i];
+            const item = items[i];
+
+            if (suggestion.account_code) {
+                const accountId = accountMap.get(suggestion.account_code);
+                if (accountId) {
+                    updates.push(
+                        supabase
+                            .from('line_items')
+                            .update({ account_id: accountId })
+                            .eq('id', item.id)
+                    );
+                }
+            }
+        }
+
+        await Promise.all(updates);
+
+        res.json({
+            message: `Successfully classified ${updates.length} out of ${items.length} items.`,
+            count: updates.length,
+            total: items.length
+        });
+
+    } catch (error: any) {
+        console.error('Error classifying bulk:', error);
+        res.status(500).json({ error: 'Failed to classify items', details: error.message });
     }
 };

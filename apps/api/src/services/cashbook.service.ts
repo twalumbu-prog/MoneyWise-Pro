@@ -230,12 +230,22 @@ export const cashbookService = {
         if (findError || !originalEntry) {
             console.warn(`Original disbursement entry not found for requisition ${requisitionId}. Creating new entry...`);
 
-            // Reconstruct the entry since it's missing (happened before schema fix)
+            // Reconstruct the entry since it's missing
+            // We should try to get the disbursement details to attribute it correctly to the cashier
+            const { data: disb } = await supabase
+                .from('disbursements')
+                .select('cashier_id')
+                .eq('requisition_id', requisitionId)
+                .single();
+
             const { data: req } = await supabase
                 .from('requisitions')
                 .select('description, requestor_id')
                 .eq('id', requisitionId)
                 .single();
+
+            // Default to cashier if available, else requestor (though it should be cashier)
+            const createdBy = disb?.cashier_id || req?.requestor_id;
 
             const newDescription = discrepancy !== 0
                 ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
@@ -248,7 +258,7 @@ export const cashbookService = {
                 credit: actualExpenditure + discrepancy,
                 date: new Date().toISOString().split('T')[0],
                 requisition_id: requisitionId,
-                created_by: req?.requestor_id,
+                created_by: createdBy,
                 status: 'COMPLETED',
                 voucher_id: voucherId
             });
