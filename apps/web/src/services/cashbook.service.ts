@@ -21,12 +21,25 @@ export interface CashbookEntry {
         description: string;
         actual_total: number;
         requestor: { name: string };
-        line_items: any[];
         disbursements: any[];
         type?: string;
         qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
         qb_sync_error?: string;
         qb_sync_at?: string;
+        line_items?: Array<{
+            id: string;
+            description: string;
+            quantity: number;
+            unit_price: number;
+            estimated_amount: number;
+            actual_amount?: number;
+            account_id?: string;
+            accounts?: {
+                id: string;
+                code: string;
+                name: string;
+            };
+        }>;
     };
     users?: { name: string };
 }

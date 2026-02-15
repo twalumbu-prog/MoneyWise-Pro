@@ -147,16 +147,16 @@ export const cashbookService = {
             .from('cashbook_entries')
             .select(`
                 *,
-                requisitions(
-                    reference_number,
-                    status,
-                    description,
-                    actual_total,
+                requisitions!requisition_id (
+                    id, reference_number, status, description, type,
                     requestor:users!requestor_id(name),
-                    line_items(*, accounts(code, name)),
-                    disbursements(*)
+                    line_items (
+                        id, description, quantity, unit_price, estimated_amount, actual_amount, account_id,
+                        accounts ( id, code, name, category )
+                    ),
+                    qb_sync_status, qb_sync_error
                 ),
-                users:created_by(name)
+                users!created_by(name)
             `)
             .order('date', { ascending: false })
             .order('created_at', { ascending: false });
