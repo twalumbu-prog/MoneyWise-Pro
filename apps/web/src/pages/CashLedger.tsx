@@ -37,6 +37,8 @@ const CashLedger: React.FC = () => {
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
     const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
     const [isClassifying, setIsClassifying] = useState(false);
+    const [classificationResults, setClassificationResults] = useState<any[]>([]);
+    const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
     const { userRole } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
 
@@ -77,13 +79,23 @@ const CashLedger: React.FC = () => {
     };
 
     const handleBulkClassify = async () => {
-        if (!confirm('This will use AI to classify all completed but unclassified transactions. Continue?')) return;
+        if (unclassifiedCount === 0) {
+            alert('Great job! All completed transactions are already classified.');
+            return;
+        }
+
+        if (!confirm(`This will use AI to classify ${unclassifiedCount} unclassified transactions. Continue?`)) return;
 
         setIsClassifying(true);
         try {
             const result = await cashbookService.classifyBulk();
-            alert(result.message);
-            loadData(); // Reload to show new classifications
+            if (result.count > 0 && result.results) {
+                setClassificationResults(result.results);
+                setIsResultsModalOpen(true);
+                loadData(); // Reload to show new classifications
+            } else {
+                alert(result.message);
+            }
         } catch (error: any) {
             console.error('Classification failed', error);
             alert('Failed to classify transactions: ' + error.message);
@@ -349,14 +361,17 @@ const CashLedger: React.FC = () => {
                         </div>
                     </div>
                     <div className="flex items-center space-x-4">
-                        {unclassifiedCount > 0 && !isRequestor && (
+                        {!isRequestor && (
                             <button
                                 onClick={handleBulkClassify}
                                 disabled={isClassifying}
-                                className="bg-amber-100 hover:bg-amber-200 text-amber-800 px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-all flex items-center border border-amber-200"
+                                className={`px-4 py-2 rounded-lg font-bold text-sm shadow-sm transition-all flex items-center border ${unclassifiedCount > 0
+                                    ? 'bg-amber-100 hover:bg-amber-200 text-amber-800 border-amber-200'
+                                    : 'bg-gray-100 text-gray-400 border-gray-200'
+                                    }`}
                             >
                                 <Sparkles size={16} className={`mr-2 ${isClassifying ? 'animate-spin' : ''}`} />
-                                {isClassifying ? 'Classifying...' : `Auto-Classify ${unclassifiedCount} Items`}
+                                {isClassifying ? 'Classifying...' : (unclassifiedCount > 0 ? `Auto-Classify ${unclassifiedCount} Items` : 'Auto-Classify Items')}
                             </button>
                         )}
                         <div className="text-right">
@@ -472,7 +487,78 @@ const CashLedger: React.FC = () => {
                     </table>
                 </div>
             </div>
-        </Layout>
+
+
+            {/* Classification Results Modal */}
+            {
+                isResultsModalOpen && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+                            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                                <div>
+                                    <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                                        <Sparkles className="h-5 w-5 text-amber-500 mr-2" />
+                                        Classification Results
+                                    </h3>
+                                    <p className="text-sm text-gray-500 mt-1">
+                                        Successfully classified {classificationResults.length} transactions.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => setIsResultsModalOpen(false)}
+                                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+                                >
+                                    <Lock className="h-5 w-5 rotate-45" /> {/* Close Icon substitute */}
+                                </button>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                {classificationResults.map((result: any, index: number) => (
+                                    <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <div className="font-medium text-gray-900">{result.description}</div>
+                                            <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${result.method === 'RULE' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                                                }`}>
+                                                {result.method === 'RULE' ? 'Rule Match' : 'AI Analysis'}
+                                            </div>
+                                        </div>
+
+                                        <div className="flex items-center mt-2 text-sm">
+                                            <span className="text-gray-500 mr-2">Assigned to:</span>
+                                            <span className="font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-200 shadow-sm">
+                                                {result.account_code} - {result.account_name}
+                                            </span>
+                                        </div>
+
+                                        {result.reasoning && (
+                                            <div className="mt-3 text-xs text-gray-600 bg-white p-3 rounded border border-gray-200">
+                                                <span className="font-bold text-gray-400 uppercase tracking-wider block mb-1">Rationale</span>
+                                                {result.reasoning}
+                                            </div>
+                                        )}
+
+                                        {result.confidence && (
+                                            <div className="mt-2 text-[10px] text-gray-400 flex items-center justify-end">
+                                                Confidence: {(result.confidence * 100).toFixed(0)}%
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+
+                            <div className="p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
+                                <button
+                                    onClick={() => setIsResultsModalOpen(false)}
+                                    className="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg hover:bg-gray-800 transition-colors shadow-lg"
+                                >
+                                    Done
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </Layout >
     );
 };
 

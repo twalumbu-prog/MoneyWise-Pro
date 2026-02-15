@@ -228,9 +228,11 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
         // 3. Call AI Service
         const suggestions = await aiService.suggestBatch(accounts || [], aiInput);
 
-        // 4. Update Line Items
+        // 4. Update Line Items and Prepare Results
         const updates = [];
+        const results = [];
         const accountMap = new Map(accounts?.map((a: any) => [String(a.code), a.id]));
+        const accountCodeMap = new Map(accounts?.map((a: any) => [String(a.code), a])); // To get name
 
         for (let i = 0; i < items.length; i++) {
             const suggestion = suggestions[i];
@@ -238,6 +240,8 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
 
             if (suggestion.account_code) {
                 const accountId = accountMap.get(suggestion.account_code);
+                const account = accountCodeMap.get(suggestion.account_code);
+
                 if (accountId) {
                     updates.push(
                         supabase
@@ -245,6 +249,16 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
                             .update({ account_id: accountId })
                             .eq('id', item.id)
                     );
+
+                    results.push({
+                        line_item_id: item.id,
+                        description: item.description,
+                        account_code: suggestion.account_code,
+                        account_name: account ? account.name : 'Unknown',
+                        confidence: suggestion.confidence,
+                        reasoning: suggestion.reasoning,
+                        method: suggestion.method
+                    });
                 }
             }
         }
@@ -254,7 +268,8 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
         res.json({
             message: `Successfully classified ${updates.length} out of ${items.length} items.`,
             count: updates.length,
-            total: items.length
+            total: items.length,
+            results: results
         });
 
     } catch (error: any) {

@@ -148,7 +148,20 @@ export const cashbookService = {
     async classifyBulk(requisitionIds?: string[]) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
-        const response = await axios.post(
+        const response = await axios.post<{
+            message: string;
+            count: number;
+            total: number;
+            results?: Array<{
+                line_item_id: string;
+                description: string;
+                account_code: string;
+                account_name: string;
+                confidence: number;
+                reasoning: string;
+                method: string;
+            }>;
+        }>(
             `${API_URL}/cashbook/classify-bulk`,
             { requisitionIds },
             { headers: { Authorization: `Bearer ${token}` } }
