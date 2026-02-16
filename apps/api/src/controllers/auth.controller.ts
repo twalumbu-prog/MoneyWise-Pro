@@ -11,7 +11,7 @@ interface RegisterUserRequest {
 
 export const registerUser = async (req: any, res: any): Promise<any> => {
     try {
-        const { email, password, name, organizationName }: RegisterUserRequest & { organizationName?: string } = req.body;
+        const { email, password, name, organizationName, username }: RegisterUserRequest & { organizationName?: string, username?: string } = req.body;
 
         // Defaults for organization creator
         const role = 'ADMIN';
@@ -23,6 +23,19 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({
                 error: 'Missing required fields: email, password, name, and organizationName are required',
             });
+        }
+
+        // Validate username uniqueness if provided
+        if (username) {
+            const { data: existingUsername } = await supabase
+                .from('users')
+                .select('id')
+                .eq('username', username)
+                .single();
+
+            if (existingUsername) {
+                return res.status(400).json({ error: 'Username is already taken' });
+            }
         }
 
         // Validate password strength
@@ -95,6 +108,7 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             name,
             role,
             organization_id: orgData.id,
+            username: username || null,
             status: 'ACTIVE'
         });
 
@@ -185,5 +199,30 @@ export const simpleSignup = async (req: any, res: any): Promise<any> => {
         return res.status(500).json({
             error: 'Internal server error: ' + (error.message || 'Unknown error'),
         });
+    }
+};
+
+export const resolveUsername = async (req: any, res: any): Promise<any> => {
+    try {
+        const { username } = req.body;
+
+        if (!username) {
+            return res.status(400).json({ error: 'Username is required' });
+        }
+
+        const { data: user, error } = await supabase
+            .from('users')
+            .select('email') // We only need the email to perform the login
+            .eq('username', username)
+            .single();
+
+        if (error || !user) {
+            return res.status(404).json({ error: 'Username not found' });
+        }
+
+        return res.json({ email: user.email });
+    } catch (error: any) {
+        console.error('Resolve username error:', error);
+        return res.status(500).json({ error: 'Internal server error' });
     }
 };

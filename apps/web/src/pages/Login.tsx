@@ -5,9 +5,10 @@ import { Loader2 } from 'lucide-react';
 
 export const Login: React.FC = () => {
     const [isSignup, setIsSignup] = useState(false);
-    const [email, setEmail] = useState('');
+    const [loginIdentifier, setLoginIdentifier] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
+    const [username, setUsername] = useState('');
     const [organizationName, setOrganizationName] = useState('');
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
@@ -25,7 +26,7 @@ export const Login: React.FC = () => {
         setLoading(true);
         setMessage('');
         try {
-            await signInWithPassword(email, password);
+            await signInWithPassword(loginIdentifier, password);
         } catch (error: any) {
             setMessage('Error logging in: ' + (error.message || 'Unknown error'));
         } finally {
@@ -38,13 +39,14 @@ export const Login: React.FC = () => {
         setLoading(true);
         setMessage('');
         try {
-            await signUp(email, password, name, organizationName);
+            await signUp(loginIdentifier, password, name, organizationName, username);
             setMessage('Account created! You can now sign in.');
             setIsSignup(false);
             // Clear sensitive/specific fields
             setPassword('');
             setName('');
             setOrganizationName('');
+            setUsername('');
         } catch (error: any) {
             setMessage('Error signing up: ' + (error.message || 'Unknown error'));
         } finally {
@@ -92,6 +94,23 @@ export const Login: React.FC = () => {
                                     </div>
                                 </div>
                                 <div>
+                                    <label htmlFor="username" className="block text-sm font-bold text-brand-navy mb-1">
+                                        Username
+                                    </label>
+                                    <div className="mt-1">
+                                        <input
+                                            id="username"
+                                            name="username"
+                                            type="text"
+                                            required
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                            value={username}
+                                            onChange={(e) => setUsername(e.target.value)}
+                                            placeholder="unique_username"
+                                        />
+                                    </div>
+                                </div>
+                                <div>
                                     <label htmlFor="org-name" className="block text-sm font-bold text-brand-navy mb-1">
                                         Organization Name
                                     </label>
@@ -113,18 +132,18 @@ export const Login: React.FC = () => {
 
                         <div>
                             <label htmlFor="email" className="block text-sm font-bold text-brand-navy mb-1">
-                                Email address
+                                {isSignup ? 'Email address' : 'Email or Username'}
                             </label>
                             <div className="mt-1">
                                 <input
                                     id="email"
                                     name="email"
-                                    type="email"
-                                    autoComplete="email"
+                                    type={isSignup ? "email" : "text"}
+                                    autoComplete={isSignup ? "email" : "username"}
                                     required
                                     className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
+                                    value={loginIdentifier}
+                                    onChange={(e) => setLoginIdentifier(e.target.value)}
                                 />
                             </div>
                         </div>

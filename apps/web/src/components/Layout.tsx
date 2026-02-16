@@ -9,7 +9,7 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
-    const { user, userRole, signOut } = useAuth();
+    const { user, userRole, signOut, organizationName } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     const handleSignOut = async () => {
@@ -29,7 +29,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                         </div>
                         <div>
                             <h1 className="text-lg font-bold text-brand-navy leading-tight">MoneyWise</h1>
-                            <p className="text-[10px] text-gray-500 font-medium tracking-wide">PRO</p>
+                            <p className="text-[10px] text-gray-500 font-medium tracking-wide">
+                                {organizationName ? organizationName.toUpperCase() : 'PRO'}
+                            </p>
                         </div>
                     </div>
                     <button
@@ -64,7 +66,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                 </div>
                                 <div>
                                     <h1 className="text-xl font-bold text-brand-navy leading-tight">MoneyWise</h1>
-                                    <p className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">Financial Control</p>
+                                    <p className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
+                                        {organizationName || 'Financial Control'}
+                                    </p>
                                 </div>
                             </div>
                             <button onClick={() => setIsMobileMenuOpen(false)} className="text-gray-400 hover:text-brand-navy">
@@ -165,7 +169,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                             </div>
                             <div>
                                 <h1 className="text-xl font-bold text-brand-navy leading-tight">MoneyWise</h1>
-                                <p className="text-[10px] text-gray-400 font-bold tracking-[0.2em] uppercase mt-0.5">Pro</p>
+                                <p className="text-[10px] text-gray-400 font-bold tracking-[0.2em] uppercase mt-0.5">
+                                    {organizationName || 'Pro'}
+                                </p>
                             </div>
                         </div>
                     </div>
@@ -185,14 +191,14 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                 key={item.path}
                                 to={item.path}
                                 className={`flex items-center px-4 py-3 rounded-xl transition-all group font-medium text-sm ${location.pathname === item.path
-                                        ? 'bg-brand-green/10 text-brand-navy shadow-sm'
-                                        : 'text-gray-500 hover:bg-gray-50 hover:text-brand-navy'
+                                    ? 'bg-brand-green/10 text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:bg-gray-50 hover:text-brand-navy'
                                     }`}
                             >
                                 <item.icon
                                     className={`h-5 w-5 mr-3 transition-colors ${location.pathname === item.path
-                                            ? 'text-brand-green'
-                                            : 'text-gray-400 group-hover:text-brand-green'
+                                        ? 'text-brand-green'
+                                        : 'text-gray-400 group-hover:text-brand-green'
                                         }`}
                                 />
                                 {item.label}

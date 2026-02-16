@@ -17,7 +17,8 @@ export const UserManagement: React.FC = () => {
         email: '',
         name: '',
         role: 'REQUESTOR',
-        employeeId: ''
+        employeeId: '',
+        username: ''
     });
 
     useEffect(() => {
@@ -47,7 +48,7 @@ export const UserManagement: React.FC = () => {
                 password: 'TempPassword123!' // In a real app, this would be an invitation flow
             });
             setIsAddModalOpen(false);
-            setNewUser({ email: '', name: '', role: 'REQUESTOR', employeeId: '' });
+            setNewUser({ email: '', name: '', role: 'REQUESTOR', employeeId: '', username: '' });
             await loadUsers();
         } catch (err: any) {
             setError(err.message);
@@ -186,6 +187,17 @@ export const UserManagement: React.FC = () => {
                             value={newUser.email}
                             onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
                             className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Username</label>
+                        <input
+                            type="text"
+                            required
+                            value={newUser.username}
+                            onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
+                            className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                            placeholder="Optional but recommended"
                         />
                     </div>
                     <div>

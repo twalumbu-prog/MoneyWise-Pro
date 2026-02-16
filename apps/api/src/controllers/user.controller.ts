@@ -28,7 +28,7 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<any> =>
 
 export const createUser = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
-        const { email, password, name, role, employeeId } = req.body;
+        const { email, password, name, role, employeeId, username } = req.body;
         const organization_id = (req as any).user.organization_id;
         const userRole = (req as any).user.role;
 
@@ -39,6 +39,19 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<any> 
         // Only Admin can create users
         if (userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Only admins can add users' });
+        }
+
+        // Validate username uniqueness if provided
+        if (username) {
+            const { data: existingUsername } = await supabase
+                .from('users')
+                .select('id')
+                .eq('username', username)
+                .single();
+
+            if (existingUsername) {
+                return res.status(400).json({ error: 'Username is already taken' });
+            }
         }
 
         // Create user in Supabase Auth
@@ -59,11 +72,12 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<any> 
         // Create user record in DB linked to organization
         const { error: dbError } = await supabase.from('users').insert({
             id: authData.user.id,
-            email: email, // If email column exists, otherwise remove
+            email: email,
             name,
             role,
             employee_id: employeeId || `EMP-${Date.now()}`,
             organization_id: organization_id,
+            username: username || null,
             status: 'ACTIVE'
         });
 

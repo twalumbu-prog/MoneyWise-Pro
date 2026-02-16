@@ -6,12 +6,14 @@ interface AuthContextType {
     user: User | null;
     userRole: string | null;
     organizationId: string | null;
+    organizationName: string | null;
     session: Session | null;
     loading: boolean;
     signIn: (email: string) => Promise<void>;
     signInWithPassword: (email: string, password: string) => Promise<void>;
     signUpWithPassword: (email: string, password: string) => Promise<void>;
-    signUp: (email: string, password: string, name: string, organizationName: string) => Promise<void>;
+
+    signUp: (email: string, password: string, name: string, organizationName: string, username: string) => Promise<void>;
     signOut: () => Promise<void>;
 }
 
@@ -23,12 +25,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState<string | null>(null);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
+    const [organizationName, setOrganizationName] = useState<string | null>(null);
 
     useEffect(() => {
         const fetchRoleAndOrg = async (userId: string) => {
             const { data, error } = await supabase
                 .from('users')
-                .select('role, organization_id')
+                .select('role, organization_id, organizations(name)')
                 .eq('id', userId)
                 .single();
 
@@ -36,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const userData = data as any;
                 setUserRole(userData.role);
                 setOrganizationId(userData.organization_id);
+                setOrganizationName(userData.organizations?.name || null);
             }
         };
 
@@ -57,6 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } else {
                 setUserRole(null);
                 setOrganizationId(null);
+                setOrganizationName(null);
                 setLoading(false);
             }
         });
@@ -74,7 +79,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error) throw error;
     };
 
-    const signInWithPassword = async (email: string, password: string) => {
+    const signInWithPassword = async (loginIdentifier: string, password: string) => {
+        let email = loginIdentifier;
+
+        // Check if input is likely a username (no @ symbol)
+        if (!loginIdentifier.includes('@')) {
+            const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+            try {
+                const response = await fetch(`${apiUrl}/auth/resolve-username`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: loginIdentifier }),
+                });
+
+                if (!response.ok) {
+                    const data = await response.json();
+                    throw new Error(data.error || 'Username not found');
+                }
+
+                const data = await response.json();
+                email = data.email;
+            } catch (error) {
+                throw error;
+            }
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
@@ -102,7 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const signUp = async (email: string, password: string, name: string, organizationName: string) => {
+    const signUp = async (email: string, password: string, name: string, organizationName: string, username: string) => {
         const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
         const response = await fetch(`${apiUrl}/auth/register`, {
             method: 'POST',
@@ -113,7 +142,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 email,
                 password,
                 name,
-                organizationName
+                organizationName,
+                username
             }),
         });
 
@@ -132,10 +162,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setSession(null);
         setUserRole(null);
         setOrganizationId(null);
+        setOrganizationName(null);
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, userRole, organizationId, loading, signIn, signInWithPassword, signUpWithPassword, signUp, signOut }}>
+        <AuthContext.Provider value={{ user, session, userRole, organizationId, organizationName, loading, signIn, signInWithPassword, signUpWithPassword, signUp, signOut }}>
             {children}
         </AuthContext.Provider>
     );
