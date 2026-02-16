@@ -258,6 +258,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {/* Page Content */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-gray p-6 md:p-8">
                     {children}
+
+                    <footer className="mt-12 py-6 border-t border-gray-200 text-center text-xs text-gray-400">
+                        <div className="flex justify-center space-x-6 mb-2">
+                            <Link to="/privacy" className="hover:text-gray-600 transition-colors">Privacy Policy</Link>
+                            <Link to="/terms" className="hover:text-gray-600 transition-colors">Terms of Service</Link>
+                            <a href="mailto:smkapambwe9@gmail.com" className="hover:text-gray-600 transition-colors">Contact Support</a>
+                        </div>
+                        <p>&copy; {new Date().getFullYear()} Money Wise Pro. Internal use only.</p>
+                    </footer>
                 </main>
             </div>
         </div>

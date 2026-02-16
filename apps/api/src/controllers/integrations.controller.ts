@@ -75,8 +75,11 @@ export const disconnectQuickBooks = async (req: Request, res: Response) => {
 
 export const syncRequisition = async (req: Request, res: Response) => {
     const { id } = req.params;
+    // req.user is populated by requireAuth middleware
+    const userId = (req as any).user?.id;
+
     try {
-        await QuickBooksService.createExpense(id);
+        await QuickBooksService.createExpense(id, userId);
         res.json({ message: 'Sync initiated' });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { encrypt, decrypt } from '../utils/security.utils';
 
 const QB_CLIENT_ID = process.env.QB_CLIENT_ID;
 const QB_CLIENT_SECRET = process.env.QB_CLIENT_SECRET;
@@ -37,16 +38,18 @@ export class QuickBooksService {
 
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(`QB Token Exchange Failed: ${JSON.stringify(data)}`);
+            // Log error message only, not the full object which might contain sensitive info derived from context
+            console.error(`QB Token Exchange Failed: ${data.error_description || data.error}`);
+            throw new Error(`QB Token Exchange Failed: ${data.error_description || data.error}`);
         }
 
-        // Save to database
+        // Save to database with ENCRYPTION
         const { error } = await supabase
             .from('integrations')
             .upsert({
                 provider: 'QUICKBOOKS',
-                access_token: data.access_token,
-                refresh_token: data.refresh_token,
+                access_token: encrypt(data.access_token),
+                refresh_token: encrypt(data.refresh_token),
                 token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
                 refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
                 realm_id: realmId,
@@ -54,7 +57,7 @@ export class QuickBooksService {
             }, { onConflict: 'provider' });
 
         if (error) throw error;
-        return data;
+        return { success: true };
     }
 
     static async getValidToken() {
@@ -70,12 +73,19 @@ export class QuickBooksService {
         const expiresAt = new Date(qb.token_expires_at);
 
         if (now < expiresAt) {
-            return { accessToken: qb.access_token, realmId: qb.realm_id };
+            return {
+                accessToken: decrypt(qb.access_token),
+                realmId: qb.realm_id
+            };
         }
 
         // Refresh token
         console.log('[QB] Refreshing token...');
         const b64Auth = Buffer.from(`${QB_CLIENT_ID}:${QB_CLIENT_SECRET}`).toString('base64');
+
+        // Decrypt the refresh token to use it
+        const decryptedRefreshToken = decrypt(qb.refresh_token);
+
         const response = await fetch(QB_TOKEN_URL, {
             method: 'POST',
             headers: {
@@ -85,20 +95,21 @@ export class QuickBooksService {
             },
             body: new URLSearchParams({
                 grant_type: 'refresh_token',
-                refresh_token: qb.refresh_token
+                refresh_token: decryptedRefreshToken
             })
         });
 
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(`QB Token Refresh Failed: ${JSON.stringify(data)}`);
+            console.error(`QB Token Refresh Failed: ${data.error_description || data.error}`);
+            throw new Error(`QB Token Refresh Failed`);
         }
 
         await supabase
             .from('integrations')
             .update({
-                access_token: data.access_token,
-                refresh_token: data.refresh_token,
+                access_token: encrypt(data.access_token),
+                refresh_token: encrypt(data.refresh_token),
                 token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
                 refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
                 updated_at: new Date().toISOString()
@@ -121,12 +132,12 @@ export class QuickBooksService {
         });
 
         const data = await response.json();
-        if (!response.ok) throw new Error(`QB Fetch Accounts Failed: ${JSON.stringify(data)}`);
+        if (!response.ok) throw new Error(`QB Fetch Accounts Failed`);
 
         return data.QueryResponse.Account || [];
     }
 
-    static async createExpense(requisitionId: string) {
+    static async createExpense(requisitionId: string, userId?: string) {
         try {
             const { data: requisition, error: reqError } = await supabase
                 .from('requisitions')
@@ -174,6 +185,14 @@ export class QuickBooksService {
             const result = await response.json();
 
             if (!response.ok) {
+                // Log failure to sync_logs
+                await supabase.from('sync_logs').insert({
+                    requisition_id: requisitionId,
+                    synced_by: userId,
+                    status: 'FAILED',
+                    details: JSON.stringify({ error: result }) // Careful with what's logged here
+                });
+
                 await supabase.from('requisitions').update({
                     qb_sync_status: 'FAILED',
                     qb_sync_error: JSON.stringify(result),
@@ -181,6 +200,15 @@ export class QuickBooksService {
                 }).eq('id', requisitionId);
                 return { success: false, error: result };
             }
+
+            // Log success
+            await supabase.from('sync_logs').insert({
+                requisition_id: requisitionId,
+                qb_expense_id: result.Expense.Id,
+                synced_by: userId,
+                status: 'SUCCESS',
+                details: JSON.stringify({ qb_ref: result.Expense.Id })
+            });
 
             await supabase.from('requisitions').update({
                 qb_expense_id: result.Expense.Id,
@@ -191,7 +219,16 @@ export class QuickBooksService {
 
             return { success: true, qbId: result.Expense.Id };
         } catch (error: any) {
-            console.error('[QB Sync Error]', error);
+            console.error('[QB Sync Error]', error.message);
+
+            // Log exception to sync_logs
+            await supabase.from('sync_logs').insert({
+                requisition_id: requisitionId,
+                synced_by: userId,
+                status: 'FAILED',
+                details: JSON.stringify({ error: error.message })
+            });
+
             await supabase.from('requisitions').update({
                 qb_sync_status: 'FAILED',
                 qb_sync_error: error.message,

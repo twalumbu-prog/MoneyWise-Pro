@@ -12,6 +12,9 @@ import { Vouchers } from './pages/Vouchers';
 import { VoucherDetail } from './pages/VoucherDetail';
 import CashLedger from './pages/CashLedger';
 import { Settings } from './pages/Settings';
+import { PrivacyPolicy } from './pages/PrivacyPolicy';
+import { TermsOfService } from './pages/TermsOfService';
+import { Disconnect } from './pages/Disconnect';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -49,6 +52,9 @@ function App() {
             <Router>
                 <Routes>
                     <Route path="/login" element={<Login />} />
+                    <Route path="/privacy" element={<PrivacyPolicy />} />
+                    <Route path="/terms" element={<TermsOfService />} />
+                    <Route path="/disconnect" element={<Disconnect />} />
                     <Route
                         path="/"
                         element={

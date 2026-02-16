@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import requisitionRoutes from './routes/requisition.routes';
@@ -13,8 +14,7 @@ import userRoutes from './routes/user.routes';
 dotenv.config();
 
 console.log('[API] Server starting up...');
-console.log('[API] NODE_ENV:', process.env.NODE_ENV);
-console.log('[API] PORT:', process.env.PORT);
+// console.log('[API] NODE_ENV:', process.env.NODE_ENV); // Removed for security
 
 import pool from './db';
 
@@ -29,12 +29,11 @@ const runMigration = async () => {
         : pool;
 
     try {
-        console.log('[Migration] Starting startup migration using ' + (directUrl ? 'direct connection' : 'default pool') + '...');
+        console.log('[Migration] Starting startup migration...');
 
-        console.log('[Migration] Checking for "category" column in "accounts" table...');
+        // ... existing migrations ...
         await migrationPool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS category TEXT;');
 
-        console.log('[Migration] Checking for change return columns in "disbursements" table...');
         await migrationPool.query(`
             ALTER TABLE disbursements 
             ADD COLUMN IF NOT EXISTS returned_denominations JSONB,
@@ -46,7 +45,6 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS discrepancy_amount NUMERIC DEFAULT 0;
         `);
 
-        console.log('[Migration] Checking for status column in "cashbook_entries" table...');
         await migrationPool.query(`
             ALTER TABLE cashbook_entries 
             ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'COMPLETED';
@@ -77,7 +75,20 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS qb_account_id VARCHAR(100);
         `);
 
-        console.log('[Migration] Checking for "vouchers" table and "voucher_id" column...');
+        console.log('[Migration] Checking for "sync_logs" table...');
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.sync_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                requisition_id UUID REFERENCES public.requisitions(id),
+                qb_expense_id VARCHAR(100),
+                synced_by UUID REFERENCES public.users(id),
+                status VARCHAR(50) NOT NULL,
+                details JSONB DEFAULT '{}'::jsonb,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
+
+        console.log('[Migration] Checking for "vouchers" table...');
         await migrationPool.query(`
             CREATE TABLE IF NOT EXISTS public.vouchers (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -109,13 +120,11 @@ const runMigration = async () => {
     } finally {
         if (directUrl && migrationPool instanceof Pool) {
             await (migrationPool as Pool).end();
-            console.log('[Migration] Direct connection pool closed.');
         }
     }
 };
 
-// Run migrations on startup - only in non-production or if explicitly requested
-// Run migrations on startup to ensure schema consistency
+// Run migrations on startup
 runMigration().catch(err => {
     console.error('[Migration] Critical failure during startup:', err);
 });
@@ -123,9 +132,12 @@ runMigration().catch(err => {
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Security Middleware
+app.use(helmet());
 app.use(cors());
 app.use(express.json());
 
+// Routes
 app.use('/auth', authRoutes);
 app.use('/requisitions', requisitionRoutes);
 app.use('/accounts', accountRoutes);
@@ -135,7 +147,7 @@ app.use('/integrations', integrationRoutes);
 app.use('/users', userRoutes);
 
 app.get('/', (req: any, res: any) => {
-    res.send('AE&CF API is running');
+    res.send('Money Wise Pro API is running securely');
 });
 
 // For local development
