@@ -116,6 +116,18 @@ export const emailService = {
                     break;
             }
 
+            // ---------------------------------------------------------------------------
+            // TEST OVERRIDE: Redirect all emails to account owner for testing
+            // ---------------------------------------------------------------------------
+            // Since we are on Resend's free tier without a verified domain, we can ONLY
+            // send to the registered account email. We override the real recipients here.
+            const TEST_RECIPIENT = 'twalumbuaccsdept@gmail.com';
+            if (process.env.NODE_ENV !== 'production' || true) { // Forced for now as per user request
+                console.log(`[EmailService] TEST MODE: Redirecting email for ${type} from [${recipients.join(', ')}] to ${TEST_RECIPIENT}`);
+                recipients = [TEST_RECIPIENT];
+            }
+            // ---------------------------------------------------------------------------
+
             if (recipients.length > 0) {
                 await this.sendEmail({
                     to: recipients,
@@ -205,7 +217,7 @@ export const emailService = {
         }
 
         const { data, error } = await resend.emails.send({
-            from: 'MoneyWise <notifications@resend.dev>', // Use verified domain in prod
+            from: process.env.EMAIL_FROM || 'MoneyWise <notifications@resend.dev>', // Use verified domain in prod
             to: params.to,
             subject: params.subject,
             html: params.html,
