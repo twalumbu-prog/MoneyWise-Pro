@@ -55,26 +55,35 @@ export const Login: React.FC = () => {
     };
 
     return (
-        <div className="min-h-screen bg-brand-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
-            <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="text-center">
-                    <h1 className="text-4xl font-bold text-brand-navy tracking-tight">MoneyWise Pro</h1>
-                    <p className="mt-2 text-sm text-gray-500 uppercase tracking-widest font-semibold">
-                        Financial Control Center
-                    </p>
+        <div className="min-h-screen bg-brand-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
+            {/* Navbar-style Branding */}
+            <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
+                <div className="flex items-center space-x-3">
+                    <div className="h-10 w-10 bg-brand-navy rounded-xl flex items-center justify-center shadow-lg shadow-brand-navy/20">
+                        <svg className="h-6 w-6 text-brand-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div>
+                        <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
+                        <p className="text-xs text-gray-500 font-medium tracking-wider uppercase">Financial Control</p>
+                    </div>
                 </div>
-                <h2 className="mt-8 text-center text-2xl font-bold text-gray-900">
+            </div>
+
+            <div className="sm:mx-auto sm:w-full sm:max-w-md mt-12 sm:mt-0">
+                <h2 className="text-center text-3xl font-bold text-brand-navy mb-8">
                     {isSignup ? 'Create your account' : 'Sign in to continue'}
                 </h2>
             </div>
 
-            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-white py-8 px-4 shadow-xl rounded-2xl border border-gray-100 sm:px-10">
+            <div className="sm:mx-auto sm:w-full sm:max-w-md">
+                <div className="bg-white py-10 px-6 shadow-2xl shadow-gray-200/50 rounded-2xl border border-gray-100 sm:px-12">
                     <form className="space-y-6" onSubmit={isSignup ? handleSignup : handleLogin}>
                         {isSignup && (
                             <>
                                 <div>
-                                    <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                                    <label htmlFor="name" className="block text-sm font-bold text-brand-navy mb-1">
                                         Full Name
                                     </label>
                                     <div className="mt-1">
@@ -83,14 +92,14 @@ export const Login: React.FC = () => {
                                             name="name"
                                             type="text"
                                             required
-                                            className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm transition-colors"
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label htmlFor="employee-id" className="block text-sm font-medium text-gray-700">
+                                    <label htmlFor="employee-id" className="block text-sm font-bold text-brand-navy mb-1">
                                         Employee ID
                                     </label>
                                     <div className="mt-1">
@@ -99,28 +108,26 @@ export const Login: React.FC = () => {
                                             name="employeeId"
                                             type="text"
                                             required
-                                            className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm transition-colors"
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                             value={employeeId}
                                             onChange={(e) => setEmployeeId(e.target.value)}
                                         />
                                     </div>
                                 </div>
                                 <div>
-                                    <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                                    <label htmlFor="role" className="block text-sm font-bold text-brand-navy mb-1">
                                         Role
                                     </label>
                                     <div className="mt-1">
                                         <select
                                             id="role"
                                             name="role"
-                                            required
-                                            className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm transition-colors"
+                                            className="block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                             value={role}
                                             onChange={(e) => setRole(e.target.value)}
                                         >
                                             <option value="REQUESTOR">Requestor</option>
-                                            <option value="AUTHORISER">Authoriser</option>
-                                            <option value="ACCOUNTANT">Accountant</option>
+                                            <option value="APPROVER">Approver</option>
                                             <option value="CASHIER">Cashier</option>
                                             <option value="ADMIN">Admin</option>
                                         </select>
@@ -130,7 +137,7 @@ export const Login: React.FC = () => {
                         )}
 
                         <div>
-                            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="email" className="block text-sm font-bold text-brand-navy mb-1">
                                 Email address
                             </label>
                             <div className="mt-1">
@@ -140,7 +147,7 @@ export const Login: React.FC = () => {
                                     type="email"
                                     autoComplete="email"
                                     required
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm transition-colors"
+                                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                 />
@@ -148,7 +155,7 @@ export const Login: React.FC = () => {
                         </div>
 
                         <div>
-                            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                            <label htmlFor="password" className="block text-sm font-bold text-brand-navy mb-1">
                                 Password
                             </label>
                             <div className="mt-1">
@@ -159,7 +166,7 @@ export const Login: React.FC = () => {
                                     autoComplete="current-password"
                                     required
                                     minLength={6}
-                                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm transition-colors"
+                                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
@@ -167,52 +174,48 @@ export const Login: React.FC = () => {
                         </div>
 
                         {message && (
-                            <div className={`rounded-lg p-4 ${message.includes('Error') ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
-                                <p className="text-sm font-medium">{message}</p>
+                            <div className={`rounded-xl p-4 flex items-center ${message.includes('Error') ? 'bg-red-50 text-red-700 border border-red-100' : 'bg-green-50 text-green-700 border border-green-100'}`}>
+                                <p className="text-sm font-bold">{message}</p>
                             </div>
                         )}
 
-                        <div>
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:-translate-y-0.5"
-                            >
-                                {loading ? (
-                                    <Loader2 className="h-5 w-5 animate-spin" />
-                                ) : (
-                                    isSignup ? 'Create Account' : 'Sign In'
-                                )}
-                            </button>
-                        </div>
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-lg shadow-green-200 text-sm font-bold text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+                        >
+                            {loading ? (
+                                <Loader2 className="h-5 w-5 animate-spin" />
+                            ) : (
+                                isSignup ? 'Create Account' : 'Sign In'
+                            )}
+                        </button>
                     </form>
 
-                    <div className="mt-6">
+                    <div className="mt-8 pt-6 border-t border-gray-100">
                         <div className="relative">
                             <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-gray-200" />
+                                {/* Transparent spacing layer to prevent overlap */}
                             </div>
-                            <div className="relative flex justify-center text-sm">
-                                <span className="px-2 bg-white text-gray-500">
-                                    {isSignup ? 'Or sign in with existing account' : 'New to MoneyWise Pro?'}
+                            <div className="relative flex justify-center text-sm mb-4">
+                                <span className="bg-white px-3 text-gray-500 font-medium">
+                                    {isSignup ? 'Already have an account?' : 'New to MoneyWise Pro?'}
                                 </span>
                             </div>
                         </div>
 
-                        <div className="mt-6">
-                            <button
-                                onClick={() => {
-                                    setIsSignup(!isSignup);
-                                    setMessage('');
-                                }}
-                                className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-colors"
-                            >
-                                {isSignup ? 'Sign in instead' : 'Create an account'}
-                            </button>
-                        </div>
+                        <button
+                            onClick={() => {
+                                setIsSignup(!isSignup);
+                                setMessage('');
+                            }}
+                            className="w-full flex justify-center py-3 px-4 border border-gray-200 rounded-xl shadow-sm text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition-all"
+                        >
+                            {isSignup ? 'Sign in instead' : 'Create an account'}
+                        </button>
                     </div>
                 </div>
-                <div className="mt-8 text-center text-xs text-brand-navy opacity-50">
+                <div className="mt-8 text-center text-xs text-brand-navy/40 font-medium">
                     &copy; {new Date().getFullYear()} MoneyWise Pro. All rights reserved.
                 </div>
             </div>
