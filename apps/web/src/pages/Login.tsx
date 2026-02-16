@@ -73,7 +73,7 @@ export const Login: React.FC = () => {
             </div>
 
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="bg-white py-10 px-6 shadow-2xl shadow-gray-200/50 rounded-2xl border border-gray-100 sm:px-12">
+                <div className="bg-white py-10 px-6 rounded-2xl border border-gray-100 sm:px-12">
                     <form className="space-y-6" onSubmit={isSignup ? handleSignup : handleLogin}>
                         {isSignup && (
                             <>
