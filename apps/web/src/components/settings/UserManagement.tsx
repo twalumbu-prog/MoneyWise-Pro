@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { userService, UserProfile } from '../../services/user.service';
 import { Loader2, UserPlus, Shield, Trash2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { Modal } from '../Modal';
 
 export const UserManagement: React.FC = () => {
     const { userRole } = useAuth();
@@ -161,87 +162,74 @@ export const UserManagement: React.FC = () => {
             </div>
 
             {/* Add User Modal */}
-            {isAddModalOpen && (
-                <div className="fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
-                    <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
-                        <div className="fixed inset-0 bg-gray-800 transition-opacity" aria-hidden="true" onClick={() => setIsAddModalOpen(false)}></div>
-                        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
-                        <div className="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
-                            <div className="bg-white px-4 pt-5 pb-4 sm:p-6 sm:pb-4">
-                                <div className="sm:flex sm:items-start">
-                                    <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-green-100 sm:mx-0 sm:h-10 sm:w-10">
-                                        <UserPlus className="h-6 w-6 text-brand-green" aria-hidden="true" />
-                                    </div>
-                                    <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
-                                        <h3 className="text-lg leading-6 font-medium text-gray-900" id="modal-title">
-                                            Add New User
-                                        </h3>
-                                        <div className="mt-4 space-y-4">
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                                                <input
-                                                    type="text"
-                                                    value={newUser.name}
-                                                    onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                                                    className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">Email</label>
-                                                <input
-                                                    type="email"
-                                                    value={newUser.email}
-                                                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                                                    className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
-                                                />
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">Role</label>
-                                                <select
-                                                    value={newUser.role}
-                                                    onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-                                                    className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
-                                                >
-                                                    <option value="REQUESTOR">Requestor</option>
-                                                    <option value="APPROVER">Approver</option>
-                                                    <option value="CASHIER">Cashier</option>
-                                                    <option value="ADMIN">Admin</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">Employee ID</label>
-                                                <input
-                                                    type="text"
-                                                    value={newUser.employeeId}
-                                                    onChange={(e) => setNewUser({ ...newUser, employeeId: e.target.value })}
-                                                    className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
-                                                />
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
-                                <button
-                                    type="button"
-                                    onClick={handleAddUser}
-                                    disabled={actionLoading}
-                                    className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:ml-3 sm:w-auto sm:text-sm disabled:opacity-50"
-                                >
-                                    {actionLoading ? 'Adding...' : 'Add User'}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setIsAddModalOpen(false)}
-                                    className="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
+            <Modal
+                isOpen={isAddModalOpen}
+                onClose={() => setIsAddModalOpen(false)}
+                title="Add New User"
+            >
+                <form onSubmit={handleAddUser} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Full Name</label>
+                        <input
+                            type="text"
+                            required
+                            value={newUser.name}
+                            onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
+                            className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                        />
                     </div>
-                </div>
-            )}
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Email</label>
+                        <input
+                            type="email"
+                            required
+                            value={newUser.email}
+                            onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                            className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Role</label>
+                        <select
+                            value={newUser.role}
+                            onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                            className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                        >
+                            <option value="REQUESTOR">Requestor</option>
+                            <option value="APPROVER">Approver</option>
+                            <option value="CASHIER">Cashier</option>
+                            <option value="ADMIN">Admin</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Employee ID</label>
+                        <input
+                            type="text"
+                            value={newUser.employeeId}
+                            onChange={(e) => setNewUser({ ...newUser, employeeId: e.target.value })}
+                            className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                            placeholder="Optional"
+                        />
+                    </div>
+
+                    <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                        <button
+                            type="submit"
+                            disabled={actionLoading}
+                            className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:col-start-2 sm:text-sm disabled:opacity-50"
+                        >
+                            {actionLoading ? 'Adding...' : 'Add User'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setIsAddModalOpen(false)}
+                            className="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </Modal>
         </div>
     );
 };
