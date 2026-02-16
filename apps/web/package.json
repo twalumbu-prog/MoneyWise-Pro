@@ -12,11 +12,14 @@
     "dependencies": {
         "@supabase/supabase-js": "^2.86.0",
         "axios": "^1.13.2",
+        "jspdf": "^4.1.0",
+        "jspdf-autotable": "^5.0.7",
         "lucide-react": "^0.555.0",
         "react": "^18.2.0",
         "react-dom": "^18.2.0",
         "react-router-dom": "^7.10.0",
-        "shared": "workspace:*"
+        "shared": "workspace:*",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@types/react": "^18.2.66",

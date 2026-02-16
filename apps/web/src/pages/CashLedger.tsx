@@ -25,6 +25,8 @@ import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
 import { useAuth } from '../context/AuthContext';
 import { integrationService } from '../services/integration.service';
+import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
+import { Download } from 'lucide-react';
 
 const CashLedger: React.FC = () => {
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
@@ -40,7 +42,9 @@ const CashLedger: React.FC = () => {
     const [isClassifying, setIsClassifying] = useState(false);
     const [classificationResults, setClassificationResults] = useState<any[]>([]);
     const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
-    const { userRole } = useAuth();
+
+    const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
+    const { userRole, organizationName } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
 
     useEffect(() => {
@@ -103,6 +107,24 @@ const CashLedger: React.FC = () => {
         } finally {
             setIsClassifying(false);
         }
+    };
+
+    const handleExport = (format: 'csv' | 'excel' | 'pdf') => {
+        const filename = `Cash_Ledger_${startDate}_to_${endDate}`;
+        const period = { start: startDate, end: endDate };
+
+        switch (format) {
+            case 'csv':
+                exportToCSV(entries, filename);
+                break;
+            case 'excel':
+                exportToExcel(entries, filename, period);
+                break;
+            case 'pdf':
+                exportToPDF(entries, filename, period, organizationName || 'MoneyWise Pro');
+                break;
+        }
+        setIsExportMenuOpen(false);
     };
 
     const countUnclassified = () => {
@@ -300,268 +322,306 @@ const CashLedger: React.FC = () => {
                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Verified Balance</span>
                             <span className="text-2xl font-black text-brand-navy">{formatCurrency(balance)}</span>
                         </div>
-                        <div className="flex items-center space-x-3">
-                            {!isRequestor && (
-                                <button
-                                    onClick={() => setIsInflowModalOpen(true)}
-                                    className="bg-brand-green hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-green-200 transition-all flex items-center transform hover:-translate-y-0.5 active:scale-95"
-                                >
-                                    <PlusCircle size={18} className="mr-2" />
-                                    Log Inflow
-                                </button>
-                            )}
+                    </div>
+                    <div className="flex items-center space-x-3">
+                        <div className="relative">
                             <button
-                                onClick={() => setIsCloseModalOpen(true)}
-                                className="bg-brand-navy hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-gray-200 transition-all flex items-center transform hover:-translate-y-0.5 active:scale-95"
+                                onClick={() => setIsExportMenuOpen(!isExportMenuOpen)}
+                                className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-4 py-2.5 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center transform hover:-translate-y-0.5 active:scale-95"
                             >
-                                <Lock size={18} className="mr-2" />
-                                Close Balance
+                                <Download size={18} className="mr-2 text-brand-navy" />
+                                Export
+                                <ChevronDown size={14} className={`ml-2 transition-transform ${isExportMenuOpen ? 'rotate-180' : ''}`} />
                             </button>
+                            {isExportMenuOpen && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-10 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="py-1">
+                                        <button
+                                            onClick={() => handleExport('csv')}
+                                            className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-navy transition-colors flex items-center"
+                                        >
+                                            <span className="w-8 text-xs font-bold text-gray-400">CSV</span>
+                                            Export as CSV
+                                        </button>
+                                        <button
+                                            onClick={() => handleExport('excel')}
+                                            className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-navy transition-colors flex items-center"
+                                        >
+                                            <span className="w-8 text-xs font-bold text-green-600">XLSX</span>
+                                            Export for Excel
+                                        </button>
+                                        <button
+                                            onClick={() => handleExport('pdf')}
+                                            className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 hover:text-brand-navy transition-colors flex items-center border-t border-gray-50"
+                                        >
+                                            <span className="w-8 text-xs font-bold text-red-500">PDF</span>
+                                            Export as PDF
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
                         </div>
-                    </div>
-                </div>
-
-                <CloseBalanceModal
-                    isOpen={isCloseModalOpen}
-                    onClose={() => setIsCloseModalOpen(false)}
-                    onSuccess={loadData}
-                    currentSystemBalance={balance}
-                />
-
-                <CashInflowModal
-                    isOpen={isInflowModalOpen}
-                    onClose={() => setIsInflowModalOpen(false)}
-                    onSuccess={loadData}
-                />
-
-                <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-100 shadow-sm gap-4">
-                    <div className="flex flex-wrap gap-4 w-full md:w-auto">
-                        <div className="flex-1 md:flex-none">
-                            <label className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Date From</label>
-                            <div className="relative">
-                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-navy" />
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none w-full transition-all"
-                                />
-                            </div>
-                        </div>
-                        <div className="flex-1 md:flex-none">
-                            <label className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Date To</label>
-                            <div className="relative">
-                                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-navy" />
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none w-full transition-all"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex items-center space-x-4 w-full md:w-auto justify-between md:justify-end">
                         {!isRequestor && (
                             <button
-                                onClick={handleBulkClassify}
-                                disabled={isClassifying}
-                                className={`px-4 py-2 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center border ${unclassifiedCount > 0
-                                    ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
-                                    : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
-                                    }`}
+                                onClick={() => setIsInflowModalOpen(true)}
+                                className="bg-brand-green hover:bg-green-600 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-green-200 transition-all flex items-center transform hover:-translate-y-0.5 active:scale-95"
                             >
-                                <Sparkles size={16} className={`mr-2 ${isClassifying ? 'animate-spin' : ''}`} />
-                                {isClassifying ? 'Classifying...' : (unclassifiedCount > 0 ? `Auto-Classify ${unclassifiedCount} Items` : 'Auto-Classify Items')}
+                                <PlusCircle size={18} className="mr-2" />
+                                Log Inflow
                             </button>
                         )}
-                        <div className="text-right hidden sm:block">
-                            <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Showing</span>
-                            <div className="text-sm font-bold text-brand-navy">{entries.length} Transactions</div>
-                        </div>
+                        <button
+                            onClick={() => setIsCloseModalOpen(true)}
+                            className="bg-brand-navy hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-gray-200 transition-all flex items-center transform hover:-translate-y-0.5 active:scale-95"
+                        >
+                            <Lock size={18} className="mr-2" />
+                            Close Balance
+                        </button>
                     </div>
-                </div>
-
-                <div className="shadow-sm border border-gray-100 rounded-2xl overflow-hidden bg-white">
-                    <table className="w-full text-left">
-                        <thead>
-                            <tr className="bg-gray-50 border-b border-gray-100">
-                                <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest">Date</th>
-                                <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest">Description & Details</th>
-                                <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest">Status / Type</th>
-                                <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest text-right">Debit</th>
-                                <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest text-right">Credit</th>
-                                <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest text-right">Balance</th>
-                                <th className="p-4 w-10"></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {entries.length === 0 ? (
-                                <tr>
-                                    <td colSpan={7} className="no-data py-20 text-center text-gray-400 italic">No transactions found in this range.</td>
-                                </tr>
-                            ) : (
-                                entries.map((entry) => (
-                                    <React.Fragment key={entry.id}>
-                                        <tr
-                                            className={`clickable-row transition-colors group border-b border-gray-50 last:border-b-0 cursor-pointer 
-                                                ${expandedRows[entry.id] ? 'bg-gray-50' : 'hover:bg-gray-50/50'} 
-                                                ${entry.entry_type === 'CLOSING_BALANCE' ? 'bg-brand-navy/5 border-l-4 border-brand-navy' : ''} 
-                                                ${entry.entry_type === 'OPENING_BALANCE' ? 'bg-green-50/30' : ''}`}
-                                            onClick={() => entry.requisition_id && toggleRow(entry.id)}
-                                        >
-                                            <td className="p-4">
-                                                <div className="text-sm font-semibold text-gray-900">{new Date(entry.date).toLocaleDateString()}</div>
-                                                <div className="text-[10px] text-gray-400 uppercase tracking-tighter">
-                                                    {new Date(entry.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                                </div>
-                                            </td>
-                                            <td className="p-4 max-w-md">
-                                                <div className="flex flex-col">
-                                                    <span className="text-sm font-bold text-gray-900 line-clamp-1">
-                                                        {entry.requisitions?.reference_number
-                                                            ? `Voucher ${entry.requisitions.reference_number}`
-                                                            : entry.description}
-                                                    </span>
-                                                    <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
-                                                        {entry.requisitions?.description || entry.description}
-                                                    </div>
-                                                    {entry.requisitions?.type && entry.requisitions.type !== 'EXPENSE' && (
-                                                        <div className="mt-1">
-                                                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${entry.requisitions.type === 'LOAN' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
-                                                                }`}>
-                                                                {entry.requisitions.type}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                    {entry.requisitions?.requestor?.name && (
-                                                        <div className="flex items-center mt-1.5 text-[10px] text-gray-400">
-                                                            <User className="h-3 w-3 mr-1" />
-                                                            Paid to: <span className="font-bold ml-1 text-gray-600">{entry.requisitions.requestor.name}</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="flex items-center space-x-2">
-                                                    <span className={`entry-type ${entry.entry_type.toLowerCase()}`}>
-                                                        {entry.entry_type.replace('_', ' ')}
-                                                    </span>
-                                                    {getEntryStatus(entry)}
-                                                </div>
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                {entry.debit > 0 ? (
-                                                    <span className="text-sm font-bold text-green-600 flex items-center justify-end">
-                                                        <ArrowDownCircle className="h-3 w-3 mr-1 opactiy-50" />
-                                                        {formatCurrency(entry.debit)}
-                                                    </span>
-                                                ) : '-'}
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                {entry.credit > 0 ? (
-                                                    <span className="text-sm font-bold text-red-600 flex items-center justify-end">
-                                                        <ArrowUpCircle className="h-3 w-3 mr-1 opacity-50" />
-                                                        {formatCurrency(entry.credit)}
-                                                    </span>
-                                                ) : '-'}
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                <span className="text-sm font-black text-gray-900">{formatCurrency(entry.balance_after)}</span>
-                                            </td>
-                                            <td className="p-4">
-                                                {entry.requisition_id && (
-                                                    <button className="text-gray-300 group-hover:text-brand-navy transition-colors">
-                                                        {expandedRows[entry.id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                        {expandedRows[entry.id] && entry.requisition_id && (
-                                            <tr className="details-row">
-                                                <td colSpan={7}>
-                                                    {renderBreakdown(entry)}
-                                                </td>
-                                            </tr>
-                                        )}
-                                    </React.Fragment>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
                 </div>
             </div>
 
+            <CloseBalanceModal
+                isOpen={isCloseModalOpen}
+                onClose={() => setIsCloseModalOpen(false)}
+                onSuccess={loadData}
+                currentSystemBalance={balance}
+            />
 
-            {/* Classification Results Modal */}
-            {
-                isResultsModalOpen && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                        <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
-                            <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-                                <div>
-                                    <h3 className="text-xl font-bold text-gray-900 flex items-center">
-                                        <Sparkles className="h-5 w-5 text-amber-500 mr-2" />
-                                        Classification Results
-                                    </h3>
-                                    <p className="text-sm text-gray-500 mt-1">
-                                        Successfully classified {classificationResults.length} transactions.
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={() => setIsResultsModalOpen(false)}
-                                    className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                            </div>
+            <CashInflowModal
+                isOpen={isInflowModalOpen}
+                onClose={() => setIsInflowModalOpen(false)}
+                onSuccess={loadData}
+            />
 
-                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                                {classificationResults.map((result: any, index: number) => (
-                                    <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <div className="font-medium text-gray-900">{result.description}</div>
-                                            <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${result.method === 'RULE' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
-                                                }`}>
-                                                {result.method === 'RULE' ? 'Rule Match' : 'AI Analysis'}
-                                            </div>
-                                        </div>
-
-                                        <div className="flex items-center mt-2 text-sm">
-                                            <span className="text-gray-500 mr-2">Assigned to:</span>
-                                            <span className="font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-200 shadow-sm">
-                                                {result.account_code} - {result.account_name}
-                                            </span>
-                                        </div>
-
-                                        {result.reasoning && (
-                                            <div className="mt-3 text-xs text-gray-600 bg-white p-3 rounded border border-gray-200">
-                                                <span className="font-bold text-gray-400 uppercase tracking-wider block mb-1">Rationale</span>
-                                                {result.reasoning}
-                                            </div>
-                                        )}
-
-                                        {result.confidence && (
-                                            <div className="mt-2 text-[10px] text-gray-400 flex items-center justify-end">
-                                                Confidence: {(result.confidence * 100).toFixed(0)}%
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-
-                            <div className="p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
-                                <button
-                                    onClick={() => setIsResultsModalOpen(false)}
-                                    className="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg hover:bg-gray-800 transition-colors shadow-lg"
-                                >
-                                    Done
-                                </button>
-                            </div>
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 bg-white p-4 rounded-xl border border-gray-100 shadow-sm gap-4">
+                <div className="flex flex-wrap gap-4 w-full md:w-auto">
+                    <div className="flex-1 md:flex-none">
+                        <label className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Date From</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-navy" />
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none w-full transition-all"
+                            />
                         </div>
                     </div>
-                )
-            }
+                    <div className="flex-1 md:flex-none">
+                        <label className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Date To</label>
+                        <div className="relative">
+                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-brand-navy" />
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="pl-10 pr-4 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none w-full transition-all"
+                            />
+                        </div>
+                    </div>
+                </div>
+                <div className="flex items-center space-x-4 w-full md:w-auto justify-between md:justify-end">
+                    {!isRequestor && (
+                        <button
+                            onClick={handleBulkClassify}
+                            disabled={isClassifying}
+                            className={`px-4 py-2 rounded-xl font-bold text-sm shadow-sm transition-all flex items-center border ${unclassifiedCount > 0
+                                ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                                : 'bg-white text-gray-400 border-gray-200 hover:bg-gray-50'
+                                }`}
+                        >
+                            <Sparkles size={16} className={`mr-2 ${isClassifying ? 'animate-spin' : ''}`} />
+                            {isClassifying ? 'Classifying...' : (unclassifiedCount > 0 ? `Auto-Classify ${unclassifiedCount} Items` : 'Auto-Classify Items')}
+                        </button>
+                    )}
+                    <div className="text-right hidden sm:block">
+                        <span className="text-[10px] text-gray-400 uppercase font-bold tracking-wider">Showing</span>
+                        <div className="text-sm font-bold text-brand-navy">{entries.length} Transactions</div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="shadow-sm border border-gray-100 rounded-2xl overflow-hidden bg-white">
+                <table className="w-full text-left">
+                    <thead>
+                        <tr className="bg-gray-50 border-b border-gray-100">
+                            <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest">Date</th>
+                            <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest">Description & Details</th>
+                            <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest">Status / Type</th>
+                            <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest text-right">Debit</th>
+                            <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest text-right">Credit</th>
+                            <th className="p-4 text-[10px] uppercase text-gray-400 font-bold tracking-widest text-right">Balance</th>
+                            <th className="p-4 w-10"></th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                        {entries.length === 0 ? (
+                            <tr>
+                                <td colSpan={7} className="no-data py-20 text-center text-gray-400 italic">No transactions found in this range.</td>
+                            </tr>
+                        ) : (
+                            entries.map((entry) => (
+                                <React.Fragment key={entry.id}>
+                                    <tr
+                                        className={`clickable-row transition-colors group border-b border-gray-50 last:border-b-0 cursor-pointer 
+                                                ${expandedRows[entry.id] ? 'bg-gray-50' : 'hover:bg-gray-50/50'} 
+                                                ${entry.entry_type === 'CLOSING_BALANCE' ? 'bg-brand-navy/5 border-l-4 border-brand-navy' : ''} 
+                                                ${entry.entry_type === 'OPENING_BALANCE' ? 'bg-green-50/30' : ''}`}
+                                        onClick={() => entry.requisition_id && toggleRow(entry.id)}
+                                    >
+                                        <td className="p-4">
+                                            <div className="text-sm font-semibold text-gray-900">{new Date(entry.date).toLocaleDateString()}</div>
+                                            <div className="text-[10px] text-gray-400 uppercase tracking-tighter">
+                                                {new Date(entry.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 max-w-md">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-gray-900 line-clamp-1">
+                                                    {entry.requisitions?.reference_number
+                                                        ? `Voucher ${entry.requisitions.reference_number}`
+                                                        : entry.description}
+                                                </span>
+                                                <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
+                                                    {entry.requisitions?.description || entry.description}
+                                                </div>
+                                                {entry.requisitions?.type && entry.requisitions.type !== 'EXPENSE' && (
+                                                    <div className="mt-1">
+                                                        <span className={`px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ${entry.requisitions.type === 'LOAN' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+                                                            }`}>
+                                                            {entry.requisitions.type}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {entry.requisitions?.requestor?.name && (
+                                                    <div className="flex items-center mt-1.5 text-[10px] text-gray-400">
+                                                        <User className="h-3 w-3 mr-1" />
+                                                        Paid to: <span className="font-bold ml-1 text-gray-600">{entry.requisitions.requestor.name}</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex items-center space-x-2">
+                                                <span className={`entry-type ${entry.entry_type.toLowerCase()}`}>
+                                                    {entry.entry_type.replace('_', ' ')}
+                                                </span>
+                                                {getEntryStatus(entry)}
+                                            </div>
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            {entry.debit > 0 ? (
+                                                <span className="text-sm font-bold text-green-600 flex items-center justify-end">
+                                                    <ArrowDownCircle className="h-3 w-3 mr-1 opactiy-50" />
+                                                    {formatCurrency(entry.debit)}
+                                                </span>
+                                            ) : '-'}
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            {entry.credit > 0 ? (
+                                                <span className="text-sm font-bold text-red-600 flex items-center justify-end">
+                                                    <ArrowUpCircle className="h-3 w-3 mr-1 opacity-50" />
+                                                    {formatCurrency(entry.credit)}
+                                                </span>
+                                            ) : '-'}
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <span className="text-sm font-black text-gray-900">{formatCurrency(entry.balance_after)}</span>
+                                        </td>
+                                        <td className="p-4">
+                                            {entry.requisition_id && (
+                                                <button className="text-gray-300 group-hover:text-brand-navy transition-colors">
+                                                    {expandedRows[entry.id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                                                </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                    {expandedRows[entry.id] && entry.requisition_id && (
+                                        <tr className="details-row">
+                                            <td colSpan={7}>
+                                                {renderBreakdown(entry)}
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
+                            ))
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+
+            {/* Classification Results Modal */ }
+    {
+        isResultsModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                        <div>
+                            <h3 className="text-xl font-bold text-gray-900 flex items-center">
+                                <Sparkles className="h-5 w-5 text-amber-500 mr-2" />
+                                Classification Results
+                            </h3>
+                            <p className="text-sm text-gray-500 mt-1">
+                                Successfully classified {classificationResults.length} transactions.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setIsResultsModalOpen(false)}
+                            className="p-2 hover:bg-gray-100 rounded-lg text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                        {classificationResults.map((result: any, index: number) => (
+                            <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="font-medium text-gray-900">{result.description}</div>
+                                    <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${result.method === 'RULE' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'
+                                        }`}>
+                                        {result.method === 'RULE' ? 'Rule Match' : 'AI Analysis'}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center mt-2 text-sm">
+                                    <span className="text-gray-500 mr-2">Assigned to:</span>
+                                    <span className="font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-200 shadow-sm">
+                                        {result.account_code} - {result.account_name}
+                                    </span>
+                                </div>
+
+                                {result.reasoning && (
+                                    <div className="mt-3 text-xs text-gray-600 bg-white p-3 rounded border border-gray-200">
+                                        <span className="font-bold text-gray-400 uppercase tracking-wider block mb-1">Rationale</span>
+                                        {result.reasoning}
+                                    </div>
+                                )}
+
+                                {result.confidence && (
+                                    <div className="mt-2 text-[10px] text-gray-400 flex items-center justify-end">
+                                        Confidence: {(result.confidence * 100).toFixed(0)}%
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="p-6 border-t border-gray-100 bg-gray-50 rounded-b-xl flex justify-end">
+                        <button
+                            onClick={() => setIsResultsModalOpen(false)}
+                            className="px-6 py-2 bg-gray-900 text-white font-bold rounded-lg hover:bg-gray-800 transition-colors shadow-lg"
+                        >
+                            Done
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )
+    }
         </Layout >
     );
 };
