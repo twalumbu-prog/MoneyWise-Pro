@@ -102,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const signUp = async (email: string, password: string, employeeId: string, name: string, role: string, organizationName?: string) => {
+    const signUp = async (email: string, password: string, name: string, organizationName: string) => {
         const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
         const response = await fetch(`${apiUrl}/auth/register`, {
             method: 'POST',
@@ -112,9 +112,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             body: JSON.stringify({
                 email,
                 password,
-                employeeId,
                 name,
-                role,
                 organizationName
             }),
         });

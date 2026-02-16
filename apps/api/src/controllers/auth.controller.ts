@@ -11,12 +11,17 @@ interface RegisterUserRequest {
 
 export const registerUser = async (req: any, res: any): Promise<any> => {
     try {
-        const { email, password, employeeId, name, role, organizationName }: RegisterUserRequest & { organizationName?: string } = req.body;
+        const { email, password, name, organizationName }: RegisterUserRequest & { organizationName?: string } = req.body;
+
+        // Defaults for organization creator
+        const role = 'ADMIN';
+        // Generate a random employee ID for the first user
+        const employeeId = `ADMIN-${Date.now().toString().slice(-6)}`;
 
         // Validate required fields
-        if (!email || !password || !employeeId || !name || !role) {
+        if (!email || !password || !name || !organizationName) {
             return res.status(400).json({
-                error: 'Missing required fields: email, password, employeeId, name, and role are required',
+                error: 'Missing required fields: email, password, name, and organizationName are required',
             });
         }
 
@@ -27,15 +32,7 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             });
         }
 
-        // Validate role
-        const validRoles = ['REQUESTOR', 'AUTHORISER', 'ACCOUNTANT', 'CASHIER', 'ADMIN'];
-        if (!validRoles.includes(role)) {
-            return res.status(400).json({
-                error: 'Invalid role. Must be one of: ' + validRoles.join(', '),
-            });
-        }
-
-        // Check if employee ID already exists
+        // Check if employee ID already exists (unlikely with timestamp but good practice)
         const { data: existingUser, error: checkError } = await supabase
             .from('users')
             .select('employee_id')
@@ -43,8 +40,10 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             .single();
 
         if (existingUser) {
+            // Retry with different ID if collision (simple retry logic)
+            // For now just return error, highly unlikely
             return res.status(400).json({
-                error: 'Employee ID already exists',
+                error: 'System busy, please try again.',
             });
         }
 
@@ -69,7 +68,7 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
         }
 
         // Create Organization
-        const orgName = organizationName || `${name}'s Organization`;
+        const orgName = organizationName;
         const slug = orgName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
 
         const { data: orgData, error: orgError } = await supabase

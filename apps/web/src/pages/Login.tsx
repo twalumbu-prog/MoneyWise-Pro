@@ -8,9 +8,7 @@ export const Login: React.FC = () => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
-    const [employeeId, setEmployeeId] = useState('');
     const [organizationName, setOrganizationName] = useState('');
-    const [role, setRole] = useState('REQUESTOR');
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
     const { signInWithPassword, signUp, user } = useAuth();
@@ -40,15 +38,13 @@ export const Login: React.FC = () => {
         setLoading(true);
         setMessage('');
         try {
-            await signUp(email, password, employeeId, name, role, organizationName);
+            await signUp(email, password, name, organizationName);
             setMessage('Account created! You can now sign in.');
             setIsSignup(false);
             // Clear sensitive/specific fields
             setPassword('');
-            setEmployeeId('');
             setName('');
             setOrganizationName('');
-            setRole('REQUESTOR');
         } catch (error: any) {
             setMessage('Error signing up: ' + (error.message || 'Unknown error'));
         } finally {
@@ -96,22 +92,6 @@ export const Login: React.FC = () => {
                                     </div>
                                 </div>
                                 <div>
-                                    <label htmlFor="employee-id" className="block text-sm font-bold text-brand-navy mb-1">
-                                        Employee ID
-                                    </label>
-                                    <div className="mt-1">
-                                        <input
-                                            id="employee-id"
-                                            name="employeeId"
-                                            type="text"
-                                            required
-                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
-                                            value={employeeId}
-                                            onChange={(e) => setEmployeeId(e.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <div>
                                     <label htmlFor="org-name" className="block text-sm font-bold text-brand-navy mb-1">
                                         Organization Name
                                     </label>
@@ -126,25 +106,6 @@ export const Login: React.FC = () => {
                                             onChange={(e) => setOrganizationName(e.target.value)}
                                             placeholder="e.g. Acme Corp"
                                         />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label htmlFor="role" className="block text-sm font-bold text-brand-navy mb-1">
-                                        Role
-                                    </label>
-                                    <div className="mt-1">
-                                        <select
-                                            id="role"
-                                            name="role"
-                                            className="block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
-                                            value={role}
-                                            onChange={(e) => setRole(e.target.value)}
-                                        >
-                                            <option value="REQUESTOR">Requestor</option>
-                                            <option value="APPROVER">Approver</option>
-                                            <option value="CASHIER">Cashier</option>
-                                            <option value="ADMIN">Admin</option>
-                                        </select>
                                     </div>
                                 </div>
                             </>
