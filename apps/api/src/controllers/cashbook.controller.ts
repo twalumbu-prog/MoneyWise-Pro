@@ -254,7 +254,7 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
                         line_item_id: item.id,
                         description: item.description,
                         account_code: suggestion.account_code,
-                        account_name: account ? account.name : 'Unknown',
+                        account_name: account ? (account as any).name : 'Unknown',
                         confidence: suggestion.confidence,
                         reasoning: suggestion.reasoning,
                         method: suggestion.method

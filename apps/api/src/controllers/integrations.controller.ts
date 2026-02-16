@@ -3,7 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { supabase } from '../lib/supabase';
 
-export const connectQuickBooks = async (req: Request, res: Response) => {
+export const connectQuickBooks = async (req: Request, res: any) => {
     try {
         const url = QuickBooksService.getAuthUrl();
         res.json({ url });
@@ -12,7 +12,7 @@ export const connectQuickBooks = async (req: Request, res: Response) => {
     }
 };
 
-export const quickBooksCallback = async (req: Request, res: Response) => {
+export const quickBooksCallback = async (req: Request, res: any) => {
     const { code, realmId } = req.query;
 
     if (!code || !realmId) {
@@ -31,7 +31,7 @@ export const quickBooksCallback = async (req: Request, res: Response) => {
     }
 };
 
-export const getIntegrationStatus = async (req: Request, res: Response) => {
+export const getIntegrationStatus = async (req: Request, res: any) => {
     try {
         const { data, error } = await supabase
             .from('integrations')
@@ -50,7 +50,7 @@ export const getIntegrationStatus = async (req: Request, res: Response) => {
     }
 };
 
-export const getQuickBooksAccounts = async (req: Request, res: Response) => {
+export const getQuickBooksAccounts = async (req: Request, res: any) => {
     try {
         const accounts = await QuickBooksService.fetchAccounts();
         res.json(accounts);
@@ -59,7 +59,7 @@ export const getQuickBooksAccounts = async (req: Request, res: Response) => {
     }
 };
 
-export const disconnectQuickBooks = async (req: Request, res: Response) => {
+export const disconnectQuickBooks = async (req: Request, res: any) => {
     try {
         const { error } = await supabase
             .from('integrations')
@@ -73,7 +73,7 @@ export const disconnectQuickBooks = async (req: Request, res: Response) => {
     }
 };
 
-export const syncRequisition = async (req: Request, res: Response) => {
+export const syncRequisition = async (req: Request, res: any) => {
     const { id } = req.params;
     // req.user is populated by requireAuth middleware
     const userId = (req as any).user?.id;

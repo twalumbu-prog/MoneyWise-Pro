@@ -5,7 +5,7 @@ import { aiService } from '../services/ai/ai.service';
 import pool from '../db';
 
 
-export const getAccounts = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getAccounts = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const organization_id = (req as any).user.organization_id;
 
@@ -28,7 +28,7 @@ export const getAccounts = async (req: AuthRequest, res: Response): Promise<any>
     }
 };
 
-export const createAccount = async (req: AuthRequest, res: Response): Promise<any> => {
+export const createAccount = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const { code, name, type, subtype, description } = req.body;
         const organization_id = (req as any).user.organization_id;
@@ -59,7 +59,7 @@ export const createAccount = async (req: AuthRequest, res: Response): Promise<an
     }
 };
 
-export const updateAccount = async (req: AuthRequest, res: Response): Promise<any> => {
+export const updateAccount = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { code, name, type, subtype, description, is_active } = req.body;
@@ -185,9 +185,9 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
 
         if (localError) throw localError;
 
-        const existingQbIds = new Set(localAccounts?.map(a => a.qb_account_id).filter(Boolean));
-        const existingCodes = new Set(localAccounts?.map(a => a.code));
-        const existingNames = new Set(localAccounts?.map(a => a.name));
+        const existingQbIds = new Set(localAccounts?.map((a: any) => a.qb_account_id).filter(Boolean));
+        const existingCodes = new Set(localAccounts?.map((a: any) => a.code));
+        const existingNames = new Set(localAccounts?.map((a: any) => a.name));
 
         const typeMap: Record<string, string> = {
             'Expense': 'EXPENSE',

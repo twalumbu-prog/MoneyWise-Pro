@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 
-export const getUsers = async (req: AuthRequest, res: Response): Promise<any> => {
+export const getUsers = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const organization_id = (req as any).user.organization_id;
 
@@ -26,7 +26,7 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<any> =>
     }
 };
 
-export const createUser = async (req: AuthRequest, res: Response): Promise<any> => {
+export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const { email, password, name, role, employeeId, username } = req.body;
         const organization_id = (req as any).user.organization_id;
@@ -95,7 +95,7 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<any> 
     }
 };
 
-export const updateUser = async (req: AuthRequest, res: Response): Promise<any> => {
+export const updateUser = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const { role, status, name } = req.body;
@@ -138,7 +138,7 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<any> 
     }
 };
 
-export const deleteUser = async (req: AuthRequest, res: Response): Promise<any> => {
+export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const organization_id = (req as any).user.organization_id;
