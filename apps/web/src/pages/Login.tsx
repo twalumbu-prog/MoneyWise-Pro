@@ -9,6 +9,7 @@ export const Login: React.FC = () => {
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
     const [employeeId, setEmployeeId] = useState('');
+    const [organizationName, setOrganizationName] = useState('');
     const [role, setRole] = useState('REQUESTOR');
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
@@ -39,13 +40,14 @@ export const Login: React.FC = () => {
         setLoading(true);
         setMessage('');
         try {
-            await signUp(email, password, employeeId, name, role);
+            await signUp(email, password, employeeId, name, role, organizationName);
             setMessage('Account created! You can now sign in.');
             setIsSignup(false);
             // Clear sensitive/specific fields
             setPassword('');
             setEmployeeId('');
             setName('');
+            setOrganizationName('');
             setRole('REQUESTOR');
         } catch (error: any) {
             setMessage('Error signing up: ' + (error.message || 'Unknown error'));
@@ -106,6 +108,23 @@ export const Login: React.FC = () => {
                                             className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                             value={employeeId}
                                             onChange={(e) => setEmployeeId(e.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label htmlFor="org-name" className="block text-sm font-bold text-brand-navy mb-1">
+                                        Organization Name
+                                    </label>
+                                    <div className="mt-1">
+                                        <input
+                                            id="org-name"
+                                            name="organizationName"
+                                            type="text"
+                                            required
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                            value={organizationName}
+                                            onChange={(e) => setOrganizationName(e.target.value)}
+                                            placeholder="e.g. Acme Corp"
                                         />
                                     </div>
                                 </div>
