@@ -57,22 +57,17 @@ export const Login: React.FC = () => {
     return (
         <div className="min-h-screen bg-brand-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
             {/* Navbar-style Branding */}
+            {/* Navbar-style Branding */}
             <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
                 <div className="flex items-center space-x-3">
-                    <div className="h-10 w-10 bg-brand-navy rounded-xl flex items-center justify-center shadow-lg shadow-brand-navy/20">
-                        <svg className="h-6 w-6 text-brand-green" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
                     <div>
                         <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
-                        <p className="text-xs text-gray-500 font-medium tracking-wider uppercase">Financial Control</p>
                     </div>
                 </div>
             </div>
 
-            <div className="sm:mx-auto sm:w-full sm:max-w-md mt-12 sm:mt-0">
-                <h2 className="text-center text-3xl font-bold text-brand-navy mb-8">
+            <div className="sm:mx-auto sm:w-full sm:max-w-md mt-24 sm:mt-8">
+                <h2 className="text-center text-xl font-bold text-brand-navy mb-8">
                     {isSignup ? 'Create your account' : 'Sign in to continue'}
                 </h2>
             </div>
