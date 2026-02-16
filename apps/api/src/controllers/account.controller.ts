@@ -5,11 +5,18 @@ import { aiService } from '../services/ai/ai.service';
 import pool from '../db';
 
 
-export const getAccounts = async (req: any, res: any): Promise<any> => {
+export const getAccounts = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
+        const userId = req.user.id;
+
+        // Get user's organization
+        const { data: user } = await supabase.from('users').select('organization_id').eq('id', userId).single();
+        if (!user?.organization_id) return res.status(400).json({ error: 'User not in organization' });
+
         const { data, error } = await supabase
             .from('accounts')
             .select('*')
+            .eq('organization_id', user.organization_id) // Filter by org
             .eq('is_active', true)
             .order('code', { ascending: true });
 
@@ -21,12 +28,14 @@ export const getAccounts = async (req: any, res: any): Promise<any> => {
     }
 };
 
-export const createAccount = async (req: any, res: any): Promise<any> => {
+export const createAccount = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
-        const { code, name, type, description } = req.body;
+        const { code, name, type, subtype, description } = req.body;
+        const userId = req.user.id;
 
-        // In a real app, we'd check if user is admin/accountant here
-        // For now, allow authenticated users to create accounts for easier testing/setup
+        // Get user's organization
+        const { data: user } = await supabase.from('users').select('organization_id').eq('id', userId).single();
+        if (!user?.organization_id) return res.status(400).json({ error: 'User not in organization' });
 
         const { data, error } = await supabase
             .from('accounts')
@@ -34,7 +43,9 @@ export const createAccount = async (req: any, res: any): Promise<any> => {
                 code,
                 name,
                 type,
+                subtype, // Added subtype
                 description,
+                organization_id: user.organization_id, // Link to org
                 is_active: true
             })
             .select()
@@ -48,10 +59,21 @@ export const createAccount = async (req: any, res: any): Promise<any> => {
     }
 };
 
-export const updateAccount = async (req: any, res: any): Promise<any> => {
+export const updateAccount = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
-        const { code, name, type, description, is_active } = req.body;
+        const { code, name, type, subtype, description, is_active } = req.body;
+        const userId = req.user.id;
+
+        // Get user's organization (security check could be stricter here, ensuring account belongs to org)
+        const { data: user } = await supabase.from('users').select('organization_id').eq('id', userId).single();
+        if (!user?.organization_id) return res.status(400).json({ error: 'User not in organization' });
+
+        // Ensure account belongs to same org
+        const { data: account } = await supabase.from('accounts').select('organization_id').eq('id', id).single();
+        if (!account || account.organization_id !== user.organization_id) {
+            return res.status(404).json({ error: 'Account not found in organization' });
+        }
 
         const { data, error } = await supabase
             .from('accounts')
@@ -59,6 +81,7 @@ export const updateAccount = async (req: any, res: any): Promise<any> => {
                 code,
                 name,
                 type,
+                subtype, // Added subtype
                 description,
                 is_active,
                 qb_account_id: req.body.qb_account_id,
@@ -69,8 +92,6 @@ export const updateAccount = async (req: any, res: any): Promise<any> => {
             .single();
 
         if (error) throw error;
-        if (!data) return res.status(404).json({ error: 'Account not found' });
-
         res.json(data);
     } catch (error: any) {
         console.error('Error updating account:', error);
@@ -143,18 +164,18 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
 export const importAccounts = async (req: any, res: any): Promise<any> => {
     try {
         console.log('[Account Import] Starting import from QuickBooks...');
-        
+
         // 1. Fetch all accounts from QB
         const { QuickBooksService } = require('../services/quickbooks.service');
         const qbAccounts = await QuickBooksService.fetchAccounts();
-        
+
         console.log(`[Account Import] Fetched ${qbAccounts.length} accounts from QB`);
 
         // 2. Fetch all local accounts to check existing
         const { data: localAccounts, error: localError } = await supabase
             .from('accounts')
             .select('qb_account_id, code, name');
-            
+
         if (localError) throw localError;
 
         const existingQbIds = new Set(localAccounts?.map(a => a.qb_account_id).filter(Boolean));
@@ -183,10 +204,10 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
         const newAccounts = [];
 
         for (const qbAcc of qbAccounts) {
-            if (existingQbIds.has(qbAcc.Id)) continue; 
-            if (existingNames.has(qbAcc.Name)) continue; 
-            
-            let localType = 'EXPENSE'; 
+            if (existingQbIds.has(qbAcc.Id)) continue;
+            if (existingNames.has(qbAcc.Name)) continue;
+
+            let localType = 'EXPENSE';
             if (typeMap[qbAcc.AccountType]) {
                 localType = typeMap[qbAcc.AccountType];
             } else if (typeMap[qbAcc.Classification]) {
@@ -200,7 +221,7 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
 
             if (existingCodes.has(code)) {
                 code = `${code}-QB`;
-                if (existingCodes.has(code)) continue; 
+                if (existingCodes.has(code)) continue;
             }
 
             newAccounts.push({
@@ -212,8 +233,8 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
                 qb_account_id: qbAcc.Id,
                 updated_at: new Date().toISOString()
             });
-            
-            existingCodes.add(code); 
+
+            existingCodes.add(code);
         }
 
         if (newAccounts.length === 0) {

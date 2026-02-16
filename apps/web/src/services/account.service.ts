@@ -7,8 +7,10 @@ export interface Account {
     code: string;
     name: string;
     type: 'ASSET' | 'LIABILITY' | 'EQUITY' | 'INCOME' | 'EXPENSE';
+    subtype?: string;
     description: string;
     is_active: boolean;
+    organization_id?: string;
 }
 
 export const accountService = {

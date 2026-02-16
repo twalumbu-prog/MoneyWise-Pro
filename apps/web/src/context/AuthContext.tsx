@@ -5,12 +5,13 @@ import { supabase } from '../lib/supabase';
 interface AuthContextType {
     user: User | null;
     userRole: string | null;
+    organizationId: string | null;
     session: Session | null;
     loading: boolean;
     signIn: (email: string) => Promise<void>;
     signInWithPassword: (email: string, password: string) => Promise<void>;
     signUpWithPassword: (email: string, password: string) => Promise<void>;
-    signUp: (email: string, password: string, employeeId: string, name: string, role: string) => Promise<void>;
+    signUp: (email: string, password: string, employeeId: string, name: string, role: string, organizationName?: string) => Promise<void>;
     signOut: () => Promise<void>;
 }
 
@@ -21,17 +22,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [session, setSession] = useState<Session | null>(null);
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState<string | null>(null);
+    const [organizationId, setOrganizationId] = useState<string | null>(null);
 
     useEffect(() => {
-        const fetchRole = async (userId: string) => {
+        const fetchRoleAndOrg = async (userId: string) => {
             const { data, error } = await supabase
                 .from('users')
-                .select('role')
+                .select('role, organization_id')
                 .eq('id', userId)
                 .single();
 
             if (data && !error) {
-                setUserRole(data.role);
+                const userData = data as any;
+                setUserRole(userData.role);
+                setOrganizationId(userData.organization_id);
             }
         };
 
@@ -39,7 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchRole(session.user.id);
+                fetchRoleAndOrg(session.user.id);
             } else {
                 setLoading(false);
             }
@@ -49,9 +53,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchRole(session.user.id).then(() => setLoading(false));
+                fetchRoleAndOrg(session.user.id).then(() => setLoading(false));
             } else {
                 setUserRole(null);
+                setOrganizationId(null);
                 setLoading(false);
             }
         });
@@ -97,7 +102,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     };
 
-    const signUp = async (email: string, password: string, employeeId: string, name: string, role: string) => {
+    const signUp = async (email: string, password: string, employeeId: string, name: string, role: string, organizationName?: string) => {
         const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
         const response = await fetch(`${apiUrl}/auth/register`, {
             method: 'POST',
@@ -110,6 +115,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 employeeId,
                 name,
                 role,
+                organizationName
             }),
         });
 
@@ -127,10 +133,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
         setSession(null);
         setUserRole(null);
+        setOrganizationId(null);
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, userRole, loading, signIn, signInWithPassword, signUpWithPassword, signUp, signOut }}>
+        <AuthContext.Provider value={{ user, session, userRole, organizationId, loading, signIn, signInWithPassword, signUpWithPassword, signUp, signOut }}>
             {children}
         </AuthContext.Provider>
     );

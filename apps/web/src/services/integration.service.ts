@@ -4,12 +4,9 @@ const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replac
 
 export interface IntegrationStatus {
     connected: boolean;
-    details: {
-        provider: string;
-        token_expires_at: string;
-        updated_at: string;
-        realm_id: string;
-    } | null;
+    companyName?: string;
+    lastSync?: string;
+    details?: any;
 }
 
 export const integrationService = {

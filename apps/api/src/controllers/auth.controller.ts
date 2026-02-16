@@ -11,7 +11,7 @@ interface RegisterUserRequest {
 
 export const registerUser = async (req: any, res: any): Promise<any> => {
     try {
-        const { email, password, employeeId, name, role }: RegisterUserRequest = req.body;
+        const { email, password, employeeId, name, role, organizationName }: RegisterUserRequest & { organizationName?: string } = req.body;
 
         // Validate required fields
         if (!email || !password || !employeeId || !name || !role) {
@@ -68,18 +68,42 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             });
         }
 
-        // UPSERT user record into public.users table to handle potential race conditions with triggers
+        // Create Organization
+        const orgName = organizationName || `${name}'s Organization`;
+        const slug = orgName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
+
+        const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .insert({
+                name: orgName,
+                slug: slug
+            })
+            .select()
+            .single();
+
+        if (orgError || !orgData) {
+            // Rollback auth user
+            await (supabase.auth as any).admin.deleteUser(authData.user.id);
+            return res.status(500).json({
+                error: 'Failed to create organization: ' + (orgError?.message || 'Unknown error'),
+            });
+        }
+
+        // UPSERT user record into public.users table with organization_id
         const { error: dbError } = await supabase.from('users').upsert({
             id: authData.user.id,
             employee_id: employeeId,
             name,
             role,
+            organization_id: orgData.id,
+            status: 'ACTIVE'
         });
 
         if (dbError) {
             console.error('Database error:', dbError);
-            // Rollback: delete the auth user if database insert fails
+            // Rollback: delete the auth user and organization if database insert fails
             await (supabase.auth as any).admin.deleteUser(authData.user.id);
+            await supabase.from('organizations').delete().eq('id', orgData.id);
             return res.status(500).json({
                 error: 'Failed to create user profile: ' + dbError.message,
             });
@@ -88,6 +112,7 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
         return res.status(201).json({
             message: 'User registered successfully. You can now log in.',
             userId: authData.user.id,
+            organizationId: orgData.id
         });
     } catch (error: any) {
         console.error('Registration error:', error);
