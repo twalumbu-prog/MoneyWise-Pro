@@ -7,16 +7,16 @@ import pool from '../db';
 
 export const getAccounts = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
-        const userId = req.user.id;
+        const organization_id = (req as any).user.organization_id;
 
-        // Get user's organization
-        const { data: user } = await supabase.from('users').select('organization_id').eq('id', userId).single();
-        if (!user?.organization_id) return res.status(400).json({ error: 'User not in organization' });
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User not in organization' });
+        }
 
         const { data, error } = await supabase
             .from('accounts')
             .select('*')
-            .eq('organization_id', user.organization_id) // Filter by org
+            .eq('organization_id', organization_id) // Filter by org
             .eq('is_active', true)
             .order('code', { ascending: true });
 
@@ -31,11 +31,11 @@ export const getAccounts = async (req: AuthRequest, res: Response): Promise<any>
 export const createAccount = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { code, name, type, subtype, description } = req.body;
-        const userId = req.user.id;
+        const organization_id = (req as any).user.organization_id;
 
-        // Get user's organization
-        const { data: user } = await supabase.from('users').select('organization_id').eq('id', userId).single();
-        if (!user?.organization_id) return res.status(400).json({ error: 'User not in organization' });
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User not in organization' });
+        }
 
         const { data, error } = await supabase
             .from('accounts')
@@ -45,7 +45,7 @@ export const createAccount = async (req: AuthRequest, res: Response): Promise<an
                 type,
                 subtype, // Added subtype
                 description,
-                organization_id: user.organization_id, // Link to org
+                organization_id, // Link to org
                 is_active: true
             })
             .select()
@@ -63,15 +63,15 @@ export const updateAccount = async (req: AuthRequest, res: Response): Promise<an
     try {
         const { id } = req.params;
         const { code, name, type, subtype, description, is_active } = req.body;
-        const userId = req.user.id;
+        const organization_id = (req as any).user.organization_id;
 
-        // Get user's organization (security check could be stricter here, ensuring account belongs to org)
-        const { data: user } = await supabase.from('users').select('organization_id').eq('id', userId).single();
-        if (!user?.organization_id) return res.status(400).json({ error: 'User not in organization' });
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User not in organization' });
+        }
 
         // Ensure account belongs to same org
         const { data: account } = await supabase.from('accounts').select('organization_id').eq('id', id).single();
-        if (!account || account.organization_id !== user.organization_id) {
+        if (!account || account.organization_id !== organization_id) {
             return res.status(404).json({ error: 'Account not found in organization' });
         }
 
@@ -171,10 +171,17 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
 
         console.log(`[Account Import] Fetched ${qbAccounts.length} accounts from QB`);
 
+        const organization_id = (req as any).user.organization_id;
+
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User not in organization' });
+        }
+
         // 2. Fetch all local accounts to check existing
         const { data: localAccounts, error: localError } = await supabase
             .from('accounts')
-            .select('qb_account_id, code, name');
+            .select('qb_account_id, code, name')
+            .eq('organization_id', organization_id); // Filter by org
 
         if (localError) throw localError;
 
@@ -231,6 +238,7 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
                 description: qbAcc.Description || `Imported from QuickBooks (${qbAcc.AccountType})`,
                 is_active: qbAcc.Active !== false,
                 qb_account_id: qbAcc.Id,
+                organization_id, // Link to org
                 updated_at: new Date().toISOString()
             });
 

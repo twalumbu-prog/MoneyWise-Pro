@@ -63,6 +63,24 @@ export const requireAuth = async (req: any, res: any, next: any) => {
         }
 
         console.log(`[Auth] User authenticated: ${user.id}`);
+
+        // Fetch user profile (role, organization_id)
+        const { data: profile, error: profileError } = await supabase
+            .from('users')
+            .select('role, organization_id')
+            .eq('id', user.id)
+            .single();
+
+        if (profileError || !profile) {
+            console.warn(`[Auth] User profile not found for ${user.id}. Tables might be out of sync.`);
+            // We don't block auth here, but organization_id will be missing.
+            // Downstream controllers should handle missing organization_id if strictly required.
+        } else {
+            user.role = profile.role;
+            user.organization_id = profile.organization_id;
+            // console.log(`[Auth] Attached context: Role=${user.role}, Org=${user.organization_id}`);
+        }
+
         req.user = user;
         (next as any)();
     } catch (err: any) {

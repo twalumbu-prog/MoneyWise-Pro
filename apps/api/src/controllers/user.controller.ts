@@ -4,23 +4,16 @@ import { supabase } from '../lib/supabase';
 
 export const getUsers = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
-        const userId = req.user.id;
+        const organization_id = (req as any).user.organization_id;
 
-        // Get current user's organization
-        const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('organization_id')
-            .eq('id', userId)
-            .single();
-
-        if (userError || !userData?.organization_id) {
+        if (!organization_id) {
             return res.status(400).json({ error: 'User does not belong to an organization' });
         }
 
         const { data: users, error } = await supabase
             .from('users')
             .select('*')
-            .eq('organization_id', userData.organization_id)
+            .eq('organization_id', organization_id)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -36,21 +29,15 @@ export const getUsers = async (req: AuthRequest, res: Response): Promise<any> =>
 export const createUser = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { email, password, name, role, employeeId } = req.body;
-        const currentUserId = req.user.id;
+        const organization_id = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
 
-        // Get current user's organization
-        const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('organization_id, role')
-            .eq('id', currentUserId)
-            .single();
-
-        if (userError || !userData?.organization_id) {
+        if (!organization_id) {
             return res.status(400).json({ error: 'User does not belong to an organization' });
         }
 
         // Only Admin can create users
-        if (userData.role !== 'ADMIN') {
+        if (userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Only admins can add users' });
         }
 
@@ -76,7 +63,7 @@ export const createUser = async (req: AuthRequest, res: Response): Promise<any> 
             name,
             role,
             employee_id: employeeId || `EMP-${Date.now()}`,
-            organization_id: userData.organization_id,
+            organization_id: organization_id,
             status: 'ACTIVE'
         });
 
@@ -98,16 +85,11 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<any> 
     try {
         const { id } = req.params;
         const { role, status, name } = req.body;
-        const currentUserId = req.user.id;
+        const organization_id = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
 
         // Verify admin
-        const { data: adminData } = await supabase
-            .from('users')
-            .select('organization_id, role')
-            .eq('id', currentUserId)
-            .single();
-
-        if (adminData?.role !== 'ADMIN') {
+        if (userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Only admins can update users' });
         }
 
@@ -118,7 +100,7 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<any> 
             .eq('id', id)
             .single();
 
-        if (!targetUser || targetUser.organization_id !== adminData.organization_id) {
+        if (!targetUser || targetUser.organization_id !== organization_id) {
             return res.status(404).json({ error: 'User not found in organization' });
         }
 
@@ -145,16 +127,11 @@ export const updateUser = async (req: AuthRequest, res: Response): Promise<any> 
 export const deleteUser = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
         const { id } = req.params;
-        const currentUserId = req.user.id;
+        const organization_id = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
 
         // Verify admin
-        const { data: adminData } = await supabase
-            .from('users')
-            .select('organization_id, role')
-            .eq('id', currentUserId)
-            .single();
-
-        if (adminData?.role !== 'ADMIN') {
+        if (userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Only admins can delete users' });
         }
 
@@ -165,7 +142,7 @@ export const deleteUser = async (req: AuthRequest, res: Response): Promise<any> 
             .eq('id', id)
             .single();
 
-        if (!targetUser || targetUser.organization_id !== adminData.organization_id) {
+        if (!targetUser || targetUser.organization_id !== organization_id) {
             return res.status(404).json({ error: 'User not found in organization' });
         }
 

@@ -22,12 +22,18 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             monthly_deduction
         } = req.body;
         const requestor_id = (req as any).user.id;
+        const organization_id = (req as any).user.organization_id;
+
+        if (!organization_id) {
+            return res.status(400).json({ error: 'Organization context missing. Please contact support.' });
+        }
 
         // 1. Insert Requisition
         const { data: requisition, error: reqError } = await supabase
             .from('requisitions')
             .insert({
                 requestor_id,
+                organization_id,
                 description,
                 estimated_total,
                 status: 'DRAFT',
@@ -97,9 +103,10 @@ export const getRequisitions = async (req: any, res: any): Promise<any> => {
                 *,
                 requestor:users!requestor_id(name)
             `)
+            .eq('organization_id', (req as any).user.organization_id)
             .order('created_at', { ascending: false });
 
-        // 2. Filter based on role (Accountants/Admins/Cashiers see all)
+        // 2. Filter based on role (Accountants/Admins/Cashiers see all within org)
         if (role === 'REQUESTOR') {
             query = query.eq('requestor_id', userId);
         }
@@ -210,10 +217,12 @@ export const getAllRequisitionsAdmin = async (req: any, res: any): Promise<any> 
         }
 
         // Fetch all requisitions with requester name
+        // Fetch all requisitions with requester name
         // users!requestor_id refers to the foreign key relationship
         const { data, error } = await supabase
             .from('requisitions')
             .select('*, requestor:users!requestor_id(name)')
+            .eq('organization_id', (req as any).user.organization_id)
             .order('created_at', { ascending: false });
 
         console.log(`[Requisition] getAllRequisitionsAdmin: Found ${data?.length || 0} records for user ${req.user?.id} (Role: ${userRole})`);
