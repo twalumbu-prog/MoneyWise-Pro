@@ -11,7 +11,7 @@ interface AuthContextType {
     signIn: (email: string) => Promise<void>;
     signInWithPassword: (email: string, password: string) => Promise<void>;
     signUpWithPassword: (email: string, password: string) => Promise<void>;
-    signUp: (email: string, password: string, employeeId: string, name: string, role: string, organizationName?: string) => Promise<void>;
+    signUp: (email: string, password: string, name: string, organizationName: string) => Promise<void>;
     signOut: () => Promise<void>;
 }
 
