@@ -16,14 +16,34 @@ const formatDate = (dateString: string) => {
         new Date(dateString).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+const formatDescription = (entry: CashbookEntry) => {
+    let desc = entry.description;
+    if (entry.requisitions?.reference_number) {
+        desc += ` (Voucher ${entry.requisitions.reference_number})`;
+    }
+    if (entry.requisitions?.requestor?.name) {
+        desc += ` - Paid to: ${entry.requisitions.requestor.name}`;
+    }
+    return desc;
+};
+
+const formatStatusType = (entry: CashbookEntry) => {
+    const type = entry.entry_type.replace(/_/g, ' ');
+    const status = entry.requisitions?.status || '-';
+    // If it's just a system entry like Opening Balance, just show Type
+    if (entry.entry_type === 'OPENING_BALANCE' || entry.entry_type === 'CLOSING_BALANCE') {
+        return type;
+    }
+    return `${status} / ${type}`;
+};
+
 export const exportToCSV = (entries: CashbookEntry[], filename: string) => {
-    const headers = ['Date', 'Description', 'Type', 'Status', 'Debit', 'Credit', 'Balance'];
+    const headers = ['Date', 'Description & Details', 'Status / Type', 'Debit', 'Credit', 'Balance'];
 
     const rows = entries.map(entry => [
         formatDate(entry.date),
-        entry.description,
-        entry.entry_type,
-        entry.requisitions?.status || '-',
+        `"${formatDescription(entry).replace(/"/g, '""')}"`, // Handle quotes in CSV
+        formatStatusType(entry),
         entry.debit > 0 ? entry.debit : '',
         entry.credit > 0 ? entry.credit : '',
         entry.balance_after
@@ -31,7 +51,7 @@ export const exportToCSV = (entries: CashbookEntry[], filename: string) => {
 
     const csvContent = [
         headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        ...rows.map(row => row.join(','))
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -50,22 +70,27 @@ export const exportToCSV = (entries: CashbookEntry[], filename: string) => {
 export const exportToExcel = (entries: CashbookEntry[], filename: string, period: { start: string, end: string }) => {
     const data = entries.map(entry => ({
         Date: formatDate(entry.date),
-        Description: entry.description,
-        Type: entry.entry_type,
-        Status: entry.requisitions?.status || '-',
+        'Description & Details': formatDescription(entry),
+        'Status / Type': formatStatusType(entry),
         Debit: entry.debit > 0 ? entry.debit : null,
         Credit: entry.credit > 0 ? entry.credit : null,
-        Balance: entry.balance_after,
-        'Requisition ID': entry.requisition_id || '-'
+        Balance: entry.balance_after
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(data);
 
-    // Add period info header (hacky insert at top)
+    // Add period info header
     XLSX.utils.sheet_add_aoa(worksheet, [[`Cash Ledger Export: ${period.start} to ${period.end}`]], { origin: 'A1' });
-    // Move original data down? slightly complex with json_to_sheet. 
-    // Simpler: Just make the filename descriptive and the sheet content standard tabular data.
-    // Let's stick to standard tabular data for easier processing by users.
+
+    // Adjust column widths (approximate)
+    worksheet['!cols'] = [
+        { wch: 20 }, // Date
+        { wch: 50 }, // Description
+        { wch: 25 }, // Status/Type
+        { wch: 12 }, // Debit
+        { wch: 12 }, // Credit
+        { wch: 15 }  // Balance
+    ];
 
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Cash Ledger');
@@ -86,11 +111,11 @@ export const exportToPDF = (entries: CashbookEntry[], filename: string, period: 
     doc.text(`Period: ${period.start} to ${period.end}`, 14, 40);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 46);
 
-    const tableColumn = ["Date", "Description", "Type", "Debit", "Credit", "Balance"];
+    const tableColumn = ["Date", "Description & Details", "Status / Type", "Debit", "Credit", "Balance"];
     const tableRows = entries.map(entry => [
         formatDate(entry.date),
-        entry.description,
-        entry.entry_type.replace('_', ' '),
+        formatDescription(entry),
+        formatStatusType(entry),
         entry.debit > 0 ? formatCurrency(entry.debit) : '-',
         entry.credit > 0 ? formatCurrency(entry.credit) : '-',
         formatCurrency(entry.balance_after)
@@ -102,7 +127,15 @@ export const exportToPDF = (entries: CashbookEntry[], filename: string, period: 
         startY: 55,
         styles: { fontSize: 8 },
         headStyles: { fillColor: [41, 128, 185] }, // Brand color approximation
-        alternateRowStyles: { fillColor: [245, 245, 245] }
+        alternateRowStyles: { fillColor: [245, 245, 245] },
+        columnStyles: {
+            0: { cellWidth: 25 },
+            1: { cellWidth: 'auto' }, // Description gets auto width
+            2: { cellWidth: 30 },
+            3: { cellWidth: 20, halign: 'right' },
+            4: { cellWidth: 20, halign: 'right' },
+            5: { cellWidth: 25, halign: 'right' }
+        }
     });
 
     doc.save(`${filename}.pdf`);
