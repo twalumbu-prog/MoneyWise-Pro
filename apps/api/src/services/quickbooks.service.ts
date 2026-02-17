@@ -17,7 +17,7 @@ export class QuickBooksService {
         };
     }
 
-    static getAuthUrl(): string {
+    static getAuthUrl(organizationId: string): string {
         const { clientId, redirectUri, authUrl } = this.getEnv();
         console.log('[QB] Generating Auth URL...');
         console.log('[QB] Client ID from env:', clientId ? `${clientId.substring(0, 5)}...` : 'undefined');
@@ -28,10 +28,11 @@ export class QuickBooksService {
             'profile',
             'email'
         ];
-        return `${authUrl}?client_id=${clientId}&response_type=code&scope=${encodeURIComponent(scopes.join(' '))}&redirect_uri=${encodeURIComponent(redirectUri || '')}&state=setup`;
+        const state = `org:${organizationId}`; // Encode org ID in state
+        return `${authUrl}?client_id=${clientId}&response_type=code&scope=${encodeURIComponent(scopes.join(' '))}&redirect_uri=${encodeURIComponent(redirectUri || '')}&state=${state}`;
     }
 
-    static async exchangeCodeForToken(code: string, realmId: string) {
+    static async exchangeCodeForToken(code: string, realmId: string, organizationId: string) {
         const { clientId, clientSecret, tokenUrl, redirectUri } = this.getEnv();
         const b64Auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
@@ -61,26 +62,30 @@ export class QuickBooksService {
             .from('integrations')
             .upsert({
                 provider: 'QUICKBOOKS',
+                organization_id: organizationId, // Save org ID
                 access_token: encrypt(data.access_token),
                 refresh_token: encrypt(data.refresh_token),
                 token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
                 refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
                 realm_id: realmId,
                 updated_at: new Date().toISOString()
-            }, { onConflict: 'provider' });
+            }, { onConflict: 'provider, organization_id' }); // Conflict on compound key
 
         if (error) throw error;
         return { success: true };
     }
 
-    static async getValidToken() {
+    static async getValidToken(organizationId: string) {
+        if (!organizationId) throw new Error('Organization ID required for QB token');
+
         const { data: qb, error } = await supabase
             .from('integrations')
             .select('*')
             .eq('provider', 'QUICKBOOKS')
+            .eq('organization_id', organizationId)
             .single();
 
-        if (error || !qb) throw new Error('QuickBooks not integrated');
+        if (error || !qb) throw new Error('QuickBooks not integrated for this organization');
 
         const now = new Date();
         const expiresAt = new Date(qb.token_expires_at);
@@ -128,14 +133,15 @@ export class QuickBooksService {
                 refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
                 updated_at: new Date().toISOString()
             })
-            .eq('provider', 'QUICKBOOKS');
+            .eq('provider', 'QUICKBOOKS')
+            .eq('organization_id', organizationId);
 
         return { accessToken: data.access_token, realmId: qb.realm_id };
     }
 
-    static async fetchAccounts() {
+    static async fetchAccounts(organizationId: string) {
         const { apiBase } = this.getEnv();
-        const { accessToken, realmId } = await this.getValidToken();
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
         const query = encodeURIComponent("select * from Account MAXRESULTS 1000");
         const url = `${apiBase}/${realmId}/query?query=${query}&minorversion=70`;
 
@@ -155,7 +161,7 @@ export class QuickBooksService {
         return data.QueryResponse.Account || [];
     }
 
-    static async createExpense(requisitionId: string, userId?: string) {
+    static async createExpense(requisitionId: string, userId: string | undefined, organizationId: string) {
         try {
             const { data: requisition, error: reqError } = await supabase
                 .from('requisitions')
@@ -165,7 +171,7 @@ export class QuickBooksService {
 
             if (reqError || !requisition) throw new Error('Requisition not found');
 
-            const { accessToken, realmId } = await this.getValidToken();
+            const { accessToken, realmId } = await this.getValidToken(organizationId);
 
             // Prepare QuickBooks Expense object
             // For simplicity, we'll create a single expense with multiple lines

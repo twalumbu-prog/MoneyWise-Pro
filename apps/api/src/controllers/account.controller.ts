@@ -165,21 +165,17 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
     try {
         console.log('[Account Import] Starting import from QuickBooks...');
 
-        // 1. Fetch all accounts from QB
-        // Use the imported service (ensure it's imported at top of file, or use consistent access)
-        // Since we are inside a function and this file uses module.exports pattern? No, it uses export const.
-        // Let's use dynamic import() or better, fix the top-level import.
-        // For now, let's keep it working but safe.
-        const { QuickBooksService } = await import('../services/quickbooks.service');
-        const qbAccounts = await QuickBooksService.fetchAccounts();
-
-        console.log(`[Account Import] Fetched ${qbAccounts.length} accounts from QB`);
-
         const organization_id = (req as any).user.organization_id;
 
         if (!organization_id) {
             return res.status(400).json({ error: 'User not in organization' });
         }
+
+        // 1. Fetch all accounts from QB
+        const { QuickBooksService } = await import('../services/quickbooks.service');
+        const qbAccounts = await QuickBooksService.fetchAccounts(organization_id);
+
+        console.log(`[Account Import] Fetched ${qbAccounts.length} accounts from QB`);
 
         // 2. Fetch all local accounts to check existing
         const { data: localAccounts, error: localError } = await supabase
@@ -236,7 +232,7 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
             }
 
             newAccounts.push({
-                code: code.substring(0, 20),
+                code: code,
                 name: qbAcc.Name,
                 type: localType,
                 description: qbAcc.Description || `Imported from QuickBooks (${qbAcc.AccountType})`,
