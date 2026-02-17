@@ -172,7 +172,6 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
         }
 
         // 1. Fetch all accounts from QB
-        const { QuickBooksService } = await import('../services/quickbooks.service');
         const qbAccounts = await QuickBooksService.fetchAccounts(organization_id);
 
         console.log(`[Account Import] Fetched ${qbAccounts.length} accounts from QB`);
