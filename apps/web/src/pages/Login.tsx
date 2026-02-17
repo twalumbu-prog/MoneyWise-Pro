@@ -212,6 +212,13 @@ export const Login: React.FC = () => {
                 <div className="mt-8 text-center text-xs text-brand-navy/40 font-medium">
                     &copy; {new Date().getFullYear()} MoneyWise Pro. All rights reserved.
                 </div>
+                <div className="mt-4 flex justify-center space-x-4 text-[10px] text-gray-400">
+                    <a href="/privacy" className="hover:text-brand-navy transition-colors">Privacy Policy</a>
+                    <span className="text-gray-300">|</span>
+                    <a href="/terms" className="hover:text-brand-navy transition-colors">Terms of Service</a>
+                    <span className="text-gray-300">|</span>
+                    <a href="mailto:smkapambwe9@gmail.com" className="hover:text-brand-navy transition-colors">Contact Support</a>
+                </div>
             </div>
         </div>
     );
