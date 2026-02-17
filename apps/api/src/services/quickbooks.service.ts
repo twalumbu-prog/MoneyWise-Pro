@@ -57,21 +57,47 @@ export class QuickBooksService {
             throw new Error(`QB Token Exchange Failed: ${data.error_description || data.error}`);
         }
 
-        // Save to database with ENCRYPTION
-        const { error } = await supabase
+        // Manual Upsert to avoid "ON CONFLICT" errors with composite keys
+        const { data: existing } = await supabase
             .from('integrations')
-            .upsert({
-                provider: 'QUICKBOOKS',
-                organization_id: organizationId, // Save org ID
-                access_token: encrypt(data.access_token),
-                refresh_token: encrypt(data.refresh_token),
-                token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
-                refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
-                realm_id: realmId,
-                updated_at: new Date().toISOString()
-            }, { onConflict: 'provider,organization_id' }); // Conflict on compound key
+            .select('id')
+            .eq('provider', 'QUICKBOOKS')
+            .eq('organization_id', organizationId)
+            .single();
 
-        if (error) throw error;
+        if (existing) {
+            // Update
+            const { error: updateError } = await supabase
+                .from('integrations')
+                .update({
+                    access_token: encrypt(data.access_token),
+                    refresh_token: encrypt(data.refresh_token),
+                    token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+                    refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
+                    realm_id: realmId,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existing.id);
+
+            if (updateError) throw updateError;
+        } else {
+            // Insert
+            const { error: insertError } = await supabase
+                .from('integrations')
+                .insert({
+                    provider: 'QUICKBOOKS',
+                    organization_id: organizationId,
+                    access_token: encrypt(data.access_token),
+                    refresh_token: encrypt(data.refresh_token),
+                    token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+                    refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
+                    realm_id: realmId,
+                    updated_at: new Date().toISOString()
+                });
+
+            if (insertError) throw insertError;
+        }
+
         return { success: true };
     }
 
