@@ -4,13 +4,16 @@ import { encrypt, decrypt } from '../utils/security.utils';
 
 export class QuickBooksService {
     private static getEnv() {
+        const isProduction = process.env.QB_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
         return {
             clientId: process.env.QB_CLIENT_ID,
             clientSecret: process.env.QB_CLIENT_SECRET,
             redirectUri: process.env.QB_REDIRECT_URI,
             tokenUrl: 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
             authUrl: 'https://appcenter.intuit.com/connect/oauth2',
-            apiBase: 'https://sandbox-quickbooks.api.intuit.com/v3/company'
+            apiBase: isProduction
+                ? 'https://quickbooks.api.intuit.com/v3/company'
+                : 'https://sandbox-quickbooks.api.intuit.com/v3/company'
         };
     }
 
