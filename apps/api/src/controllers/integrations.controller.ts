@@ -7,7 +7,7 @@ export const connectQuickBooks = async (req: AuthRequest, res: Response) => {
     try {
         const organizationId = (req as any).user.organization_id;
         const url = QuickBooksService.getAuthUrl(organizationId);
-        res.redirect(url);
+        res.json({ url });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
