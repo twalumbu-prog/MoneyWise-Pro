@@ -1,28 +1,38 @@
 import { supabase } from '../lib/supabase';
 import { encrypt, decrypt } from '../utils/security.utils';
 
-const QB_CLIENT_ID = process.env.QB_CLIENT_ID;
-const QB_CLIENT_SECRET = process.env.QB_CLIENT_SECRET;
-const QB_REDIRECT_URI = process.env.QB_REDIRECT_URI;
-const QB_TOKEN_URL = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer';
-const QB_AUTH_URL = 'https://appcenter.intuit.com/connect/oauth2';
-const QB_API_BASE = 'https://sandbox-quickbooks.api.intuit.com/v3/company'; // Use sandbox for now
 
 export class QuickBooksService {
+    private static getEnv() {
+        return {
+            clientId: process.env.QB_CLIENT_ID,
+            clientSecret: process.env.QB_CLIENT_SECRET,
+            redirectUri: process.env.QB_REDIRECT_URI,
+            tokenUrl: 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer',
+            authUrl: 'https://appcenter.intuit.com/connect/oauth2',
+            apiBase: 'https://sandbox-quickbooks.api.intuit.com/v3/company'
+        };
+    }
+
     static getAuthUrl(): string {
+        const { clientId, redirectUri, authUrl } = this.getEnv();
+        console.log('[QB] Generating Auth URL...');
+        console.log('[QB] Client ID from env:', clientId ? `${clientId.substring(0, 5)}...` : 'undefined');
+
         const scopes = [
             'com.intuit.quickbooks.accounting',
             'openid',
             'profile',
             'email'
         ];
-        return `${QB_AUTH_URL}?client_id=${QB_CLIENT_ID}&response_type=code&scope=${encodeURIComponent(scopes.join(' '))}&redirect_uri=${encodeURIComponent(QB_REDIRECT_URI || '')}&state=setup`;
+        return `${authUrl}?client_id=${clientId}&response_type=code&scope=${encodeURIComponent(scopes.join(' '))}&redirect_uri=${encodeURIComponent(redirectUri || '')}&state=setup`;
     }
 
     static async exchangeCodeForToken(code: string, realmId: string) {
-        const b64Auth = Buffer.from(`${QB_CLIENT_ID}:${QB_CLIENT_SECRET}`).toString('base64');
+        const { clientId, clientSecret, tokenUrl, redirectUri } = this.getEnv();
+        const b64Auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
-        const response = await fetch(QB_TOKEN_URL, {
+        const response = await fetch(tokenUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -32,7 +42,7 @@ export class QuickBooksService {
             body: new URLSearchParams({
                 grant_type: 'authorization_code',
                 code,
-                redirect_uri: QB_REDIRECT_URI || ''
+                redirect_uri: redirectUri || ''
             })
         });
 
@@ -81,12 +91,13 @@ export class QuickBooksService {
 
         // Refresh token
         console.log('[QB] Refreshing token...');
-        const b64Auth = Buffer.from(`${QB_CLIENT_ID}:${QB_CLIENT_SECRET}`).toString('base64');
+        const { clientId, clientSecret, tokenUrl } = this.getEnv();
+        const b64Auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
         // Decrypt the refresh token to use it
         const decryptedRefreshToken = decrypt(qb.refresh_token);
 
-        const response = await fetch(QB_TOKEN_URL, {
+        const response = await fetch(tokenUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
@@ -120,9 +131,10 @@ export class QuickBooksService {
     }
 
     static async fetchAccounts() {
+        const { apiBase } = this.getEnv();
         const { accessToken, realmId } = await this.getValidToken();
         const query = encodeURIComponent("select * from Account MAXRESULTS 1000");
-        const url = `${QB_API_BASE}/${realmId}/query?query=${query}&minorversion=70`;
+        const url = `${apiBase}/${realmId}/query?query=${query}&minorversion=70`;
 
         const response = await fetch(url, {
             headers: {
@@ -172,7 +184,8 @@ export class QuickBooksService {
                 PrivateNote: `AutoCash Requisition: ${requisition.reference_number || requisition.id}`
             };
 
-            const response = await fetch(`${QB_API_BASE}/${realmId}/expense?minorversion=70`, {
+            const { apiBase } = this.getEnv();
+            const response = await fetch(`${apiBase}/${realmId}/expense?minorversion=70`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,

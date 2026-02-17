@@ -1,7 +1,20 @@
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Explicitly load .env from the current directory
+const envPath = path.resolve(__dirname, '../.env');
+const result = dotenv.config({ path: envPath });
+
+if (result.error) {
+    console.error('[API] Error loading .env:', result.error);
+} else {
+    console.log('[API] .env loaded successfully');
+    console.log('[API] QB_CLIENT_ID:', process.env.QB_CLIENT_ID ? 'FOUND' : 'MISSING');
+}
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
-import dotenv from 'dotenv';
 import { Pool } from 'pg';
 import requisitionRoutes from './routes/requisition.routes';
 import authRoutes from './routes/auth.routes';
