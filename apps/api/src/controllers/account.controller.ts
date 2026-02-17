@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { aiService } from '../services/ai/ai.service';
+import { QuickBooksService } from '../services/quickbooks.service';
 import pool from '../db';
 
 
