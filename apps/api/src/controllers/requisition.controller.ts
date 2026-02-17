@@ -539,7 +539,8 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         );
 
         // 8. Trigger QuickBooks Sync
-        QuickBooksService.createExpense(id).catch(err =>
+        const organizationId = (req as any).user.organization_id;
+        QuickBooksService.createExpense(id, cashier_id, organizationId).catch(err =>
             console.error('[QuickBooks Sync] Background sync failed:', err)
         );
     } catch (error: any) {
