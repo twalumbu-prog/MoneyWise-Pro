@@ -147,7 +147,10 @@ export class QuickBooksService {
         });
 
         const data = await response.json();
-        if (!response.ok) throw new Error(`QB Fetch Accounts Failed`);
+        if (!response.ok) {
+            console.error('[QB Fetch Accounts Error]', JSON.stringify(data));
+            throw new Error(`QB Fetch Accounts Failed: ${JSON.stringify(data)}`);
+        }
 
         return data.QueryResponse.Account || [];
     }

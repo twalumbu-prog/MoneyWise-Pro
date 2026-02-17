@@ -166,7 +166,11 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
         console.log('[Account Import] Starting import from QuickBooks...');
 
         // 1. Fetch all accounts from QB
-        const { QuickBooksService } = require('../services/quickbooks.service');
+        // Use the imported service (ensure it's imported at top of file, or use consistent access)
+        // Since we are inside a function and this file uses module.exports pattern? No, it uses export const.
+        // Let's use dynamic import() or better, fix the top-level import.
+        // For now, let's keep it working but safe.
+        const { QuickBooksService } = await import('../services/quickbooks.service');
         const qbAccounts = await QuickBooksService.fetchAccounts();
 
         console.log(`[Account Import] Fetched ${qbAccounts.length} accounts from QB`);
@@ -262,6 +266,7 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
 
     } catch (error: any) {
         console.error('Error importing accounts:', error);
-        res.status(500).json({ error: 'Failed to import accounts', details: error.message });
+        console.error('Stack trace:', error.stack);
+        res.status(500).json({ error: 'Failed to import accounts', details: error.message, stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined });
     }
 };
