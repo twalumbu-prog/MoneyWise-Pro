@@ -69,7 +69,7 @@ export class QuickBooksService {
                 refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
                 realm_id: realmId,
                 updated_at: new Date().toISOString()
-            }, { onConflict: 'provider, organization_id' }); // Conflict on compound key
+            }, { onConflict: 'provider,organization_id' }); // Conflict on compound key
 
         if (error) throw error;
         return { success: true };
