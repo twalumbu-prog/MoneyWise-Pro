@@ -501,10 +501,9 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
                 requisition_id: id,
                 created_by: cashier_id,
                 reference_number: voucherRef,
-                posted_at: new Date().toISOString(),
                 total_credit: actualExpenditure,
                 total_debit: actualExpenditure,
-                status: 'POSTED'
+                status: 'DRAFT'
             })
             .select()
             .single();
