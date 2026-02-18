@@ -99,7 +99,7 @@ export const voucherService = {
             throw new Error(err.error || 'Failed to post voucher');
         }
         return response.json();
-    }
+    },
     async postVoucherWithClassification(requisitionId: string, items: any[]) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
