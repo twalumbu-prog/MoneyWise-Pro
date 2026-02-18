@@ -107,6 +107,7 @@ const runMigration = async () => {
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 requisition_id UUID REFERENCES requisitions(id),
                 created_by UUID REFERENCES users(id),
+                posted_by UUID REFERENCES users(id),
                 reference_number VARCHAR(50) UNIQUE,
                 date DATE,
                 amount DECIMAL(10, 2) DEFAULT 0,
@@ -118,6 +119,9 @@ const runMigration = async () => {
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
+
+            ALTER TABLE public.vouchers
+            ADD COLUMN IF NOT EXISTS posted_by UUID REFERENCES public.users(id);
 
             ALTER TABLE cashbook_entries 
             ADD COLUMN IF NOT EXISTS voucher_id UUID REFERENCES vouchers(id);
