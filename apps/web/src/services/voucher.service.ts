@@ -100,7 +100,7 @@ export const voucherService = {
         }
         return response.json();
     },
-    async postVoucherWithClassification(requisitionId: string, items: any[]) {
+    async postVoucherWithClassification(requisitionId: string, items: any[], paymentAccount?: { id: string, name: string }) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
@@ -110,7 +110,11 @@ export const voucherService = {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ items }),
+            body: JSON.stringify({
+                items,
+                payment_account_id: paymentAccount?.id,
+                payment_account_name: paymentAccount?.name
+            }),
         });
 
         if (!response.ok) {

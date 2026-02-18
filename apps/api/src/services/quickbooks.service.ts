@@ -222,7 +222,13 @@ export class QuickBooksService {
         return data.QueryResponse.Account || [];
     }
 
-    static async createExpense(requisitionId: string, userId: string | undefined, organizationId: string) {
+    static async createExpense(
+        requisitionId: string,
+        userId: string | undefined,
+        organizationId: string,
+        paymentAccountId?: string,
+        paymentAccountName?: string
+    ) {
         try {
             console.log(`[QB Expense] Step 1: Fetching requisition ${requisitionId} with line items`);
 
@@ -275,10 +281,14 @@ export class QuickBooksService {
                 throw new Error(`Total expense amount is ${totalAmount}. QuickBooks requires a positive amount.`);
             }
 
+            // Use provided payment account or default to "35" if absolutely not provided (as fallback)
+            const sourceAccountId = paymentAccountId || "35";
+            const sourceAccountName = paymentAccountName || "Petty Cash";
+
             const expense = {
                 AccountRef: {
-                    value: "35", // Petty Cash bank account in QB — TODO: make configurable
-                    name: "Petty Cash"
+                    value: sourceAccountId,
+                    name: sourceAccountName
                 },
                 PaymentType: "Cash",
                 TxnDate: new Date().toISOString().split('T')[0],
@@ -287,7 +297,7 @@ export class QuickBooksService {
             };
 
             console.log(`[QB Expense] Step 4: Sending expense to QuickBooks API`);
-            console.log(`[QB Expense] Realm: ${realmId}, Lines: ${expenseLines.length}, Total: ${totalAmount}`);
+            console.log(`[QB Expense] Realm: ${realmId}, Lines: ${expenseLines.length}, Total: ${totalAmount}, Source: ${sourceAccountName} (${sourceAccountId})`);
 
             const { apiBase } = this.getEnv();
             const response = await fetch(`${apiBase}/${realmId}/expense?minorversion=70`, {

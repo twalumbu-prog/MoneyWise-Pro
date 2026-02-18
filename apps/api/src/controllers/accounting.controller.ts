@@ -7,7 +7,7 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
     const stages: string[] = [];
     try {
         const { id } = req.params; // Requisition ID
-        const { items } = req.body; // Array of { id, qb_account_id, qb_account_name, description }
+        const { items, payment_account_id, payment_account_name } = req.body;
         const organization_id = (req as any).user.organization_id;
         const user_id = (req as any).user.id;
 
@@ -28,6 +28,14 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
                 error: 'No items provided for classification',
                 stage: 'validation',
                 details: 'The request body must include an "items" array with at least one item.'
+            });
+        }
+
+        if (!payment_account_id) {
+            return res.status(400).json({
+                error: 'Payment account missing',
+                stage: 'validation',
+                details: 'You must select a bank or cash account as the source of payment.'
             });
         }
 
@@ -120,9 +128,9 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
             }
         }
 
-        // ── Stage 5: Update Voucher Status ──
+        // ── Stage 5: Update Voucher Status & Payment Info ──
         stages.push('Stage 5: Updating voucher status');
-        console.log(`[PostVoucher] Stage 5: Updating voucher status to POSTED_TO_QB`);
+        console.log(`[PostVoucher] Stage 5: Updating voucher status to POSTED_TO_QB and setting payment account`);
 
         const voucher = requisition.vouchers?.[0];
         if (voucher) {
@@ -130,6 +138,8 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
                 .from('vouchers')
                 .update({
                     status: 'POSTED_TO_QB',
+                    payment_account_id,
+                    payment_account_name,
                     posted_at: new Date().toISOString(),
                     posted_by: user_id
                 })
@@ -149,10 +159,16 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
 
         // ── Stage 6: Post to QuickBooks ──
         stages.push('Stage 6: Posting to QuickBooks');
-        console.log(`[PostVoucher] Stage 6: Calling QuickBooks createExpense`);
+        console.log(`[PostVoucher] Stage 6: Calling QuickBooks createExpense with source account ${payment_account_name}`);
 
         try {
-            const qbResult = await QuickBooksService.createExpense(id, user_id, organization_id);
+            const qbResult = await QuickBooksService.createExpense(
+                id,
+                user_id,
+                organization_id,
+                payment_account_id,
+                payment_account_name
+            );
 
             if (!qbResult.success) {
                 console.error('[PostVoucher] QuickBooks returned failure:', qbResult.error);

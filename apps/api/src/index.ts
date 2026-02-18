@@ -114,15 +114,18 @@ const runMigration = async () => {
                 description TEXT,
                 total_debit DECIMAL(10, 2) DEFAULT 0,
                 total_credit DECIMAL(10, 2) DEFAULT 0,
-                total_credit DECIMAL(10, 2) DEFAULT 0,
                 status VARCHAR(50) DEFAULT 'POSTED' CHECK (status IN ('DRAFT', 'POSTED', 'POSTED_TO_QB')),
+                payment_account_id VARCHAR(255),
+                payment_account_name TEXT,
                 posted_at TIMESTAMP WITH TIME ZONE,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
 
             ALTER TABLE public.vouchers
-            ADD COLUMN IF NOT EXISTS posted_by UUID REFERENCES public.users(id);
+            ADD COLUMN IF NOT EXISTS posted_by UUID REFERENCES public.users(id),
+            ADD COLUMN IF NOT EXISTS payment_account_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS payment_account_name TEXT;
 
             ALTER TABLE cashbook_entries 
             ADD COLUMN IF NOT EXISTS voucher_id UUID REFERENCES vouchers(id);
