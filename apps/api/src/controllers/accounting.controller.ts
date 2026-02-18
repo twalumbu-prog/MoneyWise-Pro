@@ -4,28 +4,63 @@ import { supabase } from '../lib/supabase';
 import { QuickBooksService } from '../services/quickbooks.service';
 
 export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
+    const stages: string[] = [];
     try {
-        const { id } = req.params; // Requisition ID or Voucher ID? Let's use Requisition ID as it's the main entity
-        const { items } = req.body; // Array of { id, account_id, class_id, description }
+        const { id } = req.params; // Requisition ID
+        const { items } = req.body; // Array of { id, qb_account_id, qb_account_name, description }
         const organization_id = (req as any).user.organization_id;
         const user_id = (req as any).user.id;
 
+        // ── Stage 1: Validate Context ──
+        stages.push('Stage 1: Validating context');
+        console.log(`[PostVoucher] Stage 1: Validating context for requisition ${id}`);
+
         if (!organization_id) {
-            return res.status(400).json({ error: 'Organization context missing' });
+            return res.status(400).json({
+                error: 'Organization context missing',
+                stage: 'validation',
+                details: 'User does not have an organization_id. Ensure user profile is complete.'
+            });
         }
 
-        // 1. Validate User Role (Accountant/Admin only)
-        const { data: userRecord } = await supabase
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({
+                error: 'No items provided for classification',
+                stage: 'validation',
+                details: 'The request body must include an "items" array with at least one item.'
+            });
+        }
+
+        // ── Stage 2: Validate User Role ──
+        stages.push('Stage 2: Validating user role');
+        console.log(`[PostVoucher] Stage 2: Checking role for user ${user_id}`);
+
+        const { data: userRecord, error: userError } = await supabase
             .from('users')
             .select('role')
             .eq('id', user_id)
             .single();
 
-        if (userRecord?.role !== 'ACCOUNTANT' && userRecord?.role !== 'ADMIN') {
-            return res.status(403).json({ error: 'Unauthorized: Accountant access required' });
+        if (userError || !userRecord) {
+            return res.status(403).json({
+                error: 'User profile not found',
+                stage: 'role_check',
+                details: userError?.message || 'Could not fetch user record'
+            });
         }
 
-        // 2. Validate Requisition/Voucher State
+        if (userRecord.role !== 'ACCOUNTANT' && userRecord.role !== 'ADMIN') {
+            return res.status(403).json({
+                error: 'Unauthorized: Accountant or Admin access required',
+                stage: 'role_check',
+                details: `Your role is "${userRecord.role}". Only ACCOUNTANT or ADMIN can post vouchers.`
+            });
+        }
+
+        // ── Stage 3: Validate Requisition State ──
+        stages.push('Stage 3: Validating requisition state');
+        console.log(`[PostVoucher] Stage 3: Fetching requisition ${id}`);
+
         const { data: requisition, error: reqError } = await supabase
             .from('requisitions')
             .select('*, vouchers(*)')
@@ -33,35 +68,65 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
             .single();
 
         if (reqError || !requisition) {
-            return res.status(404).json({ error: 'Requisition not found' });
+            return res.status(404).json({
+                error: 'Requisition not found',
+                stage: 'requisition_check',
+                details: reqError?.message || `No requisition with ID: ${id}`
+            });
         }
 
         if (requisition.status !== 'COMPLETED') {
-            return res.status(400).json({ error: 'Requisition must be COMPLETED (Disbursed & Confirmed) to post voucher' });
+            return res.status(400).json({
+                error: `Requisition must be COMPLETED to post voucher. Current status: "${requisition.status}"`,
+                stage: 'requisition_check',
+                details: 'The requisition must go through: APPROVED → DISBURSED → COMPLETED before posting.'
+            });
         }
 
-        // 3. Update Line Items (Classification)
-        // We iterate because we might be updating different fields for each item
+        // ── Stage 4: Save QB Classification to Line Items ──
+        stages.push('Stage 4: Saving QB classification to line items');
+        console.log(`[PostVoucher] Stage 4: Updating ${items.length} line items with QB account mapping`);
+
         for (const item of items) {
-            if (!item.id) continue;
+            if (!item.id) {
+                console.warn(`[PostVoucher] Skipping item without ID`);
+                continue;
+            }
+
+            if (!item.qb_account_id) {
+                return res.status(400).json({
+                    error: `Item "${item.description || item.id}" is missing a QuickBooks account assignment`,
+                    stage: 'classification',
+                    details: 'All items must have a qb_account_id from the QuickBooks chart of accounts.'
+                });
+            }
 
             const { error: itemError } = await supabase
                 .from('line_items')
                 .update({
-                    account_id: item.account_id || null,
-                    // class_id: item.class_id, // If we had a class_id column
-                    // description: item.description // If verified/edited description differs
+                    qb_account_id: item.qb_account_id,
+                    qb_account_name: item.qb_account_name || null
                 })
                 .eq('id', item.id)
                 .eq('requisition_id', id);
 
-            if (itemError) throw itemError;
+            if (itemError) {
+                console.error(`[PostVoucher] Failed to update line item ${item.id}:`, itemError);
+                return res.status(500).json({
+                    error: `Failed to save classification for item "${item.description || item.id}"`,
+                    stage: 'classification',
+                    details: itemError.message
+                });
+            }
         }
 
-        // 4. Update Voucher Status
+        // ── Stage 5: Update Voucher Status ──
+        stages.push('Stage 5: Updating voucher status');
+        console.log(`[PostVoucher] Stage 5: Updating voucher status to POSTED_TO_QB`);
+
         const voucher = requisition.vouchers?.[0];
         if (voucher) {
-            await supabase
+            const { error: voucherError } = await supabase
                 .from('vouchers')
                 .update({
                     status: 'POSTED_TO_QB',
@@ -69,31 +134,68 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
                     posted_by: user_id
                 })
                 .eq('id', voucher.id);
+
+            if (voucherError) {
+                console.error(`[PostVoucher] Failed to update voucher status:`, voucherError);
+                return res.status(500).json({
+                    error: 'Failed to update voucher status',
+                    stage: 'voucher_update',
+                    details: voucherError.message
+                });
+            }
+        } else {
+            console.warn(`[PostVoucher] No voucher found for requisition ${id}. Continuing to QB sync anyway.`);
         }
 
-        // 5. Trigger QuickBooks Sync
-        try {
-            await QuickBooksService.createExpense(id, user_id, organization_id);
+        // ── Stage 6: Post to QuickBooks ──
+        stages.push('Stage 6: Posting to QuickBooks');
+        console.log(`[PostVoucher] Stage 6: Calling QuickBooks createExpense`);
 
-            // 6. Update Requisition Status to ACCOUNTED (New Status)
+        try {
+            const qbResult = await QuickBooksService.createExpense(id, user_id, organization_id);
+
+            if (!qbResult.success) {
+                console.error('[PostVoucher] QuickBooks returned failure:', qbResult.error);
+                return res.status(500).json({
+                    error: 'QuickBooks rejected the expense',
+                    stage: 'quickbooks_sync',
+                    details: typeof qbResult.error === 'object' ? JSON.stringify(qbResult.error) : qbResult.error
+                });
+            }
+
+            // ── Stage 7: Update Requisition Status ──
+            stages.push('Stage 7: Updating requisition to ACCOUNTED');
+            console.log(`[PostVoucher] Stage 7: Marking requisition as ACCOUNTED`);
+
             await supabase
                 .from('requisitions')
                 .update({ status: 'ACCOUNTED' })
                 .eq('id', id);
 
-            res.json({ message: 'Voucher posted and synced to QuickBooks successfully' });
+            console.log(`[PostVoucher] ✅ Success! Requisition ${id} posted to QuickBooks`);
+            res.json({
+                message: 'Voucher posted and synced to QuickBooks successfully',
+                qb_expense_id: qbResult.qbId,
+                stages_completed: stages
+            });
 
         } catch (qbError: any) {
-            console.error('QuickBooks sync failed:', qbError);
-            // We might want to save a "Sync Failed" status or log it
+            console.error('[PostVoucher] QuickBooks sync threw error:', qbError.message);
             return res.status(500).json({
-                error: 'Voucher saved locally but QuickBooks sync failed',
-                details: qbError.message
+                error: 'QuickBooks sync failed',
+                stage: 'quickbooks_sync',
+                details: qbError.message,
+                stages_completed: stages
             });
         }
 
     } catch (error: any) {
-        console.error('Error posting voucher:', error);
-        res.status(500).json({ error: 'Failed to post voucher', details: error.message });
+        console.error('[PostVoucher] Unexpected error:', error);
+        res.status(500).json({
+            error: 'Failed to post voucher',
+            stage: 'unexpected',
+            details: error.message,
+            stages_completed: stages
+        });
     }
 };

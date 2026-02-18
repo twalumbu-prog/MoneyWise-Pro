@@ -128,6 +128,15 @@ const runMigration = async () => {
         `);
         console.log('[Migration] Schema update successful.');
 
+        // Add QB classification columns to line_items
+        console.log('[Migration] Checking for QB classification columns on line_items...');
+        await migrationPool.query(`
+            ALTER TABLE public.line_items
+            ADD COLUMN IF NOT EXISTS qb_account_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS qb_account_name TEXT;
+        `);
+        console.log('[Migration] line_items QB columns ready.');
+
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');
         await migrationPool.query("NOTIFY pgrst, 'reload config';");

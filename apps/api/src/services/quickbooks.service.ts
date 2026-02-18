@@ -52,7 +52,6 @@ export class QuickBooksService {
 
         const data = await response.json();
         if (!response.ok) {
-            // Log error message only, not the full object which might contain sensitive info derived from context
             console.error(`QB Token Exchange Failed: ${data.error_description || data.error}`);
             throw new Error(`QB Token Exchange Failed: ${data.error_description || data.error}`);
         }
@@ -104,6 +103,8 @@ export class QuickBooksService {
     static async getValidToken(organizationId: string) {
         if (!organizationId) throw new Error('Organization ID required for QB token');
 
+        console.log(`[QB Token] Fetching integration for org: ${organizationId}`);
+
         const { data: qb, error } = await supabase
             .from('integrations')
             .select('*')
@@ -111,25 +112,56 @@ export class QuickBooksService {
             .eq('organization_id', organizationId)
             .single();
 
-        if (error || !qb) throw new Error('QuickBooks not integrated for this organization');
+        if (error || !qb) {
+            console.error('[QB Token] Integration not found:', error?.message);
+            throw new Error('QuickBooks not integrated for this organization. Go to Settings → Integrations to connect.');
+        }
+
+        // Check if access token exists
+        if (!qb.access_token) {
+            throw new Error('QuickBooks access token is missing. Please reconnect QuickBooks in Settings → Integrations.');
+        }
 
         const now = new Date();
         const expiresAt = new Date(qb.token_expires_at);
 
+        console.log(`[QB Token] Token expires at: ${expiresAt.toISOString()}, now: ${now.toISOString()}`);
+
         if (now < expiresAt) {
-            return {
-                accessToken: decrypt(qb.access_token),
-                realmId: qb.realm_id
-            };
+            console.log('[QB Token] Access token is still valid, decrypting...');
+            try {
+                const decryptedToken = decrypt(qb.access_token);
+                return { accessToken: decryptedToken, realmId: qb.realm_id };
+            } catch (decryptError: any) {
+                console.error('[QB Token] Failed to decrypt access token:', decryptError.message);
+                throw new Error(`Failed to decrypt QB access token: ${decryptError.message}. The encryption key may have changed. Reconnect QuickBooks.`);
+            }
         }
 
-        // Refresh token
-        console.log('[QB] Refreshing token...');
+        // Token expired — try refresh
+        console.log('[QB Token] Access token expired, refreshing...');
+
+        if (!qb.refresh_token) {
+            throw new Error('QuickBooks refresh token is missing. Please reconnect QuickBooks in Settings → Integrations.');
+        }
+
+        // Check if refresh token has also expired
+        const refreshExpiresAt = new Date(qb.refresh_token_expires_at);
+        if (now > refreshExpiresAt) {
+            throw new Error(`QuickBooks refresh token expired on ${refreshExpiresAt.toISOString()}. Please reconnect QuickBooks in Settings → Integrations.`);
+        }
+
         const { clientId, clientSecret, tokenUrl } = this.getEnv();
         const b64Auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
 
         // Decrypt the refresh token to use it
-        const decryptedRefreshToken = decrypt(qb.refresh_token);
+        let decryptedRefreshToken: string;
+        try {
+            decryptedRefreshToken = decrypt(qb.refresh_token);
+        } catch (decryptError: any) {
+            console.error('[QB Token] Failed to decrypt refresh token:', decryptError.message);
+            throw new Error(`Failed to decrypt QB refresh token: ${decryptError.message}. Reconnect QuickBooks.`);
+        }
 
         const response = await fetch(tokenUrl, {
             method: 'POST',
@@ -146,10 +178,13 @@ export class QuickBooksService {
 
         const data = await response.json();
         if (!response.ok) {
-            console.error(`QB Token Refresh Failed: ${data.error_description || data.error}`);
-            throw new Error(`QB Token Refresh Failed`);
+            console.error(`[QB Token] Refresh failed:`, data);
+            throw new Error(`QB Token Refresh Failed: ${data.error_description || data.error || 'Unknown error'}. You may need to reconnect QuickBooks.`);
         }
 
+        console.log('[QB Token] Token refreshed successfully');
+
+        // Store refreshed tokens (encrypted)
         await supabase
             .from('integrations')
             .update({
@@ -189,38 +224,70 @@ export class QuickBooksService {
 
     static async createExpense(requisitionId: string, userId: string | undefined, organizationId: string) {
         try {
+            console.log(`[QB Expense] Step 1: Fetching requisition ${requisitionId} with line items`);
+
             const { data: requisition, error: reqError } = await supabase
                 .from('requisitions')
-                .select('*, line_items(*, accounts(*)), disbursements(*)')
+                .select('*, line_items(*), disbursements(*)')
                 .eq('id', requisitionId)
                 .single();
 
-            if (reqError || !requisition) throw new Error('Requisition not found');
+            if (reqError || !requisition) {
+                const msg = `Requisition not found: ${reqError?.message || requisitionId}`;
+                console.error(`[QB Expense] ${msg}`);
+                throw new Error(msg);
+            }
 
+            if (!requisition.line_items || requisition.line_items.length === 0) {
+                throw new Error('Requisition has no line items to post as an expense');
+            }
+
+            console.log(`[QB Expense] Step 2: Getting valid QB token for org ${organizationId}`);
             const { accessToken, realmId } = await this.getValidToken(organizationId);
 
-            // Prepare QuickBooks Expense object
-            // For simplicity, we'll create a single expense with multiple lines
+            // Build expense lines from line_items using the qb_account_id field
+            console.log(`[QB Expense] Step 3: Building expense object with ${requisition.line_items.length} lines`);
+
+            const expenseLines = requisition.line_items.map((item: any) => {
+                const amount = item.actual_amount || item.estimated_amount;
+                const qbAccountId = item.qb_account_id;
+
+                if (!qbAccountId) {
+                    console.warn(`[QB Expense] Line item ${item.id} has no qb_account_id, using default "1"`);
+                }
+
+                return {
+                    Description: item.description || 'No description',
+                    Amount: Number(amount) || 0,
+                    DetailType: "AccountBasedExpenseLineDetail",
+                    AccountBasedExpenseLineDetail: {
+                        AccountRef: {
+                            value: qbAccountId || "1",
+                            name: item.qb_account_name || item.description
+                        }
+                    }
+                };
+            });
+
+            // Validate total amount is > 0
+            const totalAmount = expenseLines.reduce((sum: number, line: any) => sum + line.Amount, 0);
+            if (totalAmount <= 0) {
+                throw new Error(`Total expense amount is ${totalAmount}. QuickBooks requires a positive amount.`);
+            }
+
             const expense = {
                 AccountRef: {
-                    value: "35", // Placeholder: Main Petty Cash account in QB
+                    value: "35", // Petty Cash bank account in QB — TODO: make configurable
                     name: "Petty Cash"
                 },
                 PaymentType: "Cash",
                 TxnDate: new Date().toISOString().split('T')[0],
-                Line: requisition.line_items.map((item: any) => ({
-                    Description: item.description,
-                    Amount: item.actual_amount || item.estimated_amount,
-                    DetailType: "AccountBasedExpenseLineDetail",
-                    AccountBasedExpenseLineDetail: {
-                        AccountRef: {
-                            value: item.accounts?.qb_account_id || "1", // Use mapped ID or default
-                            name: item.accounts?.name
-                        }
-                    }
-                })),
-                PrivateNote: `AutoCash Requisition: ${requisition.reference_number || requisition.id}`
+                Line: expenseLines,
+                PrivateNote: `MoneyWise Requisition: ${requisition.reference_number || requisition.id}`
             };
+
+            console.log(`[QB Expense] Step 4: Sending expense to QuickBooks API`);
+            console.log(`[QB Expense] Realm: ${realmId}, Lines: ${expenseLines.length}, Total: ${totalAmount}`);
 
             const { apiBase } = this.getEnv();
             const response = await fetch(`${apiBase}/${realmId}/expense?minorversion=70`, {
@@ -236,12 +303,14 @@ export class QuickBooksService {
             const result = await response.json();
 
             if (!response.ok) {
+                console.error(`[QB Expense] QuickBooks API rejected expense (HTTP ${response.status}):`, JSON.stringify(result));
+
                 // Log failure to sync_logs
                 await supabase.from('sync_logs').insert({
                     requisition_id: requisitionId,
                     synced_by: userId,
                     status: 'FAILED',
-                    details: JSON.stringify({ error: result }) // Careful with what's logged here
+                    details: JSON.stringify({ http_status: response.status, error: result })
                 });
 
                 await supabase.from('requisitions').update({
@@ -249,8 +318,11 @@ export class QuickBooksService {
                     qb_sync_error: JSON.stringify(result),
                     qb_sync_at: new Date().toISOString()
                 }).eq('id', requisitionId);
+
                 return { success: false, error: result };
             }
+
+            console.log(`[QB Expense] ✅ Expense created in QuickBooks! ID: ${result.Expense?.Id}`);
 
             // Log success
             await supabase.from('sync_logs').insert({
@@ -269,22 +341,28 @@ export class QuickBooksService {
             }).eq('id', requisitionId);
 
             return { success: true, qbId: result.Expense.Id };
+
         } catch (error: any) {
-            console.error('[QB Sync Error]', error.message);
+            console.error('[QB Expense] Exception:', error.message);
 
             // Log exception to sync_logs
-            await supabase.from('sync_logs').insert({
-                requisition_id: requisitionId,
-                synced_by: userId,
-                status: 'FAILED',
-                details: JSON.stringify({ error: error.message })
-            });
+            try {
+                await supabase.from('sync_logs').insert({
+                    requisition_id: requisitionId,
+                    synced_by: userId,
+                    status: 'FAILED',
+                    details: JSON.stringify({ error: error.message })
+                });
 
-            await supabase.from('requisitions').update({
-                qb_sync_status: 'FAILED',
-                qb_sync_error: error.message,
-                qb_sync_at: new Date().toISOString()
-            }).eq('id', requisitionId);
+                await supabase.from('requisitions').update({
+                    qb_sync_status: 'FAILED',
+                    qb_sync_error: error.message,
+                    qb_sync_at: new Date().toISOString()
+                }).eq('id', requisitionId);
+            } catch (logError) {
+                console.error('[QB Expense] Failed to log error to database:', logError);
+            }
+
             return { success: false, error: error.message };
         }
     }

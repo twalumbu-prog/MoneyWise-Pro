@@ -58,8 +58,8 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                 quantity: item.quantity,
                 unit_price: item.unit_price,
                 total: item.quantity * item.unit_price,
-                account_id: item.account_id || '', // Existing mapping if any
-                class_id: '' // Future: Add class support
+                qb_account_id: item.qb_account_id || '', // QB Account ID (string)
+                qb_account_name: item.qb_account_name || '' // QB Account Name
             })));
 
         } catch (err: any) {
@@ -93,7 +93,8 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
 
                 return {
                     ...item,
-                    account_id: match ? match.Id : item.account_id
+                    qb_account_id: match ? match.Id : item.qb_account_id,
+                    qb_account_name: match ? match.Name : item.qb_account_name
                 };
             });
 
@@ -112,8 +113,8 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
         setError(null);
 
         // Validate
-        if (items.some(i => !i.account_id)) {
-            setError('All items must have an assigned account.');
+        if (items.some(i => !i.qb_account_id)) {
+            setError('All items must have an assigned QuickBooks account.');
             setSubmitting(false);
             return;
         }
@@ -123,7 +124,10 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
             onSuccess();
             onClose();
         } catch (err: any) {
-            setError(err.message);
+            // Show detailed error from backend if available
+            const errorMsg = err.message || 'Unknown error';
+            setError(errorMsg);
+            console.error('[PostVoucher] Error details:', err);
             setSubmitting(false);
         }
     };
@@ -159,10 +163,12 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                                     <div>
                                         <label className="block text-xs font-medium text-gray-500 mb-1">Expense Account</label>
                                         <select
-                                            value={item.account_id}
+                                            value={item.qb_account_id}
                                             onChange={(e) => {
                                                 const newItems = [...items];
-                                                newItems[idx].account_id = e.target.value;
+                                                const selectedAcc = accounts.find((a: any) => a.Id === e.target.value);
+                                                newItems[idx].qb_account_id = e.target.value;
+                                                newItems[idx].qb_account_name = selectedAcc?.Name || '';
                                                 setItems(newItems);
                                             }}
                                             className="block w-full border-gray-300 rounded-lg shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2.5"

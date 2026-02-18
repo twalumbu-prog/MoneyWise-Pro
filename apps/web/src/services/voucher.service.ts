@@ -115,7 +115,11 @@ export const voucherService = {
 
         if (!response.ok) {
             const err = await response.json();
-            throw new Error(err.error || 'Failed to post voucher');
+            // Build a detailed error message from the backend response
+            let message = err.error || 'Failed to post voucher';
+            if (err.stage) message += ` [Stage: ${err.stage}]`;
+            if (err.details) message += ` — ${err.details}`;
+            throw new Error(message);
         }
         return response.json();
     }
