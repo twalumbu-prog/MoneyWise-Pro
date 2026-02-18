@@ -230,7 +230,7 @@ export class QuickBooksService {
         paymentAccountName?: string
     ) {
         try {
-            console.log(`[QB Expense] Step 1: Fetching requisition ${requisitionId} with line items`);
+            console.log(`[QB Purchase] Step 1: Fetching requisition ${requisitionId} with line items`);
 
             const { data: requisition, error: reqError } = await supabase
                 .from('requisitions')
@@ -248,18 +248,18 @@ export class QuickBooksService {
                 throw new Error('Requisition has no line items to post as an expense');
             }
 
-            console.log(`[QB Expense] Step 2: Getting valid QB token for org ${organizationId}`);
+            console.log(`[QB Purchase] Step 2: Getting valid QB token for org ${organizationId}`);
             const { accessToken, realmId } = await this.getValidToken(organizationId);
 
-            // Build expense lines from line_items using the qb_account_id field
-            console.log(`[QB Expense] Step 3: Building expense object with ${requisition.line_items.length} lines`);
+            // Build purchase lines from line_items using the qb_account_id field
+            console.log(`[QB Purchase] Step 3: Building purchase object with ${requisition.line_items.length} lines`);
 
             const expenseLines = requisition.line_items.map((item: any) => {
                 const amount = item.actual_amount || item.estimated_amount;
                 const qbAccountId = item.qb_account_id;
 
                 if (!qbAccountId) {
-                    console.warn(`[QB Expense] Line item ${item.id} has no qb_account_id, using default "1"`);
+                    console.warn(`[QB Purchase] Line item ${item.id} has no qb_account_id, using default "1"`);
                 }
 
                 return {
@@ -285,7 +285,7 @@ export class QuickBooksService {
             const sourceAccountId = paymentAccountId || "35";
             const sourceAccountName = paymentAccountName || "Petty Cash";
 
-            const expense = {
+            const purchase = {
                 AccountRef: {
                     value: sourceAccountId,
                     name: sourceAccountName
@@ -296,24 +296,24 @@ export class QuickBooksService {
                 PrivateNote: `MoneyWise Requisition: ${requisition.reference_number || requisition.id}`
             };
 
-            console.log(`[QB Expense] Step 4: Sending expense to QuickBooks API`);
-            console.log(`[QB Expense] Realm: ${realmId}, Lines: ${expenseLines.length}, Total: ${totalAmount}, Source: ${sourceAccountName} (${sourceAccountId})`);
+            console.log(`[QB Purchase] Step 4: Sending purchase to QuickBooks API`);
+            console.log(`[QB Purchase] Realm: ${realmId}, Lines: ${expenseLines.length}, Total: ${totalAmount}, Source: ${sourceAccountName} (${sourceAccountId})`);
 
             const { apiBase } = this.getEnv();
-            const response = await fetch(`${apiBase}/${realmId}/expense?minorversion=70`, {
+            const response = await fetch(`${apiBase}/${realmId}/purchase?minorversion=70`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${accessToken}`,
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify(expense)
+                body: JSON.stringify(purchase)
             });
 
             const result = await response.json();
 
             if (!response.ok) {
-                console.error(`[QB Expense] QuickBooks API rejected expense (HTTP ${response.status}):`, JSON.stringify(result));
+                console.error(`[QB Purchase] QuickBooks API rejected purchase (HTTP ${response.status}):`, JSON.stringify(result));
 
                 // Log failure to sync_logs
                 await supabase.from('sync_logs').insert({
@@ -332,28 +332,28 @@ export class QuickBooksService {
                 return { success: false, error: result };
             }
 
-            console.log(`[QB Expense] ✅ Expense created in QuickBooks! ID: ${result.Expense?.Id}`);
+            console.log(`[QB Purchase] ✅ Purchase created in QuickBooks! ID: ${result.Purchase?.Id}`);
 
             // Log success
             await supabase.from('sync_logs').insert({
                 requisition_id: requisitionId,
-                qb_expense_id: result.Expense.Id,
+                qb_expense_id: result.Purchase.Id,
                 synced_by: userId,
                 status: 'SUCCESS',
-                details: JSON.stringify({ qb_ref: result.Expense.Id })
+                details: JSON.stringify({ qb_ref: result.Purchase.Id })
             });
 
             await supabase.from('requisitions').update({
-                qb_expense_id: result.Expense.Id,
+                qb_expense_id: result.Purchase.Id,
                 qb_sync_status: 'SUCCESS',
                 qb_sync_error: null,
                 qb_sync_at: new Date().toISOString()
             }).eq('id', requisitionId);
 
-            return { success: true, qbId: result.Expense.Id };
+            return { success: true, qbId: result.Purchase.Id };
 
         } catch (error: any) {
-            console.error('[QB Expense] Exception:', error.message);
+            console.error('[QB Purchase] Exception:', error.message);
 
             // Log exception to sync_logs
             try {
