@@ -10,6 +10,7 @@ export const UserManagement: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
 
     // New User Form State
@@ -58,11 +59,29 @@ export const UserManagement: React.FC = () => {
     };
 
     const handleDeleteUser = async (userId: string) => {
-        if (!window.confirm('Are you sure you want to remove this user?')) return;
+        if (!window.confirm('Are you sure you want to remove this user? They will lose access immediately.')) return;
 
         try {
             setActionLoading(true);
             await userService.delete(userId);
+            await loadUsers();
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleUpdateUser = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingUser) return;
+
+        setActionLoading(true);
+        setError(null);
+
+        try {
+            await userService.update(editingUser.id, { role: editingUser.role });
+            setEditingUser(null);
             await loadUsers();
         } catch (err: any) {
             setError(err.message);
@@ -130,7 +149,8 @@ export const UserManagement: React.FC = () => {
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${user.role === 'ADMIN' ? 'bg-purple-100 text-purple-800' :
                                         user.role === 'CASHIER' ? 'bg-blue-100 text-blue-800' :
-                                            'bg-gray-100 text-gray-800'
+                                            user.role === 'ACCOUNTANT' ? 'bg-indigo-100 text-indigo-800' :
+                                                'bg-gray-100 text-gray-800'
                                         }`}>
                                         <Shield className="w-3 h-3 mr-1" />
                                         {user.role}
@@ -147,13 +167,23 @@ export const UserManagement: React.FC = () => {
                                 </td>
                                 {isAdmin && (
                                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                        <button
-                                            onClick={() => handleDeleteUser(user.id)}
-                                            className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                                            disabled={actionLoading}
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
+                                        <div className="flex justify-end space-x-2">
+                                            <button
+                                                onClick={() => setEditingUser(user)}
+                                                className="text-brand-green hover:text-green-900 p-2 hover:bg-green-50 rounded-lg transition-colors"
+                                                title="Edit Role"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
+                                            </button>
+                                            <button
+                                                onClick={() => handleDeleteUser(user.id)}
+                                                className="text-red-600 hover:text-red-900 p-2 hover:bg-red-50 rounded-lg transition-colors"
+                                                title="Remove User"
+                                                disabled={actionLoading}
+                                            >
+                                                <Trash2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
                                     </td>
                                 )}
                             </tr>
@@ -241,7 +271,56 @@ export const UserManagement: React.FC = () => {
                         </button>
                     </div>
                 </form>
+
             </Modal>
-        </div>
+
+            {/* Edit User Modal */}
+            <Modal
+                isOpen={!!editingUser}
+                onClose={() => setEditingUser(null)}
+                title="Edit Team Member Role"
+            >
+                <form onSubmit={handleUpdateUser} className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">Role</label>
+                        <select
+                            value={editingUser?.role || 'REQUESTOR'}
+                            onChange={(e) => setEditingUser(prev => prev ? { ...prev, role: e.target.value as UserProfile['role'] } : null)}
+                            className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-3 border"
+                        >
+                            <option value="REQUESTOR">Requestor</option>
+                            <option value="APPROVER">Approver</option>
+                            <option value="ACCOUNTANT">Accountant</option>
+                            <option value="CASHIER">Cashier</option>
+                            <option value="ADMIN">Admin</option>
+                        </select>
+                        <p className="mt-2 text-xs text-gray-500">
+                            <strong>Admin:</strong> Full access to all settings and users.<br />
+                            <strong>Accountant:</strong> Can authorize requisitions and view reports.<br />
+                            <strong>Cashier:</strong> Can disburse funds and confirm change.<br />
+                            <strong>Approver:</strong> Can approve requisitions for their department.<br />
+                            <strong>Requestor:</strong> Can submit requisitions.
+                        </p>
+                    </div>
+
+                    <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
+                        <button
+                            type="submit"
+                            disabled={actionLoading}
+                            className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:col-start-2 sm:text-sm disabled:opacity-50"
+                        >
+                            {actionLoading ? 'Updating...' : 'Update Role'}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setEditingUser(null)}
+                            className="mt-3 w-full inline-flex justify-center rounded-xl border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:col-start-1 sm:text-sm"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+        </div >
     );
 };

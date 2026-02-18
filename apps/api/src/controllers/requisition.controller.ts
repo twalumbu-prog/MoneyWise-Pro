@@ -533,16 +533,13 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
 
         res.json({ message: 'Change confirmed, voucher created, and ledger updated', discrepancy, voucher_id: voucher.id });
 
-        // 7. Trigger Notification
+        // 8. Trigger Notification
         emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
             console.error('[Notification Error] Failed to send REQUISITION_COMPLETED email:', err)
         );
 
-        // 8. Trigger QuickBooks Sync
-        const organizationId = (req as any).user.organization_id;
-        QuickBooksService.createExpense(id, cashier_id, organizationId).catch(err =>
-            console.error('[QuickBooks Sync] Background sync failed:', err)
-        );
+        // NOTE: QuickBooks Sync is now deferred to the "Post Voucher" step in the Accounting Workflow.
+        // We no longer trigger it here.
     } catch (error: any) {
         console.error('Error confirming change:', error);
         res.status(500).json({ error: 'Failed to confirm change', details: error.message });

@@ -100,4 +100,23 @@ export const voucherService = {
         }
         return response.json();
     }
+    async postVoucherWithClassification(requisitionId: string, items: any[]) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${requisitionId}/post-voucher`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ items }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to post voucher');
+        }
+        return response.json();
+    }
 };

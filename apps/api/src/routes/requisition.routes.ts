@@ -11,6 +11,7 @@ import {
     confirmChange
 } from '../controllers/requisition.controller';
 import { disburseRequisition, acknowledgeReceipt } from '../controllers/disbursement.controller';
+import { postVoucher } from '../controllers/accounting.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -29,6 +30,7 @@ router.post('/:id/acknowledge', acknowledgeReceipt);
 router.put('/:id/expenses', updateRequisitionExpenses);
 router.post('/:id/submit-change', submitChange);
 router.post('/:id/confirm-change', confirmChange);
+router.post('/:id/post-voucher', postVoucher);
 
 // Standard routes
 router.post('/', createRequisition);
