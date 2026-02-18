@@ -114,7 +114,8 @@ const runMigration = async () => {
                 description TEXT,
                 total_debit DECIMAL(10, 2) DEFAULT 0,
                 total_credit DECIMAL(10, 2) DEFAULT 0,
-                status VARCHAR(50) DEFAULT 'POSTED',
+                total_credit DECIMAL(10, 2) DEFAULT 0,
+                status VARCHAR(50) DEFAULT 'POSTED' CHECK (status IN ('DRAFT', 'POSTED', 'POSTED_TO_QB')),
                 posted_at TIMESTAMP WITH TIME ZONE,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -136,6 +137,19 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS qb_account_name TEXT;
         `);
         console.log('[Migration] line_items QB columns ready.');
+
+        // Update vouchers status check constraint
+        console.log('[Migration] Updating vouchers status constraint...');
+        await migrationPool.query(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'vouchers_status_check') THEN
+                    ALTER TABLE public.vouchers DROP CONSTRAINT vouchers_status_check;
+                END IF;
+                ALTER TABLE public.vouchers ADD CONSTRAINT vouchers_status_check CHECK (status IN ('DRAFT', 'POSTED', 'POSTED_TO_QB'));
+            END $$;
+        `);
+        console.log('[Migration] vouchers status constraint updated.');
 
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');
