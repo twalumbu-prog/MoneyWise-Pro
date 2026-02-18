@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
 import { voucherService, Voucher } from '../services/voucher.service';
 import { requisitionService } from '../services/requisition.service';
-import { FileText, Eye, Clock, Download, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react';
+import { FileText, Eye, Clock, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AccountingModal } from '../components/accounting/AccountingModal';
 
@@ -82,8 +82,8 @@ export const Vouchers: React.FC = () => {
                     <button
                         onClick={() => setActiveTab('pending')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'pending'
-                                ? 'bg-white text-brand-navy shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
+                            ? 'bg-white text-brand-navy shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         Pending Accounting
@@ -96,8 +96,8 @@ export const Vouchers: React.FC = () => {
                     <button
                         onClick={() => setActiveTab('posted')}
                         className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'posted'
-                                ? 'bg-white text-brand-navy shadow-sm'
-                                : 'text-gray-500 hover:text-gray-700'
+                            ? 'bg-white text-brand-navy shadow-sm'
+                            : 'text-gray-500 hover:text-gray-700'
                             }`}
                     >
                         Posted

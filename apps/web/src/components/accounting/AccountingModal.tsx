@@ -34,7 +34,7 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
         try {
             setLoading(true);
             // Load QB Accounts and Requisition Items
-            const [qbAccounts, reqData] = await Promise.all([
+            const [qbAccounts] = await Promise.all([
                 integrationService.getAccounts(),
                 // If requisition items aren't passed fully, fetch them. 
                 // Assuming requisition prop has basic info, but we need line items.
