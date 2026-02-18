@@ -73,27 +73,14 @@ export const RequisitionDetail: React.FC = () => {
 
         try {
             setProcessing(true);
-            const token = (await import('../lib/supabase')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
-            const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
-
-            const response = await fetch(`${API_URL}/requisitions/${id}/acknowledge`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${await token}`,
-                },
-                body: JSON.stringify({
-                    signature: `DIGITAL_SIG_${user?.id}_${Date.now()}`
-                }),
-            });
-
-            if (!response.ok) throw new Error('Failed to acknowledge receipt');
+            const signature = `DIGITAL_SIG_${user?.id}_${Date.now()}`;
+            await requisitionService.acknowledge(id, signature);
 
             alert('Receipt acknowledged successfully!');
             loadRequisition(id);
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            alert('Failed to acknowledge receipt');
+            alert('Failed to acknowledge receipt: ' + err.message);
         } finally {
             setProcessing(false);
         }

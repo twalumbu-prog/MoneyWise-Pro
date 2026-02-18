@@ -40,9 +40,31 @@ export interface Requisition {
     repayment_period?: number;
     interest_rate?: number;
     monthly_deduction?: number;
+    disbursements?: any[];
 }
 
 export const requisitionService = {
+    async acknowledge(id: string, signature: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/acknowledge`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ signature }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.message || err.error || 'Failed to acknowledge receipt');
+        }
+
+        return response.json();
+    },
+
     async getAll() {
         const session = await supabase.auth.getSession();
         const token = session.data.session?.access_token;
