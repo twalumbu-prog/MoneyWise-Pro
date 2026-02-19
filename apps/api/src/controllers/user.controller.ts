@@ -54,7 +54,13 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             }
         }
 
-        const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const getFrontendUrl = () => {
+            if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+            if (process.env.NODE_ENV === 'production') return 'https://money-wise-pro-web.vercel.app';
+            return 'http://localhost:5173';
+        };
+
+        const FRONTEND_URL = getFrontendUrl();
 
         // 1. Invite user via Supabase Auth
         const { data: authData, error: authError } = await (supabase.auth as any).admin.inviteUserByEmail(email, {
