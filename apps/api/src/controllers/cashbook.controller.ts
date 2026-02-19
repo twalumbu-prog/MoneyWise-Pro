@@ -231,22 +231,26 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
         // 4. Update Line Items and Prepare Results
         const updates = [];
         const results = [];
-        const accountMap = new Map(accounts?.map((a: any) => [String(a.code), a.id]));
-        const accountCodeMap = new Map(accounts?.map((a: any) => [String(a.code), a])); // To get name
+
+        // Prepare mapping maps for robust lookup
+        const accountByCode = new Map(accounts?.map((a: any) => [String(a.code || a.AcctNum || '').toLowerCase(), a]));
+        const accountByName = new Map(accounts?.map((a: any) => [String(a.name || a.Name || '').toLowerCase(), a]));
 
         for (let i = 0; i < items.length; i++) {
             const suggestion = suggestions[i];
             const item = items[i];
 
             if (suggestion.account_code) {
-                const accountId = accountMap.get(suggestion.account_code);
-                const account = accountCodeMap.get(suggestion.account_code);
+                const searchKey = String(suggestion.account_code).toLowerCase();
 
-                if (accountId) {
+                // Try matching by code first, then by name
+                const account = accountByCode.get(searchKey) || accountByName.get(searchKey);
+
+                if (account) {
                     updates.push(
                         supabase
                             .from('line_items')
-                            .update({ account_id: accountId })
+                            .update({ account_id: account.id })
                             .eq('id', item.id)
                     );
 
@@ -254,11 +258,13 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
                         line_item_id: item.id,
                         description: item.description,
                         account_code: suggestion.account_code,
-                        account_name: account ? (account as any).name : 'Unknown',
+                        account_name: account.name || account.Name,
                         confidence: suggestion.confidence,
                         reasoning: suggestion.reasoning,
                         method: suggestion.method
                     });
+                } else {
+                    console.log(`[Classify Bulk] No account match found for suggested code/name: ${suggestion.account_code}`);
                 }
             }
         }
