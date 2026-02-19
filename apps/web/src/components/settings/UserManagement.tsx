@@ -302,7 +302,7 @@ export const UserManagement: React.FC = () => {
                             className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
                         >
                             <option value="REQUESTOR">Requestor</option>
-                            <option value="APPROVER">Approver</option>
+                            <option value="AUTHORISER">Authoriser</option>
                             <option value="CASHIER">Cashier</option>
                             <option value="ADMIN">Admin</option>
                         </select>
@@ -353,7 +353,7 @@ export const UserManagement: React.FC = () => {
                             className="mt-1 block w-full border-gray-300 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-3 border"
                         >
                             <option value="REQUESTOR">Requestor</option>
-                            <option value="APPROVER">Approver</option>
+                            <option value="AUTHORISER">Authoriser</option>
                             <option value="ACCOUNTANT">Accountant</option>
                             <option value="CASHIER">Cashier</option>
                             <option value="ADMIN">Admin</option>
@@ -362,7 +362,7 @@ export const UserManagement: React.FC = () => {
                             <strong>Admin:</strong> Full access to all settings and users.<br />
                             <strong>Accountant:</strong> Can authorize requisitions and view reports.<br />
                             <strong>Cashier:</strong> Can disburse funds and confirm change.<br />
-                            <strong>Approver:</strong> Can approve requisitions for their department.<br />
+                            <strong>Authoriser:</strong> Can approve requisitions for their department.<br />
                             <strong>Requestor:</strong> Can submit requisitions.
                         </p>
                     </div>
