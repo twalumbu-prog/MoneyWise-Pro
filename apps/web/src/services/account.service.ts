@@ -98,7 +98,7 @@ export const accountService = {
         return response.json();
     },
 
-    async suggestBatch(lineItems: any[], requisitionId?: string) {
+    async suggestBatch(lineItems: any[], requisitionId?: string, accounts?: any[]) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
 
@@ -107,8 +107,13 @@ export const accountService = {
             headers: {
                 'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
-            body: JSON.stringify({ line_items: lineItems, requisition_id: requisitionId }),
+            body: JSON.stringify({
+                line_items: lineItems,
+                requisition_id: requisitionId,
+                accounts: accounts
+            }),
         });
 
         if (!response.ok) throw new Error('Failed to get batch AI suggestions');

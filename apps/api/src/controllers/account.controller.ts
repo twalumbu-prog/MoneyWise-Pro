@@ -102,31 +102,43 @@ export const updateAccount = async (req: AuthRequest, res: any): Promise<any> =>
 
 export const suggestAccount = async (req: any, res: any): Promise<any> => {
     try {
-        const { description, amount, line_items, requisition_id } = req.body;
+        const { description, amount, line_items, requisition_id, accounts: customAccounts } = req.body;
 
         if (!description && (!line_items || line_items.length === 0)) {
             return res.status(400).json({ error: 'Description or line_items is required' });
         }
 
-        // Normalize input
+        // Normalize input items
         const items = line_items || [{ id: 'manual-1', description, amount: amount || 0 }];
 
-        // Fetch accounts for matching
-        const { data: accountsData } = await supabase
-            .from('accounts')
-            .select('*')
-            .eq('is_active', true);
+        // Get accounts for matching (either from DB or provided in request)
+        let accounts = [];
+        if (customAccounts && Array.isArray(customAccounts)) {
+            // Normalize QB accounts or other custom accounts to the format the AI service expects
+            // AI service expects: { code: string, name: string, description: string }
+            accounts = customAccounts.map((a: any) => ({
+                id: a.id || a.Id || String(a.code || a.AcctNum || ''),
+                code: String(a.code || a.AcctNum || a.Id || ''),
+                name: a.name || a.Name || '',
+                description: a.description || a.Description || ''
+            }));
+        } else {
+            const { data: accountsData } = await supabase
+                .from('accounts')
+                .select('*')
+                .eq('is_active', true);
+            accounts = accountsData || [];
+        }
 
-        const accounts = accountsData || [];
-
-        console.log(`[AI Suggest] Processing ${items.length} items locally...`);
+        console.log(`[AI Suggest] Processing ${items.length} items using ${accounts.length} available accounts...`);
 
         const suggestions = await aiService.suggestBatch(accounts, items.map((it: any) => ({
             description: it.description,
             amount: it.amount || it.estimated_amount || 0
         })));
 
-        // Map suggesting codes back to account IDs
+        // Map suggesting codes back to the original account context
+        // If they were custom accounts, we use the normalized list
         const accountMap = new Map(accounts.map((a: any) => [String(a.code), a.id]));
 
         const results = suggestions.map((s, i) => ({
@@ -140,7 +152,7 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
 
         const data = { results };
 
-        console.log('[DEBUG] Local AI results:', JSON.stringify(data, null, 2));
+        console.log('[DEBUG] AI Suggest results:', JSON.stringify(data, null, 2));
 
         // If it was a single request, return just the first result to maintain compatibility
         if (!line_items) {
@@ -149,7 +161,8 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
                 account_code: result.account_code,
                 confidence: result.confidence,
                 reasoning: result.reasoning,
-                method: result.method
+                method: result.method,
+                suggestion: result.suggestion
             });
         } else {
             res.json(data);

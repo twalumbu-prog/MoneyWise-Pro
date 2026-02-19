@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../Modal';
 import { integrationService } from '../../services/integration.service';
 import { voucherService } from '../../services/voucher.service';
+import { accountService } from '../../services/account.service';
 import { Loader2, Wand2, ArrowRight } from 'lucide-react';
 
 interface AccountingModalProps {
@@ -81,31 +82,35 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
 
     const handleAutoClassify = async () => {
         setClassifying(true);
+        setError(null);
         try {
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            // Call the real AI suggestion service
+            const response = await accountService.suggestBatch(
+                items.map(i => ({ id: i.id, description: i.description, amount: i.total })),
+                requisition.id,
+                expenseAccounts // Pass QB accounts for matching
+            );
 
-            const updatedItems = items.map(item => {
-                const desc = item.description.toLowerCase();
-                let match = expenseAccounts.find((a: any) => a.Name === 'Uncategorized Expense');
-
-                if (desc.includes('meal') || desc.includes('food')) {
-                    match = expenseAccounts.find((a: any) => a.Name.toLowerCase().includes('meals'));
-                } else if (desc.includes('taxi') || desc.includes('travel') || desc.includes('fuel')) {
-                    match = expenseAccounts.find((a: any) => a.Name.toLowerCase().includes('travel') || a.Name.toLowerCase().includes('fuel'));
-                } else if (desc.includes('office') || desc.includes('paper')) {
-                    match = expenseAccounts.find((a: any) => a.Name.toLowerCase().includes('office'));
-                }
-
-                return {
-                    ...item,
-                    qb_account_id: match ? match.Id : item.qb_account_id,
-                    qb_account_name: match ? match.Name : item.qb_account_name
-                };
-            });
-
-            setItems(updatedItems);
-        } catch (err) {
-            setError('AI Classification failed');
+            if (response && response.results) {
+                const updatedItems = items.map(item => {
+                    const result = response.results.find((r: any) => r.item_id === item.id);
+                    if (result && result.suggestion) {
+                        const match = expenseAccounts.find((a: any) => a.Id === result.suggestion);
+                        if (match) {
+                            return {
+                                ...item,
+                                qb_account_id: match.Id,
+                                qb_account_name: match.Name
+                            };
+                        }
+                    }
+                    return item;
+                });
+                setItems(updatedItems);
+            }
+        } catch (err: any) {
+            console.error('[AI Classify] Error:', err);
+            setError('AI Classification failed: ' + (err.message || 'Unknown error'));
         } finally {
             setClassifying(false);
         }
