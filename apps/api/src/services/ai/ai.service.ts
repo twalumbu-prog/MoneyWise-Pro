@@ -56,23 +56,35 @@ export const aiService = {
             console.log(`[AI Service] Step 1: Checking Rule Engine for "${normalized}"...`);
             const ruleMatch = this.checkRules(normalized);
             if (ruleMatch) {
-                // IMPORTANT: Only use the rule if it maps to an actual account in the provided list
-                const exists = accounts.some(a =>
-                    String(a.code || a.AcctNum || '').toLowerCase() === String(ruleMatch.account_code).toLowerCase() ||
-                    String(a.name || a.Name || '').toLowerCase() === String(ruleMatch.account_code).toLowerCase()
-                );
+                // Dynamic Matching: Find an account in the provided list that matches the intent keywords
+                // We look for accounts that contain ANY of the keywords in the intent
+                const intentKeywords = ruleMatch.intent.toLowerCase().split('|');
 
-                if (exists) {
-                    console.log(`[AI Service] ✅ Rule Match Found & Validated: ${ruleMatch.account_code} (Reason: ${ruleMatch.pattern})`);
+                const matchedAccount = accounts.find(a => {
+                    const accName = String(a.name || a.Name || '').toLowerCase();
+                    const accCode = String(a.code || a.AcctNum || '').toLowerCase();
+                    const accDesc = String(a.description || a.Description || '').toLowerCase();
+
+                    // Check if any keyword appears in Name, Code, or Description
+                    return intentKeywords.some(keyword =>
+                        accName.includes(keyword) ||
+                        accDesc.includes(keyword) ||
+                        (keyword.length > 3 && accCode.includes(keyword)) // Only match short codes if keyword is long enough to avoid false positives
+                    );
+                });
+
+                if (matchedAccount) {
+                    const code = String(matchedAccount.code || matchedAccount.AcctNum || matchedAccount.Id || '');
+                    console.log(`[AI Service] ✅ Rule Match Found & Dynamically Linked: "${matchedAccount.Name || matchedAccount.name}" (Code: ${code}) for intent "${ruleMatch.intent}"`);
                     results.push({
-                        account_code: ruleMatch.account_code,
-                        confidence: ruleMatch.confidence,
-                        reasoning: `Rule matched: ${ruleMatch.pattern}`,
+                        account_code: code,
+                        confidence: 0.9, // High confidence for rule matches
+                        reasoning: `Matched via rule intent "${ruleMatch.intent}" to account "${matchedAccount.Name || matchedAccount.name}"`,
                         method: 'RULE'
                     });
                     continue;
                 } else {
-                    console.log(`[AI Service] ℹ️ Rule matched "${ruleMatch.account_code}" but this account is not in the current list. Falling back to AI.`);
+                    console.log(`[AI Service] ℹ️ Rule matched intent "${ruleMatch.intent}" but no corresponding account found in the provided list. Falling back to AI.`);
                 }
             } else {
                 console.log(`[AI Service] No rule match found.`);
@@ -130,20 +142,24 @@ export const aiService = {
     },
 
     checkRules(normalized: string) {
+        // Returns "Intent Keywords" separated by pipe |
+        // These keywords will be used to search the ACTUAL user's Chart of Accounts
         const rules = [
-            { pattern: /\b(lunch|dinner|breakfast|meal|food|restaurant|kfc|hungry lion|pizza)\b/i, account_code: '5001' },
-            { pattern: /\b(taxi|uber|bolt|yango|transport|bus fare|fuel|petrol|diesel)\b/i, account_code: '5002' },
-            { pattern: /\b(airtime|data|internet|bundle|mtn|airtel|zamtel|liquid|starlink)\b/i, account_code: '5003' },
-            { pattern: /\b(stationary|paper|pen|printing|toner|office supplies)\b/i, account_code: '5004' },
-            { pattern: /\b(cleaning|detergent|doom|soap|toilet paper)\b/i, account_code: '5005' },
-            { pattern: /\b(water|electricity|zesco|bills|utility)\b/i, account_code: '5006' },
-            { pattern: /\b(rent|lease|office space)\b/i, account_code: '5007' },
-            { pattern: /\b(salary|wages|payroll|personnel|staff payment|napsa|pension)\b/i, account_code: '6001' }
+            { pattern: /\b(lunch|dinner|breakfast|meal|food|restaurant|kfc|hungry lion|pizza|nando)\b/i, intent: 'meal|food|entertainment|subsistence' },
+            { pattern: /\b(taxi|uber|bolt|yango|transport|bus fare|fuel|petrol|diesel|gas|cab)\b/i, intent: 'transport|fuel|travel|vehicle|motor' },
+            { pattern: /\b(airtime|data|internet|bundle|mtn|airtel|zamtel|liquid|starlink|wifi)\b/i, intent: 'internet|communication|telephone|airtime' },
+            { pattern: /\b(stationary|paper|pen|printing|toner|office supplies|ink|notebook)\b/i, intent: 'stationery|printing|office' },
+            { pattern: /\b(cleaning|detergent|doom|soap|toilet paper|tissue|bleach)\b/i, intent: 'cleaning|janitorial|maintenance' },
+            { pattern: /\b(water|electricity|zesco|bills|utility|power)\b/i, intent: 'utility|water|electricity|power' },
+            { pattern: /\b(rent|lease|office space)\b/i, intent: 'rent|lease|occupancy' },
+            { pattern: /\b(salary|wages|payroll|personnel|staff payment|napsa|pension|allowance)\b/i, intent: 'salary|wages|payroll|staff' },
+            { pattern: /\b(repair|maintenance|fix|service)\b/i, intent: 'repair|maintenance' },
+            { pattern: /\b(consulting|professional|legal|audit|accounting)\b/i, intent: 'professional|consulting|legal' }
         ];
 
         for (const rule of rules) {
             if (rule.pattern.test(normalized)) {
-                return { account_code: rule.account_code, confidence: 0.95, pattern: rule.pattern.toString() };
+                return { intent: rule.intent, confidence: 0.95, pattern: rule.pattern.toString() };
             }
         }
         return null;
