@@ -109,37 +109,63 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
             if (response && response.results) {
                 setClassifyStatus(`Applying ${response.results.length} suggestions...`);
                 console.log('[AccountingModal] Processing AI results:', response.results);
+                console.log('[AccountingModal] Available Expense Accounts:', expenseAccounts.map(a => ({ id: a.Id || a.id, name: a.Name || a.name, code: a.AcctNum || a.code })));
 
                 const updatedItems = items.map(item => {
-                    const result = response.results.find((r: any) => r.item_id === item.id);
+                    const result = response.results.find((r: any) => String(r.item_id) === String(item.id));
                     console.log(`[AccountingModal] Mapping item "${item.description}" (ID: ${item.id}):`, result);
 
                     if (result && result.suggestion) {
-                        // result.suggestion should be the QuickBooks Account ID
-                        const match = expenseAccounts.find((a: any) => a.Id === result.suggestion || a.id === result.suggestion);
+                        // result.suggestion is the ID/Code returned by backend mapping
+                        // Try matching by ID (preferred) or by Name/Code as fallback
+                        const suggestionVal = String(result.suggestion).toLowerCase();
+
+                        const match = expenseAccounts.find((a: any) =>
+                            String(a.Id || a.id).toLowerCase() === suggestionVal ||
+                            String(a.Name || a.name).toLowerCase() === suggestionVal ||
+                            String(a.AcctNum || a.code).toLowerCase() === suggestionVal
+                        );
 
                         if (match) {
-                            console.log(`[AccountingModal] ✅ Match found in expenseAccounts for "${item.description}":`, match.Name, `(ID: ${match.Id || match.id})`);
+                            const finalId = String(match.Id || match.id);
+                            const finalName = match.Name || match.name;
+                            console.log(`[AccountingModal] ✅ Match found for "${item.description}":`, finalName, `(ID: ${finalId})`);
                             return {
                                 ...item,
-                                qb_account_id: match.Id || match.id,
-                                qb_account_name: match.Name
+                                qb_account_id: finalId,
+                                qb_account_name: finalName
                             };
                         } else {
-                            console.warn(`[AccountingModal] ⚠️ Suggestion ID "${result.suggestion}" for "${item.description}" not found in current expenseAccounts list.`, {
-                                available_ids: expenseAccounts.map(a => a.Id || a.id)
-                            });
+                            console.warn(`[AccountingModal] ⚠️ Suggestion "${result.suggestion}" for "${item.description}" not matched in expenseAccounts list.`);
                         }
                     } else if (result) {
-                        console.log(`[AccountingModal] ℹ️ No suggestion ID returned for "${item.description}":`, result.reasoning || 'No reason provided');
+                        // If backend returned account_code but no suggestion (ID)
+                        if (result.account_code) {
+                            const codeVal = String(result.account_code).toLowerCase();
+                            const matchByCode = expenseAccounts.find((a: any) =>
+                                String(a.AcctNum || a.code).toLowerCase() === codeVal ||
+                                String(a.Name || a.name).toLowerCase() === codeVal
+                            );
+
+                            if (matchByCode) {
+                                const finalId = String(matchByCode.Id || matchByCode.id);
+                                console.log(`[AccountingModal] ✅ Match found via code "${result.account_code}" for "${item.description}":`, matchByCode.Name);
+                                return {
+                                    ...item,
+                                    qb_account_id: finalId,
+                                    qb_account_name: matchByCode.Name
+                                };
+                            }
+                        }
+                        console.log(`[AccountingModal] ℹ️ No match found for "${item.description}":`, result.reasoning || 'No suggestion/code');
                     } else {
                         console.warn(`[AccountingModal] ❓ No result found for item ID ${item.id}`);
                     }
                     return item;
                 });
 
+                console.log('[AccountingModal] Final updated items:', updatedItems);
                 setItems(updatedItems);
-                console.log('[AccountingModal] Updated items state:', updatedItems);
                 setClassifyStatus('Classification complete!');
                 setTimeout(() => setClassifyStatus(null), 3000);
             } else {
