@@ -92,10 +92,15 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
 export const getRequisitions = async (req: any, res: any): Promise<any> => {
     try {
         const userId = (req as any).user.id;
+        const role = (req as any).user.role || 'REQUESTOR';
+        const organizationId = (req as any).user.organization_id;
 
-        // 1. Get user role
-        const { data: userRecord } = await supabase.from('users').select('role').eq('id', userId).single();
-        const role = userRecord?.role || 'REQUESTOR';
+        console.log(`[Requisition] Fetching for user ${userId}, role: ${role}, org: ${organizationId}`);
+
+        if (!organizationId) {
+            console.warn(`[Requisition] No organization ID found for user ${userId}`);
+            return res.status(400).json({ error: 'Organization context missing. Please ensure you are assigned to an organization.' });
+        }
 
         let query = supabase
             .from('requisitions')
@@ -103,17 +108,24 @@ export const getRequisitions = async (req: any, res: any): Promise<any> => {
                 *,
                 requestor:users!requestor_id(name)
             `)
-            .eq('organization_id', (req as any).user.organization_id)
+            .eq('organization_id', organizationId)
             .order('created_at', { ascending: false });
 
         // 2. Filter based on role (Accountants/Admins/Cashiers see all within org)
-        if (role === 'REQUESTOR') {
+        if (role === 'REQUESTOR' && userId !== 'service-role-admin') {
             query = query.eq('requestor_id', userId);
         }
 
+        console.log(`[Requisition] Fetching for user ${userId}, role: ${role}, org: ${(req as any).user.organization_id}`);
+
         const { data, error } = await query;
 
-        if (error) throw error;
+        if (error) {
+            console.error('[Requisition] Query error:', error);
+            throw error;
+        }
+
+        console.log(`[Requisition] Found ${data?.length || 0} records`);
 
         // Flatten requestor name for frontend convenience
         const formatted = data.map((r: any) => ({
@@ -124,7 +136,12 @@ export const getRequisitions = async (req: any, res: any): Promise<any> => {
         res.json(formatted);
     } catch (error: any) {
         console.error('Error fetching requisitions:', error);
-        res.status(500).json({ error: 'Failed to fetch requisitions', details: error.message });
+        res.status(500).json({
+            error: 'Failed to fetch requisitions',
+            details: error.message,
+            code: error.code,
+            hint: error.hint
+        });
     }
 };
 
@@ -193,18 +210,14 @@ export const getAllRequisitionsAdmin = async (req: any, res: any): Promise<any> 
     try {
         // Check if user is accountant/admin
         // Note: We use the SERVICE ROLE key in the backend client, so we must manually check the role.
-        const { data: userRecord, error: userError } = await supabase
-            .from('users')
-            .select('role')
-            .eq('id', (req as any).user.id)
-            .single();
+        const userRole = (req as any).user.role;
+        const organizationId = (req as any).user.organization_id;
 
-        if (userError || !userRecord) {
-            console.error('Role check failed:', userError);
-            return res.status(401).json({ error: 'User not found' });
+        if (!organizationId) {
+            console.warn(`[Requisition] No organization ID found for Admin/Accountant fetch (User ${req.user.id})`);
+            return res.status(400).json({ error: 'Organization context missing' });
         }
 
-        const userRole = userRecord.role;
         if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN' && userRole !== 'CASHIER') {
             return res.status(403).json({
                 error: 'Unauthorized: Accountant or Cashier access required',
@@ -222,7 +235,7 @@ export const getAllRequisitionsAdmin = async (req: any, res: any): Promise<any> 
         const { data, error } = await supabase
             .from('requisitions')
             .select('*, requestor:users!requestor_id(name)')
-            .eq('organization_id', (req as any).user.organization_id)
+            .eq('organization_id', organizationId)
             .order('created_at', { ascending: false });
 
         console.log(`[Requisition] getAllRequisitionsAdmin: Found ${data?.length || 0} records for user ${req.user?.id} (Role: ${userRole})`);
@@ -253,14 +266,7 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
         const { id } = req.params;
         const { status } = req.body;
 
-        // Check role
-        const { data: userRecord, error: userError } = await supabase
-            .from('users')
-            .select('role')
-            .eq('id', (req as any).user.id)
-            .single();
-
-        const userRole = userRecord?.role;
+        const userRole = (req as any).user.role;
 
         if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Unauthorized: Accountant access required' });
@@ -449,8 +455,8 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         const cashier_id = (req as any).user.id;
 
         // 1. Verify Role
-        const { data: userRecord } = await supabase.from('users').select('role').eq('id', cashier_id).single();
-        if (userRecord?.role !== 'ACCOUNTANT' && userRecord?.role !== 'CASHIER' && userRecord?.role !== 'ADMIN') {
+        const userRole = (req as any).user.role;
+        if (userRole !== 'ACCOUNTANT' && userRole !== 'CASHIER' && userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Unauthorized: Access restricted to Cashiers/Accountants' });
         }
 

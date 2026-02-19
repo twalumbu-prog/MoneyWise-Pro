@@ -18,7 +18,11 @@ export const requireAuth = async (req: any, res: any, next: any) => {
     // Testing/Admin bypass: Allow service role key directly
     if (token === process.env.SUPABASE_SERVICE_ROLE_KEY) {
         console.log('[Auth] Authenticated via Service Role Key (Bypass)');
-        req.user = { id: 'service-role-admin', role: 'ADMIN' };
+        req.user = {
+            id: 'service-role-admin',
+            role: 'ADMIN',
+            organization_id: '00000000-0000-0000-0000-000000000000' // Provide a dummy UUID for bypass
+        };
         (next as any)();
         return;
     }
