@@ -160,18 +160,32 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(404).json({ error: 'User not found in organization' });
         }
 
-        // Delete from Auth (Hard delete for now, or just status=DISABLED)
-        const { error: authError } = await (supabase.auth as any).admin.deleteUser(id);
-        if (authError) throw authError;
+        // Soft Delete Strategy:
+        // 1. Update status in Auth to prevent login (Banning)
+        // This keeps the user record in auth.users so foreign keys don't break,
+        // but prevents them from accessing the system.
+        const { error: authError } = await (supabase.auth as any).admin.updateUserById(id, {
+            ban_duration: '876000h' // Effectively ban forever
+        });
 
-        // Delete from DB (Cascade should handle it via Auth ID if configured, but safe to delete)
-        const { error: dbError } = await supabase.from('users').delete().eq('id', id);
+        if (authError) {
+            console.error('[DeleteUser] Auth ban failed:', authError);
+            // We continue even if auth fails, as they might already be deleted from Auth 
+            // but left in DB due to a previous partial failure.
+        }
+
+        // 2. Update status in our DB to DISABLED
+        const { error: dbError } = await supabase
+            .from('users')
+            .update({ status: 'DISABLED' })
+            .eq('id', id);
+
         if (dbError) throw dbError;
 
-        res.json({ message: 'User deleted successfully' });
+        res.json({ message: 'User deactivated successfully' });
 
     } catch (error: any) {
-        console.error('Error deleting user:', error);
-        res.status(500).json({ error: 'Failed to delete user', details: error.message });
+        console.error('Error deactivating user:', error);
+        res.status(500).json({ error: 'Failed to deactivate user', details: error.message });
     }
 };
