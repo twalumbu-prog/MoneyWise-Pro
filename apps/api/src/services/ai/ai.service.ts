@@ -18,19 +18,24 @@ export interface SuggestionResult {
 
 export const aiService = {
     async suggestCategory(accounts: any[], description: string, amount: number): Promise<SuggestionResult> {
+        console.log(`[AI Service] suggestCategory: ${description} (K${amount})`);
         const results = await this.suggestBatch(accounts, [{ description, amount }]);
         return results[0];
     },
 
     async suggestBatch(accounts: any[], lineItems: any[]): Promise<SuggestionResult[]> {
+        console.log(`[AI Service] suggestBatch: Processing ${lineItems.length} items with ${accounts.length} accounts.`);
         const results: SuggestionResult[] = [];
 
-        for (const item of lineItems) {
+        for (const [index, item] of lineItems.entries()) {
+            console.log(`[AI Service] Processing item ${index + 1}/${lineItems.length}: "${item.description}"`);
             const normalized = item.description.toLowerCase().trim();
 
-            // 1. Rule Engine (Expanded for common failures)
+            // 1. Rule Engine
+            console.log(`[AI Service] Step 1: Checking Rule Engine for "${normalized}"...`);
             const ruleMatch = this.checkRules(normalized);
             if (ruleMatch) {
+                console.log(`[AI Service] ✅ Rule Match Found: ${ruleMatch.account_code} (Reason: ${ruleMatch.pattern})`);
                 results.push({
                     account_code: ruleMatch.account_code,
                     confidence: ruleMatch.confidence,
@@ -39,39 +44,47 @@ export const aiService = {
                 });
                 continue;
             }
+            console.log(`[AI Service] No rule match found.`);
 
-            // 2. OpenAI (High Priority Fallback)
+            // 2. OpenAI
             if (OPENAI_API_KEY) {
                 try {
-                    console.log('[AI] Calling OpenAI for:', item.description);
+                    console.log(`[AI Service] Step 2: Calling OpenAI for "${item.description}"...`);
+                    const start = Date.now();
                     const aiResult = await this.callOpenAI(item.description, accounts);
+                    console.log(`[AI Service] ✅ OpenAI Response in ${Date.now() - start}ms:`, aiResult);
                     results.push({
-                        account_code: aiResult.account_code, // Adjusted to match expected key from OpenAI
+                        account_code: aiResult.account_code,
                         confidence: aiResult.confidence,
                         reasoning: `AI Suggestion: ${aiResult.reasoning || aiResult.intent?.category || 'General'}`,
                         method: 'AI'
                     });
                     continue;
                 } catch (err: any) {
-                    console.error('[AI] OpenAI Error:', err.message);
+                    console.error(`[AI Service] ❌ OpenAI Error for "${item.description}":`, err.message);
                 }
             } else {
-                console.warn('[AI] OPENAI_API_KEY not available, skipping OpenAI fallback');
+                console.warn('[AI Service] Step 2: OPENAI_API_KEY not found, skipping OpenAI.');
             }
 
-            // 3. Gemini (Second Priority Fallback - REST API)
+            // 3. Gemini
             if (GEMINI_API_KEY) {
                 try {
-                    console.log('[AI] Calling Gemini (REST) for:', item.description);
+                    console.log(`[AI Service] Step 3: Calling Gemini for "${item.description}"...`);
+                    const start = Date.now();
                     const geminiResult = await this.suggestCategoryGemini(accounts, item.description, item.amount);
+                    console.log(`[AI Service] ✅ Gemini Response in ${Date.now() - start}ms:`, geminiResult);
                     results.push(geminiResult);
                     continue;
                 } catch (err: any) {
-                    console.error('[AI] Gemini Error:', err.message);
+                    console.error(`[AI Service] ❌ Gemini Error for "${item.description}":`, err.message);
                 }
+            } else {
+                console.warn('[AI Service] Step 3: GEMINI_API_KEY not found, skipping Gemini.');
             }
 
             // 4. Default Fallback
+            console.warn(`[AI Service] ⚠️ All classification methods failed for "${item.description}"`);
             results.push({
                 account_code: null,
                 confidence: 0,
@@ -80,6 +93,7 @@ export const aiService = {
             });
         }
 
+        console.log(`[AI Service] suggestBatch completed with ${results.length} results.`);
         return results;
     },
 

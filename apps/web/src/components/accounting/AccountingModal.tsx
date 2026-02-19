@@ -80,37 +80,64 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
         }
     };
 
+    const [classifyStatus, setClassifyStatus] = useState<string | null>(null);
+
     const handleAutoClassify = async () => {
         setClassifying(true);
         setError(null);
+        setClassifyStatus('Starting AI classification...');
         try {
-            // Call the real AI suggestion service
-            const response = await accountService.suggestBatch(
-                items.map(i => ({ id: i.id, description: i.description, amount: i.total })),
-                requisition.id,
-                expenseAccounts // Pass QB accounts for matching
-            );
+            console.log('[AccountingModal] handleAutoClassify: Starting classification for', items.length, 'items.');
 
+            // Step 1: Prepare items
+            setClassifyStatus('Preparing items for AI...');
+            const preparedItems = items.map(i => ({ id: i.id, description: i.description, amount: i.total }));
+            console.log('[AccountingModal] Prepared items:', preparedItems);
+
+            // Step 2: Call the real AI suggestion service
+            setClassifyStatus(`Sending request to AI service with ${expenseAccounts.length} categories...`);
+            console.log('[AccountingModal] Calling accountService.suggestBatch...');
+            const start = Date.now();
+            const response = await accountService.suggestBatch(
+                preparedItems,
+                requisition.id,
+                expenseAccounts
+            );
+            console.log(`[AccountingModal] AI Response received in ${Date.now() - start}ms:`, response);
+
+            // Step 3: Process results
             if (response && response.results) {
+                setClassifyStatus(`Applying ${response.results.length} suggestions...`);
                 const updatedItems = items.map(item => {
                     const result = response.results.find((r: any) => r.item_id === item.id);
                     if (result && result.suggestion) {
                         const match = expenseAccounts.find((a: any) => a.Id === result.suggestion);
                         if (match) {
+                            console.log(`[AccountingModal] Applying suggestion for "${item.description}":`, match.Name);
                             return {
                                 ...item,
                                 qb_account_id: match.Id,
                                 qb_account_name: match.Name
                             };
+                        } else {
+                            console.warn(`[AccountingModal] Suggestion "${result.suggestion}" not found in expenseAccounts list.`);
                         }
+                    } else if (result) {
+                        console.log(`[AccountingModal] No suggestion for "${item.description}":`, result.reasoning);
                     }
                     return item;
                 });
                 setItems(updatedItems);
+                setClassifyStatus('Classification complete!');
+                setTimeout(() => setClassifyStatus(null), 3000);
+            } else {
+                console.warn('[AccountingModal] AI Response returned no results.');
+                setError('AI service returned no results. Check if API keys are configured.');
             }
         } catch (err: any) {
-            console.error('[AI Classify] Error:', err);
+            console.error('[AccountingModal] ❌ AI Classify Error:', err);
             setError('AI Classification failed: ' + (err.message || 'Unknown error'));
+            setClassifyStatus(null);
         } finally {
             setClassifying(false);
         }
@@ -245,19 +272,26 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                         </div>
 
                         <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                            <button
-                                type="button"
-                                onClick={handleAutoClassify}
-                                disabled={submitting || classifying}
-                                className="flex-1 inline-flex justify-center items-center px-4 py-3.5 border border-gray-100 shadow-sm text-sm font-bold rounded-2xl text-purple-600 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all active:scale-95"
-                            >
-                                {classifying ? (
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : (
-                                    <Wand2 className="h-4 w-4 mr-2" />
+                            <div className="flex-1 flex flex-col gap-2">
+                                {classifyStatus && (
+                                    <p className="text-[10px] text-purple-600 font-bold uppercase tracking-wider animate-pulse ml-1">
+                                        {classifyStatus}
+                                    </p>
                                 )}
-                                AI Suggest
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={handleAutoClassify}
+                                    disabled={submitting || classifying}
+                                    className="w-full inline-flex justify-center items-center px-4 py-3.5 border border-gray-100 shadow-sm text-sm font-bold rounded-2xl text-purple-600 bg-purple-50 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition-all active:scale-95"
+                                >
+                                    {classifying ? (
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                    ) : (
+                                        <Wand2 className="h-4 w-4 mr-2" />
+                                    )}
+                                    AI Suggest
+                                </button>
+                            </div>
 
                             <button
                                 type="submit"

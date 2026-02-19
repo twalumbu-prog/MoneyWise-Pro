@@ -102,18 +102,22 @@ export const updateAccount = async (req: AuthRequest, res: any): Promise<any> =>
 
 export const suggestAccount = async (req: any, res: any): Promise<any> => {
     try {
+        console.log('[Account Controller] suggestAccount: Received request');
         const { description, amount, line_items, requisition_id, accounts: customAccounts } = req.body;
 
         if (!description && (!line_items || line_items.length === 0)) {
+            console.warn('[Account Controller] suggestAccount: Missing description or line_items');
             return res.status(400).json({ error: 'Description or line_items is required' });
         }
 
         // Normalize input items
         const items = line_items || [{ id: 'manual-1', description, amount: amount || 0 }];
+        console.log(`[Account Controller] suggestAccount: Normalizing ${items.length} items.`);
 
         // Get accounts for matching (either from DB or provided in request)
         let accounts = [];
         if (customAccounts && Array.isArray(customAccounts)) {
+            console.log(`[Account Controller] suggestAccount: Normalizing ${customAccounts.length} custom accounts.`);
             // Normalize QB accounts or other custom accounts to the format the AI service expects
             // AI service expects: { code: string, name: string, description: string }
             accounts = customAccounts.map((a: any) => ({
@@ -123,14 +127,20 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
                 description: a.description || a.Description || ''
             }));
         } else {
-            const { data: accountsData } = await supabase
+            console.log('[Account Controller] suggestAccount: Fetching local accounts from DB.');
+            const { data: accountsData, error: accError } = await supabase
                 .from('accounts')
                 .select('*')
                 .eq('is_active', true);
+
+            if (accError) {
+                console.error('[Account Controller] suggestAccount: Database error fetching accounts:', accError);
+                throw accError;
+            }
             accounts = accountsData || [];
         }
 
-        console.log(`[AI Suggest] Processing ${items.length} items using ${accounts.length} available accounts...`);
+        console.log(`[Account Controller] suggestAccount: Calling AI service with ${items.length} items and ${accounts.length} accounts.`);
 
         const suggestions = await aiService.suggestBatch(accounts, items.map((it: any) => ({
             description: it.description,
@@ -152,7 +162,8 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
 
         const data = { results };
 
-        console.log('[DEBUG] AI Suggest results:', JSON.stringify(data, null, 2));
+        console.log(`[Account Controller] suggestAccount: Returning ${results.length} results.`);
+        // console.log('[DEBUG] AI Suggest results:', JSON.stringify(data, null, 2)); // Temporarily disabled for cleaner logs
 
         // If it was a single request, return just the first result to maintain compatibility
         if (!line_items) {
@@ -168,7 +179,7 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
             res.json(data);
         }
     } catch (error: any) {
-        console.error('Error suggesting account:', error);
+        console.error('[Account Controller] ❌ Error suggesting account:', error.message);
         res.status(500).json({ error: 'Failed to suggest account', details: error.message });
     }
 };

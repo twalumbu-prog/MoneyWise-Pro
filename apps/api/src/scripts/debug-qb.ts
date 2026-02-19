@@ -1,9 +1,8 @@
-import * as dotenv from 'dotenv';
-import { QuickBooksService } from '../services/quickbooks.service';
 import { resolve } from 'path';
-
-// Load env vars from the correct path
+import * as dotenv from 'dotenv';
 dotenv.config({ path: resolve(__dirname, '../../.env') });
+
+import { QuickBooksService } from '../services/quickbooks.service';
 
 const ORG_ID = '9e7bb109-d6da-4dcd-9ac3-55bba2718cff';
 
