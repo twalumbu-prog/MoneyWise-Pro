@@ -226,3 +226,24 @@ export const resolveUsername = async (req: any, res: any): Promise<any> => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 };
+export const completeInvitation = async (req: any, res: any): Promise<any> => {
+    try {
+        const userId = req.user.id;
+
+        if (!userId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        const { error } = await supabase
+            .from('users')
+            .update({ status: 'ACTIVE' })
+            .eq('id', userId);
+
+        if (error) throw error;
+
+        res.json({ message: 'Registration finalized successfully' });
+    } catch (error: any) {
+        console.error('Complete invitation error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};

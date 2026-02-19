@@ -46,11 +46,11 @@ export const UserManagement: React.FC = () => {
 
         try {
             await userService.create({
-                ...newUser,
-                password: 'TempPassword123!' // In a real app, this would be an invitation flow
+                ...newUser
             });
             setIsAddModalOpen(false);
             setNewUser({ email: '', name: '', role: 'REQUESTOR', employeeId: '', username: '' });
+            alert('Invitation sent! The user will receive an email to join and set their password.');
             await loadUsers();
         } catch (err: any) {
             setError(err.message);

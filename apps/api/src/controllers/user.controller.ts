@@ -28,7 +28,7 @@ export const getUsers = async (req: AuthRequest, res: any): Promise<any> => {
 
 export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
     try {
-        const { email, password, name, role, employeeId, username } = req.body;
+        const { email, name, role, employeeId, username } = req.body;
         const organization_id = (req as any).user.organization_id;
         const userRole = (req as any).user.role;
 
@@ -36,7 +36,7 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(400).json({ error: 'User does not belong to an organization' });
         }
 
-        // Only Admin can create users
+        // Only Admin can create/invite users
         if (userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Only admins can add users' });
         }
@@ -54,23 +54,35 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             }
         }
 
-        // Create user in Supabase Auth
-        const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
-            email,
-            password,
-            email_confirm: true,
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
+        // 1. Invite user via Supabase Auth
+        const { data: authData, error: authError } = await (supabase.auth as any).admin.inviteUserByEmail(email, {
+            data: {
+                name,
+                role,
+                organization_id,
+                employee_id: employeeId || `EMP-${Date.now()}`,
+                username: username || null,
+                status: 'INVITED',
+                full_name: name
+            },
+            redirectTo: `${FRONTEND_URL}/join`,
         });
 
         if (authError) {
+            console.error('[CreateUser] Invitation failed:', authError);
             return res.status(400).json({ error: authError.message });
         }
 
         if (!authData.user) {
-            return res.status(500).json({ error: 'User creation failed' });
+            return res.status(500).json({ error: 'User invitation failed - no user returned' });
         }
 
-        // Create user record in DB linked to organization
-        const { error: dbError } = await supabase.from('users').insert({
+        // 2. Upsert user record in DB linked to organization with 'INVITED' status
+        // Even though the database trigger handles this, we do it explicitly to be sure 
+        // and to handle fields the trigger might miss or to override defaults.
+        const { error: dbError } = await supabase.from('users').upsert({
             id: authData.user.id,
             email: email,
             name,
@@ -78,19 +90,22 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             employee_id: employeeId || `EMP-${Date.now()}`,
             organization_id: organization_id,
             username: username || null,
-            status: 'ACTIVE'
+            status: 'INVITED'
         });
 
         if (dbError) {
-            // Rollback auth
-            await (supabase.auth as any).admin.deleteUser(authData.user.id);
+            console.error('[CreateUser] DB upsert failed:', dbError);
             throw dbError;
         }
 
-        res.status(201).json({ message: 'User created successfully', userId: authData.user.id });
+        res.status(201).json({
+            message: 'Invitation sent successfully',
+            userId: authData.user.id,
+            status: 'INVITED'
+        });
 
     } catch (error: any) {
-        console.error('Error creating user:', error);
+        console.error('Error creating/inviting user:', error);
         res.status(500).json({ error: 'Failed to create user', details: error.message });
     }
 };
