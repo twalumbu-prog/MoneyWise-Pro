@@ -1,6 +1,6 @@
 
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { CATEGORIZATION_SYSTEM_PROMPT, buildCategorizationPrompt } from './prompts';
+import { memoryService } from './memory.service';
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -30,6 +30,27 @@ export const aiService = {
         for (const [index, item] of lineItems.entries()) {
             console.log(`[AI Service] Processing item ${index + 1}/${lineItems.length}: "${item.description}"`);
             const normalized = item.description.toLowerCase().trim();
+
+            // 0. Memory Look-up (Historical feedback)
+            console.log(`[AI Service] Step 0: Checking AI Memory for "${normalized}"...`);
+            const memoryMatch = await memoryService.lookup(item.description);
+            if (memoryMatch) {
+                // Find the account in the provided list to get its code
+                const matchedAccount = accounts.find(a => (a.id || a.Id) === memoryMatch.account_id);
+                if (matchedAccount) {
+                    const code = String(matchedAccount.code || matchedAccount.AcctNum || matchedAccount.Id || '');
+                    console.log(`[AI Service] ✅ Memory Match Found: ${code} (Confidence: ${memoryMatch.confidence})`);
+                    results.push({
+                        account_code: code,
+                        confidence: memoryMatch.confidence,
+                        reasoning: 'Matches a previously validated transaction in history.',
+                        method: 'MEMORY'
+                    });
+                    continue;
+                } else {
+                    console.log(`[AI Service] Memory match account_id ${memoryMatch.account_id} not available in current account list.`);
+                }
+            }
 
             // 1. Rule Engine
             console.log(`[AI Service] Step 1: Checking Rule Engine for "${normalized}"...`);
@@ -99,37 +120,13 @@ export const aiService = {
 
     checkRules(normalized: string) {
         const rules = [
-            // Utilities - Electricity (5002) - SPECIFIC USER CASE
-            { pattern: /\b(zesco|electricity|power units|prepaid units)\b/i, account_code: '5002' },
-            // Utilities - Water (5003) - SPECIFIC USER CASE
-            { pattern: /\b(water bill|lwsc|sewerage|water supply)\b/i, account_code: '5003' },
-            // Rent Expense (5001) - SPECIFIC USER CASE
-            { pattern: /\b(rent|lease|rental|tenancy)\b/i, account_code: '5001' },
-
-            // Bank Charges (7001) - SPECIFIC USER CASE
-            { pattern: /\b(bank charges|bank fee|transaction fee|transfer fee|commission|interest expense|monthly fee)\b/i, account_code: '7001' },
-            // Hosting & Domain (5004 - Internet/Comms or 5015 - Software/IT)
-            { pattern: /\b(hosting|domain|email hosting|godaddy|bluehost|cloud)\b/i, account_code: '5004' },
-
-            // Internet & Communications (5004) - REFINED
-            { pattern: /\b(airtime|data|bundle|internet|wifi|wi-fi|broadband|talk\s*time|subscription)\b/i, account_code: '5004' },
-            // Transport & Fuel (5008)
-            { pattern: /\b(fuel|petrol|diesel|taxi|uber|bolt|transport|travel|bus|flight|parking|toll)\b/i, account_code: '5008' },
-            // Meals & Catering (5009)
-            { pattern: /\b(lunch|meal|dinner|food|catering|refreshment|breakfast|snack|coffee|tea|beverage)\b/i, account_code: '5009' },
-            // Office Supplies (5005)
-            { pattern: /\b(paper|pen|stapler|stationery|ink|toner|pencil|marker|chalk|exercise|textbook|book|notebook)\b/i, account_code: '5005' },
-            // Printing & Stationery (5006)
-            { pattern: /\b(print|copy|photocopy|binding|laminating)\b/i, account_code: '5006' },
-            // Cleaning & Sanitation (5013)
-            { pattern: /\b(cleaner|soap|detergent|janitorial|toilet|scrub|broom|mop|sanitizer|disinfectant|tissue|wipes|sanitary)\b/i, account_code: '5013' },
-            // Educational / Supplies (9002)
-            { pattern: /\b(material|classroom|school supplies|teaching aid|educational)\b/i, account_code: '9002' },
-            // Repairs & Maintenance (5007)
-            { pattern: /\b(repair|maintenance|fix|broken|plumbing|electrical|bulb|paint|renovation)\b/i, account_code: '5007' },
-            // Security Services (5014)
-            { pattern: /\b(security|guard|alarm|surveillance)\b/i, account_code: '5014' },
-            // Salaries & Personnel (6001)
+            { pattern: /\b(lunch|dinner|breakfast|meal|food|restaurant|kfc|hungry lion|pizza)\b/i, account_code: '5001' },
+            { pattern: /\b(taxi|uber|bolt|yango|transport|bus fare|fuel|petrol|diesel)\b/i, account_code: '5002' },
+            { pattern: /\b(airtime|data|internet|bundle|mtn|airtel|zamtel|liquid|starlink)\b/i, account_code: '5003' },
+            { pattern: /\b(stationary|paper|pen|printing|toner|office supplies)\b/i, account_code: '5004' },
+            { pattern: /\b(cleaning|detergent|doom|soap|toilet paper)\b/i, account_code: '5005' },
+            { pattern: /\b(water|electricity|zesco|bills|utility)\b/i, account_code: '5006' },
+            { pattern: /\b(rent|lease|office space)\b/i, account_code: '5007' },
             { pattern: /\b(salary|wages|payroll|personnel|staff payment|napsa|pension)\b/i, account_code: '6001' }
         ];
 

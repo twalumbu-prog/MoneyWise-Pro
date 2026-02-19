@@ -50,5 +50,26 @@ export const memoryService = {
         } catch (err) {
             console.error('[AI Memory] Error in learning phase:', err);
         }
+    },
+
+    async lookup(description: string): Promise<{ account_id: string, confidence: number } | null> {
+        try {
+            const signature = this.generateSignature(description);
+            const { data, error } = await supabase
+                .from('ai_transaction_memory')
+                .select('system_account_id, confidence')
+                .eq('description_signature', signature)
+                .single();
+
+            if (error || !data) return null;
+
+            return {
+                account_id: data.system_account_id,
+                confidence: data.confidence
+            };
+        } catch (err) {
+            console.error('[AI Memory] Lookup error:', err);
+            return null;
+        }
     }
 };
