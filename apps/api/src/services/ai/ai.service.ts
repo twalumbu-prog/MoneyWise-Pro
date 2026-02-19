@@ -56,16 +56,27 @@ export const aiService = {
             console.log(`[AI Service] Step 1: Checking Rule Engine for "${normalized}"...`);
             const ruleMatch = this.checkRules(normalized);
             if (ruleMatch) {
-                console.log(`[AI Service] ✅ Rule Match Found: ${ruleMatch.account_code} (Reason: ${ruleMatch.pattern})`);
-                results.push({
-                    account_code: ruleMatch.account_code,
-                    confidence: ruleMatch.confidence,
-                    reasoning: `Rule matched: ${ruleMatch.pattern}`,
-                    method: 'RULE'
-                });
-                continue;
+                // IMPORTANT: Only use the rule if it maps to an actual account in the provided list
+                const exists = accounts.some(a =>
+                    String(a.code || a.AcctNum || '').toLowerCase() === String(ruleMatch.account_code).toLowerCase() ||
+                    String(a.name || a.Name || '').toLowerCase() === String(ruleMatch.account_code).toLowerCase()
+                );
+
+                if (exists) {
+                    console.log(`[AI Service] ✅ Rule Match Found & Validated: ${ruleMatch.account_code} (Reason: ${ruleMatch.pattern})`);
+                    results.push({
+                        account_code: ruleMatch.account_code,
+                        confidence: ruleMatch.confidence,
+                        reasoning: `Rule matched: ${ruleMatch.pattern}`,
+                        method: 'RULE'
+                    });
+                    continue;
+                } else {
+                    console.log(`[AI Service] ℹ️ Rule matched "${ruleMatch.account_code}" but this account is not in the current list. Falling back to AI.`);
+                }
+            } else {
+                console.log(`[AI Service] No rule match found.`);
             }
-            console.log(`[AI Service] No rule match found.`);
 
             // 2. OpenAI
             if (OPENAI_API_KEY) {
