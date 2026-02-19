@@ -108,26 +108,38 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
             // Step 3: Process results
             if (response && response.results) {
                 setClassifyStatus(`Applying ${response.results.length} suggestions...`);
+                console.log('[AccountingModal] Processing AI results:', response.results);
+
                 const updatedItems = items.map(item => {
                     const result = response.results.find((r: any) => r.item_id === item.id);
+                    console.log(`[AccountingModal] Mapping item "${item.description}" (ID: ${item.id}):`, result);
+
                     if (result && result.suggestion) {
-                        const match = expenseAccounts.find((a: any) => a.Id === result.suggestion);
+                        // result.suggestion should be the QuickBooks Account ID
+                        const match = expenseAccounts.find((a: any) => a.Id === result.suggestion || a.id === result.suggestion);
+
                         if (match) {
-                            console.log(`[AccountingModal] Applying suggestion for "${item.description}":`, match.Name);
+                            console.log(`[AccountingModal] ✅ Match found in expenseAccounts for "${item.description}":`, match.Name, `(ID: ${match.Id || match.id})`);
                             return {
                                 ...item,
-                                qb_account_id: match.Id,
+                                qb_account_id: match.Id || match.id,
                                 qb_account_name: match.Name
                             };
                         } else {
-                            console.warn(`[AccountingModal] Suggestion "${result.suggestion}" not found in expenseAccounts list.`);
+                            console.warn(`[AccountingModal] ⚠️ Suggestion ID "${result.suggestion}" for "${item.description}" not found in current expenseAccounts list.`, {
+                                available_ids: expenseAccounts.map(a => a.Id || a.id)
+                            });
                         }
                     } else if (result) {
-                        console.log(`[AccountingModal] No suggestion for "${item.description}":`, result.reasoning);
+                        console.log(`[AccountingModal] ℹ️ No suggestion ID returned for "${item.description}":`, result.reasoning || 'No reason provided');
+                    } else {
+                        console.warn(`[AccountingModal] ❓ No result found for item ID ${item.id}`);
                     }
                     return item;
                 });
+
                 setItems(updatedItems);
+                console.log('[AccountingModal] Updated items state:', updatedItems);
                 setClassifyStatus('Classification complete!');
                 setTimeout(() => setClassifyStatus(null), 3000);
             } else {

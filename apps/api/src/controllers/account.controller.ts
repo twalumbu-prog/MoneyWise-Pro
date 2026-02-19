@@ -148,22 +148,42 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
         })));
 
         // Map suggesting codes back to the original account context
-        // If they were custom accounts, we use the normalized list
-        const accountMap = new Map(accounts.map((a: any) => [String(a.code), a.id]));
+        // We now support mapping by Code OR Name (fallback) to be more robust
+        const accountByCode = new Map(accounts.map((a: any) => [String(a.code).toLowerCase(), a.id || a.Id]));
+        const accountByName = new Map(accounts.map((a: any) => [String(a.name).toLowerCase(), a.id || a.Id]));
 
-        const results = suggestions.map((s, i) => ({
-            item_id: items[i].id,
-            suggestion: s.account_code ? accountMap.get(s.account_code) : null,
-            account_code: s.account_code,
-            confidence: s.confidence,
-            method: s.method,
-            reasoning: s.reasoning
-        }));
+        const results = suggestions.map((s, i) => {
+            const item = items[i];
+            let suggestedId = null;
+
+            if (s.account_code) {
+                // Try matching by code first
+                suggestedId = accountByCode.get(String(s.account_code).toLowerCase());
+
+                // If code match fails, try matching by name (sometimes LLMs return names instead of codes)
+                if (!suggestedId) {
+                    suggestedId = accountByName.get(String(s.account_code).toLowerCase());
+                }
+            }
+
+            console.log(`[Account Controller] Result for "${item.description}":`, {
+                returned_code: s.account_code,
+                mapped_id: suggestedId,
+                method: s.method
+            });
+
+            return {
+                item_id: item.id,
+                suggestion: suggestedId, // This is what the frontend uses for the dropdown ID
+                account_code: s.account_code,
+                confidence: s.confidence,
+                method: s.method,
+                reasoning: s.reasoning
+            };
+        });
 
         const data = { results };
-
         console.log(`[Account Controller] suggestAccount: Returning ${results.length} results.`);
-        // console.log('[DEBUG] AI Suggest results:', JSON.stringify(data, null, 2)); // Temporarily disabled for cleaner logs
 
         // If it was a single request, return just the first result to maintain compatibility
         if (!line_items) {
