@@ -177,7 +177,10 @@ const CashLedger: React.FC = () => {
         const items = req.line_items || [];
         const disbursement = req.disbursements?.[0];
 
-        const actualExpenditure = Number(req.actual_total || 0);
+        const actualExpenditure = items.length > 0
+            ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0)
+            : Number(req.actual_total || 0);
+
         const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
         const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
 
