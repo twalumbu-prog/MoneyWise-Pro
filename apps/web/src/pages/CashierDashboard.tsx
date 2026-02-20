@@ -53,9 +53,18 @@ export const CashierDashboard: React.FC = () => {
         if (!selectedReq) return;
 
         const totalPrepared = calculateTotal(denominations);
-        if (totalPrepared !== Number(selectedReq.estimated_total)) {
-            alert(`Total prepared (K${totalPrepared}) does not match requisition amount (K${selectedReq.estimated_total})`);
+        const estimatedTotal = Number(selectedReq.estimated_total);
+
+        if (totalPrepared < estimatedTotal) {
+            alert(`Total prepared (K${totalPrepared.toFixed(2)}) cannot be less than the requisition amount (K${estimatedTotal.toFixed(2)})`);
             return;
+        }
+
+        if (totalPrepared > estimatedTotal) {
+            const confirmed = window.confirm(
+                `You are about to disburse K${totalPrepared.toFixed(2)}, which is MORE than the requested amount of K${estimatedTotal.toFixed(2)}. \n\nThis is usually because exact denominations are unavailable. The extra amount will be recorded and expected to be returned alongside actual change. \n\nDo you want to proceed?`
+            );
+            if (!confirmed) return;
         }
 
         try {
@@ -173,13 +182,13 @@ export const CashierDashboard: React.FC = () => {
                                 <div className="border-t pt-4 flex justify-between items-center">
                                     <div>
                                         <span className="text-sm text-gray-500 block">Total Prepared</span>
-                                        <span className={`text-2xl font-bold ${calculateTotal(denominations) === Number(selectedReq.estimated_total) ? 'text-green-600' : 'text-red-500'}`}>
+                                        <span className={`text-2xl font-bold ${calculateTotal(denominations) === Number(selectedReq.estimated_total) ? 'text-green-600' : calculateTotal(denominations) > Number(selectedReq.estimated_total) ? 'text-amber-500' : 'text-red-500'}`}>
                                             K{calculateTotal(denominations).toLocaleString()}
                                         </span>
                                     </div>
                                     <button
                                         onClick={handleDisburse}
-                                        disabled={processing || calculateTotal(denominations) !== Number(selectedReq.estimated_total)}
+                                        disabled={processing || calculateTotal(denominations) < Number(selectedReq.estimated_total)}
                                         className="flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed"
                                     >
                                         <Check className="h-5 w-5 mr-2" />

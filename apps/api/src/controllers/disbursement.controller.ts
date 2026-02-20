@@ -26,7 +26,15 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'Requisition must be AUTHORISED to disburse' });
         }
 
-        // 2. Create Disbursement Record
+        // 2. Validate Disbursement Amount
+        const estimatedTotal = Number(requisition.estimated_total);
+        if (total_prepared < estimatedTotal) {
+            return res.status(400).json({
+                error: `Disbursement amount (K${total_prepared}) cannot be less than the authorized amount (K${estimatedTotal})`
+            });
+        }
+
+        // 3. Create Disbursement Record
         const { data: disbursementData, error: disbError } = await supabase
             .from('disbursements')
             .insert({
