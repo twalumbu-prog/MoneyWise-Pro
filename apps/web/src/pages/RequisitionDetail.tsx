@@ -36,10 +36,10 @@ export const RequisitionDetail: React.FC = () => {
     const [uploading, setUploading] = useState<string | null>(null);
 
     const [returnedDenominations, setReturnedDenominations] = useState<any[]>([
-        { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }
+        { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
     ]);
     const [confirmedDenominations, setConfirmedDenominations] = useState<any[]>([
-        { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }
+        { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
     ]);
 
     useEffect(() => {
@@ -265,7 +265,7 @@ export const RequisitionDetail: React.FC = () => {
                             </div>
                             <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                                 <dt className="text-sm font-medium text-gray-500">Total Estimated</dt>
-                                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">${Number(requisition.estimated_total).toLocaleString()}</dd>
+                                <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">K{Number(requisition.estimated_total).toLocaleString()}</dd>
                             </div>
 
                             {/* Actual Total Display */}
@@ -273,7 +273,7 @@ export const RequisitionDetail: React.FC = () => {
                                 <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 bg-gray-50">
                                     <dt className="text-sm font-medium text-gray-900">Total Actual</dt>
                                     <dd className="mt-1 text-sm font-bold text-gray-900 sm:mt-0 sm:col-span-2">
-                                        ${(requisition as any).actual_total ? Number((requisition as any).actual_total).toLocaleString() : '0.00'}
+                                        K{(requisition as any).actual_total ? Number((requisition as any).actual_total).toLocaleString() : '0.00'}
                                     </dd>
                                 </div>
                             )}
@@ -289,7 +289,7 @@ export const RequisitionDetail: React.FC = () => {
                                                     <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Est. Cost</th>
                                                     {canTrackExpenses ? (
                                                         <>
-                                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actual Cost ($)</th>
+                                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actual Cost (K)</th>
                                                             <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Receipt</th>
                                                         </>
                                                     ) : (
@@ -303,7 +303,7 @@ export const RequisitionDetail: React.FC = () => {
                                                         <td className="px-4 py-2 text-sm text-gray-900">
                                                             <div className="font-medium">{item.description}</div>
                                                             <div className="text-xs text-gray-500">
-                                                                {item.quantity} x ${item.unit_price}
+                                                                {item.quantity} x K{item.unit_price}
                                                                 {item.accounts && (
                                                                     <span className="ml-2 px-1.5 py-0.5 rounded bg-brand-gray text-gray-500 border border-gray-100">
                                                                         {item.accounts.code}
@@ -311,7 +311,7 @@ export const RequisitionDetail: React.FC = () => {
                                                                 )}
                                                             </div>
                                                         </td>
-                                                        <td className="px-4 py-2 text-sm text-gray-900 text-right font-medium">${item.estimated_amount}</td>
+                                                        <td className="px-4 py-2 text-sm text-gray-900 text-right font-medium">K{item.estimated_amount}</td>
 
                                                         {canTrackExpenses ? (
                                                             <>
@@ -344,7 +344,7 @@ export const RequisitionDetail: React.FC = () => {
                                                             </>
                                                         ) : (
                                                             <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                                                                ${item.actual_amount || '0.00'}
+                                                                K{item.actual_amount || '0.00'}
                                                             </td>
                                                         )}
                                                     </tr>

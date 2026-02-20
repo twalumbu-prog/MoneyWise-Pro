@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { userService, UserProfile } from '../../services/user.service';
-import { Loader2, UserPlus, Shield, Trash2, Eye } from 'lucide-react';
+import { Loader2, UserPlus, Shield, Trash2, Eye, Mail } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../Modal';
 
@@ -66,6 +66,20 @@ export const UserManagement: React.FC = () => {
             setActionLoading(true);
             await userService.delete(userId);
             await loadUsers();
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
+    const handleResendInvite = async (userId: string) => {
+        if (!window.confirm('Are you sure you want to resend the invitation email to this user?')) return;
+
+        try {
+            setActionLoading(true);
+            await userService.resendInvite(userId);
+            alert('Invitation resent successfully!');
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -181,6 +195,16 @@ export const UserManagement: React.FC = () => {
 
                                             {isAdmin && (
                                                 <>
+                                                    {user.status === 'INVITED' && (
+                                                        <button
+                                                            onClick={() => handleResendInvite(user.id)}
+                                                            className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all"
+                                                            title="Resend Invitation"
+                                                            disabled={actionLoading}
+                                                        >
+                                                            <Mail className="h-4 w-4" />
+                                                        </button>
+                                                    )}
                                                     <button
                                                         onClick={() => setEditingUser(user)}
                                                         className="p-2 text-brand-green hover:text-green-700 hover:bg-green-50 rounded-xl transition-all"

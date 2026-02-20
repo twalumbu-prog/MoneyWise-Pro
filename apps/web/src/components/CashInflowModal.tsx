@@ -14,7 +14,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
     const [purpose, setPurpose] = useState('');
     const [contactDetails, setContactDetails] = useState('');
     const [denominations, setDenominations] = useState<any[]>([
-        { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }
+        { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
     ]);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
             setPurpose('');
             setContactDetails('');
             setDenominations([
-                { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }
+                { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
             ]);
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to log cash inflow');

@@ -92,5 +92,25 @@ export const userService = {
         }
 
         return response.json();
+    },
+
+    async resendInvite(id: string) {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+
+        const response = await fetch(`${API_URL}/users/${id}/resend-invite`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to resend invitation');
+        }
+
+        return response.json();
     }
 };

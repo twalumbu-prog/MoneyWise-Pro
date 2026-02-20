@@ -173,7 +173,7 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
         // Ensure target user is in same org
         const { data: targetUser } = await supabase
             .from('users')
-            .select('organization_id')
+            .select('organization_id, status')
             .eq('id', id)
             .single();
 
@@ -181,7 +181,27 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(404).json({ error: 'User not found in organization' });
         }
 
-        // Soft Delete Strategy:
+        if (targetUser.status === 'INVITED') {
+            // Hard Delete Strategy for INVITED users:
+            // Completely remove from auth and public to allow re-invitation
+
+            // Note: Since we have a trigger, deleting from auth.users might automatically delete from public.users via ON DELETE CASCADE (if configured),
+            // but we explicitly delete from public.users first to be safe, or just delete from auth.users.
+            // Our schema doesn't seem to have CASCADE on users table from auth.users, so we delete both.
+
+            const { error: dbError } = await supabase.from('users').delete().eq('id', id);
+            if (dbError) throw dbError;
+
+            const { error: authError } = await (supabase.auth as any).admin.deleteUser(id);
+            if (authError) {
+                console.error('[DeleteUser] Auth hard delete failed:', authError);
+                // Even if auth fails, the DB record is gone, allowing re-invitation to potentially succeed if auth record was already gone
+            }
+
+            return res.json({ message: 'Invitation cancelled and user removed successfully' });
+        }
+
+        // Soft Delete Strategy for ACTIVE/DISABLED users:
         // 1. Update status in Auth to prevent login (Banning)
         // This keeps the user record in auth.users so foreign keys don't break,
         // but prevents them from accessing the system.
@@ -208,5 +228,78 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('Error deactivating user:', error);
         res.status(500).json({ error: 'Failed to deactivate user', details: error.message });
+    }
+};
+
+export const resendInvite = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
+
+        // Verify admin
+        if (userRole !== 'ADMIN') {
+            return res.status(403).json({ error: 'Only admins can resend invitations' });
+        }
+
+        // Ensure target user is in same org and INVITED
+        const { data: targetUser } = await supabase
+            .from('users')
+            .select('organization_id, email, name, role, employee_id, username, status')
+            .eq('id', id)
+            .single();
+
+        if (!targetUser || targetUser.organization_id !== organization_id) {
+            return res.status(404).json({ error: 'User not found in organization' });
+        }
+
+        if (targetUser.status !== 'INVITED') {
+            return res.status(400).json({ error: 'Can only resend invitations to users with INVITED status' });
+        }
+
+        const getFrontendUrl = () => {
+            if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+            if (process.env.NODE_ENV === 'production') return 'https://money-wise-pro-web.vercel.app';
+            return 'http://localhost:5173';
+        };
+
+        const FRONTEND_URL = getFrontendUrl();
+
+        // Workaround for Supabase Auth not supporting re-sending invites directly:
+        // Delete the existing INVITED user completely and create a new invite.
+
+        // 1. Hard Delete
+        const { error: dbDeleteError } = await supabase.from('users').delete().eq('id', id);
+        if (dbDeleteError) throw dbDeleteError;
+
+        const { error: authDeleteError } = await (supabase.auth as any).admin.deleteUser(id);
+        if (authDeleteError) {
+            console.error('[ResendInvite] Warning: Auth hard delete failed:', authDeleteError);
+        }
+
+        // 2. Resend invitation via creating a new one
+        const { error: authError } = await (supabase.auth as any).admin.inviteUserByEmail(targetUser.email, {
+            data: {
+                name: targetUser.name,
+                role: targetUser.role,
+                organization_id: targetUser.organization_id,
+                employee_id: targetUser.employee_id,
+                username: targetUser.username,
+                status: 'INVITED',
+                full_name: targetUser.name
+            },
+            redirectTo: `${FRONTEND_URL}/join`,
+        });
+
+        if (authError) {
+            console.error('[ResendInvite] Invitation failed:', authError);
+            return res.status(400).json({ error: authError.message });
+        }
+
+        res.json({ message: 'Invitation resent successfully' });
+
+    } catch (error: any) {
+        console.error('Error resending invitation:', error);
+        res.status(500).json({ error: 'Failed to resend invitation', details: error.message });
     }
 };

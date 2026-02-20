@@ -18,9 +18,9 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
 
     // Denominations logic
     const [denominations, setDenominations] = useState<Record<string, number>>({
-        '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.5': 0, '0.05': 0
+        '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0
     });
-    const denominationValues = [100, 50, 20, 10, 5, 2, 1, 0.5, 0.05];
+    const denominationValues = [500, 200, 100, 50, 20, 10, 5, 2, 1, 0.50];
 
     useEffect(() => {
         if (isOpen) {
@@ -29,7 +29,7 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
             setDate(new Date().toISOString().split('T')[0]);
             setPhysicalCount('');
             setNotes('');
-            setDenominations({ '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.5': 0, '0.05': 0 });
+            setDenominations({ '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0 });
         }
     }, [isOpen]);
 

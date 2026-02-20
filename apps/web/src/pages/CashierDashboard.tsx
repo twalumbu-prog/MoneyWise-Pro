@@ -16,7 +16,7 @@ export const CashierDashboard: React.FC = () => {
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [selectedReq, setSelectedReq] = useState<Requisition | null>(null);
     const [denominations, setDenominations] = useState<Record<string, number>>({
-        '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '1': 0
+        '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0
     });
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export const CashierDashboard: React.FC = () => {
 
         const totalPrepared = calculateTotal(denominations);
         if (totalPrepared !== Number(selectedReq.estimated_total)) {
-            alert(`Total prepared ($${totalPrepared}) does not match requisition amount ($${selectedReq.estimated_total})`);
+            alert(`Total prepared (K${totalPrepared}) does not match requisition amount (K${selectedReq.estimated_total})`);
             return;
         }
 
@@ -79,7 +79,7 @@ export const CashierDashboard: React.FC = () => {
 
             alert('Disbursement recorded successfully!');
             setSelectedReq(null);
-            setDenominations({ '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '1': 0 });
+            setDenominations({ '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0 });
             loadRequisitions();
         } catch (err) {
             console.error(err);
@@ -122,7 +122,7 @@ export const CashierDashboard: React.FC = () => {
                                 >
                                     <div className="flex justify-between">
                                         <span className="font-medium text-gray-900">#{req.id.slice(0, 6)}</span>
-                                        <span className="text-green-600 font-bold">${Number(req.estimated_total).toLocaleString()}</span>
+                                        <span className="text-green-600 font-bold">K{Number(req.estimated_total).toLocaleString()}</span>
                                     </div>
                                     <p className="text-sm text-gray-500 mt-1">{req.description}</p>
                                     <p className="text-xs text-gray-400 mt-1">Requestor: {req.requestor_name || 'Unknown'}</p>
@@ -146,7 +146,7 @@ export const CashierDashboard: React.FC = () => {
                                 <div className="bg-gray-50 p-4 rounded-md mb-6">
                                     <div className="flex justify-between text-sm mb-2">
                                         <span className="text-gray-500">Amount Required:</span>
-                                        <span className="font-bold text-gray-900 text-lg">${Number(selectedReq.estimated_total).toLocaleString()}</span>
+                                        <span className="font-bold text-gray-900 text-lg">K{Number(selectedReq.estimated_total).toLocaleString()}</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
                                         <span className="text-gray-500">Payee:</span>
@@ -158,7 +158,7 @@ export const CashierDashboard: React.FC = () => {
                                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                                     {Object.entries(denominations).sort((a, b) => Number(b[0]) - Number(a[0])).map(([value, count]) => (
                                         <div key={value} className="bg-white border rounded-md p-3 shadow-sm">
-                                            <label className="block text-xs font-medium text-gray-500 mb-1">${value} Bills</label>
+                                            <label className="block text-xs font-medium text-gray-500 mb-1">K{value} Notes/Coins</label>
                                             <input
                                                 type="number"
                                                 min="0"
@@ -174,7 +174,7 @@ export const CashierDashboard: React.FC = () => {
                                     <div>
                                         <span className="text-sm text-gray-500 block">Total Prepared</span>
                                         <span className={`text-2xl font-bold ${calculateTotal(denominations) === Number(selectedReq.estimated_total) ? 'text-green-600' : 'text-red-500'}`}>
-                                            ${calculateTotal(denominations).toLocaleString()}
+                                            K{calculateTotal(denominations).toLocaleString()}
                                         </span>
                                     </div>
                                     <button
