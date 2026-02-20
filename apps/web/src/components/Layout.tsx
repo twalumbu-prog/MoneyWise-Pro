@@ -255,6 +255,70 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
 
             {/* Main Content */}
             <div className={`flex-1 flex flex-col overflow-hidden ${isRequestor ? 'h-screen' : 'h-[calc(100vh-60px)] md:h-screen'}`}>
+                {/* Requestor Header */}
+                {isRequestor && (
+                    <header className="bg-white shadow-sm p-4 flex items-center justify-between z-20 border-b border-gray-100 shrink-0 px-6">
+                        <div className="flex items-center">
+                            <div className="h-8 w-8 bg-brand-navy rounded-lg flex items-center justify-center mr-3 shadow-sm">
+                                <Wallet className="h-5 w-5 text-brand-green" />
+                            </div>
+                            <div>
+                                <h1 className="text-lg font-bold text-brand-navy leading-tight">MoneyWise</h1>
+                                <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">
+                                    {organizationName || 'Financial Control'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                                className="text-gray-500 hover:text-brand-green p-2 transition-colors rounded-lg hover:bg-gray-50 bg-white shadow-sm border border-gray-100"
+                            >
+                                {isMobileMenuOpen ? (
+                                    <X className="h-5 w-5" />
+                                ) : (
+                                    <Menu className="h-5 w-5" />
+                                )}
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {isMobileMenuOpen && (
+                                <>
+                                    <div
+                                        className="fixed inset-0 z-30"
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                    ></div>
+                                    <div className="absolute right-0 mt-3 w-64 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden transform origin-top-right transition-all">
+                                        <div className="p-5 border-b border-gray-50 bg-gray-50/50">
+                                            <p className="text-sm font-bold text-brand-navy truncate">
+                                                {user?.email}
+                                            </p>
+                                            <div className="flex items-center mt-2">
+                                                <div className="h-1.5 w-1.5 rounded-full bg-brand-green mr-2"></div>
+                                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">
+                                                    {userRole || 'Requestor'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="p-2">
+                                            <button
+                                                onClick={() => {
+                                                    setIsMobileMenuOpen(false);
+                                                    handleSignOut();
+                                                }}
+                                                className="flex items-center w-full px-4 py-3 text-sm font-bold text-gray-500 hover:bg-red-50 hover:text-red-600 rounded-lg transition-colors text-left"
+                                            >
+                                                <LogOut className="h-4 w-4 mr-3" />
+                                                Sign Out
+                                            </button>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </header>
+                )}
+
                 {/* Page Content */}
                 <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-gray p-6 md:p-8">
                     {children}
