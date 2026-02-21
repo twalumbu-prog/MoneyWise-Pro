@@ -102,3 +102,19 @@ BEGIN
   ) USING target_date;
 END;
 $$;
+
+-- 8. AI Classification Logs for Detailed Auditing
+CREATE TABLE IF NOT EXISTS public.ai_classification_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    transaction_id UUID NOT NULL, -- Requisition ID
+    line_item_index INT DEFAULT 0,
+    suggested_account_id UUID REFERENCES accounts(id),
+    final_account_id UUID REFERENCES accounts(id),
+    was_overridden BOOLEAN DEFAULT false,
+    prediction_confidence NUMERIC(5, 4),
+    prediction_method TEXT, -- RULE, MEMORY, AI
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_classification_logs_transaction_id ON public.ai_classification_logs (transaction_id);
+CREATE INDEX IF NOT EXISTS idx_ai_classification_logs_was_overridden ON public.ai_classification_logs (was_overridden);
