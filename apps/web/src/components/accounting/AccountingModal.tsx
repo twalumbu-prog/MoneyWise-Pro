@@ -3,7 +3,7 @@ import { Modal } from '../Modal';
 import { integrationService } from '../../services/integration.service';
 import { voucherService } from '../../services/voucher.service';
 import { accountService } from '../../services/account.service';
-import { Loader2, Wand2, ArrowRight } from 'lucide-react';
+import { Loader2, Wand2, ArrowRight, AlertTriangle, ShieldCheck, Cpu } from 'lucide-react';
 
 interface AccountingModalProps {
     isOpen: boolean;
@@ -69,7 +69,11 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                 unit_price: item.unit_price,
                 total: Number(item.quantity || 0) * Number(item.unit_price || 0),
                 qb_account_id: item.qb_account_id || '',
-                qb_account_name: item.qb_account_name || ''
+                qb_account_name: item.qb_account_name || '',
+                ai_reasoning: item.ai_reasoning || '',
+                ai_decision_path: item.ai_decision_path || '',
+                ai_similarity_score: item.ai_similarity_score || 0,
+                ai_risk_level: item.ai_risk_level || 'LOW'
             })));
 
         } catch (err: any) {
@@ -133,7 +137,11 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                             return {
                                 ...item,
                                 qb_account_id: finalId,
-                                qb_account_name: finalName
+                                qb_account_name: finalName,
+                                ai_reasoning: result.reasoning,
+                                ai_decision_path: result.method,
+                                ai_similarity_score: result.confidence,
+                                ai_risk_level: result.risk_level || 'LOW'
                             };
                         } else {
                             console.warn(`[AccountingModal] ⚠️ Suggestion "${result.suggestion}" for "${item.description}" not matched in expenseAccounts list.`);
@@ -153,12 +161,17 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                                 return {
                                     ...item,
                                     qb_account_id: finalId,
-                                    qb_account_name: matchByCode.Name
+                                    qb_account_name: matchByCode.Name,
+                                    ai_reasoning: result.reasoning,
+                                    ai_decision_path: result.method,
+                                    ai_similarity_score: result.confidence,
+                                    ai_risk_level: result.risk_level || 'LOW'
                                 };
                             }
                         }
                         console.log(`[AccountingModal] ℹ️ No match found for "${item.description}":`, result.reasoning || 'No suggestion/code');
-                    } else {
+                    }
+                    else {
                         console.warn(`[AccountingModal] ❓ No result found for item ID ${item.id}`);
                     }
                     return item;
@@ -282,6 +295,33 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                                             K{Number(item.total).toLocaleString()}
                                         </span>
                                     </div>
+
+                                    {item.ai_reasoning && (
+                                        <div className="mb-4 flex items-center gap-3 bg-purple-50/50 p-3 rounded-xl border border-purple-100/50">
+                                            <div className="flex-shrink-0">
+                                                {item.ai_risk_level === 'HIGH' ? (
+                                                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                                                ) : item.ai_decision_path === 'RULE' ? (
+                                                    <ShieldCheck className="h-4 w-4 text-brand-green" />
+                                                ) : (
+                                                    <Cpu className="h-4 w-4 text-purple-600" />
+                                                )}
+                                            </div>
+                                            <div className="flex-1">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest flex items-center">
+                                                        AI Logic: {item.ai_decision_path}
+                                                    </span>
+                                                    <span className="text-[10px] font-bold text-purple-600 bg-white px-2 py-0.5 rounded-full border border-purple-100">
+                                                        {Math.round(item.ai_similarity_score * 100)}% Confidence
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-brand-navy/70 mt-1 line-clamp-1 italic">
+                                                    "{item.ai_reasoning}"
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="relative group">
                                         <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest mb-1.5 ml-1">Expense Account</label>

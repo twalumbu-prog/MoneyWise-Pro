@@ -1,13 +1,14 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { cashbookService } from '../services/cashbook.service';
-import { aiService } from '../services/ai/ai.service';
+import { decisionRouter } from '../services/ai/decision.router';
 import { supabase } from '../lib/supabase';
 
 /**
  * Get all cashbook entries with optional filters
  */
 export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
+    // ... existing entries logic ... (simplified for brevity, assume unchanged or just import updated)
     try {
         const { startDate, endDate, entryType, limit } = req.query;
 
@@ -101,6 +102,7 @@ export const reconcileCash = async (req: any, res: any): Promise<any> => {
         res.status(500).json({ error: 'Failed to reconcile cash', details: error.message });
     }
 };
+
 /**
  * Log cash return (excess)
  */
@@ -157,7 +159,7 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
 export const closeBook = async (req: any, res: any): Promise<any> => {
     try {
         const { date, physicalCount, notes } = req.body;
-        const userId = (req as any).user.id; // Correctly get user from auth middleware
+        const userId = (req as any).user.id;
 
         if (!date || physicalCount === undefined) {
             return res.status(400).json({ error: 'Date and physicalCount are required' });
@@ -178,108 +180,101 @@ export const closeBook = async (req: any, res: any): Promise<any> => {
 };
 
 /**
- * Bulk classify transactions
+ * Bulk classify transactions with Hybrid Intelligent Engine
  */
 export const classifyBulk = async (req: any, res: any): Promise<any> => {
     try {
         const { requisitionIds } = req.body;
 
-        // 1. Fetch unclassified items for completed requisitions
-        // If requisitionIds provided, use them. Else find all unclassified completed reqs.
+        // 1. Fetch unclassified items
         let query = supabase
             .from('line_items')
             .select(`
                 id, 
                 description, 
                 estimated_amount, 
-                requisition:requisitions!inner(id, status, type)
+                requisition:requisitions!inner(id, status, type, department)
             `)
             .is('account_id', null);
 
         if (requisitionIds && requisitionIds.length > 0) {
             query = query.in('requisition_id', requisitionIds);
         } else {
-            // Only classified completed requisitions by default to save tokens
             query = query.eq('requisition.status', 'COMPLETED');
         }
 
         const { data: items, error } = await query;
-
         if (error) throw error;
-
         if (!items || items.length === 0) {
             return res.json({ message: 'No unclassified items found.', count: 0 });
         }
 
-        // 2. Prepare for AI
-        // Fetch accounts for context
+        // 2. Fetch Accounts
         const { data: accounts } = await supabase
             .from('accounts')
             .select('*')
             .eq('is_active', true);
 
-        const aiInput = items.map((item: any) => ({
-            description: item.description,
-            amount: item.estimated_amount || 0
-        }));
-
-        console.log(`[Classify Bulk] Processing ${items.length} items...`);
-
-        // 3. Call AI Service
-        const suggestions = await aiService.suggestBatch(accounts || [], aiInput);
-
-        // 4. Update Line Items and Prepare Results
-        const updates = [];
-        const results = [];
-
-        // Prepare mapping maps for robust lookup
         const accountByCode = new Map(accounts?.map((a: any) => [String(a.code || a.AcctNum || '').toLowerCase(), a]));
-        const accountByName = new Map(accounts?.map((a: any) => [String(a.name || a.Name || '').toLowerCase(), a]));
 
-        for (let i = 0; i < items.length; i++) {
-            const suggestion = suggestions[i];
-            const item = items[i];
+        console.log(`[Hybrid AI] Bulk processing ${items.length} items...`);
 
-            if (suggestion.account_code) {
-                const searchKey = String(suggestion.account_code).toLowerCase();
+        // 3. Process each item through Decision Router (Parallelized in suggestBatch but Router handles 1-by-1)
+        // Note: For extreme bulk, we'd parallelize even the Router calls
+        const results = [];
+        const updates = [];
 
-                // Try matching by code first, then by name
-                const account = accountByCode.get(searchKey) || accountByName.get(searchKey);
+        for (const item of items) {
+            const decision = await decisionRouter.classify(accounts || [], {
+                description: item.description,
+                amount: item.estimated_amount || 0,
+                department: (item.requisition as any).department
+            });
+
+            if (decision.account_code) {
+                const account = accountByCode.get(decision.account_code.toLowerCase());
 
                 if (account) {
                     updates.push(
                         supabase
                             .from('line_items')
-                            .update({ account_id: account.id })
+                            .update({
+                                account_id: account.id,
+                                ai_reasoning: decision.reasoning,
+                                ai_rule_id: decision.rule_id,
+                                ai_similarity_score: decision.similarity_score,
+                                ai_decision_path: decision.decision_path,
+                                ai_risk_level: decision.risk.riskLevel
+                            })
                             .eq('id', item.id)
                     );
 
                     results.push({
                         line_item_id: item.id,
                         description: item.description,
-                        account_code: suggestion.account_code,
                         account_name: account.name || account.Name,
-                        confidence: suggestion.confidence,
-                        reasoning: suggestion.reasoning,
-                        method: suggestion.method
+                        confidence: decision.confidence,
+                        risk: decision.risk.riskLevel,
+                        reasoning: decision.reasoning,
+                        path: decision.decision_path
                     });
-                } else {
-                    console.log(`[Classify Bulk] No account match found for suggested code/name: ${suggestion.account_code}`);
                 }
             }
         }
 
-        await Promise.all(updates);
+        if (updates.length > 0) {
+            await Promise.all(updates);
+        }
 
         res.json({
-            message: `Successfully classified ${updates.length} out of ${items.length} items.`,
+            message: `Hybrid engine classified ${updates.length} items.`,
             count: updates.length,
             total: items.length,
-            results: results
+            results
         });
 
     } catch (error: any) {
-        console.error('Error classifying bulk:', error);
-        res.status(500).json({ error: 'Failed to classify items', details: error.message });
+        console.error('[Hybrid AI] Error in classifyBulk:', error);
+        res.status(500).json({ error: 'AI processing failed', details: error.message });
     }
 };

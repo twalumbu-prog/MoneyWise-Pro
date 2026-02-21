@@ -23,6 +23,7 @@ import voucherRoutes from './routes/voucher.routes';
 import cashbookRoutes from './routes/cashbook.routes';
 import integrationRoutes from './routes/integrations.routes';
 import userRoutes from './routes/user.routes';
+import aiRoutes from './routes/ai.routes';
 
 dotenv.config();
 
@@ -188,6 +189,7 @@ app.use('/vouchers', voucherRoutes);
 app.use('/cashbook', cashbookRoutes);
 app.use('/integrations', integrationRoutes);
 app.use('/users', userRoutes);
+app.use('/ai', aiRoutes);
 
 app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');

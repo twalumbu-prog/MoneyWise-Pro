@@ -12,10 +12,13 @@ import {
     ExternalLink,
     RefreshCw,
     ArrowRightLeft,
-    ArrowDownToLine
+    ArrowDownToLine,
+    BrainCircuit
 } from 'lucide-react';
 import { UserManagement } from '../components/settings/UserManagement';
 import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
+import { RuleManagement } from '../components/settings/RuleManagement';
+import { AIMetrics } from '../components/settings/AIMetrics';
 import { Layout } from '../components/Layout';
 
 export const Settings: React.FC = () => {
@@ -189,6 +192,17 @@ export const Settings: React.FC = () => {
                             >
                                 <Share2 className="flex-shrink-0 -ml-1 mr-3 h-5 w-5" />
                                 <span className="truncate">Integrations</span>
+                            </button>
+
+                            <button
+                                onClick={() => handleTabChange('automation')}
+                                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors ${activeTab === 'automation'
+                                    ? 'bg-brand-green/10 text-brand-green'
+                                    : 'text-gray-600 hover:bg-gray-50'
+                                    }`}
+                            >
+                                <BrainCircuit className="flex-shrink-0 -ml-1 mr-3 h-5 w-5" />
+                                <span className="truncate">AI & Automation</span>
                             </button>
                         </div>
                     </nav>
@@ -390,6 +404,16 @@ export const Settings: React.FC = () => {
                                         </div>
                                     </div>
                                 )}
+                            </div>
+                        )}
+
+                        {/* AI & Automation Tab */}
+                        {activeTab === 'automation' && (
+                            <div className="space-y-12">
+                                <AIMetrics />
+                                <div className="border-t border-gray-100 pt-12">
+                                    <RuleManagement />
+                                </div>
                             </div>
                         )}
                     </div>
