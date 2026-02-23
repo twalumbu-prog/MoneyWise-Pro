@@ -35,7 +35,10 @@ export class RiskClassifier {
         }
 
         // 2. Account-type risk (Revenue/Asset/Liability are higher risk than internal expense)
-        const highRiskKeywords = ['revenue', 'unearned', 'asset', 'capital', 'loan', 'investment', 'payroll', 'tax'];
+        const highRiskKeywords = [
+            'revenue', 'unearned', 'asset', 'capital', 'loan', 'investment',
+            'payroll', 'tax', 'transfer', 'reimbursement', 'sensitive'
+        ];
         const matches = highRiskKeywords.filter(k =>
             normalizedAcc.includes(k) || normalizedDesc.includes(k)
         );

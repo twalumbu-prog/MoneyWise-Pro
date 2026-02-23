@@ -387,7 +387,14 @@ const CashLedger: React.FC = () => {
             <CloseBalanceModal
                 isOpen={isCloseModalOpen}
                 onClose={() => setIsCloseModalOpen(false)}
-                onSuccess={loadData}
+                onSuccess={() => {
+                    // If we closed a book, ensure the end date is inclusive of the next day 
+                    // ताकि opening balance दिखे
+                    const nextDay = new Date(endDate);
+                    nextDay.setDate(nextDay.getDate() + 1);
+                    setEndDate(nextDay.toISOString().split('T')[0]);
+                    loadData();
+                }}
                 currentSystemBalance={balance}
             />
 

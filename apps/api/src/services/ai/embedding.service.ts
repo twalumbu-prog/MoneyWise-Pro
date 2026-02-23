@@ -1,10 +1,21 @@
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
 
 export class EmbeddingService {
     /**
      * Generate a vector embedding for a given text using OpenAI.
      */
     async generateEmbedding(text: string): Promise<number[] | null> {
+        if (AI_TEST_MODE) {
+            // Generate a deterministic mock vector (1536 dims) for testing
+            // Simple hash-like approach: fill with a deterministic pattern
+            const mockVector = new Array(1536).fill(0);
+            for (let i = 0; i < text.length; i++) {
+                mockVector[i % 1536] += text.charCodeAt(i) / 255;
+            }
+            return mockVector;
+        }
+
         if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY') {
             console.warn('[EmbeddingService] OpenAI API Key missing or default. Skipping embedding.');
             return null;

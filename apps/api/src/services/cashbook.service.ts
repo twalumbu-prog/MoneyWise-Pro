@@ -30,24 +30,70 @@ export const cashbookService = {
         return parseFloat(data.balance_after);
     },
 
+    async recalculateBalancesFrom(targetDate: string, targetCreatedAt: string) {
+        // 1. Get the entry just before this one in logical order (date ASC, created_at ASC)
+        // A predecessor is either:
+        // - An entry on an earlier date
+        // - An entry on the same date but with an earlier created_at
+        const { data: prevEntry } = await supabase
+            .from('cashbook_entries')
+            .select('balance_after')
+            .or(`date.lt.${targetDate},and(date.eq.${targetDate},created_at.lt.${targetCreatedAt})`)
+            .order('date', { ascending: false })
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        let runningBalance = prevEntry ? parseFloat(prevEntry.balance_after) : 0;
+
+        // 2. Get all entries from this point onwards in logical order
+        const { data: entries } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .or(`date.gt.${targetDate},and(date.eq.${targetDate},created_at.gte.${targetCreatedAt})`)
+            .order('date', { ascending: true })
+            .order('created_at', { ascending: true });
+
+        if (!entries) return;
+
+        // 3. Update each entry's balance
+        for (const entry of entries) {
+            const newBalance = runningBalance + parseFloat(entry.debit) - parseFloat(entry.credit);
+            await supabase
+                .from('cashbook_entries')
+                .update({ balance_after: newBalance })
+                .eq('id', entry.id);
+            runningBalance = newBalance;
+        }
+    },
+
     /**
-     * Create a cashbook entry (disbursement or return)
+     * Create a cashbook entry (disbursement, return, inflow, adjustment, or balance)
      */
     async createEntry(entry: Omit<CashbookEntry, 'id' | 'balance_after'>): Promise<CashbookEntry> {
-        const currentBalance = await this.getCurrentBalance();
-        const balanceAfter = currentBalance - entry.credit + entry.debit;
-
+        // 1. Insert the entry first (we'll fix balance in a moment)
         const { data, error } = await supabase
             .from('cashbook_entries')
             .insert({
                 ...entry,
-                balance_after: balanceAfter
+                balance_after: 0
             })
             .select()
             .single();
 
         if (error) throw new Error(`Failed to create cashbook entry: ${error.message}`);
-        return data;
+
+        // 2. Recalculate balances starting from this entry's logical position
+        await this.recalculateBalancesFrom(data.date, data.created_at);
+
+        // 3. Fetch the updated entry
+        const { data: updatedData } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('id', data.id)
+            .single();
+
+        return updatedData || data;
     },
 
     /**
@@ -127,8 +173,6 @@ export const cashbookService = {
 
         if (inflowError) {
             console.error('Failed to create inflow metadata:', inflowError);
-            // We don't throw here to avoid rolling back the ledger entry, 
-            // but we might want to log it heavily.
         }
 
         return entry;
@@ -188,14 +232,15 @@ export const cashbookService = {
             .select('debit, credit, balance_after')
             .gte('date', startDate)
             .lte('date', endDate)
+            .order('date', { ascending: true })
             .order('created_at', { ascending: true });
 
         if (error) throw new Error(`Failed to fetch summary: ${error.message}`);
 
-        const openingBalance = data[0]?.balance_after - data[0]?.debit + data[0]?.credit || 0;
+        const openingBalance = data.length > 0 ? parseFloat(data[0].balance_after) - parseFloat(data[0].debit) + parseFloat(data[0].credit) : 0;
         const totalReceipts = data.reduce((sum: number, entry: any) => sum + parseFloat(entry.debit || '0'), 0);
         const totalPayments = data.reduce((sum: number, entry: any) => sum + parseFloat(entry.credit || '0'), 0);
-        const closingBalance = data[data.length - 1]?.balance_after || openingBalance;
+        const closingBalance = data.length > 0 ? parseFloat(data[data.length - 1].balance_after) : openingBalance;
 
         return {
             openingBalance,
@@ -208,7 +253,7 @@ export const cashbookService = {
 
     /**
      * Finalize a disbursement entry once change is confirmed.
-     * Updates the original disbursement amount, links the voucher, and recalculates subsequent balances.
+     * Updates the original disbursement amount and recalculates subsequent balances.
      */
     async finalizeDisbursement(
         requisitionId: string,
@@ -223,15 +268,13 @@ export const cashbookService = {
             .select('*')
             .eq('requisition_id', requisitionId)
             .eq('entry_type', 'DISBURSEMENT')
-            .order('created_at', { ascending: false }) // Take the latest if multiple
+            .order('created_at', { ascending: false })
             .limit(1)
             .single();
 
         if (findError || !originalEntry) {
             console.warn(`Original disbursement entry not found for requisition ${requisitionId}. Creating new entry...`);
 
-            // Reconstruct the entry since it's missing
-            // We should try to get the disbursement details to attribute it correctly to the cashier
             const { data: disb } = await supabase
                 .from('disbursements')
                 .select('cashier_id')
@@ -244,7 +287,6 @@ export const cashbookService = {
                 .eq('id', requisitionId)
                 .single();
 
-            // Default to cashier if available, else requestor (though it should be cashier)
             const createdBy = disb?.cashier_id || req?.requestor_id;
 
             const newDescription = discrepancy !== 0
@@ -265,11 +307,7 @@ export const cashbookService = {
             return;
         }
 
-        const oldCredit = parseFloat(originalEntry.credit);
         const newCredit = actualExpenditure + discrepancy;
-        console.log(`[Cashbook] Finalizing with credit: ${newCredit} (Exp: ${actualExpenditure}, Disc: ${discrepancy})`);
-        const totalImpact = oldCredit - newCredit;
-
         const newDescription = discrepancy !== 0
             ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
             : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
@@ -280,7 +318,6 @@ export const cashbookService = {
             .update({
                 credit: newCredit,
                 description: newDescription,
-                balance_after: parseFloat(originalEntry.balance_after) + totalImpact,
                 status: 'COMPLETED',
                 voucher_id: voucherId
             })
@@ -288,25 +325,8 @@ export const cashbookService = {
 
         if (updateError) throw updateError;
 
-        // 3. Recalculate ALL subsequent entries to keep balance consistent
-        const { data: subsequentEntries, error: subError } = await supabase
-            .from('cashbook_entries')
-            .select('*')
-            .gt('created_at', originalEntry.created_at)
-            .order('created_at', { ascending: true });
-
-        if (subError) throw subError;
-
-        let runningBalance = parseFloat(originalEntry.balance_after) + totalImpact;
-
-        for (const entry of subsequentEntries) {
-            const newBalance = runningBalance + parseFloat(entry.debit) - parseFloat(entry.credit);
-            await supabase
-                .from('cashbook_entries')
-                .update({ balance_after: newBalance })
-                .eq('id', entry.id);
-            runningBalance = newBalance;
-        }
+        // 3. Recalculate ALL subsequent entries
+        await this.recalculateBalancesFrom(originalEntry.date, originalEntry.created_at);
     },
 
     /**
@@ -318,9 +338,33 @@ export const cashbookService = {
         notes: string,
         userId: string
     ) {
-        // 1. Calculate system balance
-        const currentBalance = await this.getCurrentBalance();
-        const variance = physicalCount - currentBalance;
+        // 1. Calculate system balance FOR THAT SPECIFIC DATE
+        // We need the balance after all transactions on that date
+        const { data: lastEntryOnDate } = await supabase
+            .from('cashbook_entries')
+            .select('balance_after')
+            .eq('date', date)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        // If no entries on that date, get the latest overall before this date
+        let systemBalanceAtEndOfDay = 0;
+        if (lastEntryOnDate) {
+            systemBalanceAtEndOfDay = parseFloat(lastEntryOnDate.balance_after);
+        } else {
+            const { data: lastEntryBefore } = await supabase
+                .from('cashbook_entries')
+                .select('balance_after')
+                .lt('date', date)
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .single();
+            systemBalanceAtEndOfDay = lastEntryBefore ? parseFloat(lastEntryBefore.balance_after) : 0;
+        }
+
+        const variance = physicalCount - systemBalanceAtEndOfDay;
 
         // 2. If variance > 0.01, create ADJUSTMENT entry
         if (Math.abs(variance) > 0.01) {
@@ -335,10 +379,6 @@ export const cashbookService = {
         }
 
         // 3. Create CLOSING_BALANCE entry
-        // Use createEntry but with 0 debit/credit so it just checkpoints the balance
-        // Wait, createEntry updates balance based on prev balance + debit - credit.
-        // If we just adjusted, current balance IS physical count.
-        // So a 0-value entry will just show the balance.
         await this.createEntry({
             entry_type: 'CLOSING_BALANCE',
             description: `Closing Balance as at ${date}`,
@@ -353,14 +393,25 @@ export const cashbookService = {
         nextDay.setDate(nextDay.getDate() + 1);
         const nextDayStr = nextDay.toISOString().split('T')[0];
 
-        await this.createEntry({
-            entry_type: 'OPENING_BALANCE',
-            description: `Opening Balance`,
-            debit: 0,
-            credit: 0,
-            date: nextDayStr,
-            created_by: userId
-        });
+        // Check if opening balance for next day already exists
+        const { data: existingOpening } = await supabase
+            .from('cashbook_entries')
+            .select('id')
+            .eq('date', nextDayStr)
+            .eq('entry_type', 'OPENING_BALANCE')
+            .limit(1)
+            .single();
+
+        if (!existingOpening) {
+            await this.createEntry({
+                entry_type: 'OPENING_BALANCE',
+                description: `Opening Balance`,
+                debit: 0,
+                credit: 0,
+                date: nextDayStr,
+                created_by: userId
+            });
+        }
 
         return { success: true, closingBalance: physicalCount };
     }

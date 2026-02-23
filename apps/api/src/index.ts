@@ -62,6 +62,13 @@ const runMigration = async () => {
         await migrationPool.query(`
             ALTER TABLE cashbook_entries 
             ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'COMPLETED';
+
+            ALTER TABLE cashbook_entries
+            DROP CONSTRAINT IF EXISTS cashbook_entries_entry_type_check;
+
+            ALTER TABLE cashbook_entries
+            ADD CONSTRAINT cashbook_entries_entry_type_check 
+            CHECK (entry_type IN ('DISBURSEMENT', 'RETURN', 'ADJUSTMENT', 'OPENING_BALANCE', 'CLOSING_BALANCE', 'INFLOW'));
         `);
 
         console.log('[Migration] Checking for QuickBooks integration table and columns...');

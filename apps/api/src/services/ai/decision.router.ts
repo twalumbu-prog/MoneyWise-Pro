@@ -1,7 +1,8 @@
-import { ruleEngine, RuleMatchResult } from './rule.engine';
+import { ruleEngine } from './rule.engine';
 import { memoryService } from './memory.service';
 import { aiService, SuggestionResult } from './ai.service';
 import { riskClassifier, RiskAssessment } from './risk.classifier';
+import { confidenceNormalizer } from './confidence.normalizer';
 
 export interface DecisionResult extends SuggestionResult {
     risk: RiskAssessment;
@@ -12,77 +13,115 @@ export interface DecisionResult extends SuggestionResult {
 }
 
 export class DecisionRouter {
-    private HIGH_CONFIDENCE_THRESHOLD = 0.90;
-    private MEDIUM_CONFIDENCE_THRESHOLD = 0.70;
+    private TERMINATION_HIGH = 0.90;
+    private TERMINATION_MEDIUM = 0.70;
+    private RISK_HARDENING_THRESHOLD = 0.93;
 
     async classify(accounts: any[], item: { description: string, amount: number, department?: string }): Promise<DecisionResult> {
-        console.log(`[DecisionRouter] Classifying: "${item.description}" (K${item.amount})`);
+        console.log(`[DecisionRouter] Hardening Pass Classifying: "${item.description}" (K${item.amount})`);
 
-        let result: SuggestionResult = {
+        let bestResult: SuggestionResult = {
             account_code: null,
             confidence: 0,
-            reasoning: 'Starting classification flow...',
-            method: 'FLOW'
+            reasoning: 'No matches found.',
+            method: 'FAILED'
         };
 
-        let decisionPath = '';
+        let decisionPath = 'FAILED';
         let ruleId: string | undefined;
         let similarityScore: number | undefined;
+        let hint: SuggestionResult | null = null;
 
-        // 1. Attempt Memory Lookup (Tier 1: Exact, Tier 2: Vector Similarity)
-        console.log('[DecisionRouter] Step 1: Memory Lookup');
-        const memoryMatch = await memoryService.lookup(item.description);
-        if (memoryMatch && memoryMatch.confidence >= 0.85) {
+        // --- TIER 1: MEMORY ---
+        const memoryMatch = await memoryService.lookup(item);
+        if (memoryMatch) {
+            const normalizedConf = confidenceNormalizer.normalizeMemory(memoryMatch.confidence);
             const matchedAccount = accounts.find(a => (a.id || a.Id) === memoryMatch.account_id);
+
             if (matchedAccount) {
-                result = {
+                const result = {
                     account_code: String(matchedAccount.code || matchedAccount.AcctNum || ''),
-                    confidence: memoryMatch.confidence,
-                    reasoning: `Found in historical memory (Similarity: ${memoryMatch.confidence})`,
+                    confidence: normalizedConf,
+                    reasoning: `Contextual memory match (${Math.round(normalizedConf * 100)}% calibrated)`,
                     method: 'MEMORY'
                 };
-                decisionPath = 'MEMORY';
-                similarityScore = memoryMatch.confidence;
-            }
-        }
 
-        // 2. Attempt Rule Engine
-        if (!result.account_code) {
-            console.log('[DecisionRouter] Step 2: Rule Engine');
-            const ruleMatch = ruleEngine.match(item.description, item.amount, item.department);
-            if (ruleMatch.matched) {
-                const matchedAccount = accounts.find(a => (a.id || a.Id) === ruleMatch.accountId);
-                if (matchedAccount) {
-                    result = {
-                        account_code: String(matchedAccount.code || matchedAccount.AcctNum || ''),
-                        confidence: ruleMatch.confidence,
-                        reasoning: ruleMatch.reasoning,
-                        method: 'RULE'
-                    };
-                    decisionPath = 'RULE';
-                    ruleId = ruleMatch.ruleId;
+                if (normalizedConf >= 0.92) {
+                    // STOP: High confidence memory
+                    return this.finalize(result, accounts, item, 'MEMORY', undefined, normalizedConf);
+                } else if (normalizedConf >= 0.85) {
+                    // CONTINUE: Weak memory hint
+                    hint = { ...result, method: 'MEMORY_WEAK' };
+                    console.log(`[DecisionRouter] Weak memory hint stored: ${result.account_code}`);
                 }
             }
         }
 
-        // 3. Attempt AI (Ensemble)
-        if (!result.account_code) {
-            console.log('[DecisionRouter] Step 3: AI Models');
-            const aiResults = await aiService.suggestBatch(accounts, [item]);
-            if (aiResults[0] && aiResults[0].account_code) {
-                result = aiResults[0];
-                decisionPath = 'AI';
+        // --- TIER 2: RULES ---
+        const ruleMatch = ruleEngine.match(item.description, item.amount, item.department);
+        if (ruleMatch.matched) {
+            const normalizedConf = confidenceNormalizer.normalizeRule(ruleMatch.confidence);
+            const matchedAccount = accounts.find(a => (a.id || a.Id) === ruleMatch.accountId);
+
+            if (matchedAccount) {
+                const result = {
+                    account_code: String(matchedAccount.code || matchedAccount.AcctNum || ''),
+                    confidence: normalizedConf,
+                    reasoning: ruleMatch.reasoning,
+                    method: 'RULE'
+                };
+
+                if (normalizedConf >= this.TERMINATION_HIGH) {
+                    // STOP: High confidence rule
+                    return this.finalize(result, accounts, item, 'RULE', ruleMatch.ruleId);
+                }
+
+                // If rule is better than hint, update hint
+                if (!hint || normalizedConf > hint.confidence) {
+                    hint = result;
+                }
             }
         }
 
-        // 4. Default Fallback
-        if (!result.account_code) {
-            result.reasoning = 'No confident match found across all tiers.';
-            result.method = 'FAILED';
-            decisionPath = 'FAILED';
+        // --- TIER 3: AI ENSEMBLE ---
+        const aiResults = await aiService.suggestBatch(accounts, [item]);
+        if (aiResults[0] && aiResults[0].account_code) {
+            const rawAI = aiResults[0];
+            const normalizedConf = confidenceNormalizer.normalizeAI(rawAI.confidence);
+
+            const result = {
+                ...rawAI,
+                confidence: normalizedConf,
+                reasoning: `${rawAI.reasoning} (Calibrated: ${Math.round(normalizedConf * 100)}%)`,
+                method: rawAI.method
+            };
+
+            if (normalizedConf >= this.TERMINATION_HIGH) {
+                // STOP: High confidence AI
+                return this.finalize(result, accounts, item, 'AI');
+            }
+
+            if (!hint || normalizedConf > hint.confidence) {
+                hint = result;
+            }
         }
 
-        // 5. Risk Assessment
+        // --- FINALIZATION & FALLBACK ---
+        if (hint && hint.confidence >= this.TERMINATION_MEDIUM) {
+            return this.finalize(hint, accounts, item, hint.method);
+        }
+
+        return this.finalize(bestResult, accounts, item, 'FAILED');
+    }
+
+    private finalize(
+        result: SuggestionResult,
+        accounts: any[],
+        item: any,
+        decisionPath: string,
+        ruleId?: string,
+        similarityScore?: number
+    ): DecisionResult {
         const matchedAccount = accounts.find(a => String(a.code || a.AcctNum || '') === result.account_code);
         const risk = riskClassifier.assess({
             description: item.description,
@@ -90,9 +129,17 @@ export class DecisionRouter {
             accountName: matchedAccount?.name || matchedAccount?.Name
         });
 
-        const requiresReview = result.confidence < this.HIGH_CONFIDENCE_THRESHOLD || risk.riskLevel === 'HIGH';
+        // PATCH 6: Risk-Aware Logic
+        let requiresReview = result.confidence < this.TERMINATION_HIGH;
 
-        return {
+        if (risk.riskLevel === 'HIGH') {
+            if (result.confidence < this.RISK_HARDENING_THRESHOLD) {
+                requiresReview = true;
+                result.reasoning = `[HIGH RISK] ${result.reasoning}. Requires manual verification.`;
+            }
+        }
+
+        const final: DecisionResult = {
             ...result,
             risk,
             decision_path: decisionPath,
@@ -100,6 +147,18 @@ export class DecisionRouter {
             similarity_score: similarityScore,
             requires_review: requiresReview
         };
+
+        // PATCH 10: Defensive Logging
+        console.log('[DR-EVENT]', JSON.stringify({
+            description: item.description,
+            chosen_method: decisionPath,
+            normalized_confidence: final.confidence,
+            risk_level: risk.riskLevel,
+            requires_review: final.requires_review,
+            account: final.account_code
+        }));
+
+        return final;
     }
 }
 
