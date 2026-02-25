@@ -207,6 +207,7 @@ app.use('/cashbook', cashbookRoutes);
 app.use('/integrations', integrationRoutes);
 app.use('/users', userRoutes);
 app.use('/ai', aiRoutes);
+app.use('/organizations', organizationRoutes);
 
 app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');

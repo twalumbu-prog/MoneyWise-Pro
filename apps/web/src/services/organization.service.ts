@@ -22,7 +22,7 @@ export const organizationService = {
             throw new Error('Not authenticated');
         }
 
-        const response = await axios.get(`${API_URL}/api/organizations`, {
+        const response = await axios.get(`${API_URL}/organizations`, {
             headers: {
                 Authorization: `Bearer ${session.access_token}`
             }
@@ -38,7 +38,7 @@ export const organizationService = {
             throw new Error('Not authenticated');
         }
 
-        const response = await axios.put(`${API_URL}/api/organizations`, data, {
+        const response = await axios.put(`${API_URL}/organizations`, data, {
             headers: {
                 Authorization: `Bearer ${session.access_token}`
             }
