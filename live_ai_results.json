@@ -1,0 +1,92 @@
+[
+  {
+    "name": "Staff Meal - Standard",
+    "description": "Lunch for team at KFC",
+    "amount": 250,
+    "expected_code": "1001",
+    "actual_code": "5009",
+    "confidence": 0.95,
+    "reasoning": "The transaction 'Lunch for team at KFC' directly falls under 'Staff Meals / Catering' as it represents a meal provided to the team.",
+    "success": false
+  },
+  {
+    "name": "Staff Meal - Ambiguous",
+    "description": "Team outing for pizza",
+    "amount": 500,
+    "expected_code": "1001",
+    "actual_code": "5009",
+    "confidence": 0.95,
+    "reasoning": "The transaction 'Team outing for pizza' directly relates to providing food for staff, which is best categorized under 'Staff Meals / Catering'.",
+    "success": false
+  },
+  {
+    "name": "Travel - Taxi",
+    "description": "Uber ride to airport",
+    "amount": 150,
+    "expected_code": "6200",
+    "actual_code": "QB-22",
+    "confidence": 0.95,
+    "reasoning": "The 'Uber ride to airport' clearly falls under business travel expenses, making 'Travel' the most appropriate and direct category. While 'Transport & Fuel' could also apply to transportation, 'Travel' is more comprehensive for expenses related to an employee's journey, especially when an airport is involved.",
+    "success": false
+  },
+  {
+    "name": "Travel - Flight",
+    "description": "Emirates flight ZK882",
+    "amount": 8500,
+    "expected_code": "6200",
+    "actual_code": "QB-22",
+    "confidence": 0.95,
+    "reasoning": "The transaction clearly describes an 'Emirates flight', which is a form of travel. 'Travel' account is the most direct and appropriate match for this expense.",
+    "success": false
+  },
+  {
+    "name": "Utility - Electric",
+    "description": "Zesco electricity token",
+    "amount": 1000,
+    "expected_code": "6100",
+    "actual_code": "5002",
+    "confidence": 0.98,
+    "reasoning": "The transaction 'Zesco electricity token' directly relates to electricity consumption, making 'Utilities – Electricity' the most precise and appropriate account.",
+    "success": false
+  },
+  {
+    "name": "Office Supplies",
+    "description": "Printer ink and paper bundle",
+    "amount": 450,
+    "expected_code": "6101",
+    "actual_code": "5006",
+    "confidence": 0.95,
+    "reasoning": "Printer ink and paper are classic examples of stationery and printing consumables, making 'Printing & Stationery' the most direct and accurate match.",
+    "success": false
+  },
+  {
+    "name": "Vendor Payment - AWS",
+    "description": "Amazon Web Services cloud hosting",
+    "amount": 2400,
+    "expected_code": "4000",
+    "actual_code": "5015",
+    "confidence": 0.95,
+    "reasoning": "Amazon Web Services cloud hosting is a subscription-based IT service, which aligns perfectly with the 'Software & Subscriptions' account.",
+    "success": false
+  },
+  {
+    "name": "Income - Fees",
+    "description": "Consulting services for Project X",
+    "amount": 15000,
+    "expected_code": "4100",
+    "actual_code": "QB-26",
+    "confidence": 0.95,
+    "reasoning": "The transaction directly describes 'Consulting services', which perfectly matches the 'Professional & Consultation Fees' account.",
+    "success": false
+  },
+  {
+    "name": "Nonsense - Adversarial",
+    "description": "XyZ#123 abc",
+    "amount": 10,
+    "expected_code": "unknown",
+    "actual_code": "QB-1150040037",
+    "confidence": 0.1,
+    "reasoning": "The transaction description 'XyZ#123 abc' is completely ambiguous and provides no discernible information to categorize the transaction. Therefore, it is best placed in a 'Suspense Account' to be investigated further.",
+    "success": true
+  }
+]

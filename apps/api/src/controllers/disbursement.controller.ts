@@ -104,7 +104,7 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
         // 1. Verify Requisition is DISBURSED and user is the requestor
         const { data: requisition, error: reqError } = await supabase
             .from('requisitions')
-            .select('status, requestor_id')
+            .select('status, requestor_id, type, estimated_total, reference_number')
             .eq('id', id)
             .single();
 
@@ -130,6 +130,97 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
             .eq('requisition_id', id);
 
         if (disbError) throw disbError;
+
+        const isLoanOrAdvance = requisition.type === 'LOAN' || requisition.type === 'ADVANCE';
+
+        const { data: disbInfo } = await supabase
+            .from('disbursements')
+            .select('id, cashier_id, total_prepared')
+            .eq('requisition_id', id)
+            .single();
+
+        const totalPrepared = Number(disbInfo?.total_prepared || 0);
+        const estimatedTotal = Number(requisition.estimated_total || 0);
+
+        if (isLoanOrAdvance && totalPrepared <= estimatedTotal) {
+            // Auto complete flow for Loans and Advances where NO CHANGE is expected
+            // If totalPrepared > estimatedTotal, they essentially received excess cash and need to return change,
+            // so we let them fall through to RECEIVED status.
+
+            const cashier_id = disbInfo?.cashier_id || requestor_id;
+            const voucherRef = `PV-${requisition.reference_number || id.slice(0, 6)}`;
+
+            // 3. Create Voucher Record
+            const { data: voucher, error: voucherError } = await supabase
+                .from('vouchers')
+                .insert({
+                    requisition_id: id,
+                    created_by: cashier_id,
+                    reference_number: voucherRef,
+                    total_credit: estimatedTotal,
+                    total_debit: estimatedTotal,
+                    status: 'DRAFT'
+                })
+                .select()
+                .single();
+
+            if (voucherError) throw voucherError;
+
+            // 4. Finalize Disbursement details
+            await supabase
+                .from('disbursements')
+                .update({
+                    confirmed_change_amount: 0,
+                    confirmed_by: cashier_id,
+                    confirmed_at: new Date().toISOString(),
+                    discrepancy_amount: 0
+                })
+                .eq('requisition_id', id);
+
+            // 5. Finalize Ledger
+            await cashbookService.finalizeDisbursement(
+                id,
+                estimatedTotal,
+                voucher.id,
+                0,
+                voucherRef
+            );
+
+            // 6. Update Requisition Status to COMPLETED and set actual_total
+            const { error: completeError } = await supabase
+                .from('requisitions')
+                .update({
+                    status: 'COMPLETED',
+                    actual_total: estimatedTotal,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', id);
+
+            if (completeError) throw completeError;
+
+            // 7. Log Action
+            await supabase
+                .from('audit_logs')
+                .insert({
+                    entity_type: 'REQUISITION',
+                    entity_id: id,
+                    action: 'COMPLETED',
+                    user_id: requestor_id,
+                    changes: { from: 'DISBURSED', to: 'COMPLETED', auto_completed: true }
+                });
+
+            res.json({
+                message: 'Cash receipt acknowledged and transaction completed (Loan/Advance)',
+                status: 'COMPLETED'
+            });
+
+            // 8. Trigger Notification
+            emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                console.error('[Notification Error] Failed to send REQUISITION_COMPLETED email:', err)
+            );
+
+            return;
+        }
 
         // 3. Update Requisition Status to RECEIVED
         const { error: updateError } = await supabase

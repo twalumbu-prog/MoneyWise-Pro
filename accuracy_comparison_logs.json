@@ -1,0 +1,1602 @@
+[
+  {
+    "item": {
+      "desc": "Lunch at KFC",
+      "amt": 120,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Subway for team",
+      "amt": 350,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Pizza Hut delivery",
+      "amt": 800,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Coffee Shop breakfast",
+      "amt": 150,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-13",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Catering for board meeting",
+      "amt": 2500,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Restaurant dinner with client",
+      "amt": 1200,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-13",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Burgers for late shift",
+      "amt": 400,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Office fruit delivery",
+      "amt": 200,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5010",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Team building lunch",
+      "amt": 1500,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Afternoon snacks for office",
+      "amt": 100,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Uber ride",
+      "amt": 80,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5008",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Taxi to airport",
+      "amt": 150,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5008",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Hilton Hotel stay",
+      "amt": 4500,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040004",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "British Airways flight",
+      "amt": 12000,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Yellow Cab co",
+      "amt": 60,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5008",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Parking at terminal",
+      "amt": 100,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Train ticket to city",
+      "amt": 45,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": null,
+        "conf": 0
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Avis car rental",
+      "amt": 2500,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040004",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Airport lounge access",
+      "amt": 300,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Toll road payment",
+      "amt": 20,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5008",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Stationery World pens",
+      "amt": 25,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5006",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Copy paper reams",
+      "amt": 120,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Printer ink cartridges",
+      "amt": 850,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Office Depot notebooks",
+      "amt": 15,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Scissors and stapler",
+      "amt": 40,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Whiteboard markers",
+      "amt": 60,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Files and folders",
+      "amt": 200,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Post-it notes bundle",
+      "amt": 30,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Shredder maintenance oil",
+      "amt": 20,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5007",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Desk organizer",
+      "amt": 150,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Zesco electricity",
+      "amt": 500,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5002",
+        "conf": 1
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Water company bill",
+      "amt": 300,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5003",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Waste management monthly",
+      "amt": 250,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5013",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Gas heating system",
+      "amt": 800,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": null,
+        "conf": 0
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Electric Co tokens",
+      "amt": 200,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5002",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Municipal rates",
+      "amt": 1200,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040055",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Sewerage services",
+      "amt": 150,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-24",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Trash collection fee",
+      "amt": 50,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5013",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Utility connection fee",
+      "amt": 100,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-15",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Solar panel maintenance",
+      "amt": 450,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "6005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Microsoft subscription",
+      "amt": 15,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 1
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "AWS hosting bill",
+      "amt": 2500,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Oracle license renewal",
+      "amt": 15000,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Zamtel internet internet",
+      "amt": 600,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5004",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Google Cloud storage",
+      "amt": 10,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Slack for workspace",
+      "amt": 200,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 1
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Adobe Creative Cloud",
+      "amt": 600,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 1
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Zoom video conferencing",
+      "amt": 150,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Mailchimp marketing",
+      "amt": 400,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5016",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "GitHub Co-pilot",
+      "amt": 100,
+      "code": "4000",
+      "cat": "Vendor Payments"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Consulting services fee",
+      "amt": 10000,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-26",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Legal advisory bill",
+      "amt": 5000,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "7005",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Audit services",
+      "amt": 8000,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "7003",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Bookkeeping monthly",
+      "amt": 1200,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "7004",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Accounting software setup",
+      "amt": 2000,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5015",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Tax filing assistance",
+      "amt": 3500,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "7004",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Management consulting",
+      "amt": 15000,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-26",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Translation services",
+      "amt": 400,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5011",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Strategic planning session",
+      "amt": 6000,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040033",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Compliance review",
+      "amt": 4500,
+      "code": "4100",
+      "cat": "Fees"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-26",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Lunch at KFC - Var 60",
+      "amt": 123.14762181721395,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Subway for team - Var 61",
+      "amt": 369.6195187079032,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Pizza Hut delivery - Var 62",
+      "amt": 947.0834837126581,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Coffee Shop breakfast - Var 63",
+      "amt": 171.85779006310352,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-13",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Catering for board meeting - Var 64",
+      "amt": 2870.2444388190506,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Restaurant dinner with client - Var 65",
+      "amt": 1238.1489425498285,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-13",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Burgers for late shift - Var 66",
+      "amt": 474.0012023569011,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Office fruit delivery - Var 67",
+      "amt": 232.86384146955257,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Team building lunch - Var 68",
+      "amt": 1580.8981591233673,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040024",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Afternoon snacks for office - Var 69",
+      "amt": 115.33913928125568,
+      "code": "1001",
+      "cat": "Staff Meals"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5009",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Uber ride - Var 70",
+      "amt": 95.4151601193894,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5008",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Taxi to airport - Var 71",
+      "amt": 151.89218450577684,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Hilton Hotel stay - Var 72",
+      "amt": 5244.068299154592,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "British Airways flight - Var 73",
+      "amt": 12672.200922891116,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Yellow Cab co - Var 74",
+      "amt": 66.02653610254458,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5008",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Parking at terminal - Var 75",
+      "amt": 111.6162617837546,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040004",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Train ticket to city - Var 76",
+      "amt": 47.13711672288132,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Avis car rental - Var 77",
+      "amt": 2559.228641484238,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-22",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Airport lounge access - Var 78",
+      "amt": 307.0743744646726,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040004",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Toll road payment - Var 79",
+      "amt": 21.850368719667067,
+      "code": "6200",
+      "cat": "Travel"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5008",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Stationery World pens - Var 80",
+      "amt": 29.894683702957803,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5006",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Copy paper reams - Var 81",
+      "amt": 129.27947310413032,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5006",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Printer ink cartridges - Var 82",
+      "amt": 923.5687331914904,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5006",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Office Depot notebooks - Var 83",
+      "amt": 15.02953436046251,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Scissors and stapler - Var 84",
+      "amt": 46.95756311307836,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Whiteboard markers - Var 85",
+      "amt": 65.7169356076426,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5006",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Files and folders - Var 86",
+      "amt": 217.07907099482497,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Post-it notes bundle - Var 87",
+      "amt": 34.919104650667286,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Shredder maintenance oil - Var 88",
+      "amt": 21.764048956870052,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-75",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Desk organizer - Var 89",
+      "amt": 179.37219270930376,
+      "code": "6101",
+      "cat": "Office Supplies"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5005",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Zesco electricity - Var 90",
+      "amt": 596.5349374986109,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5002",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Water company bill - Var 91",
+      "amt": 318.92274401772823,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5003",
+        "conf": 1
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Waste management monthly - Var 92",
+      "amt": 284.13060924817285,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-28",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Gas heating system - Var 93",
+      "amt": 876.6494086853033,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-76",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Electric Co tokens - Var 94",
+      "amt": 207.60450789176696,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5002",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Municipal rates - Var 95",
+      "amt": 1228.70113364443,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-1150040055",
+        "conf": 0.98
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Sewerage services - Var 96",
+      "amt": 163.18907393245456,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5003",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Trash collection fee - Var 97",
+      "amt": 58.266859937997175,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "5013",
+        "conf": 0.9
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Utility connection fee - Var 98",
+      "amt": 102.94902688435393,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "QB-24",
+        "conf": 0.95
+      }
+    }
+  },
+  {
+    "item": {
+      "desc": "Solar panel maintenance - Var 99",
+      "amt": 470.9389629686624,
+      "code": "6100",
+      "cat": "Utilities"
+    },
+    "results": {
+      "memory": null,
+      "rule": null,
+      "ai": {
+        "code": "6005",
+        "conf": 0.95
+      }
+    }
+  }
+]

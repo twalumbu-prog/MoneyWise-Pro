@@ -480,9 +480,16 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         // discrepancy = what is missing overall (Total - Spent - Returned)
         const totalDisbursed = Number(disbursement.total_prepared || 0);
 
-        // Sum up actual expenditure directly from line items
+        // Sum up actual expenditure directly from line items (or use estimated_total for loans)
+        const isLoanOrAdvance = requisition.type === 'LOAN' || requisition.type === 'ADVANCE';
         const lineItems = requisition.line_items || [];
-        const actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0) || Number(requisition.actual_total || 0);
+
+        let actualExpenditure = 0;
+        if (isLoanOrAdvance) {
+            actualExpenditure = Number(requisition.estimated_total || 0);
+        } else {
+            actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0) || Number(requisition.actual_total || 0);
+        }
 
         const confirmedChange = Number(confirmed_change_amount || 0);
         const discrepancy = totalDisbursed - actualExpenditure - confirmedChange;

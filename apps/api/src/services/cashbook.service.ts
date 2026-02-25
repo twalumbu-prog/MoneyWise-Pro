@@ -10,6 +10,10 @@ export interface CashbookEntry {
     balance_after: number;
     entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE' | 'INFLOW';
     requisition_id?: string;
+    requisitions?: {
+        department?: string;
+        [key: string]: any; // Allow other requisition fields
+    };
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
 }
@@ -192,7 +196,7 @@ export const cashbookService = {
             .select(`
                 *,
                 requisitions!requisition_id (
-                    id, reference_number, status, description, type,
+                    id, reference_number, status, description, type, department,
                     requestor:users!requestor_id(name),
                     line_items (
                         id, description, quantity, unit_price, estimated_amount, actual_amount, account_id,

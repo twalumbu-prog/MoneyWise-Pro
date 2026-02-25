@@ -24,6 +24,7 @@ import cashbookRoutes from './routes/cashbook.routes';
 import integrationRoutes from './routes/integrations.routes';
 import userRoutes from './routes/user.routes';
 import aiRoutes from './routes/ai.routes';
+import organizationRoutes from './routes/organization.routes';
 
 dotenv.config();
 
@@ -47,6 +48,15 @@ const runMigration = async () => {
 
         // ... existing migrations ...
         await migrationPool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS category TEXT;');
+
+        await migrationPool.query(`
+            ALTER TABLE organizations
+            ADD COLUMN IF NOT EXISTS email VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS phone VARCHAR(50),
+            ADD COLUMN IF NOT EXISTS address TEXT,
+            ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS website VARCHAR(255);
+        `);
 
         await migrationPool.query(`
             ALTER TABLE disbursements 

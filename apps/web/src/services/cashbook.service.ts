@@ -23,6 +23,7 @@ export interface CashbookEntry {
         requestor: { name: string };
         disbursements: any[];
         type?: string;
+        department?: string;
         qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
         qb_sync_error?: string;
         qb_sync_at?: string;

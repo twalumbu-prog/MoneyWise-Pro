@@ -108,8 +108,16 @@ export const RequisitionDetail: React.FC = () => {
         const amount = returnedDenominations.reduce((sum, d) => sum + (d.value * d.count), 0);
 
         // Calculated expected change: Total Disbursed - Actual Expenditure
+        const isLoanOrAdvance = requisition.type === 'LOAN' || requisition.type === 'ADVANCE';
         const totalDisbursed = (requisition as any).disbursements?.[0]?.total_prepared || 0;
-        const actualTotal = expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0);
+
+        let actualTotal = 0;
+        if (isLoanOrAdvance) {
+            actualTotal = Number(requisition.estimated_total || 0);
+        } else {
+            actualTotal = expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0);
+        }
+
         const expectedChange = totalDisbursed - actualTotal;
 
         if (Math.abs(amount - expectedChange) > 0.01) {
@@ -151,9 +159,11 @@ export const RequisitionDetail: React.FC = () => {
     if (loading) return <Layout><div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green"></div></div></Layout>;
     if (error || !requisition) return <Layout><div className="p-12 text-center text-red-600 bg-red-50 rounded-lg m-6 border border-red-200">Error: {error || 'Requisition not found'}</div></Layout>;
 
+    const isLoanOrAdvance = requisition.type === 'LOAN' || requisition.type === 'ADVANCE';
     const isRequestor = user?.id === requisition.requestor_id;
     const canAcknowledge = isRequestor && requisition.status === 'DISBURSED';
-    const canTrackExpenses = isRequestor && requisition.status === 'RECEIVED';
+    const canTrackExpenses = isRequestor && requisition.status === 'RECEIVED' && !isLoanOrAdvance;
+    // Allow submitting change even for loans if they landed in RECEIVED (excess disbursement)
     const canSubmitChange = isRequestor && requisition.status === 'RECEIVED';
     const canConfirmChange = (userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'ADMIN') && requisition.status === 'CHANGE_SUBMITTED';
 
@@ -278,82 +288,119 @@ export const RequisitionDetail: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="py-4 sm:py-5 sm:px-6">
-                                <dt className="text-sm font-medium text-gray-500 mb-2">Line Items & Expenses</dt>
-                                <dd className="mt-1 text-sm text-gray-900 sm:mt-0">
-                                    <div className="border rounded-md overflow-hidden">
-                                        <table className="min-w-full divide-y divide-gray-200">
-                                            <thead className="bg-gray-50">
-                                                <tr>
-                                                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
-                                                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Est. Cost</th>
-                                                    {canTrackExpenses ? (
-                                                        <>
-                                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actual Cost (K)</th>
-                                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Receipt</th>
-                                                        </>
-                                                    ) : (
-                                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actual Cost</th>
-                                                    )}
-                                                </tr>
-                                            </thead>
-                                            <tbody className="bg-white divide-y divide-gray-200">
-                                                {expenseItems?.map((item: any, index: number) => (
-                                                    <tr key={index}>
-                                                        <td className="px-4 py-2 text-sm text-gray-900">
-                                                            <div className="font-medium">{item.description}</div>
-                                                            <div className="text-xs text-gray-500">
-                                                                {item.quantity} x K{item.unit_price}
-                                                                {item.accounts && (
-                                                                    <span className="ml-2 px-1.5 py-0.5 rounded bg-brand-gray text-gray-500 border border-gray-100">
-                                                                        {item.accounts.code}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-4 py-2 text-sm text-gray-900 text-right font-medium">K{item.estimated_amount}</td>
-
+                            {!isLoanOrAdvance && (
+                                <div className="py-4 sm:py-5 sm:px-6">
+                                    <dt className="text-sm font-medium text-gray-500 mb-2">Line Items & Expenses</dt>
+                                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0">
+                                        <div className="border rounded-md overflow-hidden">
+                                            <table className="min-w-full divide-y divide-gray-200">
+                                                <thead className="bg-gray-50">
+                                                    <tr>
+                                                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Description</th>
+                                                        <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Est. Cost</th>
                                                         {canTrackExpenses ? (
                                                             <>
-                                                                <td className="px-4 py-2 text-right">
-                                                                    <input
-                                                                        type="number"
-                                                                        className="shadow-sm focus:ring-brand-green focus:border-brand-green block w-full sm:text-sm border-gray-300 rounded-md text-right"
-                                                                        value={item.actual_amount || ''}
-                                                                        placeholder={item.estimated_amount.toString()}
-                                                                        onChange={(e) => handleActualChange(item.id, e.target.value)}
-                                                                    />
-                                                                </td>
-                                                                <td className="px-4 py-2 text-right">
-                                                                    <div className="flex flex-col items-end gap-1">
-                                                                        {item.receipt_url ? (
-                                                                            <span className="text-xs text-brand-green flex items-center font-medium">
-                                                                                <CheckCircle className="h-3 w-3 mr-1" /> Uploaded
-                                                                            </span>
-                                                                        ) : (
-                                                                            <input
-                                                                                type="file"
-                                                                                className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                                                                                onChange={(e) => e.target.files?.[0] && handleFileUpload(item.id, e.target.files[0])}
-                                                                                disabled={uploading === item.id}
-                                                                            />
-                                                                        )}
-                                                                        {uploading === item.id && <span className="text-xs text-gray-400">Uploading...</span>}
-                                                                    </div>
-                                                                </td>
+                                                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actual Cost (K)</th>
+                                                                <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Receipt</th>
                                                             </>
                                                         ) : (
-                                                            <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                                                                K{item.actual_amount || '0.00'}
-                                                            </td>
+                                                            <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Actual Cost</th>
                                                         )}
                                                     </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                </dd>
-                            </div>
+                                                </thead>
+                                                <tbody className="bg-white divide-y divide-gray-200">
+                                                    {expenseItems?.map((item: any, index: number) => (
+                                                        <tr key={index}>
+                                                            <td className="px-4 py-2 text-sm text-gray-900">
+                                                                <div className="font-medium">{item.description}</div>
+                                                                <div className="text-xs text-gray-500">
+                                                                    {item.quantity} x K{item.unit_price}
+                                                                    {item.accounts && (
+                                                                        <span className="ml-2 px-1.5 py-0.5 rounded bg-brand-gray text-gray-500 border border-gray-100">
+                                                                            {item.accounts.code}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                            <td className="px-4 py-2 text-sm text-gray-900 text-right font-medium">K{item.estimated_amount}</td>
+
+                                                            {canTrackExpenses ? (
+                                                                <>
+                                                                    <td className="px-4 py-2 text-right">
+                                                                        <input
+                                                                            type="number"
+                                                                            className="shadow-sm focus:ring-brand-green focus:border-brand-green block w-full sm:text-sm border-gray-300 rounded-md text-right"
+                                                                            value={item.actual_amount || ''}
+                                                                            placeholder={item.estimated_amount.toString()}
+                                                                            onChange={(e) => handleActualChange(item.id, e.target.value)}
+                                                                        />
+                                                                    </td>
+                                                                    <td className="px-4 py-2 text-right">
+                                                                        <div className="flex flex-col items-end gap-1">
+                                                                            {item.receipt_url ? (
+                                                                                <span className="text-xs text-brand-green flex items-center font-medium">
+                                                                                    <CheckCircle className="h-3 w-3 mr-1" /> Uploaded
+                                                                                </span>
+                                                                            ) : (
+                                                                                <input
+                                                                                    type="file"
+                                                                                    className="text-xs text-gray-500 file:mr-2 file:py-1 file:px-2 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                                                                                    onChange={(e) => e.target.files?.[0] && handleFileUpload(item.id, e.target.files[0])}
+                                                                                    disabled={uploading === item.id}
+                                                                                />
+                                                                            )}
+                                                                            {uploading === item.id && <span className="text-xs text-gray-400">Uploading...</span>}
+                                                                        </div>
+                                                                    </td>
+                                                                </>
+                                                            ) : (
+                                                                <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                                                                    K{item.actual_amount || '0.00'}
+                                                                </td>
+                                                            )}
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </dd>
+                                </div>
+                            )}
+
+                            {isLoanOrAdvance && (
+                                <div className="py-4 sm:py-5 sm:px-6">
+                                    <dt className="text-sm font-medium text-gray-500 mb-4">{requisition.type === 'LOAN' ? 'Staff Loan Details' : 'Salary Advance Details'}</dt>
+                                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0">
+                                        <div className="bg-indigo-50 rounded-xl p-6 border border-indigo-100">
+                                            <div className="grid grid-cols-2 gap-6">
+                                                <div>
+                                                    <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider mb-1">Staff Member</p>
+                                                    <p className="font-semibold text-gray-900">{requisition.staff_name || '-'}</p>
+                                                    <p className="text-xs text-gray-500 mt-1">ID: {requisition.employee_id || '-'}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider mb-1">Amount Requested</p>
+                                                    <p className="font-black text-indigo-900 text-lg">K{Number(requisition.loan_amount || requisition.estimated_total).toLocaleString()}</p>
+                                                </div>
+
+                                                {requisition.type === 'LOAN' && (
+                                                    <>
+                                                        <div>
+                                                            <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider mb-1">Repayment Period</p>
+                                                            <p className="font-medium text-gray-900">{requisition.repayment_period} Months</p>
+                                                            <p className="text-xs text-gray-500 mt-1">Interest: {requisition.interest_rate}%</p>
+                                                        </div>
+                                                        <div>
+                                                            <p className="text-xs text-indigo-600 font-bold uppercase tracking-wider mb-1">Monthly Deduction</p>
+                                                            <p className="font-bold text-gray-900">K{Number(requisition.monthly_deduction || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        </div>
+                                    </dd>
+                                </div>
+                            )}
                         </dl>
                     </div>
 
@@ -404,12 +451,18 @@ export const RequisitionDetail: React.FC = () => {
                                 </div>
                                 <div className="flex justify-between items-center mb-4 text-sm">
                                     <span className="text-gray-500">Actual Expenditure:</span>
-                                    <span className="font-semibold text-gray-900">K{expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0).toFixed(2)}</span>
+                                    <span className="font-semibold text-gray-900">
+                                        K{isLoanOrAdvance
+                                            ? Number(requisition.estimated_total || 0).toFixed(2)
+                                            : expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0).toFixed(2)}
+                                    </span>
                                 </div>
                                 <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4">
                                     <span className="text-sm font-bold text-gray-700">Calculated Change:</span>
                                     <span className="text-lg font-bold text-brand-green">
-                                        K{(Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0)).toFixed(2)}
+                                        K{isLoanOrAdvance
+                                            ? (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - Number(requisition.estimated_total || 0)).toFixed(2)
+                                            : (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0)).toFixed(2)}
                                     </span>
                                 </div>
 

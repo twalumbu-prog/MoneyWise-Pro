@@ -15,6 +15,7 @@ import {
     ArrowDownToLine,
     BrainCircuit
 } from 'lucide-react';
+import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
 import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
 import { RuleManagement } from '../components/settings/RuleManagement';
@@ -210,12 +211,7 @@ export const Settings: React.FC = () => {
                     {/* Main Content Area */}
                     <div className="flex-1 min-w-0">
                         {/* General Tab */}
-                        {activeTab === 'general' && (
-                            <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-6">
-                                <h3 className="text-lg font-bold text-brand-navy mb-4">General Settings</h3>
-                                <p className="text-gray-500 text-sm">Organization settings will appear here.</p>
-                            </div>
-                        )}
+                        {activeTab === 'general' && <GeneralSettings />}
 
                         {/* Users Tab */}
                         {activeTab === 'users' && <UserManagement />}
