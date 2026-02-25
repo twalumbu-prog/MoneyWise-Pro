@@ -16,16 +16,18 @@ export interface CashbookEntry {
     };
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
+    account_type?: string;
 }
 
 export const cashbookService = {
     /**
      * Get the current cash balance
      */
-    async getCurrentBalance(): Promise<number> {
+    async getCurrentBalance(accountType: string = 'CASH'): Promise<number> {
         const { data, error } = await supabase
             .from('cashbook_entries')
             .select('balance_after')
+            .eq('account_type', accountType)
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
@@ -34,14 +36,11 @@ export const cashbookService = {
         return parseFloat(data.balance_after);
     },
 
-    async recalculateBalancesFrom(targetDate: string, targetCreatedAt: string) {
-        // 1. Get the entry just before this one in logical order (date ASC, created_at ASC)
-        // A predecessor is either:
-        // - An entry on an earlier date
-        // - An entry on the same date but with an earlier created_at
+    async recalculateBalancesFrom(targetDate: string, targetCreatedAt: string, accountType: string = 'CASH') {
         const { data: prevEntry } = await supabase
             .from('cashbook_entries')
             .select('balance_after')
+            .eq('account_type', accountType)
             .or(`date.lt.${targetDate},and(date.eq.${targetDate},created_at.lt.${targetCreatedAt})`)
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
@@ -50,17 +49,16 @@ export const cashbookService = {
 
         let runningBalance = prevEntry ? parseFloat(prevEntry.balance_after) : 0;
 
-        // 2. Get all entries from this point onwards in logical order
         const { data: entries } = await supabase
             .from('cashbook_entries')
             .select('*')
+            .eq('account_type', accountType)
             .or(`date.gt.${targetDate},and(date.eq.${targetDate},created_at.gte.${targetCreatedAt})`)
             .order('date', { ascending: true })
             .order('created_at', { ascending: true });
 
         if (!entries) return;
 
-        // 3. Update each entry's balance
         for (const entry of entries) {
             const newBalance = runningBalance + parseFloat(entry.debit) - parseFloat(entry.credit);
             await supabase
@@ -75,11 +73,13 @@ export const cashbookService = {
      * Create a cashbook entry (disbursement, return, inflow, adjustment, or balance)
      */
     async createEntry(entry: Omit<CashbookEntry, 'id' | 'balance_after'>): Promise<CashbookEntry> {
+        const accountType = entry.account_type || 'CASH';
         // 1. Insert the entry first (we'll fix balance in a moment)
         const { data, error } = await supabase
             .from('cashbook_entries')
             .insert({
                 ...entry,
+                account_type: accountType,
                 balance_after: 0
             })
             .select()
@@ -88,7 +88,7 @@ export const cashbookService = {
         if (error) throw new Error(`Failed to create cashbook entry: ${error.message}`);
 
         // 2. Recalculate balances starting from this entry's logical position
-        await this.recalculateBalancesFrom(data.date, data.created_at);
+        await this.recalculateBalancesFrom(data.date, data.created_at, accountType);
 
         // 3. Fetch the updated entry
         const { data: updatedData } = await supabase
@@ -107,7 +107,8 @@ export const cashbookService = {
         requisitionId: string,
         amount: number,
         cashierId: string,
-        description?: string
+        description?: string,
+        accountType: string = 'CASH'
     ): Promise<CashbookEntry> {
         return this.createEntry({
             entry_type: 'DISBURSEMENT',
@@ -117,7 +118,8 @@ export const cashbookService = {
             date: new Date().toISOString().split('T')[0],
             requisition_id: requisitionId,
             created_by: cashierId,
-            status: 'PENDING'
+            status: 'PENDING',
+            account_type: accountType
         });
     },
 
@@ -128,7 +130,8 @@ export const cashbookService = {
         requisitionId: string,
         amount: number,
         userId: string,
-        description?: string
+        description?: string,
+        accountType: string = 'CASH'
     ): Promise<CashbookEntry> {
         return this.createEntry({
             entry_type: 'RETURN',
@@ -137,7 +140,8 @@ export const cashbookService = {
             credit: 0,
             date: new Date().toISOString().split('T')[0],
             requisition_id: requisitionId,
-            created_by: userId
+            created_by: userId,
+            account_type: accountType
         });
     },
 
@@ -151,6 +155,7 @@ export const cashbookService = {
             contactDetails?: string;
             amount: number;
             denominations?: any;
+            accountType?: string;
         },
         userId: string
     ): Promise<CashbookEntry> {
@@ -161,7 +166,8 @@ export const cashbookService = {
             debit: data.amount,
             credit: 0,
             date: new Date().toISOString().split('T')[0],
-            created_by: userId
+            created_by: userId,
+            account_type: data.accountType || 'CASH'
         });
 
         // 2. Create inflow metadata
@@ -189,6 +195,7 @@ export const cashbookService = {
         startDate?: string;
         endDate?: string;
         entryType?: string;
+        accountType?: string;
         limit?: number;
     }) {
         let query = supabase
@@ -218,6 +225,9 @@ export const cashbookService = {
         if (filters?.entryType) {
             query = query.eq('entry_type', filters.entryType);
         }
+        if (filters?.accountType) {
+            query = query.eq('account_type', filters.accountType);
+        }
         if (filters?.limit) {
             query = query.limit(filters.limit);
         }
@@ -230,10 +240,11 @@ export const cashbookService = {
     /**
      * Get cashbook summary for a date range
      */
-    async getSummary(startDate: string, endDate: string) {
+    async getSummary(startDate: string, endDate: string, accountType: string = 'CASH') {
         const { data, error } = await supabase
             .from('cashbook_entries')
             .select('debit, credit, balance_after')
+            .eq('account_type', accountType)
             .gte('date', startDate)
             .lte('date', endDate)
             .order('date', { ascending: true })
@@ -306,7 +317,8 @@ export const cashbookService = {
                 requisition_id: requisitionId,
                 created_by: createdBy,
                 status: 'COMPLETED',
-                voucher_id: voucherId
+                voucher_id: voucherId,
+                account_type: 'CASH' // Assume default if not found
             });
             return;
         }
@@ -329,8 +341,8 @@ export const cashbookService = {
 
         if (updateError) throw updateError;
 
-        // 3. Recalculate ALL subsequent entries
-        await this.recalculateBalancesFrom(originalEntry.date, originalEntry.created_at);
+        // 3. Recalculate ALL subsequent entries for the specific account type
+        await this.recalculateBalancesFrom(originalEntry.date, originalEntry.created_at, originalEntry.account_type || 'CASH');
     },
 
     /**
@@ -340,7 +352,8 @@ export const cashbookService = {
         date: string,
         physicalCount: number,
         notes: string,
-        userId: string
+        userId: string,
+        accountType: string = 'CASH'
     ) {
         // 1. Calculate system balance FOR THAT SPECIFIC DATE
         // We need the balance after all transactions on that date
@@ -348,6 +361,7 @@ export const cashbookService = {
             .from('cashbook_entries')
             .select('balance_after')
             .eq('date', date)
+            .eq('account_type', accountType)
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
@@ -360,6 +374,7 @@ export const cashbookService = {
             const { data: lastEntryBefore } = await supabase
                 .from('cashbook_entries')
                 .select('balance_after')
+                .eq('account_type', accountType)
                 .lt('date', date)
                 .order('date', { ascending: false })
                 .order('created_at', { ascending: false })
@@ -378,7 +393,8 @@ export const cashbookService = {
                 debit: variance > 0 ? variance : 0,
                 credit: variance < 0 ? Math.abs(variance) : 0,
                 date: date,
-                created_by: userId
+                created_by: userId,
+                account_type: accountType
             });
         }
 
@@ -389,7 +405,8 @@ export const cashbookService = {
             debit: 0,
             credit: 0,
             date: date,
-            created_by: userId
+            created_by: userId,
+            account_type: accountType
         });
 
         // 4. Create OPENING_BALANCE entry for next day
@@ -403,6 +420,7 @@ export const cashbookService = {
             .select('id')
             .eq('date', nextDayStr)
             .eq('entry_type', 'OPENING_BALANCE')
+            .eq('account_type', accountType)
             .limit(1)
             .single();
 
@@ -413,7 +431,8 @@ export const cashbookService = {
                 debit: 0,
                 credit: 0,
                 date: nextDayStr,
-                created_by: userId
+                created_by: userId,
+                account_type: accountType
             });
         }
 

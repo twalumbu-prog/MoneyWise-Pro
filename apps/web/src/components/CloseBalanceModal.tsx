@@ -7,9 +7,10 @@ interface CloseBalanceModalProps {
     onClose: () => void;
     onSuccess: () => void;
     currentSystemBalance: number;
+    accountType: string;
 }
 
-const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, onSuccess, currentSystemBalance }) => {
+const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, onSuccess, currentSystemBalance, accountType }) => {
     const [step, setStep] = useState<1 | 2>(1); // 1: Input, 2: Confirmation
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [physicalCount, setPhysicalCount] = useState<string>('');
@@ -61,7 +62,8 @@ const CloseBalanceModal: React.FC<CloseBalanceModalProps> = ({ isOpen, onClose, 
             await cashbookService.closeBook(
                 parseFloat(physicalCount),
                 date,
-                notes
+                notes,
+                accountType
             );
             onSuccess();
             onClose();

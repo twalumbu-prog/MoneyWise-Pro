@@ -58,6 +58,7 @@ export const cashbookService = {
         startDate?: string;
         endDate?: string;
         entryType?: string;
+        accountType?: string;
         limit?: number;
     }) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -67,6 +68,7 @@ export const cashbookService = {
         if (filters?.startDate) params.append('startDate', filters.startDate);
         if (filters?.endDate) params.append('endDate', filters.endDate);
         if (filters?.entryType) params.append('entryType', filters.entryType);
+        if (filters?.accountType) params.append('accountType', filters.accountType);
         if (filters?.limit) params.append('limit', filters.limit.toString());
 
         const response = await axios.get<CashbookEntry[]>(
@@ -76,32 +78,32 @@ export const cashbookService = {
         return response.data;
     },
 
-    async getBalance() {
+    async getBalance(accountType: string = 'CASH') {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
         const response = await axios.get<{ balance: number }>(
-            `${API_URL}/cashbook/balance`,
+            `${API_URL}/cashbook/balance?accountType=${accountType}`,
             { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data.balance;
     },
 
-    async getSummary(startDate: string, endDate: string) {
+    async getSummary(startDate: string, endDate: string, accountType: string = 'CASH') {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
         const response = await axios.get<CashbookSummary>(
-            `${API_URL}/cashbook/summary?startDate=${startDate}&endDate=${endDate}`,
+            `${API_URL}/cashbook/summary?startDate=${startDate}&endDate=${endDate}&accountType=${accountType}`,
             { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data;
     },
 
-    async reconcile(physicalCount: number, denominations?: any, notes?: string) {
+    async reconcile(physicalCount: number, denominations?: any, notes?: string, accountType: string = 'CASH') {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
         const response = await axios.post(
             `${API_URL}/cashbook/reconcile`,
-            { physicalCount, denominations, notes },
+            { physicalCount, denominations, notes, accountType },
             { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data;
@@ -118,12 +120,12 @@ export const cashbookService = {
         return response.data;
     },
 
-    async closeBook(physicalCount: number, date: string, notes?: string) {
+    async closeBook(physicalCount: number, date: string, notes?: string, accountType: string = 'CASH') {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
         const response = await axios.post(
             `${API_URL}/cashbook/close`,
-            { physicalCount, date, notes },
+            { physicalCount, date, notes, accountType },
             { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data;
@@ -135,6 +137,7 @@ export const cashbookService = {
         contactDetails: string;
         amount: number;
         denominations: any;
+        accountType?: string;
     }) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;

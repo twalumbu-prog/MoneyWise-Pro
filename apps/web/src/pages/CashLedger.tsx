@@ -39,6 +39,7 @@ const CashLedger: React.FC = () => {
         new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0]
     );
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [selectedAccountType, setSelectedAccountType] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK'>('CASH');
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
     const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
     const [isClassifying, setIsClassifying] = useState(false);
@@ -59,14 +60,14 @@ const CashLedger: React.FC = () => {
 
     useEffect(() => {
         loadData();
-    }, [startDate, endDate]);
+    }, [startDate, endDate, selectedAccountType]);
 
     const loadData = async () => {
         try {
             setLoading(true);
             const [entriesData, balanceData] = await Promise.all([
-                cashbookService.getEntries({ startDate, endDate }),
-                cashbookService.getBalance()
+                cashbookService.getEntries({ startDate, endDate, accountType: selectedAccountType }),
+                cashbookService.getBalance(selectedAccountType)
             ]);
             setEntries(entriesData);
             setBalance(balanceData);
@@ -397,8 +398,29 @@ const CashLedger: React.FC = () => {
         <Layout>
             <div className="space-y-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-3 flex-wrap gap-y-2">
                         <h1 className="text-2xl font-bold text-gray-900 m-0">Cash Ledger</h1>
+
+                        <div className="flex ml-0 md:ml-4 bg-gray-100 p-1 rounded-lg">
+                            <button
+                                onClick={() => setSelectedAccountType('CASH')}
+                                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${selectedAccountType === 'CASH' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Cash
+                            </button>
+                            <button
+                                onClick={() => setSelectedAccountType('AIRTEL_MONEY')}
+                                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${selectedAccountType === 'AIRTEL_MONEY' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Airtel Money
+                            </button>
+                            <button
+                                onClick={() => setSelectedAccountType('BANK')}
+                                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${selectedAccountType === 'BANK' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Bank Transfer
+                            </button>
+                        </div>
                     </div>
 
                     <div className="flex items-center space-x-3">
@@ -471,6 +493,7 @@ const CashLedger: React.FC = () => {
                     loadData();
                 }}
                 currentSystemBalance={balance}
+                accountType={selectedAccountType}
             />
 
             <CashInflowModal

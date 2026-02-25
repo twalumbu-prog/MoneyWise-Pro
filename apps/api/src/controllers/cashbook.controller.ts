@@ -10,12 +10,13 @@ import { supabase } from '../lib/supabase';
 export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
     // ... existing entries logic ... (simplified for brevity, assume unchanged or just import updated)
     try {
-        const { startDate, endDate, entryType, limit } = req.query;
+        const { startDate, endDate, entryType, accountType, limit } = req.query;
 
         const entries = await cashbookService.getEntries({
             startDate: startDate as string,
             endDate: endDate as string,
             entryType: entryType as string,
+            accountType: accountType as string,
             limit: limit ? parseInt(limit as string) : undefined
         });
 
@@ -31,7 +32,8 @@ export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
  */
 export const getCashBalance = async (req: any, res: any): Promise<any> => {
     try {
-        const balance = await cashbookService.getCurrentBalance();
+        const { accountType } = req.query;
+        const balance = await cashbookService.getCurrentBalance(accountType as string);
         res.json({ balance });
     } catch (error: any) {
         console.error('Error fetching cash balance:', error);
@@ -44,7 +46,7 @@ export const getCashBalance = async (req: any, res: any): Promise<any> => {
  */
 export const getCashbookSummary = async (req: any, res: any): Promise<any> => {
     try {
-        const { startDate, endDate } = req.query;
+        const { startDate, endDate, accountType } = req.query;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'startDate and endDate are required' });
@@ -52,7 +54,8 @@ export const getCashbookSummary = async (req: any, res: any): Promise<any> => {
 
         const summary = await cashbookService.getSummary(
             startDate as string,
-            endDate as string
+            endDate as string,
+            accountType as string
         );
 
         res.json(summary);
@@ -67,14 +70,14 @@ export const getCashbookSummary = async (req: any, res: any): Promise<any> => {
  */
 export const reconcileCash = async (req: any, res: any): Promise<any> => {
     try {
-        const { physicalCount, denominations, notes } = req.body;
+        const { physicalCount, denominations, notes, accountType } = req.body;
         const userId = (req as any).user.id;
 
         if (typeof physicalCount !== 'number' || physicalCount < 0) {
             return res.status(400).json({ error: 'Valid physicalCount is required' });
         }
 
-        const systemBalance = await cashbookService.getCurrentBalance();
+        const systemBalance = await cashbookService.getCurrentBalance(accountType);
         const variance = physicalCount - systemBalance;
 
         // If there's a variance, create an adjustment entry
@@ -85,7 +88,8 @@ export const reconcileCash = async (req: any, res: any): Promise<any> => {
                 debit: variance > 0 ? variance : 0,
                 credit: variance < 0 ? Math.abs(variance) : 0,
                 date: new Date().toISOString().split('T')[0],
-                created_by: userId
+                created_by: userId,
+                account_type: accountType || 'CASH'
             });
         }
 
@@ -134,7 +138,7 @@ export const returnExcessCash = async (req: any, res: any): Promise<any> => {
  */
 export const logCashInflow = async (req: any, res: any): Promise<any> => {
     try {
-        const { personName, purpose, contactDetails, amount, denominations } = req.body;
+        const { personName, purpose, contactDetails, amount, denominations, accountType } = req.body;
         const userId = (req as any).user.id;
 
         if (!personName || !purpose || typeof amount !== 'number' || amount <= 0) {
@@ -142,7 +146,7 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
         }
 
         const entry = await cashbookService.logInflow(
-            { personName, purpose, contactDetails, amount, denominations },
+            { personName, purpose, contactDetails, amount, denominations, accountType },
             userId
         );
 
@@ -158,7 +162,7 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
  */
 export const closeBook = async (req: any, res: any): Promise<any> => {
     try {
-        const { date, physicalCount, notes } = req.body;
+        const { date, physicalCount, notes, accountType } = req.body;
         const userId = (req as any).user.id;
 
         if (!date || physicalCount === undefined) {
@@ -169,7 +173,8 @@ export const closeBook = async (req: any, res: any): Promise<any> => {
             date,
             parseFloat(physicalCount),
             notes || '',
-            userId
+            userId,
+            accountType || 'CASH'
         );
 
         res.json(result);

@@ -7,7 +7,7 @@ import { emailService } from '../services/email.service';
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
-        const { denominations, total_prepared } = req.body;
+        const { denominations, total_prepared, payment_method, transfer_proof_url } = req.body;
         const cashier_id = (req as any).user.id;
 
         // 1. Verify Requisition is APPROVED
@@ -41,6 +41,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 requisition_id: id,
                 cashier_id: cashier_id,
                 total_prepared: total_prepared,
+                payment_method: payment_method || 'CASH',
+                transfer_proof_url: transfer_proof_url,
                 denominations: denominations // Supabase handles JSON automatically
             })
             .select('id')
@@ -61,7 +63,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             id,
             total_prepared,
             cashier_id,
-            `Cash disbursed for Requisition #${id.slice(0, 8)}`
+            `${payment_method && payment_method !== 'CASH' ? payment_method : 'Cash'} disbursed for Requisition #${id.slice(0, 8)}`,
+            payment_method || 'CASH'
         );
 
         // 5. Log Action
