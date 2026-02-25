@@ -45,5 +45,19 @@ export const organizationService = {
         });
 
         return response.data;
+    },
+
+    async deleteOrganization(): Promise<void> {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session?.access_token) {
+            throw new Error('Not authenticated');
+        }
+
+        await axios.delete(`${API_URL}/organizations`, {
+            headers: {
+                Authorization: `Bearer ${session.access_token}`
+            }
+        });
     }
 };
