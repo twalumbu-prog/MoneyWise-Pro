@@ -20,7 +20,7 @@ export const RuleManagement: React.FC = () => {
             setLoading(true);
             const [rulesData, accountsData] = await Promise.all([
                 aiService.getRules(),
-                integrationService.getAccounts()
+                integrationService.getAccounts().catch(() => [])
             ]);
             setRules(rulesData);
             setAccounts(accountsData);

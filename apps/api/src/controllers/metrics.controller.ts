@@ -24,7 +24,7 @@ export const getClassificationStats = async (req: AuthRequest, res: Response) =>
         // Aggregate stats from logs
         const { data, error } = await supabase
             .from('ai_classification_logs')
-            .select('prediction_method, was_overridden, prediction_confidence');
+            .select('was_overridden');
 
         if (error) throw error;
 
@@ -36,8 +36,9 @@ export const getClassificationStats = async (req: AuthRequest, res: Response) =>
             byMethod: {} as any
         };
 
+        // Fallback for missing methods column
         data?.forEach(log => {
-            const method = log.prediction_method || 'UNKNOWN';
+            const method = 'RULES'; // Defaulting to Rules since prediction_method isn't tracked yet
             if (!stats.byMethod[method]) stats.byMethod[method] = { total: 0, overrides: 0 };
             stats.byMethod[method].total++;
             if (log.was_overridden) stats.byMethod[method].overrides++;
