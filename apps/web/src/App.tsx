@@ -19,7 +19,7 @@ import { Join } from './pages/Join';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-    const { session, loading } = useAuth();
+    const { session, loading, userStatus, signOut } = useAuth();
 
     if (loading) {
         return (
@@ -33,12 +33,39 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
         return <Navigate to="/login" />;
     }
 
+    if (userStatus === 'PENDING_APPROVAL') {
+        return (
+            <div className="min-h-screen bg-brand-light flex items-center justify-center p-4">
+                <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-10 text-center">
+                    <div className="mx-auto w-20 h-20 bg-yellow-100 rounded-full flex items-center justify-center mb-6">
+                        <Loader2 className="w-10 h-10 text-yellow-600 animate-spin" />
+                    </div>
+                    <h1 className="text-3xl font-bold text-brand-navy mb-4">Pending Approval</h1>
+                    <p className="text-gray-600 mb-8">
+                        Your request to join the organization has been submitted. Please wait for an administrator to approve your account.
+                    </p>
+                    <button
+                        onClick={() => signOut()}
+                        className="w-full py-4 bg-gray-100 text-brand-navy font-bold rounded-2xl hover:bg-gray-200 transition-all shadow-sm"
+                    >
+                        Sign Out
+                    </button>
+                </div>
+            </div>
+        );
+    }
+
     return <>{children}</>;
 };
 
 // Redirect requestors to requisitions page by default
 const HomeRedirect = () => {
-    const { userRole } = useAuth();
+    const { userRole, userStatus } = useAuth();
+
+    if (userStatus === 'PENDING_APPROVAL') {
+        // Handled by ProtectedRoute but just for safety
+        return null;
+    }
 
     if (userRole === 'REQUESTOR') {
         return <Navigate to="/requisitions" replace />;

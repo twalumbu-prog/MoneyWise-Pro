@@ -105,6 +105,20 @@ export const UserManagement: React.FC = () => {
         }
     };
 
+    const handleApproveUser = async (userId: string) => {
+        if (!window.confirm('Are you sure you want to approve this user?')) return;
+
+        try {
+            setActionLoading(true);
+            await userService.update(userId, { status: 'ACTIVE' });
+            await loadUsers();
+        } catch (err: any) {
+            setError(err.message);
+        } finally {
+            setActionLoading(false);
+        }
+    };
+
     if (loading && users.length === 0) {
         return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-brand-green" /></div>;
     }
@@ -175,9 +189,11 @@ export const UserManagement: React.FC = () => {
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <span className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold leading-5 rounded-full border ${user.status === 'ACTIVE'
                                             ? 'bg-green-50 text-green-700 border-green-100'
-                                            : 'bg-yellow-50 text-yellow-700 border-yellow-100'
+                                            : user.status === 'PENDING_APPROVAL'
+                                                ? 'bg-yellow-50 text-yellow-700 border-yellow-100'
+                                                : 'bg-gray-50 text-gray-700 border-gray-100'
                                             }`}>
-                                            {user.status}
+                                            {user.status === 'PENDING_APPROVAL' ? 'PENDING' : user.status}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-mono">
@@ -203,6 +219,16 @@ export const UserManagement: React.FC = () => {
                                                             disabled={actionLoading}
                                                         >
                                                             <Mail className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+                                                    {user.status === 'PENDING_APPROVAL' && (
+                                                        <button
+                                                            onClick={() => handleApproveUser(user.id)}
+                                                            className="p-2 text-brand-green hover:text-green-700 hover:bg-green-50 rounded-xl transition-all font-bold text-xs"
+                                                            title="Approve User"
+                                                            disabled={actionLoading}
+                                                        >
+                                                            Approve
                                                         </button>
                                                     )}
                                                     <button

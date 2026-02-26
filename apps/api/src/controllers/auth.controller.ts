@@ -9,6 +9,12 @@ interface RegisterUserRequest {
     role: 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
 }
 
+const getFrontendUrl = () => {
+    if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
+    if (process.env.NODE_ENV === 'production') return 'https://money-wise-pro-web.vercel.app';
+    return 'http://localhost:5173';
+};
+
 export const registerUser = async (req: any, res: any): Promise<any> => {
     try {
         const { email, password, name, organizationName, username }: RegisterUserRequest & { organizationName?: string, username?: string } = req.body;
@@ -245,5 +251,125 @@ export const completeInvitation = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('Complete invitation error:', error);
         res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const searchOrganizations = async (req: any, res: any): Promise<any> => {
+    try {
+        const { query } = req.query;
+
+        if (!query || query.length < 2) {
+            return res.status(400).json({ error: 'Search query must be at least 2 characters long' });
+        }
+
+        const { data: organizations, error } = await supabase
+            .from('organizations')
+            .select('id, name, slug')
+            .ilike('name', `%${query}%`)
+            .limit(10);
+
+        if (error) throw error;
+
+        return res.json(organizations || []);
+    } catch (error: any) {
+        console.error('Organization search error:', error);
+        return res.status(500).json({ error: 'Failed to search organizations' });
+    }
+};
+
+export const joinRequest = async (req: any, res: any): Promise<any> => {
+    try {
+        const { email, password, name, organizationId, employeeId, username } = req.body;
+
+        if (!email || !password || !name || !organizationId) {
+            return res.status(400).json({
+                error: 'Missing required fields: email, password, name, and organizationId are required',
+            });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+        }
+
+        // Validate username uniqueness
+        if (username) {
+            const { data: existingUsername } = await supabase
+                .from('users')
+                .select('id')
+                .eq('username', username)
+                .single();
+
+            if (existingUsername) {
+                return res.status(400).json({ error: 'Username is already taken' });
+            }
+        }
+
+        // Verify organization exists
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('id', organizationId)
+            .single();
+
+        if (orgError || !org) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        // Generate employee ID if not provided
+        const finalEmployeeId = employeeId || `EMP-${Date.now().toString().slice(-6)}`;
+
+        // Check employee ID uniqueness
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('employee_id')
+            .eq('employee_id', finalEmployeeId)
+            .single();
+
+        if (existingUser) {
+            return res.status(400).json({ error: 'System busy, please try again.' });
+        }
+
+        // Create user in Supabase Auth
+        const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
+            email,
+            password,
+            email_confirm: true, // Auto-confirm
+        });
+
+        if (authError) {
+            console.error('Auth error in join request:', authError);
+            return res.status(400).json({ error: authError.message || 'Failed to create user account' });
+        }
+
+        if (!authData.user) {
+            return res.status(500).json({ error: 'User creation failed' });
+        }
+
+        // Insert into public.users with PENDING_APPROVAL status
+        const { error: dbError } = await supabase.from('users').upsert({
+            id: authData.user.id,
+            employee_id: finalEmployeeId,
+            name,
+            role: 'REQUESTOR', // Default role for join requests
+            organization_id: organizationId,
+            username: username || null,
+            status: 'PENDING_APPROVAL'
+        });
+
+        if (dbError) {
+            console.error('Database error in join request:', dbError);
+            // Rollback auth user
+            await (supabase.auth as any).admin.deleteUser(authData.user.id);
+            return res.status(500).json({ error: 'Failed to create join request: ' + dbError.message });
+        }
+
+        return res.status(201).json({
+            message: 'Join request submitted successfully. Please wait for an admin to approve your account.',
+            userId: authData.user.id
+        });
+
+    } catch (error: any) {
+        console.error('Join request error:', error);
+        return res.status(500).json({ error: 'Internal server error: ' + (error.message || 'Unknown error') });
     }
 };

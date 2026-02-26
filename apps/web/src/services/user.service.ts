@@ -8,7 +8,7 @@ export interface UserProfile {
     name: string;
     role: 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
     employee_id: string;
-    status: 'ACTIVE' | 'INVITED' | 'DISABLED';
+    status: 'ACTIVE' | 'INVITED' | 'DISABLED' | 'PENDING_APPROVAL';
     organization_id: string;
     created_at: string;
 }

@@ -1,25 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Search } from 'lucide-react';
 
 export const Login: React.FC = () => {
     const [isSignup, setIsSignup] = useState(false);
+    const [signupMode, setSignupMode] = useState<'CREATE' | 'JOIN'>('CREATE');
+
     const [loginIdentifier, setLoginIdentifier] = useState('');
     const [password, setPassword] = useState('');
     const [name, setName] = useState('');
     const [username, setUsername] = useState('');
     const [organizationName, setOrganizationName] = useState('');
+    const [organizationId, setOrganizationId] = useState('');
+
+    // Organization Search State
+    const [searchQuery, setSearchQuery] = useState('');
+    const [searchResults, setSearchResults] = useState<any[]>([]);
+    const [isSearching, setIsSearching] = useState(false);
+    const [showDropdown, setShowDropdown] = useState(false);
+
     const [message, setMessage] = useState('');
     const [loading, setLoading] = useState(false);
-    const { signInWithPassword, signUp, user } = useAuth();
+    const { signInWithPassword, signUp, joinOrganization, user, userStatus } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (user) {
+        if (user && userStatus !== 'PENDING_APPROVAL') {
             navigate('/');
         }
-    }, [user, navigate]);
+    }, [user, userStatus, navigate]);
+
+    // Debounced Search Effect
+    useEffect(() => {
+        const searchOrgs = async () => {
+            if (searchQuery.length < 2) {
+                setSearchResults([]);
+                setShowDropdown(false);
+                return;
+            }
+
+            setIsSearching(true);
+            try {
+                const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+                const res = await fetch(`${apiUrl}/auth/organizations/search?query=${encodeURIComponent(searchQuery)}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    setSearchResults(data);
+                    setShowDropdown(true);
+                }
+            } catch (err) {
+                console.error("Failed to search orgs", err);
+            } finally {
+                setIsSearching(false);
+            }
+        };
+
+        const timer = setTimeout(searchOrgs, 400);
+        return () => clearTimeout(timer);
+    }, [searchQuery]);
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -38,15 +77,24 @@ export const Login: React.FC = () => {
         e.preventDefault();
         setLoading(true);
         setMessage('');
+
+        if (signupMode === 'JOIN' && !organizationId) {
+            setMessage('Error: Please select an organization to join.');
+            setLoading(false);
+            return;
+        }
+
         try {
-            await signUp(loginIdentifier, password, name, organizationName, username);
-            setMessage('Account created! You can now sign in.');
-            setIsSignup(false);
-            // Clear sensitive/specific fields
-            setPassword('');
-            setName('');
-            setOrganizationName('');
-            setUsername('');
+            if (signupMode === 'CREATE') {
+                await signUp(loginIdentifier, password, name, organizationName, username);
+                setMessage('Account & Organization created! You are now signed in.');
+            } else {
+                await joinOrganization(loginIdentifier, password, name, organizationId, username);
+                setMessage('Join request submitted! An admin must approve your account.');
+                // Clear sensitive/specific fields so they don't try to log in immediately and fail
+                setPassword('');
+            }
+            // setIsSignup(false); // Can stay on screen to see success message
         } catch (error: any) {
             setMessage('Error signing up: ' + (error.message || 'Unknown error'));
         } finally {
@@ -74,6 +122,25 @@ export const Login: React.FC = () => {
 
             <div className="sm:mx-auto sm:w-full sm:max-w-md">
                 <div className="bg-white py-10 px-6 rounded-2xl border border-gray-100 sm:px-12">
+                    {isSignup && (
+                        <div className="flex bg-gray-100 p-1 rounded-xl mb-6">
+                            <button
+                                type="button"
+                                onClick={() => setSignupMode('CREATE')}
+                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${signupMode === 'CREATE' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Create New Org
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSignupMode('JOIN')}
+                                className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${signupMode === 'JOIN' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                Join Existing Org
+                            </button>
+                        </div>
+                    )}
+
                     <form className="space-y-6" onSubmit={isSignup ? handleSignup : handleLogin}>
                         {isSignup && (
                             <>
@@ -110,23 +177,86 @@ export const Login: React.FC = () => {
                                         />
                                     </div>
                                 </div>
-                                <div>
-                                    <label htmlFor="org-name" className="block text-sm font-bold text-brand-navy mb-1">
-                                        Organization Name
-                                    </label>
-                                    <div className="mt-1">
-                                        <input
-                                            id="org-name"
-                                            name="organizationName"
-                                            type="text"
-                                            required
-                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
-                                            value={organizationName}
-                                            onChange={(e) => setOrganizationName(e.target.value)}
-                                            placeholder="e.g. Acme Corp"
-                                        />
+
+                                {signupMode === 'CREATE' ? (
+                                    <div>
+                                        <label htmlFor="org-name" className="block text-sm font-bold text-brand-navy mb-1">
+                                            Organization Name
+                                        </label>
+                                        <div className="mt-1">
+                                            <input
+                                                id="org-name"
+                                                name="organizationName"
+                                                type="text"
+                                                required={signupMode === 'CREATE'}
+                                                className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                                value={organizationName}
+                                                onChange={(e) => setOrganizationName(e.target.value)}
+                                                placeholder="e.g. Acme Corp"
+                                            />
+                                        </div>
                                     </div>
-                                </div>
+                                ) : (
+                                    <div className="relative">
+                                        <label htmlFor="org-search" className="block text-sm font-bold text-brand-navy mb-1">
+                                            Search Organization
+                                        </label>
+                                        <div className="mt-1 relative">
+                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                                <Search className="h-4 w-4 text-gray-400" />
+                                            </div>
+                                            <input
+                                                id="org-search"
+                                                type="text"
+                                                required={signupMode === 'JOIN'}
+                                                className="appearance-none block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                                placeholder="Type to search..."
+                                                value={searchQuery}
+                                                onChange={(e) => {
+                                                    setSearchQuery(e.target.value);
+                                                    setOrganizationId(''); // Reset selection when typing
+                                                }}
+                                                onFocus={() => {
+                                                    if (searchResults.length > 0) setShowDropdown(true);
+                                                }}
+                                            />
+                                            {isSearching && (
+                                                <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                                    <Loader2 className="h-4 w-4 text-brand-green animate-spin" />
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Dropdown for search results */}
+                                        {showDropdown && (
+                                            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg max-h-60 rounded-xl py-1 text-base overflow-auto focus:outline-none sm:text-sm border border-gray-100">
+                                                {searchResults.length === 0 ? (
+                                                    <div className="cursor-default select-none relative py-2 pl-3 pr-9 text-gray-500 text-center">
+                                                        No organizations found
+                                                    </div>
+                                                ) : (
+                                                    searchResults.map((org) => (
+                                                        <div
+                                                            key={org.id}
+                                                            className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-brand-green/10 hover:text-brand-green text-gray-900 transition-colors"
+                                                            onClick={() => {
+                                                                setOrganizationId(org.id);
+                                                                setSearchQuery(org.name); // Set input text to selected org
+                                                                setShowDropdown(false);
+                                                            }}
+                                                        >
+                                                            <div className="flex items-center">
+                                                                <span className="font-bold block truncate">
+                                                                    {org.name}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </>
                         )}
 
