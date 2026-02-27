@@ -58,7 +58,7 @@ export const getNotificationsSummary = async (req: AuthRequest, res: any): Promi
                 .from('requisitions')
                 .select('*', { count: 'exact', head: true })
                 .eq('organization_id', organization_id)
-                .eq('status', 'SUBMITTED');
+                .in('status', ['DRAFT', 'SUBMITTED']);
             counts.approvals = appCount || 0;
         }
 
