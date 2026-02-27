@@ -2,6 +2,14 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
+export interface NotificationCounts {
+    requisitions: number;
+    approvals: number;
+    vouchers: number;
+    disbursements: number;
+    settings: number;
+}
+
 interface AuthContextType {
     user: User | null;
     userRole: string | null;
@@ -10,6 +18,8 @@ interface AuthContextType {
     organizationName: string | null;
     session: Session | null;
     loading: boolean;
+    notificationCounts: NotificationCounts;
+    refreshNotifications: () => Promise<void>;
     signIn: (email: string) => Promise<void>;
     signInWithPassword: (email: string, password: string) => Promise<void>;
     signUpWithPassword: (email: string, password: string) => Promise<void>;
@@ -28,6 +38,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userStatus, setUserStatus] = useState<string | null>(null);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [organizationName, setOrganizationName] = useState<string | null>(null);
+    const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({
+        requisitions: 0, approvals: 0, vouchers: 0, disbursements: 0, settings: 0
+    });
+
+    const refreshNotifications = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+            const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+            const response = await fetch(`${apiUrl}/users/notifications`, {
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setNotificationCounts(data);
+            }
+        } catch (error) {
+            console.error('Failed to fetch notifications:', error);
+        }
+    };
 
     useEffect(() => {
         const fetchRoleAndOrg = async (userId: string) => {
@@ -43,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUserStatus(userData.status);
                 setOrganizationId(userData.organization_id);
                 setOrganizationName(userData.organizations?.name || null);
+                refreshNotifications();
             }
         };
 
@@ -70,7 +101,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         });
 
-        return () => subscription.unsubscribe();
+        const numInterval = window.setInterval(refreshNotifications, 30000);
+
+        return () => {
+            subscription.unsubscribe();
+            window.clearInterval(numInterval);
+        };
     }, []);
 
     const signIn = async (email: string) => {
@@ -195,7 +231,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return (
-        <AuthContext.Provider value={{ user, session, userRole, userStatus, organizationId, organizationName, loading, signIn, signInWithPassword, signUpWithPassword, joinOrganization, signUp, signOut }}>
+        <AuthContext.Provider value={{
+            user, session, userRole, userStatus, organizationId, organizationName, loading,
+            notificationCounts, refreshNotifications,
+            signIn, signInWithPassword, signUpWithPassword, joinOrganization, signUp, signOut
+        }}>
             {children}
         </AuthContext.Provider>
     );

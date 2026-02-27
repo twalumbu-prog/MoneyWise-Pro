@@ -6,6 +6,40 @@ import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 
+export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const user_id = (req as any).user.id;
+
+        // Ensure the requisition belongs to the requestor
+        const { data: requisition, error: reqError } = await supabase
+            .from('requisitions')
+            .select('requestor_id')
+            .eq('id', id)
+            .single();
+
+        if (reqError || !requisition) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+
+        if (requisition.requestor_id !== user_id) {
+            return res.status(403).json({ error: 'Unauthorized to mark this requisition as read' });
+        }
+
+        const { error: updateError } = await supabase
+            .from('requisitions')
+            .update({ has_unread_updates: false })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        res.json({ message: 'Requisition marked as read' });
+    } catch (error: any) {
+        console.error('Error marking requisition as read:', error);
+        res.status(500).json({ error: 'Failed to mark requisition as read', details: error.message });
+    }
+};
+
 export const createRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const {

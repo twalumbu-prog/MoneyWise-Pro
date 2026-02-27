@@ -8,7 +8,8 @@ import {
     updateRequisitionStatus,
     updateRequisitionExpenses,
     submitChange,
-    confirmChange
+    confirmChange,
+    markRequisitionRead
 } from '../controllers/requisition.controller';
 import { disburseRequisition, acknowledgeReceipt } from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
@@ -34,6 +35,7 @@ router.post('/:id/post-voucher', postVoucher);
 
 // Standard routes
 router.post('/', createRequisition);
+router.post('/:id/mark-read', markRequisitionRead);
 router.get('/', getRequisitions);
 router.get('/:id', getRequisitionById);
 router.put('/:id', updateRequisition);

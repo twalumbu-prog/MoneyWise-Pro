@@ -26,6 +26,79 @@ export const getUsers = async (req: AuthRequest, res: any): Promise<any> => {
     }
 };
 
+export const getNotificationsSummary = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const organization_id = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
+        const user_id = (req as any).user.id;
+
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User does not belong to an organization' });
+        }
+
+        const counts = {
+            requisitions: 0,
+            approvals: 0,
+            vouchers: 0,
+            disbursements: 0,
+            settings: 0
+        };
+
+        // REQUESTOR checks
+        const { count: reqCount } = await supabase
+            .from('requisitions')
+            .select('*', { count: 'exact', head: true })
+            .eq('requestor_id', user_id)
+            .eq('has_unread_updates', true);
+        counts.requisitions = reqCount || 0;
+
+        // AUTHORISER, ACCOUNTANT, ADMIN checks for approvals
+        if (['AUTHORISER', 'ACCOUNTANT', 'ADMIN'].includes(userRole)) {
+            const { count: appCount } = await supabase
+                .from('requisitions')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', organization_id)
+                .eq('status', 'PENDING_APPROVAL');
+            counts.approvals = appCount || 0;
+        }
+
+        // ACCOUNTANT, ADMIN checks for vouchers (DRAFT)
+        if (['ACCOUNTANT', 'ADMIN'].includes(userRole)) {
+            const { count: vouchCount } = await supabase
+                .from('vouchers')
+                .select('id, requisitions!inner(organization_id)', { count: 'exact', head: true })
+                .eq('status', 'DRAFT')
+                .eq('requisitions.organization_id', organization_id);
+            counts.vouchers = vouchCount || 0;
+        }
+
+        // Cashier, Accountant, Admin checks
+        if (['CASHIER', 'ACCOUNTANT', 'ADMIN'].includes(userRole)) {
+            const { count: disbCount } = await supabase
+                .from('requisitions')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', organization_id)
+                .in('status', ['AUTHORISED', 'CHANGE_SUBMITTED']);
+            counts.disbursements = disbCount || 0;
+        }
+
+        // Admin checks
+        if (userRole === 'ADMIN') {
+            const { count: setCount } = await supabase
+                .from('users')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', organization_id)
+                .eq('status', 'PENDING_APPROVAL');
+            counts.settings = setCount || 0;
+        }
+
+        res.json(counts);
+    } catch (error: any) {
+        console.error('Error fetching notifications:', error);
+        res.status(500).json({ error: 'Failed to fetch notifications', details: error.message });
+    }
+};
+
 export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const { email, name, role, employeeId, username } = req.body;

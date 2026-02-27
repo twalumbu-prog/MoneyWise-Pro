@@ -241,5 +241,21 @@ export const requisitionService = {
         }
 
         return response.json();
+    },
+
+    markRead: async (id: string) => {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/mark-read`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+
+        if (!response.ok) {
+            console.error('Failed to mark requisition as read');
+        }
     }
 };

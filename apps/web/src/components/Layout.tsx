@@ -8,7 +8,7 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
-    const { user, userRole, signOut, organizationName } = useAuth();
+    const { user, userRole, signOut, organizationName, notificationCounts } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const location = useLocation();
@@ -78,62 +78,33 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                         </div>
 
                         <nav className="flex-1 overflow-y-auto py-6 px-4 space-y-1">
-                            <Link
-                                to="/"
-                                className="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 hover:text-brand-navy rounded-xl transition-all group font-medium"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <Home className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                Dashboard
-                            </Link>
-                            <Link
-                                to="/requisitions"
-                                className="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 hover:text-brand-navy rounded-xl transition-all group font-medium"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <FileText className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                Requisitions
-                            </Link>
-                            <Link
-                                to="/approvals"
-                                className="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 hover:text-brand-navy rounded-xl transition-all group font-medium"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <CheckCircle className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                Approvals
-                            </Link>
-                            <Link
-                                to="/vouchers"
-                                className="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 hover:text-brand-navy rounded-xl transition-all group font-medium"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <FileSpreadsheet className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                Vouchers
-                            </Link>
-                            <Link
-                                to="/disbursements"
-                                className="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 hover:text-brand-navy rounded-xl transition-all group font-medium"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <FileSpreadsheet className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                Disbursements
-                            </Link>
-                            <Link
-                                to="/cashbook"
-                                className="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 hover:text-brand-navy rounded-xl transition-all group font-medium"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <Wallet className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                Cash Ledger
-                            </Link>
-                            <Link
-                                to="/settings"
-                                className="flex items-center px-4 py-3 text-gray-600 hover:bg-gray-50 hover:text-brand-navy rounded-xl transition-all group font-medium"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                            >
-                                <Settings className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                Settings
-                            </Link>
+                            {[
+                                { path: '/', icon: Home, label: 'Dashboard' },
+                                { path: '/requisitions', icon: FileText, label: 'Requisitions', count: notificationCounts?.requisitions },
+                                { path: '/approvals', icon: CheckCircle, label: 'Approvals', count: notificationCounts?.approvals },
+                                { path: '/vouchers', icon: FileSpreadsheet, label: 'Vouchers', count: notificationCounts?.vouchers },
+                                { path: '/disbursements', icon: FileSpreadsheet, label: 'Disbursements', count: notificationCounts?.disbursements },
+                                { path: '/cashbook', icon: Wallet, label: 'Cash Ledger' },
+                                { path: '/settings', icon: Settings, label: 'Settings', count: notificationCounts?.settings },
+                            ].map((item) => (
+                                <Link
+                                    key={item.path}
+                                    to={item.path}
+                                    onClick={() => setIsMobileMenuOpen(false)}
+                                    className={`flex items-center px-4 py-3 rounded-xl transition-all group font-medium text-sm ${location.pathname === item.path
+                                        ? 'bg-brand-green/10 text-brand-navy shadow-sm'
+                                        : 'text-gray-600 hover:bg-gray-50 hover:text-brand-navy'
+                                        }`}
+                                >
+                                    <item.icon className="h-5 w-5 mr-3 text-gray-400 group-hover:text-brand-green transition-colors flex-shrink-0" />
+                                    <span className="flex-1 overflow-hidden whitespace-nowrap">{item.label}</span>
+                                    {item.count ? (
+                                        <div className="h-2 w-2 rounded-full bg-brand-green relative ml-auto">
+                                            <div className="absolute inset-0 rounded-full bg-brand-green animate-ping opacity-75"></div>
+                                        </div>
+                                    ) : null}
+                                </Link>
+                            ))}
                         </nav>
 
                         <div className="p-6 border-t border-gray-50 bg-gray-50/50">
@@ -194,12 +165,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                         )}
                         {[
                             { path: '/', icon: Home, label: 'Dashboard' },
-                            { path: '/requisitions', icon: FileText, label: 'Requisitions' },
-                            { path: '/approvals', icon: CheckCircle, label: 'Approvals' },
-                            { path: '/vouchers', icon: FileSpreadsheet, label: 'Vouchers' },
-                            { path: '/disbursements', icon: FileSpreadsheet, label: 'Disbursements' },
+                            { path: '/requisitions', icon: FileText, label: 'Requisitions', count: notificationCounts?.requisitions },
+                            { path: '/approvals', icon: CheckCircle, label: 'Approvals', count: notificationCounts?.approvals },
+                            { path: '/vouchers', icon: FileSpreadsheet, label: 'Vouchers', count: notificationCounts?.vouchers },
+                            { path: '/disbursements', icon: FileSpreadsheet, label: 'Disbursements', count: notificationCounts?.disbursements },
                             { path: '/cashbook', icon: Wallet, label: 'Cash Ledger' },
-                            { path: '/settings', icon: Settings, label: 'Settings' },
+                            { path: '/settings', icon: Settings, label: 'Settings', count: notificationCounts?.settings },
                         ].map((item) => (
                             <Link
                                 key={item.path}
@@ -216,7 +187,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                         : 'text-gray-400 group-hover:text-brand-green'
                                         }`}
                                 />
-                                {!isSidebarCollapsed && <span className="overflow-hidden whitespace-nowrap">{item.label}</span>}
+                                {!isSidebarCollapsed && <span className="overflow-hidden whitespace-nowrap flex-1">{item.label}</span>}
+                                {item.count ? (
+                                    <div className={`h-2 w-2 rounded-full bg-brand-green relative ${isSidebarCollapsed ? 'absolute top-2 right-2' : 'ml-auto mt-1'}`}>
+                                        <div className="absolute inset-0 rounded-full bg-brand-green animate-ping opacity-75"></div>
+                                    </div>
+                                ) : null}
                             </Link>
                         ))}
                     </nav>

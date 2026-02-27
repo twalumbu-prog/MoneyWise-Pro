@@ -10,7 +10,7 @@ import { DenominationInput } from '../components/DenominationInput';
 export const RequisitionDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const { user, userRole } = useAuth();
+    const { user, userRole, refreshNotifications } = useAuth();
 
     const [requisition, setRequisition] = useState<Requisition | null>(null);
     const [loading, setLoading] = useState(true);
@@ -60,6 +60,13 @@ export const RequisitionDetail: React.FC = () => {
             setLoading(true);
             const data = await requisitionService.getById(reqId);
             setRequisition(data);
+
+            // Mark as read inside the background if we're the requestor and there are unread updates
+            if (data.has_unread_updates && user?.id === data.requestor_id) {
+                requisitionService.markRead(reqId).then(() => {
+                    refreshNotifications();
+                }).catch(err => console.error(err));
+            }
         } catch (err) {
             console.error('Failed to load requisition', err);
             setError('Failed to load requisition details');
