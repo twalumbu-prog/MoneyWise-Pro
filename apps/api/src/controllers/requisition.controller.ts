@@ -567,7 +567,11 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
 
         // 5. Finalize Ledger
         // We assume actualExpenditure is already set by trackExpenses.
+        const organizationId = (req as any).user.organization_id;
+        if (!organizationId) throw new Error("Missing organization context");
+
         await cashbookService.finalizeDisbursement(
+            organizationId,
             id,
             actualExpenditure,
             voucher.id,

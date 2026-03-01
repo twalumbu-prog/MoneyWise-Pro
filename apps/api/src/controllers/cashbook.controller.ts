@@ -11,8 +11,13 @@ export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
     // ... existing entries logic ... (simplified for brevity, assume unchanged or just import updated)
     try {
         const { startDate, endDate, entryType, accountType, limit } = req.query;
+        const organizationId = (req as any).user.organization_id;
 
-        const entries = await cashbookService.getEntries({
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const entries = await cashbookService.getEntries(organizationId, {
             startDate: startDate as string,
             endDate: endDate as string,
             entryType: entryType as string,
@@ -33,7 +38,13 @@ export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
 export const getCashBalance = async (req: any, res: any): Promise<any> => {
     try {
         const { accountType } = req.query;
-        const balance = await cashbookService.getCurrentBalance(accountType as string);
+        const organizationId = (req as any).user.organization_id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const balance = await cashbookService.getCurrentBalance(organizationId, accountType as string);
         res.json({ balance });
     } catch (error: any) {
         console.error('Error fetching cash balance:', error);
@@ -47,12 +58,18 @@ export const getCashBalance = async (req: any, res: any): Promise<any> => {
 export const getCashbookSummary = async (req: any, res: any): Promise<any> => {
     try {
         const { startDate, endDate, accountType } = req.query;
+        const organizationId = (req as any).user.organization_id;
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'startDate and endDate are required' });
         }
 
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
         const summary = await cashbookService.getSummary(
+            organizationId,
             startDate as string,
             endDate as string,
             accountType as string
@@ -72,17 +89,22 @@ export const reconcileCash = async (req: any, res: any): Promise<any> => {
     try {
         const { physicalCount, denominations, notes, accountType } = req.body;
         const userId = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
 
         if (typeof physicalCount !== 'number' || physicalCount < 0) {
             return res.status(400).json({ error: 'Valid physicalCount is required' });
         }
 
-        const systemBalance = await cashbookService.getCurrentBalance(accountType);
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const systemBalance = await cashbookService.getCurrentBalance(organizationId, accountType);
         const variance = physicalCount - systemBalance;
 
         // If there's a variance, create an adjustment entry
         if (Math.abs(variance) > 0.01) { // Allow for floating point rounding
-            await cashbookService.createEntry({
+            await cashbookService.createEntry(organizationId, {
                 entry_type: 'ADJUSTMENT',
                 description: `Cash reconciliation adjustment (${variance > 0 ? 'Over' : 'Short'}: K${Math.abs(variance).toFixed(2)})${notes ? ' - ' + notes : ''}`,
                 debit: variance > 0 ? variance : 0,
@@ -114,12 +136,18 @@ export const returnExcessCash = async (req: any, res: any): Promise<any> => {
     try {
         const { requisitionId, amount, description } = req.body;
         const userId = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
 
         if (!requisitionId || typeof amount !== 'number' || amount <= 0) {
             return res.status(400).json({ error: 'Valid requisitionId and amount are required' });
         }
 
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
         const entry = await cashbookService.logReturn(
+            organizationId,
             requisitionId,
             amount,
             userId,
@@ -140,12 +168,18 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
     try {
         const { personName, purpose, contactDetails, amount, denominations, accountType } = req.body;
         const userId = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
 
         if (!personName || !purpose || typeof amount !== 'number' || amount <= 0) {
             return res.status(400).json({ error: 'personName, purpose, and a valid amount are required' });
         }
 
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
         const entry = await cashbookService.logInflow(
+            organizationId,
             { personName, purpose, contactDetails, amount, denominations, accountType },
             userId
         );
@@ -164,12 +198,18 @@ export const closeBook = async (req: any, res: any): Promise<any> => {
     try {
         const { date, physicalCount, notes, accountType } = req.body;
         const userId = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
 
         if (!date || physicalCount === undefined) {
             return res.status(400).json({ error: 'Date and physicalCount are required' });
         }
 
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
         const result = await cashbookService.closeBook(
+            organizationId,
             date,
             parseFloat(physicalCount),
             notes || '',

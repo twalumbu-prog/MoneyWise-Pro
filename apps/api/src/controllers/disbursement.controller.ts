@@ -59,7 +59,11 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         if (updateError) throw updateError;
 
         // 4. Log Cash Disbursement in Cashbook
+        const organizationId = (req as any).user.organization_id;
+        if (!organizationId) throw new Error("Missing organization context");
+
         await cashbookService.logDisbursement(
+            organizationId,
             id,
             total_prepared,
             cashier_id,
@@ -181,7 +185,11 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
                 .eq('requisition_id', id);
 
             // 5. Finalize Ledger
+            const organizationId = (req as any).user.organization_id;
+            if (!organizationId) throw new Error("Missing organization context");
+
             await cashbookService.finalizeDisbursement(
+                organizationId,
                 id,
                 estimatedTotal,
                 voucher.id,

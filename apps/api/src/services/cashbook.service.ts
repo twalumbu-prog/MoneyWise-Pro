@@ -17,16 +17,18 @@ export interface CashbookEntry {
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
     account_type?: string;
+    organization_id?: string;
 }
 
 export const cashbookService = {
     /**
      * Get the current cash balance
      */
-    async getCurrentBalance(accountType: string = 'CASH'): Promise<number> {
+    async getCurrentBalance(organizationId: string, accountType: string = 'CASH'): Promise<number> {
         const { data, error } = await supabase
             .from('cashbook_entries')
             .select('balance_after')
+            .eq('organization_id', organizationId)
             .eq('account_type', accountType)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -36,10 +38,11 @@ export const cashbookService = {
         return parseFloat(data.balance_after);
     },
 
-    async recalculateBalancesFrom(targetDate: string, targetCreatedAt: string, accountType: string = 'CASH') {
+    async recalculateBalancesFrom(organizationId: string, targetDate: string, targetCreatedAt: string, accountType: string = 'CASH') {
         const { data: prevEntry } = await supabase
             .from('cashbook_entries')
             .select('balance_after')
+            .eq('organization_id', organizationId)
             .eq('account_type', accountType)
             .or(`date.lt.${targetDate},and(date.eq.${targetDate},created_at.lt.${targetCreatedAt})`)
             .order('date', { ascending: false })
@@ -52,6 +55,7 @@ export const cashbookService = {
         const { data: entries } = await supabase
             .from('cashbook_entries')
             .select('*')
+            .eq('organization_id', organizationId)
             .eq('account_type', accountType)
             .or(`date.gt.${targetDate},and(date.eq.${targetDate},created_at.gte.${targetCreatedAt})`)
             .order('date', { ascending: true })
@@ -72,13 +76,14 @@ export const cashbookService = {
     /**
      * Create a cashbook entry (disbursement, return, inflow, adjustment, or balance)
      */
-    async createEntry(entry: Omit<CashbookEntry, 'id' | 'balance_after'>): Promise<CashbookEntry> {
+    async createEntry(organizationId: string, entry: Omit<CashbookEntry, 'id' | 'balance_after'>): Promise<CashbookEntry> {
         const accountType = entry.account_type || 'CASH';
         // 1. Insert the entry first (we'll fix balance in a moment)
         const { data, error } = await supabase
             .from('cashbook_entries')
             .insert({
                 ...entry,
+                organization_id: organizationId,
                 account_type: accountType,
                 balance_after: 0
             })
@@ -88,7 +93,7 @@ export const cashbookService = {
         if (error) throw new Error(`Failed to create cashbook entry: ${error.message}`);
 
         // 2. Recalculate balances starting from this entry's logical position
-        await this.recalculateBalancesFrom(data.date, data.created_at, accountType);
+        await this.recalculateBalancesFrom(organizationId, data.date, data.created_at, accountType);
 
         // 3. Fetch the updated entry
         const { data: updatedData } = await supabase
@@ -104,13 +109,14 @@ export const cashbookService = {
      * Log cash disbursement
      */
     async logDisbursement(
+        organizationId: string,
         requisitionId: string,
         amount: number,
         cashierId: string,
         description?: string,
         accountType: string = 'CASH'
     ): Promise<CashbookEntry> {
-        return this.createEntry({
+        return this.createEntry(organizationId, {
             entry_type: 'DISBURSEMENT',
             description: description || `Cash disbursed for Requisition`,
             debit: 0,
@@ -127,13 +133,14 @@ export const cashbookService = {
      * Log cash return (excess)
      */
     async logReturn(
+        organizationId: string,
         requisitionId: string,
         amount: number,
         userId: string,
         description?: string,
         accountType: string = 'CASH'
     ): Promise<CashbookEntry> {
-        return this.createEntry({
+        return this.createEntry(organizationId, {
             entry_type: 'RETURN',
             description: description || `Excess returned for Requisition`,
             debit: amount,
@@ -149,6 +156,7 @@ export const cashbookService = {
      * Log cash inflow
      */
     async logInflow(
+        organizationId: string,
         data: {
             personName: string;
             purpose: string;
@@ -160,7 +168,7 @@ export const cashbookService = {
         userId: string
     ): Promise<CashbookEntry> {
         // 1. Create cashbook entry
-        const entry = await this.createEntry({
+        const entry = await this.createEntry(organizationId, {
             entry_type: 'INFLOW',
             description: `Cash Inflow: ${data.personName} - ${data.purpose}`,
             debit: data.amount,
@@ -191,7 +199,7 @@ export const cashbookService = {
     /**
      * Get cashbook entries with filters
      */
-    async getEntries(filters?: {
+    async getEntries(organizationId: string, filters?: {
         startDate?: string;
         endDate?: string;
         entryType?: string;
@@ -213,6 +221,7 @@ export const cashbookService = {
                 ),
                 users!created_by(name)
             `)
+            .eq('organization_id', organizationId)
             .order('date', { ascending: false })
             .order('created_at', { ascending: false });
 
@@ -240,10 +249,11 @@ export const cashbookService = {
     /**
      * Get cashbook summary for a date range
      */
-    async getSummary(startDate: string, endDate: string, accountType: string = 'CASH') {
+    async getSummary(organizationId: string, startDate: string, endDate: string, accountType: string = 'CASH') {
         const { data, error } = await supabase
             .from('cashbook_entries')
             .select('debit, credit, balance_after')
+            .eq('organization_id', organizationId)
             .eq('account_type', accountType)
             .gte('date', startDate)
             .lte('date', endDate)
@@ -271,6 +281,7 @@ export const cashbookService = {
      * Updates the original disbursement amount and recalculates subsequent balances.
      */
     async finalizeDisbursement(
+        organizationId: string,
         requisitionId: string,
         actualExpenditure: number,
         voucherId: string,
@@ -281,6 +292,7 @@ export const cashbookService = {
         const { data: originalEntry, error: findError } = await supabase
             .from('cashbook_entries')
             .select('*')
+            .eq('organization_id', organizationId)
             .eq('requisition_id', requisitionId)
             .eq('entry_type', 'DISBURSEMENT')
             .order('created_at', { ascending: false })
@@ -308,7 +320,7 @@ export const cashbookService = {
                 ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
                 : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
 
-            await this.createEntry({
+            await this.createEntry(organizationId, {
                 entry_type: 'DISBURSEMENT',
                 description: newDescription,
                 debit: 0,
@@ -342,13 +354,14 @@ export const cashbookService = {
         if (updateError) throw updateError;
 
         // 3. Recalculate ALL subsequent entries for the specific account type
-        await this.recalculateBalancesFrom(originalEntry.date, originalEntry.created_at, originalEntry.account_type || 'CASH');
+        await this.recalculateBalancesFrom(organizationId, originalEntry.date, originalEntry.created_at, originalEntry.account_type || 'CASH');
     },
 
     /**
      * Close the cashbook for a specific date
      */
     async closeBook(
+        organizationId: string,
         date: string,
         physicalCount: number,
         notes: string,
@@ -360,6 +373,7 @@ export const cashbookService = {
         const { data: lastEntryOnDate } = await supabase
             .from('cashbook_entries')
             .select('balance_after')
+            .eq('organization_id', organizationId)
             .eq('date', date)
             .eq('account_type', accountType)
             .order('created_at', { ascending: false })
@@ -374,6 +388,7 @@ export const cashbookService = {
             const { data: lastEntryBefore } = await supabase
                 .from('cashbook_entries')
                 .select('balance_after')
+                .eq('organization_id', organizationId)
                 .eq('account_type', accountType)
                 .lt('date', date)
                 .order('date', { ascending: false })
@@ -387,7 +402,7 @@ export const cashbookService = {
 
         // 2. If variance > 0.01, create ADJUSTMENT entry
         if (Math.abs(variance) > 0.01) {
-            await this.createEntry({
+            await this.createEntry(organizationId, {
                 entry_type: 'ADJUSTMENT',
                 description: `Closing Adjustment (${variance > 0 ? 'Surplus' : 'Shortage'}): ${notes}`,
                 debit: variance > 0 ? variance : 0,
@@ -399,7 +414,7 @@ export const cashbookService = {
         }
 
         // 3. Create CLOSING_BALANCE entry
-        await this.createEntry({
+        await this.createEntry(organizationId, {
             entry_type: 'CLOSING_BALANCE',
             description: `Closing Balance as at ${date}`,
             debit: 0,
@@ -418,6 +433,7 @@ export const cashbookService = {
         const { data: existingOpening } = await supabase
             .from('cashbook_entries')
             .select('id')
+            .eq('organization_id', organizationId)
             .eq('date', nextDayStr)
             .eq('entry_type', 'OPENING_BALANCE')
             .eq('account_type', accountType)
@@ -425,7 +441,7 @@ export const cashbookService = {
             .single();
 
         if (!existingOpening) {
-            await this.createEntry({
+            await this.createEntry(organizationId, {
                 entry_type: 'OPENING_BALANCE',
                 description: `Opening Balance`,
                 debit: 0,
