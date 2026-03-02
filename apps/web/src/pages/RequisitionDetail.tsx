@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw, X } from 'lucide-react';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { voucherService } from '../services/voucher.service';
 import { useAuth } from '../context/AuthContext';
@@ -163,6 +163,29 @@ export const RequisitionDetail: React.FC = () => {
         }
     };
 
+    const handleStatusUpdate = async (status: 'AUTHORISED' | 'REJECTED') => {
+        if (!requisition) return;
+
+        // Confirm rejection
+        if (status === 'REJECTED' && !confirm('Are you sure you want to reject this requisition?')) {
+            return;
+        }
+
+        try {
+            setProcessing(true);
+            await requisitionService.updateStatus(requisition.id, status);
+            alert(`Requisition successfully ${status.toLowerCase()}`);
+
+            // Refetch current req to update UI immediately
+            await loadRequisition(requisition.id);
+        } catch (err: any) {
+            console.error('Failed to update status', err);
+            alert('Failed to update status: ' + (err.message || 'Unknown error'));
+        } finally {
+            setProcessing(false);
+        }
+    };
+
     if (loading) return <Layout><div className="flex justify-center p-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-brand-green"></div></div></Layout>;
     if (error || !requisition) return <Layout><div className="p-12 text-center text-red-600 bg-red-50 rounded-lg m-6 border border-red-200">Error: {error || 'Requisition not found'}</div></Layout>;
 
@@ -173,8 +196,8 @@ export const RequisitionDetail: React.FC = () => {
     // Allow submitting change even for loans if they landed in RECEIVED (excess disbursement)
     const canSubmitChange = isRequestor && requisition.status === 'RECEIVED';
     const canConfirmChange = (userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'ADMIN') && requisition.status === 'CHANGE_SUBMITTED';
-
     const canGenerateVoucher = (requisition.status === 'RECEIVED' || requisition.status === 'CHANGE_SUBMITTED' || requisition.status === 'COMPLETED');
+    const canApprove = (userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'MANAGER') && (requisition.status === 'SUBMITTED' || requisition.status === 'DRAFT');
 
     const handleActualChange = (itemId: string, val: string) => {
         setExpenseItems(prev => prev.map(item =>
@@ -266,6 +289,27 @@ export const RequisitionDetail: React.FC = () => {
                                     <FileText className="h-4 w-4 mr-1.5" />
                                     Generate Voucher
                                 </button>
+                            )}
+
+                            {canApprove && (
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => handleStatusUpdate('AUTHORISED')}
+                                        disabled={processing}
+                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-xl shadow-lg shadow-emerald-200 text-white bg-emerald-600 hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-500 transition-all disabled:opacity-50"
+                                    >
+                                        <CheckCircle className="h-4 w-4 mr-1.5" />
+                                        Approve
+                                    </button>
+                                    <button
+                                        onClick={() => handleStatusUpdate('REJECTED')}
+                                        disabled={processing}
+                                        className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-bold rounded-xl shadow-lg shadow-red-200 text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all disabled:opacity-50"
+                                    >
+                                        <X className="h-4 w-4 mr-1.5" />
+                                        Reject
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
