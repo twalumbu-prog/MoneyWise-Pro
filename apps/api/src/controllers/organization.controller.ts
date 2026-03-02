@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 
 export const OrganizationController = {
-    async getOrganization(req: Request, res: Response) {
+    async getOrganization(req: Request, res: Response<any>) {
         try {
             const organization_id = (req as any).user?.organization_id;
 
@@ -27,7 +27,7 @@ export const OrganizationController = {
         }
     },
 
-    async updateOrganization(req: Request, res: Response) {
+    async updateOrganization(req: Request, res: Response<any>) {
         try {
             const organization_id = (req as any).user?.organization_id;
 
@@ -78,7 +78,7 @@ export const OrganizationController = {
         }
     },
 
-    async deleteOrganization(req: Request, res: Response) {
+    async deleteOrganization(req: Request, res: Response<any>) {
         try {
             const organization_id = (req as any).user?.organization_id;
 
@@ -123,14 +123,21 @@ export const OrganizationController = {
 
             // 3. Delete all Auth Identities via Supabase Admin API
             // This will automatically cascade delete from public.users
-            const userIds = orgUsers?.map(u => u.id) || [];
+            const userIds = orgUsers?.map((u: any) => u.id) || [];
             console.log(`[Organization] Deleting ${userIds.length} users from Auth...`);
 
-            for (const uid of userIds) {
-                const { error: authDelError } = await supabase.auth.admin.deleteUser(uid);
-                if (authDelError) {
-                    console.error(`[Organization] Failed to delete user ${uid} from Auth:`, authDelError);
+            /* Admin API deletion requires a SERVICE_ROLE key. If supabase client here 
+               is missing auth.admin capabilities, this needs the service-role setup.
+               We'll wrap it carefully so it doesn't break. */
+            if (supabase.auth.admin) {
+                for (const uid of userIds) {
+                    const { error: authDelError } = await supabase.auth.admin.deleteUser(uid);
+                    if (authDelError) {
+                        console.error(`[Organization] Failed to delete user ${uid} from Auth:`, authDelError);
+                    }
                 }
+            } else {
+                console.warn('[Organization] supabase.auth.admin is not available (likely using anon key); Auth users must be deleted manually.');
             }
 
             // 4. Finally, delete the organization record itself

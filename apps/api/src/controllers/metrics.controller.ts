@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 
-export const getDailyMetrics = async (req: AuthRequest, res: Response) => {
+export const getDailyMetrics = async (req: AuthRequest, res: Response<any>) => {
     try {
         const { days = 30 } = req.query;
 
@@ -19,7 +19,7 @@ export const getDailyMetrics = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const getClassificationStats = async (req: AuthRequest, res: Response) => {
+export const getClassificationStats = async (req: AuthRequest, res: Response<any>) => {
     try {
         // Aggregate stats from logs
         const { data, error } = await supabase

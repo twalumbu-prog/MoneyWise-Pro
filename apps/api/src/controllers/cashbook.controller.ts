@@ -284,7 +284,7 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
                         supabase
                             .from('line_items')
                             .update({
-                                account_id: account.id,
+                                account_id: (account as any).id,
                                 ai_reasoning: decision.reasoning,
                                 ai_rule_id: decision.rule_id,
                                 ai_similarity_score: decision.similarity_score,
@@ -297,7 +297,7 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
                     results.push({
                         line_item_id: item.id,
                         description: item.description,
-                        account_name: account.name || account.Name,
+                        account_name: (account as any).name || (account as any).Name,
                         confidence: decision.confidence,
                         risk: decision.risk.riskLevel,
                         reasoning: decision.reasoning,

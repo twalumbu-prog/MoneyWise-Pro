@@ -3,7 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
 
-export const getRules = async (req: AuthRequest, res: Response) => {
+export const getRules = async (req: AuthRequest, res: Response<any>) => {
     try {
         const { data, error } = await supabase
             .from('accounting_rules')
@@ -17,7 +17,7 @@ export const getRules = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const createRule = async (req: AuthRequest, res: Response) => {
+export const createRule = async (req: AuthRequest, res: Response<any>) => {
     try {
         const { data, error } = await supabase
             .from('accounting_rules')
@@ -36,7 +36,7 @@ export const createRule = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const updateRule = async (req: AuthRequest, res: Response) => {
+export const updateRule = async (req: AuthRequest, res: Response<any>) => {
     try {
         const { id } = req.params;
         const { data, error } = await supabase
@@ -57,7 +57,7 @@ export const updateRule = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const deleteRule = async (req: AuthRequest, res: Response) => {
+export const deleteRule = async (req: AuthRequest, res: Response<any>) => {
     try {
         const { id } = req.params;
         const { error } = await supabase

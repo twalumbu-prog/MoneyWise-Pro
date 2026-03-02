@@ -3,7 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { supabase } from '../lib/supabase';
 
-export const connectQuickBooks = async (req: AuthRequest, res: Response) => {
+export const connectQuickBooks = async (req: AuthRequest, res: Response<any>) => {
     try {
         const organizationId = (req as any).user.organization_id;
         const url = QuickBooksService.getAuthUrl(organizationId);
@@ -13,7 +13,7 @@ export const connectQuickBooks = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const quickBooksCallback = async (req: Request, res: Response) => {
+export const quickBooksCallback = async (req: Request, res: Response<any>) => {
     const { code, realmId, state, error } = req.query;
 
     if (error) {
@@ -41,7 +41,7 @@ export const quickBooksCallback = async (req: Request, res: Response) => {
     }
 };
 
-export const getIntegrationStatus = async (req: AuthRequest, res: Response) => {
+export const getIntegrationStatus = async (req: AuthRequest, res: Response<any>) => {
     try {
         const organizationId = (req as any).user.organization_id;
 
@@ -61,7 +61,7 @@ export const getIntegrationStatus = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const getQuickBooksAccounts = async (req: AuthRequest, res: Response) => {
+export const getQuickBooksAccounts = async (req: AuthRequest, res: Response<any>) => {
     try {
         const organizationId = (req as any).user.organization_id;
         const accounts = await QuickBooksService.fetchAccounts(organizationId);
@@ -71,7 +71,7 @@ export const getQuickBooksAccounts = async (req: AuthRequest, res: Response) => 
     }
 };
 
-export const disconnectQuickBooks = async (req: AuthRequest, res: Response) => {
+export const disconnectQuickBooks = async (req: AuthRequest, res: Response<any>) => {
     try {
         const organizationId = (req as any).user.organization_id;
 
@@ -88,7 +88,7 @@ export const disconnectQuickBooks = async (req: AuthRequest, res: Response) => {
     }
 };
 
-export const syncRequisition = async (req: AuthRequest, res: Response) => {
+export const syncRequisition = async (req: AuthRequest, res: Response<any>) => {
     try {
         const { id } = req.params;
         const userId = (req as any).user.id;
