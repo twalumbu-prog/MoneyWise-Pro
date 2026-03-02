@@ -330,8 +330,8 @@ export const Settings: React.FC = () => {
                                             </div>
                                         </div>
 
-                                        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                                            <table className="min-w-full divide-y divide-gray-200">
+                                        <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto custom-scrollbar shadow-sm">
+                                            <table className="min-w-[600px] w-full divide-y divide-gray-200">
                                                 <thead className="bg-gray-50">
                                                     <tr>
                                                         <th scope="col" className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">
@@ -348,13 +348,13 @@ export const Settings: React.FC = () => {
                                                 <tbody className="bg-white divide-y divide-gray-200">
                                                     {localAccounts.filter(a => a.type === 'EXPENSE').map((account: any) => (
                                                         <tr key={account.id} className="hover:bg-gray-50 transition-colors">
-                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                            <td className="px-6 py-4 whitespace-nowrap min-w-[250px]">
                                                                 <div className="flex items-center">
-                                                                    <div className="flex-shrink-0 h-8 w-8 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center font-bold text-xs border border-blue-100">
+                                                                    <div className="flex-shrink-0 h-8 px-2.5 min-w-[2rem] bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center font-bold text-xs border border-blue-100">
                                                                         {account.code}
                                                                     </div>
-                                                                    <div className="ml-4">
-                                                                        <div className="text-sm font-bold text-gray-900">{account.name}</div>
+                                                                    <div className="ml-4 truncate">
+                                                                        <div className="text-sm font-bold text-gray-900 truncate">{account.name}</div>
                                                                         <div className="text-xs text-gray-500">{account.type}</div>
                                                                     </div>
                                                                 </div>
@@ -376,7 +376,7 @@ export const Settings: React.FC = () => {
                                                                         value={account.qb_account_id || ''}
                                                                         onChange={(e) => handleMapAccount(account.id, e.target.value)}
                                                                         disabled={saving === account.id}
-                                                                        className="block w-full max-w-xs pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm rounded-md border"
+                                                                        className="block w-full min-w-[240px] pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm rounded-xl border transition-colors hover:border-brand-green/50"
                                                                     >
                                                                         <option value="">-- Select QuickBooks Account --</option>
                                                                         {qbAccounts
