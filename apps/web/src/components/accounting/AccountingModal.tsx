@@ -145,8 +145,25 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                             };
                         } else {
                             console.warn(`[AccountingModal] ⚠️ Suggestion "${result.suggestion}" for "${item.description}" not matched in expenseAccounts list.`);
+                            return {
+                                ...item,
+                                ai_reasoning: `Matched suggestion "${result.suggestion}" not found in your chart of accounts.`,
+                                ai_decision_path: 'AI-FAILED',
+                                ai_similarity_score: 0,
+                                ai_risk_level: 'HIGH'
+                            };
                         }
                     } else if (result) {
+                        // Check if it explicitly failed
+                        if (result.method === 'AI-FAILED') {
+                            return {
+                                ...item,
+                                ai_reasoning: result.reasoning || 'AI failed to classify this item.',
+                                ai_decision_path: 'AI-FAILED',
+                                ai_similarity_score: 0,
+                                ai_risk_level: 'HIGH'
+                            };
+                        }
                         // If backend returned account_code but no suggestion (ID)
                         if (result.account_code) {
                             const codeVal = String(result.account_code).toLowerCase();
@@ -170,17 +187,40 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
                             }
                         }
                         console.log(`[AccountingModal] ℹ️ No match found for "${item.description}":`, result.reasoning || 'No suggestion/code');
+                        return {
+                            ...item,
+                            ai_reasoning: result.reasoning || 'AI could not classify this item securely.',
+                            ai_decision_path: 'AI-FAILED',
+                            ai_similarity_score: 0,
+                            ai_risk_level: 'HIGH'
+                        };
                     }
                     else {
                         console.warn(`[AccountingModal] ❓ No result found for item ID ${item.id}`);
+                        return {
+                            ...item,
+                            ai_reasoning: 'No response received from AI service.',
+                            ai_decision_path: 'AI-FAILED',
+                            ai_similarity_score: 0,
+                            ai_risk_level: 'HIGH'
+                        };
                     }
-                    return item;
                 });
 
                 console.log('[AccountingModal] Final updated items:', updatedItems);
                 setItems(updatedItems);
-                setClassifyStatus('Classification complete!');
-                setTimeout(() => setClassifyStatus(null), 3000);
+
+                const failedItemsCount = updatedItems.filter(i => i.ai_decision_path === 'AI-FAILED').length;
+                if (failedItemsCount === updatedItems.length) {
+                    setError('AI was unable to classify any items automatically. Please select categories manually.');
+                    setClassifyStatus(null);
+                } else if (failedItemsCount > 0) {
+                    setClassifyStatus(`Classified ${updatedItems.length - failedItemsCount} items. ${failedItemsCount} items require manual selection.`);
+                    setTimeout(() => setClassifyStatus(null), 5000);
+                } else {
+                    setClassifyStatus('Classification complete!');
+                    setTimeout(() => setClassifyStatus(null), 3000);
+                }
             } else {
                 console.warn('[AccountingModal] AI Response returned no results.');
                 setError('AI service returned no results. Check if API keys are configured.');

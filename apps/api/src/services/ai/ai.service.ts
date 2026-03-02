@@ -3,8 +3,6 @@ import { CATEGORIZATION_SYSTEM_PROMPT, buildCategorizationPrompt } from './promp
 import { memoryService } from './memory.service';
 import { ruleEngine } from './rule.engine';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
 
 export interface SuggestionResult {
@@ -81,6 +79,7 @@ export const aiService = {
         const aiPromises: Promise<SuggestionResult>[] = [];
 
         // 1. OpenAI (Primary AI)
+        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         if (OPENAI_API_KEY && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY') {
             aiPromises.push(timeout(
                 this.callOpenAI(item.description, accounts).then(res => ({
@@ -98,6 +97,7 @@ export const aiService = {
         }
 
         // 2. Gemini (Secondary AI / Diversity)
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
         if (GEMINI_API_KEY && GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY') {
             aiPromises.push(timeout(
                 this.suggestCategoryGemini(accounts, item.description, item.amount),
@@ -127,6 +127,7 @@ export const aiService = {
     },
 
     async callOpenAI(description: string, accounts: any[]) {
+        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         const userPrompt = buildCategorizationPrompt(accounts, description, 0);
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
@@ -150,6 +151,7 @@ export const aiService = {
     },
 
     async suggestCategoryGemini(accounts: any[], description: string, amount: number): Promise<SuggestionResult> {
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
         const userPrompt = buildCategorizationPrompt(accounts, description, amount);
         const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
@@ -168,7 +170,11 @@ export const aiService = {
             body: JSON.stringify(payload)
         });
 
-        if (!response.ok) throw new Error(`Gemini API Status ${response.status}`);
+        if (!response.ok) {
+            const errBody = await response.text();
+            console.error(`[AI Service] Gemini API Error Response:`, errBody);
+            throw new Error(`Gemini API Status ${response.status}`);
+        }
 
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
