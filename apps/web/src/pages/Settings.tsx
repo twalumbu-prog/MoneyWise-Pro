@@ -303,14 +303,14 @@ export const Settings: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="px-6 py-4 bg-gray-50 flex items-center space-x-3">
+                                    <div className="px-6 py-4 bg-gray-50">
                                         <button
                                             onClick={handleImport}
                                             disabled={actionLoading}
-                                            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-lg text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50"
+                                            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 transition-all border"
                                         >
-                                            <ArrowDownToLine className="h-4 w-4 mr-2" />
-                                            {actionLoading ? 'Importing...' : 'Import from QuickBooks'}
+                                            <ArrowDownToLine className="h-4 w-4 mr-2 text-brand-green" />
+                                            {actionLoading ? 'Syncing...' : 'Sync Chart of Accounts'}
                                         </button>
                                     </div>
                                 </div>
@@ -331,7 +331,7 @@ export const Settings: React.FC = () => {
                                         </div>
 
                                         <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto custom-scrollbar shadow-sm">
-                                            <table className="min-w-[600px] w-full divide-y divide-gray-200">
+                                            <table className="min-w-[800px] w-full divide-y divide-gray-200">
                                                 <thead className="bg-gray-50">
                                                     <tr>
                                                         <th scope="col" className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">

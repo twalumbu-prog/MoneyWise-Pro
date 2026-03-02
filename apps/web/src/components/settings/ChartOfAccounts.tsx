@@ -85,29 +85,33 @@ export const ChartOfAccounts: React.FC = () => {
                 </div>
             )}
 
-            <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-                <table className="min-w-full divide-y divide-gray-200">
+            <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-x-auto custom-scrollbar">
+                <table className="min-w-[800px] w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Code</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Type</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Subtype</th>
-                            <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Description</th>
+                            <th className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">Code</th>
+                            <th className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">Name</th>
+                            <th className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">Type</th>
+                            <th className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">Subtype</th>
+                            <th className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">Description</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {accounts.map((account) => (
                             <tr key={account.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-brand-navy">{account.code}</td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                    <div className="flex-shrink-0 h-8 px-2.5 min-w-[2rem] bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center font-bold text-xs border border-blue-100">
+                                        {account.code}
+                                    </div>
+                                </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{account.name}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                                    <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full bg-blue-100 text-blue-800">
                                         {account.type}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{account.subtype || '-'}</td>
-                                <td className="px-6 py-4 text-sm text-gray-500 truncate max-w-xs">{account.description}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500">{account.subtype || '-'}</td>
+                                <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">{account.description || '-'}</td>
                             </tr>
                         ))}
                     </tbody>
