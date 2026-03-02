@@ -147,69 +147,69 @@ export const Settings: React.FC = () => {
                     </p>
                 </div>
 
-                <div className="flex flex-col lg:flex-row gap-8">
-                    {/* Sidebar Navigation */}
-                    <nav className="lg:w-64 flex-shrink-0">
-                        <div className="space-y-1">
+                <div className="flex flex-col space-y-6">
+                    {/* Horizontal Navigation */}
+                    <div className="w-full overflow-x-auto pb-2 -mb-2 custom-scrollbar">
+                        <nav className="flex space-x-1 bg-gray-100 p-1 rounded-xl w-max min-w-full md:min-w-0 md:w-fit">
                             <button
                                 onClick={() => handleTabChange('general')}
-                                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors ${activeTab === 'general'
-                                    ? 'bg-brand-green/10 text-brand-green'
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'general'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
-                                <SettingsIcon className="flex-shrink-0 -ml-1 mr-3 h-5 w-5" />
-                                <span className="truncate">General</span>
+                                <SettingsIcon className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>General</span>
                             </button>
 
                             <button
                                 onClick={() => handleTabChange('users')}
-                                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors ${activeTab === 'users'
-                                    ? 'bg-brand-green/10 text-brand-green'
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'users'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
-                                <Users className="flex-shrink-0 -ml-1 mr-3 h-5 w-5" />
-                                <span className="truncate">Team Members</span>
+                                <Users className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>Team Members</span>
                             </button>
 
                             <button
                                 onClick={() => handleTabChange('coa')}
-                                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors ${activeTab === 'coa'
-                                    ? 'bg-brand-green/10 text-brand-green'
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'coa'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
-                                <FileText className="flex-shrink-0 -ml-1 mr-3 h-5 w-5" />
-                                <span className="truncate">Chart of Accounts</span>
+                                <FileText className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>Chart of Accounts</span>
                             </button>
 
                             <button
                                 onClick={() => handleTabChange('integrations')}
-                                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors ${activeTab === 'integrations'
-                                    ? 'bg-brand-green/10 text-brand-green'
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'integrations'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
-                                <Share2 className="flex-shrink-0 -ml-1 mr-3 h-5 w-5" />
-                                <span className="truncate">Integrations</span>
+                                <Share2 className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>Integrations</span>
                             </button>
 
                             <button
                                 onClick={() => handleTabChange('automation')}
-                                className={`w-full flex items-center px-3 py-2 text-sm font-medium rounded-xl transition-colors ${activeTab === 'automation'
-                                    ? 'bg-brand-green/10 text-brand-green'
-                                    : 'text-gray-600 hover:bg-gray-50'
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'automation'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
                                     }`}
                             >
-                                <BrainCircuit className="flex-shrink-0 -ml-1 mr-3 h-5 w-5" />
-                                <span className="truncate">AI & Automation</span>
+                                <BrainCircuit className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>AI & Automation</span>
                             </button>
-                        </div>
-                    </nav>
+                        </nav>
+                    </div>
 
                     {/* Main Content Area */}
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 w-full">
                         {/* General Tab */}
                         {activeTab === 'general' && <GeneralSettings />}
 
