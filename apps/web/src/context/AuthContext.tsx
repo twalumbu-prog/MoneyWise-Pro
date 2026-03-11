@@ -188,8 +188,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         const data = await response.json();
-
+        
         if (!response.ok) {
+            // If the error contains a suggestion, stringify the whole thing so the caller can parse it
+            if (data.suggestion) {
+                throw new Error(JSON.stringify(data));
+            }
             throw new Error(data.error || 'Registration failed');
         }
 

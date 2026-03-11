@@ -86,6 +86,40 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             });
         }
 
+        // Check if organization name already exists
+        const { data: existingOrg } = await supabase
+            .from('organizations')
+            .select('name')
+            .ilike('name', organizationName)
+            .maybeSingle();
+
+        if (existingOrg) {
+            // Generate a suggestion
+            let suggestion = '';
+            let isUnique = false;
+            let counter = 2;
+
+            while (!isUnique) {
+                const suggestedName = `${organizationName} ${counter}`;
+                const { data: checkOrg } = await supabase
+                    .from('organizations')
+                    .select('name')
+                    .ilike('name', suggestedName)
+                    .maybeSingle();
+
+                if (!checkOrg) {
+                    suggestion = suggestedName;
+                    isUnique = true;
+                }
+                counter++;
+            }
+
+            return res.status(400).json({
+                error: `An organization with the name "${organizationName}" already exists. Did you mean to join it?`,
+                suggestion: suggestion
+            });
+        }
+
         // Create Organization
         const orgName = organizationName;
         const slug = orgName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();

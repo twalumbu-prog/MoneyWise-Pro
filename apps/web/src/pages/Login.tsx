@@ -21,6 +21,7 @@ export const Login: React.FC = () => {
     const [showDropdown, setShowDropdown] = useState(false);
 
     const [message, setMessage] = useState('');
+    const [suggestion, setSuggestion] = useState('');
     const [loading, setLoading] = useState(false);
     const { signInWithPassword, signUp, joinOrganization, user, userStatus } = useAuth();
     const navigate = useNavigate();
@@ -88,15 +89,36 @@ export const Login: React.FC = () => {
             if (signupMode === 'CREATE') {
                 await signUp(loginIdentifier, password, name, organizationName, username);
                 setMessage('Account & Organization created! You are now signed in.');
+                setSuggestion('');
             } else {
                 await joinOrganization(loginIdentifier, password, name, organizationId, username);
                 setMessage('Join request submitted! An admin must approve your account.');
+                setSuggestion('');
                 // Clear sensitive/specific fields so they don't try to log in immediately and fail
                 setPassword('');
             }
             // setIsSignup(false); // Can stay on screen to see success message
         } catch (error: any) {
-            setMessage('Error signing up: ' + (error.message || 'Unknown error'));
+            let errorMsg = error.message || 'Unknown error';
+            
+            // Handle structured error with suggestion
+            try {
+                // If the error message is a stringified JSON (common from some fetch wrappers)
+                const parsed = JSON.parse(errorMsg);
+                if (parsed.suggestion) {
+                    setSuggestion(parsed.suggestion);
+                    errorMsg = parsed.error || errorMsg;
+                }
+            } catch (e) {
+                // Not JSON, continue with original errorMsg
+            }
+
+            // Fallback: check if the error object itself has the suggestion (if throw by signUp)
+            if (error.suggestion) {
+                setSuggestion(error.suggestion);
+            }
+
+            setMessage('Error signing up: ' + errorMsg);
         } finally {
             setLoading(false);
         }
@@ -191,10 +213,31 @@ export const Login: React.FC = () => {
                                                 required={signupMode === 'CREATE'}
                                                 className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                                 value={organizationName}
-                                                onChange={(e) => setOrganizationName(e.target.value)}
+                                                onChange={(e) => {
+                                                    setOrganizationName(e.target.value);
+                                                    setSuggestion('');
+                                                }}
                                                 placeholder="e.g. Acme Corp"
                                             />
                                         </div>
+                                        {suggestion && (
+                                            <div className="mt-2 p-3 bg-brand-green/5 border border-brand-green/20 rounded-xl flex items-center justify-between">
+                                                <div className="text-sm">
+                                                    <span className="text-gray-500 font-medium">Suggestion: </span>
+                                                    <span className="text-brand-green font-bold">{suggestion}</span>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setOrganizationName(suggestion);
+                                                        setSuggestion('');
+                                                    }}
+                                                    className="text-xs font-bold text-brand-green hover:bg-brand-green/10 px-2 py-1 rounded-md transition-colors"
+                                                >
+                                                    Use this
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 ) : (
                                     <div className="relative">
