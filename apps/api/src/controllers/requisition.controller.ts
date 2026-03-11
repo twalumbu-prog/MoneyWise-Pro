@@ -384,15 +384,22 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         // Loop through items and update individually. A batch update would be better but Supabase JS doesn't support bulk update with different values easily without RPC.
         // Given typically low number of line items, loop is acceptable for MVP.
         const promises = items.map((item: any) => {
+            const updateData: any = {
+                actual_amount: item.actual_amount,
+                receipt_url: item.receipt_url,
+                updated_at: new Date().toISOString()
+            };
+
+            // If a receipt_url is provided but there's no OCR status yet, mark it as PENDING
+            if (item.receipt_url) {
+                updateData.receipt_ocr_status = 'PENDING';
+            }
+
             return supabase
                 .from('line_items')
-                .update({
-                    actual_amount: item.actual_amount,
-                    receipt_url: item.receipt_url,
-                    updated_at: new Date().toISOString()
-                })
+                .update(updateData)
                 .eq('id', item.id)
-                .eq('requisition_id', id); // Safety check
+                .eq('requisition_id', id);
         });
 
         await Promise.all(promises);
@@ -422,9 +429,6 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             setImmediate(async () => {
                 for (const item of itemsWithNewReceipts) {
                     try {
-                        // Mark as pending
-                        await supabase.from('line_items').update({ receipt_ocr_status: 'PENDING' }).eq('id', item.id);
-
                         // Build public URL from path
                         const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
                         const publicUrl = urlData.publicUrl;
@@ -483,7 +487,10 @@ export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
         }
 
         if (!item.receipt_url) {
-            return res.status(400).json({ error: 'No receipt uploaded for this item' });
+            return res.status(400).json({ 
+                error: 'No receipt URL found for this item in the database.',
+                message: 'If you just uploaded a receipt, please click "Save Expenses" first to persist the file path before starting AI analysis.'
+            });
         }
 
         if (item.receipt_url.match(/\.pdf$/i)) {

@@ -258,10 +258,26 @@ export const RequisitionDetail: React.FC = () => {
     const handleAnalyzeReceipt = async (itemId: string) => {
         try {
             if (!id) return;
+
+            // Check if the item has a pending upload or unsaved receipt URL
+            const item = expenseItems.find(i => i.id === itemId);
+            const originalItem = requisition?.items?.find(i => i.id === itemId);
+
+            if (item && item.receipt_url && (!originalItem || originalItem.receipt_url !== item.receipt_url)) {
+                alert('Please click "Save Expenses" first to save your receipt before starting AI analysis.');
+                return;
+            }
+
             setAnalyzingItemId(itemId);
             await requisitionService.analyzeReceipt(id, itemId);
+            
+            // Set local state to pending immediately for better UX
+            setExpenseItems(prev => prev.map(i => 
+                i.id === itemId ? { ...i, receipt_ocr_status: 'PENDING' } : i
+            ));
+
             // Reload requisition after a wait to allow background task
-            setTimeout(() => loadRequisition(id), 2000);
+            setTimeout(() => loadRequisition(id), 3000);
         } catch (err: any) {
             console.error('OCR failed', err);
             alert('Analysis failed: ' + err.message);
