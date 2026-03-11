@@ -3,10 +3,15 @@ import { supabase } from '../lib/supabase';
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 interface LineItem {
+    id?: string;
     description: string;
     quantity: number;
     unit_price: number;
     estimated_amount: number;
+    actual_amount?: number;
+    receipt_url?: string;
+    receipt_ocr_data?: any;
+    receipt_ocr_status?: 'NONE' | 'PENDING' | 'DONE' | 'FAILED';
 }
 
 interface CreateRequisitionData {
@@ -263,5 +268,22 @@ export const requisitionService = {
         if (!path) return null;
         const { data } = supabase.storage.from('receipts').getPublicUrl(path);
         return data.publicUrl;
+    },
+
+    async analyzeReceipt(requisitionId: string, itemId: string): Promise<void> {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${requisitionId}/items/${itemId}/analyze-receipt`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            }
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to trigger receipt analysis');
+        }
     }
 };

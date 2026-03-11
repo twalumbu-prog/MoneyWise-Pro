@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw, X, Eye } from 'lucide-react';
+import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw, X, Eye, Sparkles } from 'lucide-react';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { voucherService } from '../services/voucher.service';
 import { useAuth } from '../context/AuthContext';
 import { DenominationInput } from '../components/DenominationInput';
+import { ReceiptInsightsPanel } from '../components/ReceiptInsightsPanel';
 
 export const RequisitionDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -34,6 +35,7 @@ export const RequisitionDetail: React.FC = () => {
 
     const [expenseItems, setExpenseItems] = useState<any[]>([]);
     const [uploading, setUploading] = useState<string | null>(null);
+    const [analyzingItemId, setAnalyzingItemId] = useState<string | null>(null);
 
     const [returnedDenominations, setReturnedDenominations] = useState<any[]>([
         { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
@@ -253,6 +255,21 @@ export const RequisitionDetail: React.FC = () => {
         }
     };
 
+    const handleAnalyzeReceipt = async (itemId: string) => {
+        try {
+            if (!id) return;
+            setAnalyzingItemId(itemId);
+            await requisitionService.analyzeReceipt(id, itemId);
+            // Reload requisition after a wait to allow background task
+            setTimeout(() => loadRequisition(id), 2000);
+        } catch (err: any) {
+            console.error('OCR failed', err);
+            alert('Analysis failed: ' + err.message);
+        } finally {
+            setAnalyzingItemId(null);
+        }
+    };
+
     return (
         <Layout>
             <div className="space-y-6">
@@ -344,7 +361,10 @@ export const RequisitionDetail: React.FC = () => {
 
                             {!isLoanOrAdvance && (
                                 <div className="py-4 sm:py-5 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 mb-2">Line Items & Expenses</dt>
+                                    <dt className="text-sm font-medium text-gray-500 mb-2 flex items-center">
+                                        <Sparkles className="h-4 w-4 mr-1.5 text-indigo-500" />
+                                        Line Items & Expenses
+                                    </dt>
                                     <dd className="mt-1 text-sm text-gray-900 sm:mt-0">
                                         <div className="border rounded-md overflow-hidden">
                                             <table className="min-w-full divide-y divide-gray-200">
@@ -364,7 +384,8 @@ export const RequisitionDetail: React.FC = () => {
                                                 </thead>
                                                 <tbody className="bg-white divide-y divide-gray-200">
                                                     {expenseItems?.map((item: any, index: number) => (
-                                                        <tr key={index}>
+                                                        <React.Fragment key={item.id || index}>
+                                                            <tr className={item.receipt_ocr_status === 'DONE' ? 'bg-indigo-50/10' : ''}>
                                                             <td className="px-4 py-2 text-sm text-gray-900">
                                                                 <div className="font-medium">{item.description}</div>
                                                                 <div className="text-xs text-gray-500">
@@ -427,7 +448,19 @@ export const RequisitionDetail: React.FC = () => {
                                                                     K{item.actual_amount || '0.00'}
                                                                 </td>
                                                             )}
-                                                        </tr>
+                                                             </tr>
+                                                            {/* AI Insights Panel */}
+                                                            {item.receipt_url && (
+                                                                <ReceiptInsightsPanel
+                                                                    itemId={item.id}
+                                                                    ocrData={item.receipt_ocr_data}
+                                                                    ocrStatus={item.receipt_ocr_status || 'NONE'}
+                                                                    expectedAmount={item.actual_amount || item.estimated_amount}
+                                                                    onReanalyze={handleAnalyzeReceipt}
+                                                                    isReanalyzing={analyzingItemId === item.id}
+                                                                />
+                                                            )}
+                                                        </React.Fragment>
                                                     ))}
                                                 </tbody>
                                             </table>

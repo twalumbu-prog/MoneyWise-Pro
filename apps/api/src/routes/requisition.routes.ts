@@ -9,7 +9,8 @@ import {
     updateRequisitionExpenses,
     submitChange,
     confirmChange,
-    markRequisitionRead
+    markRequisitionRead,
+    analyzeReceiptItem
 } from '../controllers/requisition.controller';
 import { disburseRequisition, acknowledgeReceipt } from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
@@ -29,6 +30,7 @@ router.post('/:id/acknowledge', acknowledgeReceipt);
 
 // Expense Tracking & Change Flow
 router.put('/:id/expenses', updateRequisitionExpenses);
+router.post('/:id/items/:itemId/analyze-receipt', analyzeReceiptItem);
 router.post('/:id/submit-change', submitChange);
 router.post('/:id/confirm-change', confirmChange);
 router.post('/:id/post-voucher', postVoucher);

@@ -5,6 +5,7 @@ import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
 import { QuickBooksService } from '../services/quickbooks.service';
+import { ocrService } from '../services/ai/ocr.service';
 
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     try {
@@ -415,9 +416,106 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
 
         res.json({ message: 'Expenses updated successfully', actual_total: actualTotal });
 
+        // 4. Background: trigger OCR analysis for any items that have a receipt_url but no OCR yet
+        const itemsWithNewReceipts = items.filter((item: any) => item.receipt_url);
+        if (itemsWithNewReceipts.length > 0) {
+            setImmediate(async () => {
+                for (const item of itemsWithNewReceipts) {
+                    try {
+                        // Mark as pending
+                        await supabase.from('line_items').update({ receipt_ocr_status: 'PENDING' }).eq('id', item.id);
+
+                        // Build public URL from path
+                        const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
+                        const publicUrl = urlData.publicUrl;
+
+                        // Skip PDFs for now
+                        if (item.receipt_url.match(/\.pdf$/i)) {
+                            await supabase.from('line_items').update({
+                                receipt_ocr_status: 'FAILED',
+                                receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
+                            }).eq('id', item.id);
+                            continue;
+                        }
+
+                        const ocrData = await ocrService.analyzeReceipt(publicUrl);
+
+                        await supabase.from('line_items').update({
+                            receipt_ocr_data: ocrData,
+                            receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
+                        }).eq('id', item.id);
+
+                        console.log(`[OCR] Completed for item ${item.id}: ${ocrData.vendor || 'Unknown vendor'}`);
+                    } catch (ocrErr: any) {
+                        console.error(`[OCR] Failed for item ${item.id}:`, ocrErr.message);
+                        await supabase.from('line_items').update({
+                            receipt_ocr_status: 'FAILED',
+                            receipt_ocr_data: { error: ocrErr.message }
+                        }).eq('id', item.id);
+                    }
+                }
+            });
+        }
+
     } catch (error: any) {
         console.error('Error updating expenses:', error);
         res.status(500).json({ error: 'Failed to update expenses', details: error.message });
+    }
+};
+
+/**
+ * On-demand re-analysis of a specific line item's receipt.
+ * POST /requisitions/:id/items/:itemId/analyze-receipt
+ */
+export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id, itemId } = req.params;
+
+        const { data: item, error: itemError } = await supabase
+            .from('line_items')
+            .select('id, receipt_url, requisition_id')
+            .eq('id', itemId)
+            .eq('requisition_id', id)
+            .single();
+
+        if (itemError || !item) {
+            return res.status(404).json({ error: 'Line item not found' });
+        }
+
+        if (!item.receipt_url) {
+            return res.status(400).json({ error: 'No receipt uploaded for this item' });
+        }
+
+        if (item.receipt_url.match(/\.pdf$/i)) {
+            return res.status(400).json({ error: 'PDF analysis not supported. Please upload an image.' });
+        }
+
+        // Mark as pending
+        await supabase.from('line_items').update({ receipt_ocr_status: 'PENDING' }).eq('id', itemId);
+
+        res.json({ message: 'Receipt analysis started', status: 'PENDING' });
+
+        // Background analysis
+        setImmediate(async () => {
+            try {
+                const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
+                const ocrData = await ocrService.analyzeReceipt(urlData.publicUrl);
+
+                await supabase.from('line_items').update({
+                    receipt_ocr_data: ocrData,
+                    receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
+                }).eq('id', itemId);
+            } catch (err: any) {
+                await supabase.from('line_items').update({
+                    receipt_ocr_status: 'FAILED',
+                    receipt_ocr_data: { error: err.message }
+                }).eq('id', itemId);
+            }
+        });
+
+    } catch (error: any) {
+        console.error('Error triggering receipt analysis:', error);
+        res.status(500).json({ error: 'Failed to analyze receipt', details: error.message });
     }
 };
 
