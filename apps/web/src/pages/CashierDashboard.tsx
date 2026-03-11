@@ -97,11 +97,14 @@ export const CashierDashboard: React.FC = () => {
 
             let uploadedUrl = null;
             if (isNonCash && transferProofFile) {
-                const fileExt = transferProofFile.name.split('.').pop();
+                const { compressImage } = await import('../utils/file_utils');
+                const compressedFile = await compressImage(transferProofFile);
+                
+                const fileExt = compressedFile.name.split('.').pop();
                 const fileName = `disbursements/${selectedReq.id}-${Date.now()}.${fileExt}`;
                 const { data: uploadData, error: uploadError } = await (await import('../lib/supabase')).supabase.storage
                     .from('receipts')
-                    .upload(fileName, transferProofFile);
+                    .upload(fileName, compressedFile);
 
                 if (uploadError) throw uploadError;
                 uploadedUrl = uploadData.path;

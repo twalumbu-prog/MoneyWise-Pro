@@ -205,15 +205,18 @@ export const RequisitionDetail: React.FC = () => {
             item.id === itemId ? { ...item, actual_amount: parseFloat(val) || 0 } : item
         ));
     };
-
     const handleFileUpload = async (itemId: string, file: File) => {
         try {
             setUploading(itemId);
-            const fileExt = file.name.split('.').pop();
+            
+            const { compressImage } = await import('../utils/file_utils');
+            const compressedFile = await compressImage(file);
+            
+            const fileExt = compressedFile.name.split('.').pop();
             const fileName = `${requisition.id}/${itemId}-${Date.now()}.${fileExt}`;
             const { data: uploadData, error: uploadError } = await (await import('../lib/supabase')).supabase.storage
                 .from('receipts')
-                .upload(fileName, file);
+                .upload(fileName, compressedFile);
 
             if (uploadError) throw uploadError;
 
