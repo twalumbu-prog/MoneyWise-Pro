@@ -421,45 +421,46 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             })
             .eq('id', id);
 
-        res.json({ message: 'Expenses updated successfully', actual_total: actualTotal });
-
-        // 4. Background: trigger OCR analysis for any items that have a receipt_url but no OCR yet
+        // 4. Trigger OCR analysis synchronously for Vercel compatibility 
+        // (Serverless functions terminate background tasks upon response)
         const itemsWithNewReceipts = items.filter((item: any) => item.receipt_url);
         if (itemsWithNewReceipts.length > 0) {
-            setImmediate(async () => {
-                for (const item of itemsWithNewReceipts) {
-                    try {
-                        // Build public URL from path
-                        const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
-                        const publicUrl = urlData.publicUrl;
+            console.log(`[OCR] Processing ${itemsWithNewReceipts.length} receipts synchronously...`);
+            
+            await Promise.all(itemsWithNewReceipts.map(async (item: any) => {
+                try {
+                    // Build public URL from path
+                    const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
+                    const publicUrl = urlData.publicUrl;
 
-                        // Skip PDFs for now
-                        if (item.receipt_url.match(/\.pdf$/i)) {
-                            await supabase.from('line_items').update({
-                                receipt_ocr_status: 'FAILED',
-                                receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
-                            }).eq('id', item.id);
-                            continue;
-                        }
-
-                        const ocrData = await ocrService.analyzeReceipt(publicUrl);
-
-                        await supabase.from('line_items').update({
-                            receipt_ocr_data: ocrData,
-                            receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
-                        }).eq('id', item.id);
-
-                        console.log(`[OCR] Completed for item ${item.id}: ${ocrData.vendor || 'Unknown vendor'}`);
-                    } catch (ocrErr: any) {
-                        console.error(`[OCR] Failed for item ${item.id}:`, ocrErr.message);
+                    // Skip PDFs for now
+                    if (item.receipt_url.match(/\.pdf$/i)) {
                         await supabase.from('line_items').update({
                             receipt_ocr_status: 'FAILED',
-                            receipt_ocr_data: { error: ocrErr.message }
+                            receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
                         }).eq('id', item.id);
+                        return;
                     }
+
+                    const ocrData = await ocrService.analyzeReceipt(publicUrl);
+
+                    await supabase.from('line_items').update({
+                        receipt_ocr_data: ocrData,
+                        receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
+                    }).eq('id', item.id);
+
+                    console.log(`[OCR] Completed for item ${item.id}: ${ocrData.vendor || 'Unknown vendor'}`);
+                } catch (ocrErr: any) {
+                    console.error(`[OCR] Failed for item ${item.id}:`, ocrErr.message);
+                    await supabase.from('line_items').update({
+                        receipt_ocr_status: 'FAILED',
+                        receipt_ocr_data: { error: ocrErr.message }
+                    }).eq('id', item.id);
                 }
-            });
+            }));
         }
+
+        res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
 
     } catch (error: any) {
         console.error('Error updating expenses:', error);
@@ -500,25 +501,24 @@ export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
         // Mark as pending
         await supabase.from('line_items').update({ receipt_ocr_status: 'PENDING' }).eq('id', itemId);
 
-        res.json({ message: 'Receipt analysis started', status: 'PENDING' });
+        // Perform analysis synchronously for Vercel reliability
+        try {
+            const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
+            const ocrData = await ocrService.analyzeReceipt(urlData.publicUrl);
 
-        // Background analysis
-        setImmediate(async () => {
-            try {
-                const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
-                const ocrData = await ocrService.analyzeReceipt(urlData.publicUrl);
+            await supabase.from('line_items').update({
+                receipt_ocr_data: ocrData,
+                receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
+            }).eq('id', itemId);
 
-                await supabase.from('line_items').update({
-                    receipt_ocr_data: ocrData,
-                    receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
-                }).eq('id', itemId);
-            } catch (err: any) {
-                await supabase.from('line_items').update({
-                    receipt_ocr_status: 'FAILED',
-                    receipt_ocr_data: { error: err.message }
-                }).eq('id', itemId);
-            }
-        });
+            res.json({ message: 'Receipt analysis completed', status: ocrData.error ? 'FAILED' : 'DONE', data: ocrData });
+        } catch (err: any) {
+            await supabase.from('line_items').update({
+                receipt_ocr_status: 'FAILED',
+                receipt_ocr_data: { error: err.message }
+            }).eq('id', itemId);
+            throw err;
+        }
 
     } catch (error: any) {
         console.error('Error triggering receipt analysis:', error);
