@@ -4,10 +4,16 @@ import { reportService, ExpenditureAggregation, ExpenditureItem } from '../servi
 import { budgetService, Budget } from '../services/budget.service';
 import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
-import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, ChevronDown, ChevronUp, Loader2, DollarSign, Settings2, SlidersHorizontal, Eye, EyeOff, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, ChevronDown, ChevronUp, Loader2, DollarSign, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
 type ModeType = 'EXPENSE' | 'CASH_OUTFLOW';
+
+interface ReportGroup {
+    id: string;
+    name: string;
+}
 
 export const Reporting: React.FC = () => {
     // State
@@ -29,6 +35,16 @@ export const Reporting: React.FC = () => {
     const [itemsLoading, setItemsLoading] = useState(false);
     const [accountItems, setAccountItems] = useState<Record<string, ExpenditureItem[]>>({});
     
+    // Grouping & Multi-select State
+    const [groups, setGroups] = useState<ReportGroup[]>([]);
+    const [accountGroups, setAccountGroups] = useState<Record<string, string>>({}); // accountId -> groupId
+    const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+    const [isGroupingEnabled, setIsGroupingEnabled] = useState(false);
+    const [newGroupName, setNewGroupName] = useState('');
+    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+    
+    const { organizationId: orgId } = useAuth();
+
     const [sortField, setSortField] = useState<'name' | 'amount' | 'variance'>('amount');
     const [sortDesc, setSortDesc] = useState(true);
 
@@ -85,6 +101,21 @@ export const Reporting: React.FC = () => {
             setExpenditures(expData);
             setBudgets(budData);
             setAllAccounts(accData.filter((a: Account) => a.type === 'EXPENSE'));
+
+            // Load saved groups from local storage
+            if (orgId) {
+                const savedGroups = localStorage.getItem(`reportGroups_${orgId}`);
+                const savedAssignments = localStorage.getItem(`accountGroups_${orgId}`);
+                const savedGroupingToggle = localStorage.getItem(`isGroupingEnabled_${orgId}`);
+                
+                if (savedGroups) setGroups(JSON.parse(savedGroups));
+                if (savedAssignments) setAccountGroups(JSON.parse(savedAssignments));
+                if (savedGroupingToggle) setIsGroupingEnabled(savedGroupingToggle === 'true');
+
+                const savedCollapsed = localStorage.getItem(`collapsedGroups_${orgId}`);
+                if (savedCollapsed) setCollapsedGroups(new Set(JSON.parse(savedCollapsed)));
+            }
+
         } catch (error) {
             console.error('Failed to load reporting data:', error);
         } finally {
@@ -93,9 +124,12 @@ export const Reporting: React.FC = () => {
     };
 
     useEffect(() => {
-        loadData();
+        if (orgId) {
+            loadData();
+        }
         setExpandedAccount(null); // Reset expansions on period/mode change
-    }, [periodData.start, periodData.end, mode, periodType]);
+        setSelectedAccounts(new Set()); // Reset selections on period change
+    }, [periodData.start, periodData.end, mode, periodType, orgId]);
 
     // Handlers
     const handlePrevPeriod = () => {
@@ -133,6 +167,231 @@ export const Reporting: React.FC = () => {
             }
         }
     };
+
+    // Grouping Handlers
+    const handleCreateGroup = () => {
+        if (!newGroupName.trim() || !orgId) return;
+        const newGroup = { id: Date.now().toString(), name: newGroupName.trim() };
+        const updatedGroups = [...groups, newGroup];
+        setGroups(updatedGroups);
+        localStorage.setItem(`reportGroups_${orgId}`, JSON.stringify(updatedGroups));
+        setNewGroupName('');
+    };
+
+    const handleDeleteGroup = (groupId: string) => {
+        if (!orgId) return;
+        const updatedGroups = groups.filter(g => g.id !== groupId);
+        setGroups(updatedGroups);
+        localStorage.setItem(`reportGroups_${orgId}`, JSON.stringify(updatedGroups));
+        
+        // Remove assignments
+        const newAssignments = { ...accountGroups };
+        let modified = false;
+        Object.keys(newAssignments).forEach(accId => {
+            if (newAssignments[accId] === groupId) {
+                delete newAssignments[accId];
+                modified = true;
+            }
+        });
+        if (modified) {
+            setAccountGroups(newAssignments);
+            localStorage.setItem(`accountGroups_${orgId}`, JSON.stringify(newAssignments));
+        }
+    };
+
+    const handleAssignToGroup = (groupId: string | null) => {
+        if (!orgId || selectedAccounts.size === 0) return;
+        
+        const newAssignments = { ...accountGroups };
+        selectedAccounts.forEach(accId => {
+            if (groupId) {
+                newAssignments[accId] = groupId;
+            } else {
+                delete newAssignments[accId]; // Unassign
+            }
+        });
+        
+        setAccountGroups(newAssignments);
+        localStorage.setItem(`accountGroups_${orgId}`, JSON.stringify(newAssignments));
+        setSelectedAccounts(new Set()); // Clear selection after bulk action
+    };
+
+    const handleBulkHide = () => {
+        setHiddenAccounts(prev => {
+            const newHidden = new Set(prev);
+            selectedAccounts.forEach(accId => newHidden.add(accId));
+            return newHidden;
+        });
+        setSelectedAccounts(new Set()); // Clear selection
+    };
+
+    const toggleGrouping = () => {
+        const newValue = !isGroupingEnabled;
+        setIsGroupingEnabled(newValue);
+        if (orgId) {
+            localStorage.setItem(`isGroupingEnabled_${orgId}`, String(newValue));
+        }
+    };
+
+    const toggleRowSelection = (accountId: string) => {
+        setSelectedAccounts(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(accountId)) newSet.delete(accountId);
+            else newSet.add(accountId);
+            return newSet;
+        });
+    };
+
+    const toggleAllSelections = (accountsToSelect: any[]) => {
+        if (selectedAccounts.size === accountsToSelect.length) {
+            setSelectedAccounts(new Set());
+        } else {
+            setSelectedAccounts(new Set(accountsToSelect.map(a => a.account_id)));
+        }
+    };
+
+    const toggleGroupCollapse = (groupId: string) => {
+        setCollapsedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) {
+                next.delete(groupId);
+            } else {
+                next.add(groupId);
+            }
+            
+            // Persist to local storage
+            if (orgId) {
+                localStorage.setItem(`collapsedGroups_${orgId}`, JSON.stringify(Array.from(next)));
+            }
+            
+            return next;
+        });
+    };
+
+    // Render helper for an individual account row to avoid deeply nested maps
+    const renderAccountRow = (row: any) => (
+        <React.Fragment key={row.account_id}>
+                <tr className={`transition-colors hover:bg-gray-50 group`}>
+                    <td className="p-5">
+                        <input 
+                            type="checkbox" 
+                            className="rounded text-brand-green focus:ring-brand-green border-gray-300 w-4 h-4 cursor-pointer"
+                            checked={selectedAccounts.has(row.account_id)}
+                            onChange={() => toggleRowSelection(row.account_id)}
+                        />
+                    </td>
+                    <td className="py-5 pr-5">
+                        <button 
+                            onClick={() => toggleExpand(row.account_id)}
+                            className="flex items-center text-left font-bold text-brand-navy hover:text-brand-green transition-colors"
+                        >
+                            {expandedAccount === row.account_id ? (
+                                <ChevronUp className="h-4 w-4 mr-2 text-gray-400" />
+                            ) : (
+                                <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
+                            )}
+                            {row.account_name}
+                            <span className="ml-2 px-2 py-0.5 bg-gray-100 text-[10px] text-gray-500 rounded-full">
+                                {row.transaction_count} txs
+                            </span>
+                        </button>
+                    </td>
+                    <td className="p-5 text-right font-black text-gray-900">
+                        K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="p-5 text-right font-medium">
+                        {row.budgeted_amount > 0 ? (
+                            <span className="text-gray-600">
+                                K{row.budgeted_amount.toLocaleString()}
+                            </span>
+                        ) : (
+                            <span className="text-gray-400 italic text-sm">Not set</span>
+                        )}
+                    </td>
+                    <td className="p-5 text-right">
+                        {row.variance !== null ? (
+                            <div className="flex flex-col items-end">
+                                <span className={`font-bold ${row.variance >= 0 ? 'text-brand-green' : 'text-red-500'}`}>
+                                    {row.variance >= 0 ? '+' : ''}K{row.variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <div className="w-24 h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
+                                    <div 
+                                        className={`h-full ${row.variancePercentage! > 100 ? 'bg-red-500' : 'bg-brand-green'}`}
+                                        style={{ width: `${Math.min(row.variancePercentage!, 100)}%` }}
+                                    ></div>
+                                </div>
+                            </div>
+                        ) : (
+                            <span className="text-gray-300">-</span>
+                        )}
+                    </td>
+                    <td className="p-5 text-right">
+                        <button
+                            onClick={() => {
+                                setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
+                                setIsBudgetModalOpen(true);
+                            }}
+                            className="p-2 text-gray-400 hover:text-brand-green hover:bg-brand-green/10 rounded-lg transition-colors inline-block"
+                            title="Set Budget"
+                        >
+                            <Settings2 className="h-4 w-4" />
+                        </button>
+                    </td>
+                </tr>
+                
+                {/* Expanded Sub-table */}
+                {expandedAccount === row.account_id && (
+                    <tr>
+                        <td colSpan={6} className="p-0 border-b border-gray-100">
+                            <div className="bg-gray-50 p-6 shadow-inner">
+                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Transaction Details</h4>
+                                
+                                {itemsLoading ? (
+                                    <div className="flex items-center text-sm text-gray-500">
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        Loading items...
+                                    </div>
+                                ) : !accountItems[row.account_id]?.length ? (
+                                    <div className="text-sm text-gray-500">No transactions found for this period.</div>
+                                ) : (
+                                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                                        <table className="w-full text-left text-sm">
+                                            <thead className="bg-gray-50 border-b border-gray-100">
+                                                <tr>
+                                                    <th className="p-3 font-semibold text-gray-600">Date</th>
+                                                    <th className="p-3 font-semibold text-gray-600">Requisition</th>
+                                                    <th className="p-3 font-semibold text-gray-600">Description</th>
+                                                    <th className="p-3 font-semibold text-gray-600 text-right">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {accountItems[row.account_id].map(item => (
+                                                    <tr key={item.id} className="hover:bg-gray-50/50">
+                                                        <td className="p-3 text-gray-500">
+                                                            {new Date(item.date).toLocaleDateString()}
+                                                        </td>
+                                                        <td className="p-3 text-brand-navy font-medium">
+                                                            {item.requisition_ref || 'N/A'}
+                                                        </td>
+                                                        <td className="p-3">
+                                                            <span className="text-gray-900 line-clamp-1">{item.description}</span>
+                                                            <span className="text-xs text-brand-green mt-0.5 block">{item.requestor_name}</span>
+                                                        </td>
+                                                        <td className="p-3 text-right font-bold text-gray-900">
+                                                            K{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
+                            </div>
+                        </td>
+                    </tr>
+                )}
+            </React.Fragment>
+    );
 
     // Calculate integrated data for display
     const displayData = useMemo(() => {
@@ -186,7 +445,7 @@ export const Reporting: React.FC = () => {
         });
 
         // Sorting
-        return filtered.sort((a, b) => {
+        const sorted = filtered.sort((a, b) => {
             let valA, valB;
             if (sortField === 'name') {
                 valA = a.account_name;
@@ -203,7 +462,38 @@ export const Reporting: React.FC = () => {
             if (valA > valB) return sortDesc ? -1 : 1;
             return 0;
         });
-    }, [expenditures, budgets, allAccounts, sortField, sortDesc, hiddenAccounts, excludeZeroSpend]);
+
+        // Apply Grouping
+        if (!isGroupingEnabled) {
+            return { isGrouped: false, data: sorted };
+        }
+
+        const groupedData: Record<string, { groupName: string; items: any[]; totals: any }> = {};
+        
+        // Initialize groups
+        groups.forEach(g => {
+            groupedData[g.id] = { groupName: g.name, items: [], totals: { total_amount: 0, budgeted_amount: 0 } };
+        });
+        groupedData['ungrouped'] = { groupName: 'Ungrouped Accounts', items: [], totals: { total_amount: 0, budgeted_amount: 0 } };
+
+        sorted.forEach(item => {
+            const groupId = accountGroups[item.account_id];
+            const targetGroup = groupId && groupedData[groupId] ? groupedData[groupId] : groupedData['ungrouped'];
+            
+            targetGroup.items.push(item);
+            targetGroup.totals.total_amount += item.total_amount;
+            targetGroup.totals.budgeted_amount += (item.budgeted_amount || 0);
+        });
+
+        // Calculate variance totals for groups
+        Object.values(groupedData).forEach(group => {
+            const variance = group.totals.budgeted_amount > 0 ? group.totals.budgeted_amount - group.totals.total_amount : null;
+            group.totals.variance = variance;
+        });
+
+        return { isGrouped: true, groups: groupedData, flatData: sorted };
+
+    }, [expenditures, budgets, allAccounts, sortField, sortDesc, hiddenAccounts, excludeZeroSpend, isGroupingEnabled, groups, accountGroups]);
 
     const toggleAccountVisibility = (accountId: string) => {
         setHiddenAccounts(prev => {
@@ -329,6 +619,58 @@ export const Reporting: React.FC = () => {
 
                                             <div className="h-px bg-gray-100"></div>
 
+                                            {/* Account Grouping settings */}
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Account Grouping</p>
+                                                
+                                                <label className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer group mb-2">
+                                                    <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
+                                                        <FolderOutput className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
+                                                        Group by Custom Groups
+                                                    </div>
+                                                    <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${isGroupingEnabled ? 'bg-brand-green' : 'bg-gray-200'}`}>
+                                                        <div className={`w-3 h-3 bg-white rounded-full absolute transition-transform ${isGroupingEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+                                                    </div>
+                                                    <input type="checkbox" className="hidden" checked={isGroupingEnabled} onChange={toggleGrouping} />
+                                                </label>
+
+                                                <div className="flex items-center gap-2 mb-2 px-2">
+                                                    <input 
+                                                        type="text" 
+                                                        value={newGroupName}
+                                                        onChange={(e) => setNewGroupName(e.target.value)}
+                                                        placeholder="New Group Name"
+                                                        className="flex-1 text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-brand-green focus:ring-1 focus:ring-brand-green"
+                                                        onKeyDown={(e) => { if(e.key === 'Enter') handleCreateGroup() }}
+                                                    />
+                                                    <button 
+                                                        onClick={handleCreateGroup}
+                                                        disabled={!newGroupName.trim()}
+                                                        className="p-1.5 bg-brand-green text-white rounded-lg hover:bg-brand-navy transition-colors disabled:opacity-50"
+                                                    >
+                                                        <Plus className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+
+                                                {groups.length > 0 && (
+                                                    <div className="max-h-32 overflow-y-auto pr-1 space-y-1 custom-scrollbar px-2 mt-2 border-t border-gray-100 pt-2">
+                                                        {groups.map(group => (
+                                                            <div key={group.id} className="flex items-center justify-between text-sm py-1 group/item">
+                                                                <span className="text-gray-600 truncate mr-2">{group.name}</span>
+                                                                <button 
+                                                                    onClick={() => handleDeleteGroup(group.id)}
+                                                                    className="text-red-400 hover:text-red-600 opacity-0 group-hover/item:opacity-100 transition-opacity"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="h-px bg-gray-100"></div>
+
                                             {/* Account Visibility */}
                                             <div>
                                                 <div className="flex items-center justify-between mb-2">
@@ -375,7 +717,7 @@ export const Reporting: React.FC = () => {
                         <div>
                             <p className="text-sm font-bold text-gray-500 mb-1">Total {mode === 'EXPENSE' ? 'Expenses' : 'Outflows'}</p>
                             <h3 className="text-3xl font-black text-brand-navy">
-                                K{displayData.reduce((acc, curr) => acc + curr.total_amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                K{(displayData.isGrouped ? displayData.flatData : displayData.data)?.reduce((acc: number, curr: any) => acc + curr.total_amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </h3>
                         </div>
                         <div className="h-12 w-12 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center">
@@ -387,7 +729,7 @@ export const Reporting: React.FC = () => {
                         <div>
                             <p className="text-sm font-bold text-gray-500 mb-1">Total Budget Allocated</p>
                             <h3 className="text-3xl font-black text-brand-navy">
-                                K{displayData.reduce((acc, curr) => acc + (curr.budgeted_amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                K{(displayData.isGrouped ? displayData.flatData : displayData.data)?.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                             </h3>
                         </div>
                         <div className="h-12 w-12 rounded-2xl bg-brand-green/10 text-brand-green flex items-center justify-center">
@@ -400,16 +742,20 @@ export const Reporting: React.FC = () => {
                             <p className="text-sm font-bold text-gray-500 mb-1">Overall Variance</p>
                             <h3 className={`text-3xl font-black ${
                                 (() => {
-                                    const totalBudget = displayData.reduce((acc, curr) => acc + (curr.budgeted_amount || 0), 0);
-                                    const totalExpense = displayData.reduce((acc, curr) => acc + curr.total_amount, 0);
+                                    const items = displayData.isGrouped ? displayData.flatData : displayData.data;
+                                    if (!items) return 'text-brand-navy';
+                                    const totalBudget = items.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0);
+                                    const totalExpense = items.reduce((acc: number, curr: any) => acc + curr.total_amount, 0);
                                     const variance = totalBudget - totalExpense;
                                     if (totalBudget === 0) return 'text-brand-navy';
                                     return variance >= 0 ? 'text-brand-green' : 'text-red-500';
                                 })()
                             }`}>
                                 {(() => {
-                                    const totalBudget = displayData.reduce((acc, curr) => acc + (curr.budgeted_amount || 0), 0);
-                                    const totalExpense = displayData.reduce((acc, curr) => acc + curr.total_amount, 0);
+                                    const items = displayData.isGrouped ? displayData.flatData : displayData.data;
+                                    if (!items) return 'N/A';
+                                    const totalBudget = items.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0);
+                                    const totalExpense = items.reduce((acc: number, curr: any) => acc + curr.total_amount, 0);
                                     if (totalBudget === 0) return 'N/A';
                                     const variance = totalBudget - totalExpense;
                                     return `${variance >= 0 ? '+' : ''}K${variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -419,13 +765,24 @@ export const Reporting: React.FC = () => {
                     </div>
                 </div>
 
+
+
                 {/* Data Table */}
                 <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
                                 <tr className="border-b border-gray-100 bg-gray-50/50">
-                                    <th className="p-5 font-bold text-xs uppercase tracking-widest text-gray-500 cursor-pointer hover:bg-gray-100 transition-colors"
+                                    <th className="p-5 w-12">
+                                        <input 
+                                            type="checkbox" 
+                                            className="rounded text-brand-green focus:ring-brand-green border-gray-300 w-4 h-4 cursor-pointer"
+                                            checked={selectedAccounts.size > 0 && selectedAccounts.size === (displayData.isGrouped ? displayData.flatData : displayData.data)?.length}
+                                            onChange={() => toggleAllSelections((displayData.isGrouped ? displayData.flatData : displayData.data) || [])}
+                                            disabled={loading || (displayData.isGrouped ? (!displayData.flatData || displayData.flatData.length === 0) : (!displayData.data || displayData.data.length === 0))}
+                                        />
+                                    </th>
+                                    <th className="py-5 pr-5 font-bold text-xs uppercase tracking-widest text-gray-500 cursor-pointer hover:bg-gray-100 transition-colors"
                                         onClick={() => { setSortField('name'); setSortDesc(!sortDesc); }}
                                     >
                                         Account Name
@@ -449,140 +806,122 @@ export const Reporting: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
-                                {loading && displayData.length === 0 ? (
+                                {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                                     <tr>
-                                        <td colSpan={5} className="p-8 text-center text-gray-500">
+                                        <td colSpan={6} className="p-8 text-center text-gray-500">
                                             <Loader2 className="h-8 w-8 animate-spin text-brand-green mx-auto mb-4" />
                                             Loading expenditure data...
                                         </td>
                                     </tr>
-                                ) : displayData.length === 0 ? (
+                                ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                                     <tr>
-                                        <td colSpan={5} className="p-8 text-center text-gray-500 font-medium">
+                                        <td colSpan={6} className="p-8 text-center text-gray-500 font-medium">
                                             No expenditures found for this period.
                                         </td>
                                     </tr>
                                 ) : (
-                                    displayData.map((row) => (
-                                        <React.Fragment key={row.account_id}>
-                                            <tr className={`transition-colors hover:bg-gray-50 group`}>
-                                                <td className="p-5">
-                                                    <button 
-                                                        onClick={() => toggleExpand(row.account_id)}
-                                                        className="flex items-center text-left font-bold text-brand-navy hover:text-brand-green transition-colors"
+                                    <>
+                                        {/* Rendering Grouped View */}
+                                        {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => (
+                                            groupData.items.length > 0 && (
+                                                <React.Fragment key={`group-${groupId}`}>
+                                                    {/* Group Header */}
+                                                    <tr 
+                                                        className="bg-brand-navy/5 border-y-2 border-brand-navy/10 cursor-pointer hover:bg-brand-navy/10 transition-colors"
+                                                        onClick={() => toggleGroupCollapse(groupId)}
                                                     >
-                                                        {expandedAccount === row.account_id ? (
-                                                            <ChevronUp className="h-4 w-4 mr-2 text-gray-400" />
-                                                        ) : (
-                                                            <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
-                                                        )}
-                                                        {row.account_name}
-                                                        <span className="ml-2 px-2 py-0.5 bg-gray-100 text-[10px] text-gray-500 rounded-full">
-                                                            {row.transaction_count} txs
-                                                        </span>
-                                                    </button>
-                                                </td>
-                                                <td className="p-5 text-right font-black text-gray-900">
-                                                    K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </td>
-                                                <td className="p-5 text-right font-medium">
-                                                    {row.budgeted_amount > 0 ? (
-                                                        <span className="text-gray-600">
-                                                            K{row.budgeted_amount.toLocaleString()}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-gray-400 italic text-sm">Not set</span>
-                                                    )}
-                                                </td>
-                                                <td className="p-5 text-right">
-                                                    {row.variance !== null ? (
-                                                        <div className="flex flex-col items-end">
-                                                            <span className={`font-bold ${row.variance >= 0 ? 'text-brand-green' : 'text-red-500'}`}>
-                                                                {row.variance >= 0 ? '+' : ''}K{row.variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                            </span>
-                                                            <div className="w-24 h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                                                                <div 
-                                                                    className={`h-full ${row.variancePercentage! > 100 ? 'bg-red-500' : 'bg-brand-green'}`}
-                                                                    style={{ width: `${Math.min(row.variancePercentage!, 100)}%` }}
-                                                                ></div>
+                                                        <td colSpan={2} className="p-4 font-bold text-brand-navy">
+                                                            <div className="flex items-center gap-2">
+                                                                {collapsedGroups.has(groupId) ? (
+                                                                    <ChevronRight className="h-4 w-4 text-gray-400" />
+                                                                ) : (
+                                                                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                                                                )}
+                                                                <FolderOutput className="h-4 w-4 text-brand-green" />
+                                                                {groupData.groupName}
+                                                                <span className="text-xs font-normal text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200">
+                                                                    {groupData.items.length}
+                                                                </span>
                                                             </div>
-                                                        </div>
-                                                    ) : (
-                                                        <span className="text-gray-300">-</span>
-                                                    )}
-                                                </td>
-                                                <td className="p-5 text-right">
-                                                    <button
-                                                        onClick={() => {
-                                                            setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
-                                                            setIsBudgetModalOpen(true);
-                                                        }}
-                                                        className="p-2 text-gray-400 hover:text-brand-green hover:bg-brand-green/10 rounded-lg transition-colors inline-block"
-                                                        title="Set Budget"
-                                                    >
-                                                        <Settings2 className="h-4 w-4" />
-                                                    </button>
-                                                </td>
-                                            </tr>
-                                            
-                                            {/* Expanded Sub-table */}
-                                            {expandedAccount === row.account_id && (
-                                                <tr>
-                                                    <td colSpan={5} className="p-0 border-b border-gray-100">
-                                                        <div className="bg-gray-50 p-6 shadow-inner">
-                                                            <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Transaction Details</h4>
-                                                            
-                                                            {itemsLoading ? (
-                                                                <div className="flex items-center text-sm text-gray-500">
-                                                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                                                    Loading items...
-                                                                </div>
-                                                            ) : !accountItems[row.account_id]?.length ? (
-                                                                <div className="text-sm text-gray-500">No transactions found for this period.</div>
-                                                            ) : (
-                                                                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                                                                    <table className="w-full text-left text-sm">
-                                                                        <thead className="bg-gray-50 border-b border-gray-100">
-                                                                            <tr>
-                                                                                <th className="p-3 font-semibold text-gray-600">Date</th>
-                                                                                <th className="p-3 font-semibold text-gray-600">Requisition</th>
-                                                                                <th className="p-3 font-semibold text-gray-600">Description</th>
-                                                                                <th className="p-3 font-semibold text-gray-600 text-right">Amount</th>
-                                                                            </tr>
-                                                                        </thead>
-                                                                        <tbody className="divide-y divide-gray-100">
-                                                                            {accountItems[row.account_id].map(item => (
-                                                                                <tr key={item.id} className="hover:bg-gray-50/50">
-                                                                                    <td className="p-3 text-gray-500">
-                                                                                        {new Date(item.date).toLocaleDateString()}
-                                                                                    </td>
-                                                                                    <td className="p-3 text-brand-navy font-medium">
-                                                                                        {item.requisition_ref || 'N/A'}
-                                                                                    </td>
-                                                                                    <td className="p-3">
-                                                                                        <span className="text-gray-900 line-clamp-1">{item.description}</span>
-                                                                                        <span className="text-xs text-brand-green mt-0.5 block">{item.requestor_name}</span>
-                                                                                    </td>
-                                                                                    <td className="p-3 text-right font-bold text-gray-900">
-                                                                                        K{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                                    </td>
-                                                                                </tr>
-                                                                            ))}
-                                                                        </tbody>
-                                                                    </table>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </React.Fragment>
-                                    ))
+                                                        </td>
+                                                        <td className="p-4 text-right font-black text-gray-900">
+                                                            K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </td>
+                                                        <td className="p-4 text-right font-medium text-gray-600">
+                                                            {groupData.totals.budgeted_amount > 0 ? `K${groupData.totals.budgeted_amount.toLocaleString()}` : '-'}
+                                                        </td>
+                                                        <td className="p-4 text-right">
+                                                            {groupData.totals.variance !== null ? (
+                                                                <span className={`font-bold ${groupData.totals.variance >= 0 ? 'text-brand-green' : 'text-red-500'}`}>
+                                                                    {groupData.totals.variance >= 0 ? '+' : ''}K{groupData.totals.variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </span>
+                                                            ) : '-'}
+                                                        </td>
+                                                        <td></td>
+                                                    </tr>
+
+                                                    {/* Group Items */}
+                                                    {!collapsedGroups.has(groupId) && groupData.items.map((row: any) => renderAccountRow(row))}
+                                                </React.Fragment>
+                                            )
+                                        ))}
+
+                                        {/* Rendering Flat View */}
+                                        {!displayData.isGrouped && displayData.data && displayData.data.map((row: any) => renderAccountRow(row))}
+                                    </>
                                 )}
                             </tbody>
                         </table>
                     </div>
                 </div>
+
+                {/* Bulk Actions Floating Toolbar */}
+                {selectedAccounts.size > 0 && (
+                    <div className="sticky bottom-6 z-40 mt-6 animate-in fade-in slide-in-from-bottom-8 duration-300">
+                        <div className="bg-brand-navy text-white px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_8px_30px_rgba(0,0,0,0.2)] rounded-2xl border border-white/10 backdrop-blur-xl bg-blend-overlay">
+                            <div className="flex items-center gap-4">
+                                <span className="font-bold text-white text-sm flex items-center gap-2">
+                                    <FolderOutput className="h-4 w-4" />
+                                    {selectedAccounts.size} account{selectedAccounts.size > 1 ? 's' : ''} selected
+                                </span>
+                                <span className="text-sm font-medium text-gray-300 hidden sm:inline ml-4 border-l border-white/20 pl-4">Choose action:</span>
+                            </div>
+                            <div className="flex items-center gap-3 w-full sm:w-auto">
+                                <button
+                                    onClick={handleBulkHide}
+                                    className="bg-white/10 border border-white/20 text-white font-bold text-sm rounded-lg px-4 py-2.5 hover:bg-white/20 transition-colors flex items-center gap-2 flex-1 sm:flex-none"
+                                >
+                                    <EyeOff className="w-4 h-4" />
+                                    Hide Selected
+                                </button>
+                                <select
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val !== 'none-selected') {
+                                            handleAssignToGroup(val === 'remove' ? null : val);
+                                            e.target.value = 'none-selected'; // reset drop-down immediately
+                                        }
+                                    }}
+                                    className="flex-1 sm:flex-none bg-white/10 border border-white/20 text-white font-bold text-sm rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-green appearance-none cursor-pointer outline-none hover:bg-white/20 transition-colors [&>option]:text-gray-900 [&>option]:bg-white"
+                                    defaultValue="none-selected"
+                                >
+                                    <option value="none-selected" disabled>Assign to group...</option>
+                                    <option value="remove" className="!text-red-500 font-bold">✖ Remove from Group</option>
+                                    <option disabled>──────────</option>
+                                    {groups.map(g => (
+                                        <option key={g.id} value={g.id}>{g.name}</option>
+                                    ))}
+                                </select>
+                                <button 
+                                    onClick={() => setSelectedAccounts(new Set())}
+                                    className="text-sm font-bold text-gray-400 hover:text-white transition-colors px-4 py-2.5 rounded-lg hover:bg-white/10 whitespace-nowrap"
+                                >
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
             </div>
 
@@ -604,4 +943,6 @@ export const Reporting: React.FC = () => {
             )}
         </Layout>
     );
-};
+
+
+}

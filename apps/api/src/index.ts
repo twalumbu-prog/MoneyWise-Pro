@@ -25,6 +25,8 @@ import integrationRoutes from './routes/integrations.routes';
 import userRoutes from './routes/user.routes';
 import aiRoutes from './routes/ai.routes';
 import organizationRoutes from './routes/organization.routes';
+import budgetRoutes from './routes/budget.routes';
+import reportRoutes from './routes/report.routes';
 
 dotenv.config();
 
@@ -148,6 +150,24 @@ const runMigration = async () => {
             ALTER TABLE cashbook_entries 
             ADD COLUMN IF NOT EXISTS voucher_id UUID REFERENCES vouchers(id);
         `);
+        
+        console.log('[Migration] Checking for "budgets" table...');
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.budgets (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                organization_id UUID NOT NULL REFERENCES public.organizations(id),
+                qb_account_id VARCHAR(100) NOT NULL,
+                qb_account_name TEXT NOT NULL,
+                amount DECIMAL(15, 2) NOT NULL DEFAULT 0,
+                period_type VARCHAR(20) NOT NULL CHECK (period_type IN ('WEEKLY', 'MONTHLY', 'QUARTERLY', 'YEARLY')),
+                start_date DATE NOT NULL,
+                end_date DATE NOT NULL,
+                created_by UUID REFERENCES public.users(id),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                UNIQUE(organization_id, qb_account_id, period_type, start_date)
+            );
+        `);
         console.log('[Migration] Schema update successful.');
 
         // Add QB classification columns to line_items
@@ -208,6 +228,8 @@ app.use('/integrations', integrationRoutes);
 app.use('/users', userRoutes);
 app.use('/ai', aiRoutes);
 app.use('/organizations', organizationRoutes);
+app.use('/budgets', budgetRoutes);
+app.use('/reports', reportRoutes);
 
 app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');

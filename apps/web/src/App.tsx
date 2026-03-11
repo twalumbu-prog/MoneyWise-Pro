@@ -11,6 +11,7 @@ import { RequisitionDetail } from './pages/RequisitionDetail';
 import { Vouchers } from './pages/Vouchers';
 import { VoucherDetail } from './pages/VoucherDetail';
 import CashLedger from './pages/CashLedger';
+import { Reporting } from './pages/Reporting';
 import { Settings } from './pages/Settings';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsOfService } from './pages/TermsOfService';
@@ -153,6 +154,14 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <CashLedger />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/reporting"
+                        element={
+                            <ProtectedRoute>
+                                <Reporting />
                             </ProtectedRoute>
                         }
                     />

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Home, FileText, CheckCircle, FileSpreadsheet, Settings, LogOut, Wallet, Menu, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Home, FileText, CheckCircle, FileSpreadsheet, Settings, LogOut, Wallet, Menu, X, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
 
 interface LayoutProps {
     children: React.ReactNode;
@@ -79,6 +79,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                                 { path: '/vouchers', icon: FileSpreadsheet, label: 'Vouchers', count: notificationCounts?.vouchers },
                                 { path: '/disbursements', icon: FileSpreadsheet, label: 'Disbursements', count: notificationCounts?.disbursements },
                                 { path: '/cashbook', icon: Wallet, label: 'Cash Ledger' },
+                                { path: '/reporting', icon: BarChart3, label: 'Reporting' },
                                 { path: '/settings', icon: Settings, label: 'Settings', count: notificationCounts?.settings },
                             ].map((item) => (
                                 <Link
@@ -161,6 +162,7 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                             { path: '/vouchers', icon: FileSpreadsheet, label: 'Vouchers', count: notificationCounts?.vouchers },
                             { path: '/disbursements', icon: FileSpreadsheet, label: 'Disbursements', count: notificationCounts?.disbursements },
                             { path: '/cashbook', icon: Wallet, label: 'Cash Ledger' },
+                            { path: '/reporting', icon: BarChart3, label: 'Reporting' },
                             { path: '/settings', icon: Settings, label: 'Settings', count: notificationCounts?.settings },
                         ].map((item) => (
                             <Link
