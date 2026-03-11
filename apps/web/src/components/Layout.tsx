@@ -25,9 +25,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
             {!isRequestor && (
                 <div className="md:hidden bg-white shadow-sm p-4 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
                     <div className="flex items-center">
-                        <div className="h-8 w-8 bg-brand-navy rounded-lg flex items-center justify-center mr-2">
-                            <Wallet className="h-5 w-5 text-brand-green" />
-                        </div>
                         <div>
                             <h1 className="text-lg font-bold text-brand-navy leading-tight">MoneyWise</h1>
                             <p className="text-[10px] text-gray-500 font-medium tracking-wide">
@@ -62,9 +59,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                     <div className="flex flex-col h-full">
                         <div className="p-6 border-b border-gray-50 flex justify-between items-center">
                             <div className="flex items-center">
-                                <div className="h-8 w-8 bg-brand-navy rounded-lg flex items-center justify-center mr-3">
-                                    <Wallet className="h-5 w-5 text-brand-green" />
-                                </div>
                                 <div>
                                     <h1 className="text-xl font-bold text-brand-navy leading-tight">MoneyWise</h1>
                                     <p className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">
@@ -136,9 +130,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 sticky top-0 h-screen transition-all duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-72'}`}>
                     <div className={`p-4 ${isSidebarCollapsed ? 'items-center justify-center' : 'p-8'} transition-all`}>
                         <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
-                            <div className="h-10 w-10 bg-brand-navy rounded-xl flex items-center justify-center shadow-lg shadow-brand-navy/20 flex-shrink-0">
-                                <Wallet className="h-6 w-6 text-brand-green" />
-                            </div>
                             {!isSidebarCollapsed && (
                                 <div className="overflow-hidden whitespace-nowrap">
                                     <h1 className="text-xl font-bold text-brand-navy leading-tight">MoneyWise</h1>
@@ -235,9 +226,6 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 {isRequestor && (
                     <header className="bg-white shadow-sm p-4 flex items-center justify-between z-20 border-b border-gray-100 shrink-0 px-6">
                         <div className="flex items-center">
-                            <div className="h-8 w-8 bg-brand-navy rounded-lg flex items-center justify-center mr-3 shadow-sm">
-                                <Wallet className="h-5 w-5 text-brand-green" />
-                            </div>
                             <div>
                                 <h1 className="text-lg font-bold text-brand-navy leading-tight">MoneyWise</h1>
                                 <p className="text-[10px] text-gray-500 font-bold tracking-widest uppercase">
