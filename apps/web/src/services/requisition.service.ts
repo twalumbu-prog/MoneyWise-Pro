@@ -257,5 +257,11 @@ export const requisitionService = {
         if (!response.ok) {
             console.error('Failed to mark requisition as read');
         }
+    },
+
+    getFileUrl(path: string | null) {
+        if (!path) return null;
+        const { data } = supabase.storage.from('receipts').getPublicUrl(path);
+        return data.publicUrl;
     }
 };

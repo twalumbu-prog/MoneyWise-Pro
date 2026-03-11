@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, Printer, FileText, Eye } from 'lucide-react';
 import { voucherService, Voucher } from '../services/voucher.service';
+import { requisitionService } from '../services/requisition.service';
 
 export const VoucherDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -169,16 +170,70 @@ export const VoucherDetail: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="px-4 py-5 sm:px-6 border-t border-gray-200">
-                        <div className="grid grid-cols-2 gap-8 mt-8">
-                            <div className="border-t border-black pt-2">
-                                <p className="text-sm font-medium text-gray-500">Prepared By</p>
-                            </div>
-                            <div className="border-t border-black pt-2">
-                                <p className="text-sm font-medium text-gray-500">Approved By</p>
+                    {/* Supporting Documents Section */}
+                    {(voucher.requisitions?.line_items?.some((i: any) => i.receipt_url) || (voucher.requisitions as any)?.disbursements?.[0]?.transfer_proof_url) && (
+                        <div className="px-4 py-5 sm:px-6 border-t border-gray-200">
+                            <h4 className="text-sm font-bold text-brand-navy mb-4 flex items-center">
+                                <FileText className="h-4 w-4 mr-2" />
+                                Supporting Documents
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                                {/* Proof of Transfer */}
+                                {(voucher.requisitions as any)?.disbursements?.[0]?.transfer_proof_url && (
+                                    <div className="border rounded-lg p-3 bg-gray-50 flex flex-col">
+                                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Proof of Transfer</p>
+                                        <div className="flex-1 flex items-center justify-center p-2 mb-2 bg-white rounded border">
+                                            {(voucher.requisitions as any).disbursements[0].transfer_proof_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                <img 
+                                                    src={requisitionService.getFileUrl((voucher.requisitions as any).disbursements[0].transfer_proof_url)!} 
+                                                    alt="Proof" 
+                                                    className="max-h-24 object-contain cursor-pointer"
+                                                    onClick={() => window.open(requisitionService.getFileUrl((voucher.requisitions as any).disbursements[0].transfer_proof_url)!, '_blank')}
+                                                />
+                                            ) : (
+                                                <FileText className="h-8 w-8 text-gray-400" />
+                                            )}
+                                        </div>
+                                        <a 
+                                            href={requisitionService.getFileUrl((voucher.requisitions as any).disbursements[0].transfer_proof_url)!} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-brand-green font-bold hover:underline flex items-center justify-center"
+                                        >
+                                            <Eye className="h-3 w-3 mr-1" /> View Full Document
+                                        </a>
+                                    </div>
+                                )}
+
+                                {/* Line Item Receipts */}
+                                {voucher.requisitions?.line_items?.filter((i: any) => i.receipt_url).map((item: any) => (
+                                    <div key={item.id} className="border rounded-lg p-3 bg-gray-50 flex flex-col">
+                                        <p className="text-xs font-bold text-gray-500 uppercase mb-2">Receipt: {item.description.slice(0, 20)}...</p>
+                                        <div className="flex-1 flex items-center justify-center p-2 mb-2 bg-white rounded border">
+                                            {item.receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) ? (
+                                                <img 
+                                                    src={requisitionService.getFileUrl(item.receipt_url)!} 
+                                                    alt="Receipt" 
+                                                    className="max-h-24 object-contain cursor-pointer"
+                                                    onClick={() => window.open(requisitionService.getFileUrl(item.receipt_url)!, '_blank')}
+                                                />
+                                            ) : (
+                                                <FileText className="h-8 w-8 text-gray-400" />
+                                            )}
+                                        </div>
+                                        <a 
+                                            href={requisitionService.getFileUrl(item.receipt_url)!} 
+                                            target="_blank" 
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-brand-green font-bold hover:underline flex items-center justify-center"
+                                        >
+                                            <Eye className="h-3 w-3 mr-1" /> View Receipt
+                                        </a>
+                                    </div>
+                                ))}
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </Layout>

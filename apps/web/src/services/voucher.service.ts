@@ -14,6 +14,8 @@ export interface Voucher {
     created_at: string;
     requisitions?: {
         description: string;
+        line_items?: any[];
+        disbursements?: any[];
     };
     voucher_lines?: VoucherLine[];
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw, X, Eye } from 'lucide-react';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { voucherService } from '../services/voucher.service';
 import { useAuth } from '../context/AuthContext';
@@ -389,9 +389,24 @@ export const RequisitionDetail: React.FC = () => {
                                                                     <td className="px-4 py-2 text-right">
                                                                         <div className="flex flex-col items-end gap-1">
                                                                             {item.receipt_url ? (
-                                                                                <span className="text-xs text-brand-green flex items-center font-medium">
-                                                                                    <CheckCircle className="h-3 w-3 mr-1" /> Uploaded
-                                                                                </span>
+                                                                                <div className="flex flex-col items-end gap-1">
+                                                                                    <a
+                                                                                        href={requisitionService.getFileUrl(item.receipt_url)!}
+                                                                                        target="_blank"
+                                                                                        rel="noopener noreferrer"
+                                                                                        className="text-xs text-brand-green flex items-center font-bold hover:underline"
+                                                                                    >
+                                                                                        <Eye className="h-3 w-3 mr-1" /> View Receipt
+                                                                                    </a>
+                                                                                    {item.receipt_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) && (
+                                                                                        <img
+                                                                                            src={requisitionService.getFileUrl(item.receipt_url)!}
+                                                                                            alt="Receipt"
+                                                                                            className="h-10 w-10 object-cover rounded border border-gray-100 mt-1 cursor-pointer hover:scale-110 transition-transform"
+                                                                                            onClick={() => window.open(requisitionService.getFileUrl(item.receipt_url)!, '_blank')}
+                                                                                        />
+                                                                                    )}
+                                                                                </div>
                                                                             ) : (
                                                                                 <input
                                                                                     type="file"
@@ -448,6 +463,38 @@ export const RequisitionDetail: React.FC = () => {
                                                     </>
                                                 )}
                                             </div>
+                                        </div>
+                                    </dd>
+                                </div>
+                            )}
+
+                            {/* Supporting Documents / Proof of Transfer */}
+                            {((requisition as any).disbursements?.[0]?.transfer_proof_url) && (
+                                <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 bg-brand-navy/5">
+                                    <dt className="text-sm font-medium text-brand-navy flex items-center">
+                                        <FileText className="h-4 w-4 mr-2" />
+                                        Proof of Transfer
+                                    </dt>
+                                    <dd className="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
+                                        <div className="flex flex-col space-y-2">
+                                            <a
+                                                href={requisitionService.getFileUrl((requisition as any).disbursements[0].transfer_proof_url)!}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="text-brand-green font-bold hover:underline flex items-center"
+                                            >
+                                                <Eye className="h-4 w-4 mr-1" /> View Full Document
+                                            </a>
+                                            {(requisition as any).disbursements[0].transfer_proof_url.match(/\.(jpg|jpeg|png|gif|webp)$/i) && (
+                                                <div className="mt-2 border rounded-xl overflow-hidden max-w-sm shadow-sm">
+                                                    <img
+                                                        src={requisitionService.getFileUrl((requisition as any).disbursements[0].transfer_proof_url)!}
+                                                        alt="Proof of Transfer"
+                                                        className="w-full h-auto cursor-pointer hover:opacity-90 transition-opacity"
+                                                        onClick={() => window.open(requisitionService.getFileUrl((requisition as any).disbursements[0].transfer_proof_url)!, '_blank')}
+                                                    />
+                                                </div>
+                                            )}
                                         </div>
                                     </dd>
                                 </div>

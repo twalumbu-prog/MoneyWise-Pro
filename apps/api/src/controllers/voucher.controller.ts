@@ -22,7 +22,7 @@ export const getVoucherById = async (req: any, res: any): Promise<any> => {
         const { id } = req.params;
         const { data, error } = await supabase
             .from('vouchers')
-            .select('*, voucher_lines(*, accounts(code, name)), requisitions(*)')
+            .select('*, voucher_lines(*, accounts(code, name)), requisitions(*, line_items(*), disbursements(*))')
             .eq('id', id)
             .single();
 
