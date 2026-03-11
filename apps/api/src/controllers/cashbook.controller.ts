@@ -230,6 +230,7 @@ export const closeBook = async (req: any, res: any): Promise<any> => {
 export const classifyBulk = async (req: any, res: any): Promise<any> => {
     try {
         const { requisitionIds } = req.body;
+        const organizationId = (req as any).user.organization_id;
 
         // 1. Fetch unclassified items
         let query = supabase
@@ -238,9 +239,10 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
                 id, 
                 description, 
                 estimated_amount, 
-                requisition:requisitions!inner(id, status, type, department)
+                requisition:requisitions!inner(id, status, type, department, organization_id)
             `)
-            .is('account_id', null);
+            .is('account_id', null)
+            .eq('requisition.organization_id', organizationId);
 
         if (requisitionIds && requisitionIds.length > 0) {
             query = query.in('requisition_id', requisitionIds);
@@ -258,7 +260,8 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
         const { data: accounts } = await supabase
             .from('accounts')
             .select('*')
-            .eq('is_active', true);
+            .eq('is_active', true)
+            .eq('organization_id', organizationId);
 
         const accountByCode = new Map(accounts?.map((a: any) => [String(a.code || a.AcctNum || '').toLowerCase(), a]));
 

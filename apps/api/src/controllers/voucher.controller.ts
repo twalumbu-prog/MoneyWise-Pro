@@ -4,9 +4,16 @@ import { supabase } from '../lib/supabase';
 
 export const getVouchers = async (req: any, res: any): Promise<any> => {
     try {
+        const organization_id = (req as any).user.organization_id;
+
+        if (!organization_id) {
+            return res.status(400).json({ error: 'Organization context missing' });
+        }
+
         const { data, error } = await supabase
             .from('vouchers')
             .select('*, requisitions(description)')
+            .eq('organization_id', organization_id)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -20,10 +27,13 @@ export const getVouchers = async (req: any, res: any): Promise<any> => {
 export const getVoucherById = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
+        const organization_id = (req as any).user.organization_id;
+
         const { data, error } = await supabase
             .from('vouchers')
             .select('*, voucher_lines(*, accounts(code, name)), requisitions(*, line_items(*), disbursements(*))')
             .eq('id', id)
+            .eq('organization_id', organization_id)
             .single();
 
         if (error) {
@@ -42,12 +52,14 @@ export const createVoucherFromRequisition = async (req: any, res: any): Promise<
     try {
         const { requisition_id } = req.body;
         const user_id = (req as any).user.id;
+        const organization_id = (req as any).user.organization_id;
 
         // 1. Fetch Requisition and its items
         const { data: requisition, error: reqError } = await supabase
             .from('requisitions')
             .select('*, line_items(*)')
             .eq('id', requisition_id)
+            .eq('organization_id', organization_id)
             .single();
 
         if (reqError || !requisition) {
@@ -77,6 +89,7 @@ export const createVoucherFromRequisition = async (req: any, res: any): Promise<
             .from('vouchers')
             .insert({
                 requisition_id,
+                organization_id,
                 created_by: user_id,
                 reference_number: `VOU-${Date.now()}`,
                 total_debit: totalAmount,
@@ -135,12 +148,14 @@ export const createVoucherFromRequisition = async (req: any, res: any): Promise<
 export const postVoucher = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
+        const organization_id = (req as any).user.organization_id;
 
         // 1. Fetch Voucher
         const { data: voucher, error: vError } = await supabase
             .from('vouchers')
             .select('*')
             .eq('id', id)
+            .eq('organization_id', organization_id)
             .single();
 
         if (vError || !voucher) {

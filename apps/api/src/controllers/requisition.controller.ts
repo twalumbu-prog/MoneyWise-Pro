@@ -183,12 +183,14 @@ export const getRequisitions = async (req: any, res: any): Promise<any> => {
 export const getRequisitionById = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
+        const organization_id = (req as any).user.organization_id;
 
         // Fetch requisition with line items and account details
         const { data, error } = await supabase
             .from('requisitions')
             .select('*, line_items(*, accounts(code, name)), disbursements(*)')
             .eq('id', id)
+            .eq('organization_id', organization_id)
             .single();
 
         if (error) {
@@ -319,6 +321,7 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
                 updated_at: new Date().toISOString()
             })
             .eq('id', id)
+            .eq('organization_id', (req as any).user.organization_id)
             .select()
             .single();
 
@@ -599,6 +602,7 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         const { id } = req.params;
         const { confirmed_denominations, confirmed_change_amount } = req.body;
         const cashier_id = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
 
         // 1. Verify Role
         const userRole = (req as any).user.role;
@@ -662,6 +666,7 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
             .from('vouchers')
             .insert({
                 requisition_id: id,
+                organization_id: organizationId,
                 created_by: cashier_id,
                 reference_number: voucherRef,
                 total_credit: actualExpenditure,
@@ -679,7 +684,6 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
 
         // 5. Finalize Ledger
         // We assume actualExpenditure is already set by trackExpenses.
-        const organizationId = (req as any).user.organization_id;
         if (!organizationId) throw new Error("Missing organization context");
 
         await cashbookService.finalizeDisbursement(
