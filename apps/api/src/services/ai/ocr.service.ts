@@ -71,7 +71,10 @@ export const ocrService = {
             // Determine if this is a storage path or full URL
             const fullUrl = imageUrl.startsWith('http') ? imageUrl : imageUrl;
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+            // Updated model to gemini-2.5-flash which is available for this API key
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+            
+            console.log(`[OCR Service] Starting analysis for image: ${fullUrl.split('?')[0]}`);
 
             const payload = {
                 contents: [{
@@ -100,14 +103,27 @@ export const ocrService = {
 
             if (!response.ok) {
                 const errBody = await response.text();
-                console.error('[OCR Service] Gemini Vision API Error:', errBody);
-                throw new Error(`Gemini API Status ${response.status}`);
+                console.error('[OCR Service] Gemini Vision API Error:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    body: errBody
+                });
+                throw new Error(`Gemini API Status ${response.status}: ${errBody}`);
             }
 
             const data = await response.json();
+            
+            if (!data.candidates || data.candidates.length === 0) {
+                console.error('[OCR Service] No candidates in Gemini response:', JSON.stringify(data));
+                throw new Error('No analysis candidates returned from Gemini');
+            }
+
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
 
-            if (!text) throw new Error('Empty response from Gemini Vision');
+            if (!text) {
+                console.error('[OCR Service] No text in first candidate parts:', JSON.stringify(data.candidates[0]));
+                throw new Error('Empty response text from Gemini Vision');
+            }
 
             const jsonText = text.replace(/```json\n?|\n?```/g, '').trim();
             const parsed: ReceiptOcrData = JSON.parse(jsonText);
@@ -116,8 +132,11 @@ export const ocrService = {
             return parsed;
 
         } catch (error: any) {
-            console.error('[OCR Service] Failed to analyze receipt:', error.message);
-            return { error: error.message, confidence: 0 };
+            console.error('[OCR Service] Critical failure during analysis:', {
+                message: error.message,
+                stack: error.stack
+            });
+            return { error: `Analysis failed: ${error.message}`, confidence: 0 };
         }
     },
 
