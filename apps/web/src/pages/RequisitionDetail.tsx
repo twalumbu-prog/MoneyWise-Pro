@@ -268,19 +268,23 @@ export const RequisitionDetail: React.FC = () => {
                 return;
             }
 
-            setAnalyzingItemId(itemId);
-            await requisitionService.analyzeReceipt(id, itemId);
-            
             // Set local state to pending immediately for better UX
             setExpenseItems(prev => prev.map(i => 
                 i.id === itemId ? { ...i, receipt_ocr_status: 'PENDING' } : i
             ));
-
-            // Reload requisition after a wait to allow background task
-            setTimeout(() => loadRequisition(id), 3000);
+            
+            setAnalyzingItemId(itemId);
+            
+            // Sync backend call - awaits full analysis
+            await requisitionService.analyzeReceipt(id, itemId);
+            
+            // Refresh the data immediately to show results
+            await loadRequisition(id);
         } catch (err: any) {
             console.error('OCR failed', err);
             alert('Analysis failed: ' + err.message);
+            // Refresh anyway to clear pending status if possible
+            if (id) loadRequisition(id);
         } finally {
             setAnalyzingItemId(null);
         }

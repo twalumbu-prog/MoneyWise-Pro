@@ -426,8 +426,10 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         const itemsWithNewReceipts = items.filter((item: any) => item.receipt_url);
         if (itemsWithNewReceipts.length > 0) {
             console.log(`[OCR] Processing ${itemsWithNewReceipts.length} receipts synchronously...`);
+            const startTime = Date.now();
             
             await Promise.all(itemsWithNewReceipts.map(async (item: any) => {
+                const itemStart = Date.now();
                 try {
                     // Build public URL from path
                     const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
@@ -449,15 +451,20 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
                         receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
                     }).eq('id', item.id);
 
-                    console.log(`[OCR] Completed for item ${item.id}: ${ocrData.vendor || 'Unknown vendor'}`);
+                    const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
+                    console.log(`[OCR] Completed for item ${item.id} in ${duration}s: ${ocrData.vendor || 'Unknown vendor'}`);
                 } catch (ocrErr: any) {
-                    console.error(`[OCR] Failed for item ${item.id}:`, ocrErr.message);
+                    const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
+                    console.error(`[OCR] Failed for item ${item.id} after ${duration}s:`, ocrErr.message);
                     await supabase.from('line_items').update({
                         receipt_ocr_status: 'FAILED',
                         receipt_ocr_data: { error: ocrErr.message }
                     }).eq('id', item.id);
                 }
             }));
+            
+            const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
+            console.log(`[OCR] All items processed in ${totalDuration}s`);
         }
 
         res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });

@@ -95,11 +95,17 @@ export const ocrService = {
                 }
             };
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for Gemini
+
             const response = await fetch(url, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(payload),
+                signal: controller.signal as any
             });
+
+            clearTimeout(timeoutId);
 
             if (!response.ok) {
                 const errBody = await response.text();
@@ -141,12 +147,24 @@ export const ocrService = {
     },
 
     async fetchImageAsBase64(url: string): Promise<string> {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Failed to fetch image from ${url}`);
-        const buffer = await response.arrayBuffer();
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-        bytes.forEach(b => binary += String.fromCharCode(b));
-        return btoa(binary);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout for image fetch
+
+        try {
+            console.log(`[OCR] Fetching image for base64 conversion: ${url.split('?')[0]}`);
+            const response = await fetch(url, { signal: controller.signal as any });
+            if (!response.ok) throw new Error(`Failed to fetch image from ${url}`);
+            
+            clearTimeout(timeoutId);
+            const buffer = await response.arrayBuffer();
+            // Use Buffer.from for efficiency in Node.js environments like Vercel
+            const base64 = Buffer.from(buffer).toString('base64');
+            
+            console.log(`[OCR] Successfully converted image to base64 (${Math.round(base64.length / 1024)} KB)`);
+            return base64;
+        } catch (error: any) {
+            console.error('[OCR] fetchImageAsBase64 failed:', error.message);
+            throw error;
+        }
     }
 };
