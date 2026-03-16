@@ -280,7 +280,7 @@ export const getDisbursementHistory = async (req: any, res: any): Promise<any> =
                 ),
                 cashier:users!cashier_id (name)
             `)
-            .or(`organization_id.eq.${organization_id},organization_id.is.null`)
+            .eq('organization_id', organization_id)
             .order('issued_at', { ascending: false })
             .limit(50);
 
