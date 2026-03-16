@@ -275,7 +275,10 @@ export const getDisbursementHistory = async (req: any, res: any): Promise<any> =
                     description,
                     estimated_total,
                     status,
+                    type,
                     requestor_id,
+                    departments!department_id (name),
+                    requisition_line_items (*),
                     users!requestor_id (name)
                 ),
                 cashier:users!cashier_id (name)

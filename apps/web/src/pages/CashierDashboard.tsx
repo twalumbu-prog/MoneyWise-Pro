@@ -3,7 +3,7 @@ import { Layout } from '../components/Layout';
 import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { requisitionService, Requisition } from '../services/requisition.service';
-import { EditDisbursementModal } from '../components/EditDisbursementModal';
+import { DisbursementDetailOverlay } from '../components/DisbursementDetailOverlay';
 
 // Helper to calculate total value of denominations
 const calculateTotal = (denominations: Record<string, number>) => {
@@ -241,7 +241,8 @@ export const CashierDashboard: React.FC = () => {
                                     {history.map((disb) => (
                                         <li
                                             key={disb.id}
-                                            className="px-6 py-4 hover:bg-gray-50"
+                                            onClick={() => setEditingDisb(disb)}
+                                            className="px-6 py-4 hover:bg-brand-navy/5 cursor-pointer transition-colors"
                                         >
                                             <div className="flex justify-between items-start">
                                                 <div>
@@ -440,7 +441,7 @@ export const CashierDashboard: React.FC = () => {
             </div>
 
             {editingDisb && (
-                <EditDisbursementModal
+                <DisbursementDetailOverlay
                     disbursement={editingDisb}
                     onClose={() => setEditingDisb(null)}
                     onUpdated={() => {
