@@ -12,7 +12,12 @@ import {
     markRequisitionRead,
     analyzeReceiptItem
 } from '../controllers/requisition.controller';
-import { disburseRequisition, acknowledgeReceipt } from '../controllers/disbursement.controller';
+import { 
+    disburseRequisition, 
+    acknowledgeReceipt, 
+    getDisbursementHistory, 
+    updateDisbursement 
+} from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -25,8 +30,10 @@ router.get('/admin/all', getAllRequisitionsAdmin);
 router.patch('/:id/status', updateRequisitionStatus);
 
 // Disbursement routes
+router.get('/disbursements/history', getDisbursementHistory);
 router.post('/:id/disburse', disburseRequisition);
 router.post('/:id/acknowledge', acknowledgeReceipt);
+router.patch('/disbursements/:id', updateDisbursement);
 
 // Expense Tracking & Change Flow
 router.put('/:id/expenses', updateRequisitionExpenses);

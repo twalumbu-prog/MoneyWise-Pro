@@ -359,6 +359,60 @@ export const cashbookService = {
     },
 
     /**
+     * Update an existing disbursement amount and recalculate balances.
+     * Only allowed if the entry status is still PENDING (not yet finalized/received).
+     */
+    async updateDisbursementAmount(
+        organizationId: string,
+        requisitionId: string,
+        newAmount: number,
+        newDenominations?: any
+    ) {
+        // 1. Find the PENDING disbursement entry
+        const { data: entry, error: findError } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('requisition_id', requisitionId)
+            .eq('entry_type', 'DISBURSEMENT')
+            .eq('status', 'PENDING')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+
+        if (findError || !entry) {
+            throw new Error(`Active disbursement entry not found or already finalized`);
+        }
+
+        // 2. Update the entry
+        const { error: updateError } = await supabase
+            .from('cashbook_entries')
+            .update({
+                credit: newAmount,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', entry.id);
+
+        if (updateError) throw updateError;
+
+        // 3. Update the disbursement record denominations and total
+        const { error: disbUpdateError } = await supabase
+            .from('disbursements')
+            .update({
+                total_prepared: newAmount,
+                denominations: newDenominations
+            })
+            .eq('requisition_id', requisitionId);
+
+        if (disbUpdateError) throw disbUpdateError;
+
+        // 4. Recalculate subsequent balances
+        await this.recalculateBalancesFrom(organizationId, entry.date, entry.created_at, entry.account_type || 'CASH');
+        
+        return entry;
+    },
+
+    /**
      * Close the cashbook for a specific date
      */
     async closeBook(

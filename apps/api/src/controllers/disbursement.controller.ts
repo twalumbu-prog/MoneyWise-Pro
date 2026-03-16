@@ -262,3 +262,91 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
         res.status(500).json({ error: 'Failed to acknowledge receipt', details: error.message });
     }
 };
+
+export const getDisbursementHistory = async (req: any, res: any): Promise<any> => {
+    try {
+        const organization_id = req.user.organization_id;
+        
+        const { data, error } = await supabase
+            .from('disbursements')
+            .select(`
+                *,
+                requisitions!requisition_id (
+                    id,
+                    description,
+                    estimated_total,
+                    status,
+                    requestor_id,
+                    users!requestor_id (name)
+                ),
+                cashier:users!cashier_id (name)
+            `)
+            .eq('organization_id', organization_id)
+            .order('issued_at', { ascending: false })
+            .limit(50);
+
+        if (error) throw error;
+
+        // Flatten requestor name for convenience
+        const formatted = data.map(d => ({
+            ...d,
+            requestor_name: d.requisitions?.users?.name,
+            cashier_name: d.cashier?.name
+        }));
+
+        res.json(formatted);
+    } catch (error: any) {
+        console.error('Error fetching disbursement history:', error);
+        res.status(500).json({ error: 'Failed to fetch disbursement history' });
+    }
+};
+
+export const updateDisbursement = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params; // Disbursement ID? No, requisition ID might be more consistent with existing API
+        const { total_prepared, denominations } = req.body;
+        const organization_id = req.user.organization_id;
+
+        // Check if disbursement exists and is not confirmed
+        const { data: disbursement, error: findError } = await supabase
+            .from('disbursements')
+            .select('confirmed_at, requisition_id')
+            .eq('id', id)
+            .single();
+
+        if (findError || !disbursement) {
+            return res.status(404).json({ error: 'Disbursement not found' });
+        }
+
+        if (disbursement.confirmed_at) {
+            return res.status(400).json({ error: 'Cannot edit a disbursement that has already been confirmed' });
+        }
+
+        // Update cashbook and disbursement record
+        await cashbookService.updateDisbursementAmount(
+            organization_id,
+            disbursement.requisition_id,
+            total_prepared,
+            denominations
+        );
+
+        // Log the change
+        await supabase
+            .from('audit_logs')
+            .insert({
+                entity_type: 'DISBURSEMENT',
+                entity_id: id,
+                action: 'UPDATED',
+                user_id: req.user.id,
+                changes: {
+                    total_prepared,
+                    denominations
+                }
+            });
+
+        res.json({ message: 'Disbursement updated successfully' });
+    } catch (error: any) {
+        console.error('Error updating disbursement:', error);
+        res.status(500).json({ error: 'Failed to update disbursement', details: error.message });
+    }
+};

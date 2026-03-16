@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
-import { Banknote, Check, File, Building, Upload, X } from 'lucide-react';
+import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { requisitionService, Requisition } from '../services/requisition.service';
+import { EditDisbursementModal } from '../components/EditDisbursementModal';
 
 // Helper to calculate total value of denominations
 const calculateTotal = (denominations: Record<string, number>) => {
@@ -28,6 +29,12 @@ export const CashierDashboard: React.FC = () => {
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [processing, setProcessing] = useState(false);
+    
+    // New state for tabs and history
+    const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
+    const [history, setHistory] = useState<any[]>([]);
+    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+    const [editingDisb, setEditingDisb] = useState<any | null>(null);
 
     useEffect(() => {
         loadRequisitions();
@@ -48,6 +55,24 @@ export const CashierDashboard: React.FC = () => {
             setIsDataLoading(false);
         }
     };
+
+    const loadHistory = async () => {
+        try {
+            setIsHistoryLoading(true);
+            const data = await requisitionService.getDisbursementHistory();
+            setHistory(data);
+        } catch (err) {
+            console.error('Failed to load history', err);
+        } finally {
+            setIsHistoryLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (activeTab === 'history') {
+            loadHistory();
+        }
+    }, [activeTab]);
 
     const handleDenominationChange = (value: string, count: number) => {
         setDenominations(prev => ({
@@ -146,41 +171,113 @@ export const CashierDashboard: React.FC = () => {
             <div className="space-y-6">
                 <div className="flex justify-between items-center">
                     <h1 className="text-2xl font-bold text-brand-navy">Cashier Dashboard</h1>
+                    
+                    <div className="flex bg-gray-100 p-1 rounded-xl">
+                        <button
+                            onClick={() => setActiveTab('pending')}
+                            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'pending' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <Clock className="h-4 w-4 mr-2" />
+                            Pending
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('history')}
+                            className={`flex items-center px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'history' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                        >
+                            <History className="h-4 w-4 mr-2" />
+                            History
+                        </button>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* List of Approved Requisitions */}
                     <div className="lg:col-span-1 bg-white shadow rounded-lg overflow-hidden">
-                        <div className="px-6 py-4 border-b border-gray-200">
-                            <h2 className="text-lg font-medium text-gray-900">Ready for Disbursement</h2>
-                        </div>
-                        <ul className="divide-y divide-gray-200 h-96 overflow-y-auto">
-                            {isDataLoading && (
-                                <li className="px-6 py-4 text-gray-500 text-sm italic">Loading requisitions...</li>
-                            )}
-                            {error && (
-                                <li className="px-6 py-4 text-red-600 text-sm font-medium bg-red-50">
-                                    Error: {error}
-                                </li>
-                            )}
-                            {requisitions.length === 0 && !error && (
-                                <li className="px-6 py-4 text-gray-500 text-sm">No approved requisitions found.</li>
-                            )}
-                            {requisitions.map((req) => (
-                                <li
-                                    key={req.id}
-                                    onClick={() => setSelectedReq(req)}
-                                    className={`px-6 py-4 cursor-pointer hover:bg-gray-50 ${selectedReq?.id === req.id ? 'bg-brand-navy/5' : ''}`}
-                                >
-                                    <div className="flex justify-between">
-                                        <span className="font-medium text-gray-900">#{req.id.slice(0, 6)}</span>
-                                        <span className="text-green-600 font-bold">K{Number(req.estimated_total).toLocaleString()}</span>
-                                    </div>
-                                    <p className="text-sm text-gray-500 mt-1">{req.description}</p>
-                                    <p className="text-xs text-gray-400 mt-1">Requestor: {req.requestor_name || 'Unknown'}</p>
-                                </li>
-                            ))}
-                        </ul>
+                        {activeTab === 'pending' ? (
+                            <>
+                                <div className="px-6 py-4 border-b border-gray-200">
+                                    <h2 className="text-lg font-medium text-gray-900">Ready for Disbursement</h2>
+                                </div>
+                                <ul className="divide-y divide-gray-200 h-[32rem] overflow-y-auto">
+                                    {isDataLoading && (
+                                        <li className="px-6 py-4 text-gray-500 text-sm italic">Loading requisitions...</li>
+                                    )}
+                                    {error && (
+                                        <li className="px-6 py-4 text-red-600 text-sm font-medium bg-red-50">
+                                            Error: {error}
+                                        </li>
+                                    )}
+                                    {requisitions.length === 0 && !error && (
+                                        <li className="px-6 py-4 text-gray-500 text-sm">No approved requisitions found.</li>
+                                    )}
+                                    {requisitions.map((req) => (
+                                        <li
+                                            key={req.id}
+                                            onClick={() => setSelectedReq(req)}
+                                            className={`px-6 py-4 cursor-pointer hover:bg-gray-50 ${selectedReq?.id === req.id ? 'bg-brand-navy/5' : ''}`}
+                                        >
+                                            <div className="flex justify-between">
+                                                <span className="font-medium text-gray-900">#{req.id.slice(0, 6)}</span>
+                                                <span className="text-green-600 font-bold">K{Number(req.estimated_total).toLocaleString()}</span>
+                                            </div>
+                                            <p className="text-sm text-gray-500 mt-1">{req.description}</p>
+                                            <p className="text-xs text-gray-400 mt-1">Requestor: {req.requestor_name || 'Unknown'}</p>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        ) : (
+                            <>
+                                <div className="px-6 py-4 border-b border-gray-200">
+                                    <h2 className="text-lg font-medium text-gray-900">Recent Disbursements</h2>
+                                </div>
+                                <ul className="divide-y divide-gray-200 h-[32rem] overflow-y-auto">
+                                    {isHistoryLoading && (
+                                        <li className="px-6 py-4 text-gray-500 text-sm italic">Loading history...</li>
+                                    )}
+                                    {history.length === 0 && !isHistoryLoading && (
+                                        <li className="px-6 py-4 text-gray-500 text-sm">No history found.</li>
+                                    )}
+                                    {history.map((disb) => (
+                                        <li
+                                            key={disb.id}
+                                            className="px-6 py-4 hover:bg-gray-50"
+                                        >
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <div className="flex items-center space-x-2">
+                                                        <span className="font-medium text-gray-900">#{disb.requisition_id.slice(0, 6)}</span>
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${disb.confirmed_at ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                            {disb.confirmed_at ? 'RECEIVED' : 'PENDING'}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mt-1 flex items-center">
+                                                        <User className="h-3 w-3 mr-1" /> {disb.requestor_name}
+                                                    </p>
+                                                    <p className="text-[10px] text-gray-400 mt-0.5">
+                                                        {new Date(disb.issued_at).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right flex flex-col items-end">
+                                                    <span className="text-brand-navy font-bold">K{Number(disb.total_prepared).toLocaleString()}</span>
+                                                    {!disb.confirmed_at && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingDisb(disb);
+                                                            }}
+                                                            className="mt-2 flex items-center text-xs text-brand-green hover:text-green-700 font-medium"
+                                                        >
+                                                            <Edit2 className="h-3 w-3 mr-1" /> Edit
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </>
+                        )}
                     </div>
 
                     {/* Disbursement Workspace */}
@@ -341,6 +438,17 @@ export const CashierDashboard: React.FC = () => {
                     </div>
                 </div>
             </div>
+
+            {editingDisb && (
+                <EditDisbursementModal
+                    disbursement={editingDisb}
+                    onClose={() => setEditingDisb(null)}
+                    onUpdated={() => {
+                        loadHistory();
+                        loadRequisitions();
+                    }}
+                />
+            )}
         </Layout>
     );
 };

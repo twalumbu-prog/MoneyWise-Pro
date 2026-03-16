@@ -285,5 +285,43 @@ export const requisitionService = {
             const err = await response.json().catch(() => ({}));
             throw new Error(err.error || 'Failed to trigger receipt analysis');
         }
+    },
+
+    async getDisbursementHistory() {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/disbursements/history`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch disbursement history');
+        }
+
+        return response.json();
+    },
+
+    async updateDisbursement(id: string, data: { total_prepared: number, denominations: any }) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/disbursements/${id}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to update disbursement');
+        }
+
+        return response.json();
     }
 };
