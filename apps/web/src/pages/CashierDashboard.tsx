@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
-import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2 } from 'lucide-react';
+import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2, CreditCard } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { DisbursementDetailOverlay } from '../components/DisbursementDetailOverlay';
@@ -190,9 +190,9 @@ export const CashierDashboard: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    {/* List of Approved Requisitions */}
-                    <div className="lg:col-span-1 bg-white shadow rounded-lg overflow-hidden">
+                <div className={`grid gap-6 ${activeTab === 'pending' ? 'grid-cols-1 lg:grid-cols-3' : 'grid-cols-1'}`}>
+                    {/* List of Approved Requisitions / History */}
+                    <div className={`${activeTab === 'pending' ? 'lg:col-span-1' : 'w-full'} bg-white shadow rounded-lg overflow-hidden`}>
                         {activeTab === 'pending' ? (
                             <>
                                 <div className="px-6 py-4 border-b border-gray-200">
@@ -244,32 +244,42 @@ export const CashierDashboard: React.FC = () => {
                                             onClick={() => setEditingDisb(disb)}
                                             className="px-6 py-4 hover:bg-brand-navy/5 cursor-pointer transition-colors"
                                         >
-                                            <div className="flex justify-between items-start">
-                                                <div>
-                                                    <div className="flex items-center space-x-2">
-                                                        <span className="font-medium text-gray-900">#{disb.requisition_id.slice(0, 6)}</span>
-                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${disb.confirmed_at ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                                            {disb.confirmed_at ? 'RECEIVED' : 'PENDING'}
+                                            <div className="flex justify-between items-center">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center space-x-3">
+                                                        <span className="font-bold text-lg text-brand-navy">#{disb.requisition_id.slice(0, 8)}</span>
+                                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold tracking-wider uppercase ${disb.confirmed_at ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                            {disb.confirmed_at ? 'Received' : 'Pending Acknowledgment'}
+                                                        </span>
+                                                        <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-gray-100 text-gray-400 rounded-lg uppercase">
+                                                            <CreditCard className="h-3 w-3" /> {disb.payment_method || 'CASH'}
                                                         </span>
                                                     </div>
-                                                    <p className="text-xs text-gray-500 mt-1 flex items-center">
-                                                        <User className="h-3 w-3 mr-1" /> {disb.requestor_name}
-                                                    </p>
-                                                    <p className="text-[10px] text-gray-400 mt-0.5">
-                                                        {new Date(disb.issued_at).toLocaleString()}
-                                                    </p>
+                                                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mt-3">
+                                                        <p className="text-sm text-gray-500 flex items-center">
+                                                            <User className="h-4 w-4 mr-2 text-brand-green" /> 
+                                                            <span className="font-medium">{disb.requestor_name || 'Generic Staff'}</span>
+                                                        </p>
+                                                        <p className="text-sm text-gray-500 flex items-center">
+                                                            <Clock className="h-4 w-4 mr-2 text-brand-green" />
+                                                            {new Date(disb.issued_at).toLocaleString()}
+                                                        </p>
+                                                        <p className="text-sm text-gray-400 italic md:col-span-1 truncate">
+                                                            {disb.requisitions?.description}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div className="text-right flex flex-col items-end">
-                                                    <span className="text-brand-navy font-bold">K{Number(disb.total_prepared).toLocaleString()}</span>
+                                                <div className="text-right flex flex-col items-end min-w-[150px]">
+                                                    <span className="text-2xl font-black text-brand-navy">K{Number(disb.total_prepared).toLocaleString()}</span>
                                                     {!disb.confirmed_at && (
                                                         <button
                                                             onClick={(e) => {
                                                                 e.stopPropagation();
                                                                 setEditingDisb(disb);
                                                             }}
-                                                            className="mt-2 flex items-center text-xs text-brand-green hover:text-green-700 font-medium"
+                                                            className="mt-2 flex items-center text-xs text-brand-pink hover:underline font-bold"
                                                         >
-                                                            <Edit2 className="h-3 w-3 mr-1" /> Edit
+                                                            <Edit2 className="h-3 w-3 mr-1" /> Edit Disbursement
                                                         </button>
                                                     )}
                                                 </div>
@@ -281,162 +291,165 @@ export const CashierDashboard: React.FC = () => {
                         )}
                     </div>
 
-                    {/* Disbursement Workspace */}
-                    <div className="lg:col-span-2 bg-white shadow rounded-lg p-6">
-                        {!selectedReq ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-500">
-                                <Banknote className="h-16 w-16 mb-4 text-gray-300" />
-                                <p>Select a requisition to prepare cash.</p>
-                            </div>
-                        ) : (
-                            <div>
-                                <h2 className="text-xl font-bold text-gray-900 mb-4">
-                                    Prepare Cash for #{selectedReq.id.slice(0, 6)}
-                                </h2>
-                                <div className="bg-gray-50 p-4 rounded-md mb-6">
-                                    <div className="flex justify-between text-sm mb-2">
-                                        <span className="text-gray-500">Amount Required:</span>
-                                        <span className="font-bold text-gray-900 text-lg">K{Number(selectedReq.estimated_total).toLocaleString()}</span>
-                                    </div>
-                                    <div className="flex justify-between text-sm">
-                                        <span className="text-gray-500">Payee:</span>
-                                        <span className="font-medium text-gray-900">{selectedReq.requestor_name}</span>
-                                    </div>
+                    {/* Disbursement Workspace - Only show in pending mode */}
+                    {activeTab === 'pending' && (
+                        <div className="lg:col-span-2 bg-white shadow rounded-lg p-6">
+                            {!selectedReq ? (
+                                <div className="h-full flex flex-col items-center justify-center text-gray-500 py-12">
+                                    <Banknote className="h-16 w-16 mb-4 text-gray-300" />
+                                    <p>Select a requisition to prepare cash.</p>
                                 </div>
-
-                                {/* Payment Method Selection */}
-                                <h3 className="text-sm font-medium text-gray-700 mb-3">Disbursement Method</h3>
-                                <div className="grid grid-cols-3 gap-3 mb-6">
-                                    <button
-                                        onClick={() => setPaymentMethod('CASH')}
-                                        className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'CASH' ? 'bg-brand-navy/10 border-brand-navy text-brand-navy' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                    >
-                                        <Banknote className="h-6 w-6 mb-2" />
-                                        <span className="text-xs font-medium">Cash</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setPaymentMethod('AIRTEL_MONEY')}
-                                        className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'AIRTEL_MONEY' ? 'bg-red-50 border-red-500 text-red-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                    >
-                                        <File className="h-6 w-6 mb-2" />
-                                        <span className="text-xs font-medium text-center">Airtel Money</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setPaymentMethod('BANK')}
-                                        className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'BANK' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                    >
-                                        <Building className="h-6 w-6 mb-2" />
-                                        <span className="text-xs font-medium text-center">Bank Transfer</span>
-                                    </button>
-                                </div>
-
-                                {paymentMethod === 'CASH' ? (
-                                    <>
-                                        <h3 className="text-sm font-medium text-gray-700 mb-3">Denominations Calculator</h3>
-                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-                                            {Object.entries(denominations).sort((a, b) => Number(b[0]) - Number(a[0])).map(([value, count]) => (
-                                                <div key={value} className="bg-white border rounded-md p-3 shadow-sm">
-                                                    <label className="block text-xs font-medium text-gray-500 mb-1">K{value} Notes/Coins</label>
-                                                    <input
-                                                        type="number"
-                                                        min="0"
-                                                        value={count}
-                                                        onChange={(e) => handleDenominationChange(value, parseInt(e.target.value) || 0)}
-                                                        className="block w-full text-center border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm"
-                                                    />
-                                                </div>
-                                            ))}
+                            ) : (
+                                <div>
+                                    <h2 className="text-xl font-bold text-gray-900 mb-4">
+                                        Prepare Cash for #{selectedReq.id.slice(0, 6)}
+                                    </h2>
+                                    <div className="bg-gray-50 p-4 rounded-md mb-6">
+                                        <div className="flex justify-between text-sm mb-2">
+                                            <span className="text-gray-500">Amount Required:</span>
+                                            <span className="font-bold text-gray-900 text-lg">K{Number(selectedReq.estimated_total).toLocaleString()}</span>
                                         </div>
-                                    </>
-                                ) : (
-                                    <div className="space-y-4 mb-6">
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Total Amount Transferred (K)
-                                            </label>
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                min={Number(selectedReq.estimated_total)}
-                                                value={transferAmount}
-                                                onChange={(e) => setTransferAmount(e.target.value)}
-                                                placeholder={`e.g. ${Number(selectedReq.estimated_total)}`}
-                                                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
-                                            />
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-gray-500">Payee:</span>
+                                            <span className="font-medium text-gray-900">{selectedReq.requestor_name}</span>
                                         </div>
+                                    </div>
 
-                                        <div>
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Proof of Transfer Document
-                                            </label>
-                                            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md group hover:bg-gray-50 transition-colors">
-                                                <div className="space-y-1 text-center">
-                                                    {transferProofFile ? (
-                                                        <div className="flex flex-col items-center">
-                                                            <div className="flex items-center space-x-2 text-brand-green mb-2">
-                                                                <File className="h-8 w-8" />
-                                                                <span className="text-sm font-medium">{transferProofFile.name}</span>
+                                    {/* Payment Method Selection */}
+                                    <h3 className="text-sm font-medium text-gray-700 mb-3">Disbursement Method</h3>
+                                    <div className="grid grid-cols-3 gap-3 mb-6">
+                                        <button
+                                            onClick={() => setPaymentMethod('CASH')}
+                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'CASH' ? 'bg-brand-navy/10 border-brand-navy text-brand-navy' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                        >
+                                            <Banknote className="h-6 w-6 mb-2" />
+                                            <span className="text-xs font-medium">Cash</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setPaymentMethod('AIRTEL_MONEY')}
+                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'AIRTEL_MONEY' ? 'bg-red-50 border-red-500 text-red-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                        >
+                                            <File className="h-6 w-6 mb-2" />
+                                            <span className="text-xs font-medium text-center">Airtel Money</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setPaymentMethod('BANK')}
+                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'BANK' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                        >
+                                            <Building className="h-6 w-6 mb-2" />
+                                            <span className="text-xs font-medium text-center">Bank Transfer</span>
+                                        </button>
+                                    </div>
+
+                                    {paymentMethod === 'CASH' ? (
+                                        <>
+                                            <h3 className="text-sm font-medium text-gray-700 mb-3">Denominations Calculator</h3>
+                                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                                                {Object.entries(denominations).sort((a, b) => Number(b[0]) - Number(a[0])).map(([value, count]) => (
+                                                    <div key={value} className="bg-white border rounded-md p-3 shadow-sm">
+                                                        <label className="block text-xs font-medium text-gray-500 mb-1">K{value} Notes/Coins</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={count}
+                                                            onChange={(e) => handleDenominationChange(value, parseInt(e.target.value) || 0)}
+                                                            className="block w-full text-center border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="space-y-4 mb-6">
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Total Amount Transferred (K)
+                                                </label>
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    min={Number(selectedReq.estimated_total)}
+                                                    value={transferAmount}
+                                                    onChange={(e) => setTransferAmount(e.target.value)}
+                                                    placeholder={`e.g. ${Number(selectedReq.estimated_total)}`}
+                                                    className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                                                />
+                                            </div>
+
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                    Proof of Transfer Document
+                                                </label>
+                                                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md group hover:bg-gray-50 transition-colors">
+                                                    <div className="space-y-1 text-center">
+                                                        {transferProofFile ? (
+                                                            <div className="flex flex-col items-center">
+                                                                <div className="flex items-center space-x-2 text-brand-green mb-2">
+                                                                    <File className="h-8 w-8" />
+                                                                    <span className="text-sm font-medium">{transferProofFile.name}</span>
+                                                                </div>
+                                                                <button
+                                                                    onClick={() => setTransferProofFile(null)}
+                                                                                                                                  className="text-xs text-red-500 hover:text-red-700 flex items-center"
+                                                                >
+                                                                    <X className="h-3 w-3 mr-1" /> Remove
+                                                                </button>
                                                             </div>
-                                                            <button
-                                                                onClick={() => setTransferProofFile(null)}
-                                                                className="text-xs text-red-500 hover:text-red-700 flex items-center"
-                                                            >
-                                                                <X className="h-3 w-3 mr-1" /> Remove
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <>
-                                                            <Upload className="mx-auto h-12 w-12 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                                            <div className="flex text-sm text-gray-600 justify-center">
-                                                                <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-brand-green hover:text-green-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-brand-green">
-                                                                    <span>Upload a file</span>
-                                                                    <input
-                                                                        ref={fileInputRef}
-                                                                        type="file"
-                                                                        className="sr-only"
-                                                                        accept="image/*,.pdf"
-                                                                        onChange={(e) => {
-                                                                            if (e.target.files && e.target.files[0]) {
-                                                                                setTransferProofFile(e.target.files[0]);
-                                                                            }
-                                                                        }}
-                                                                    />
-                                                                </label>
-                                                                <p className="pl-1">or drag and drop</p>
-                                                            </div>
-                                                            <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
-                                                        </>
-                                                    )}
+                                                        ) : (
+                                                            <>
+                                                                <Upload className="mx-auto h-12 w-12 text-gray-400 group-hover:text-brand-green transition-colors" />
+                                                                <div className="flex text-sm text-gray-600 justify-center">
+                                                                    <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-brand-green hover:text-green-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-brand-green">
+                                                                        <span>Upload a file</span>
+                                                                        <input
+                                                                            ref={fileInputRef}
+                                                                            type="file"
+                                                                            className="sr-only"
+                                                                            accept="image/*,.pdf"
+                                                                            onChange={(e) => {
+                                                                                if (e.target.files && e.target.files[0]) {
+                                                                                    setTransferProofFile(e.target.files[0]);
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                    </label>
+                                                                    <p className="pl-1">or drag and drop</p>
+                                                                </div>
+                                                                <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
+                                                            </>
+                                                        )
+                                                        }
+                                                    </div>
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
-                                )}
+                                    )}
 
-                                <div className="border-t pt-4 flex justify-between items-center">
-                                    <div>
-                                        <span className="text-sm text-gray-500 block">Total {paymentMethod === 'CASH' ? 'Prepared' : 'Transferred'}</span>
-                                        <span className={`text-2xl font-bold ${(paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount)) === Number(selectedReq.estimated_total)
+                                    <div className="border-t pt-4 flex justify-between items-center">
+                                        <div>
+                                            <span className="text-sm text-gray-500 block">Total {paymentMethod === 'CASH' ? 'Prepared' : 'Transferred'}</span>
+                                            <span className={`text-2xl font-bold ${(paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount)) === Number(selectedReq.estimated_total)
                                                 ? 'text-green-600'
                                                 : (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount)) > Number(selectedReq.estimated_total)
                                                     ? 'text-amber-500'
                                                     : 'text-red-500'
-                                            }`}>
-                                            K{(paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount) || 0).toLocaleString()}
-                                        </span>
+                                                }`}>
+                                                K{(paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount) || 0).toLocaleString()}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={handleDisburse}
+                                            disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && !transferProofFile)}
+                                            className="flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                            <Check className="h-5 w-5 mr-2" />
+                                            {processing ? 'Processing...' : 'Confirm Disbursement'}
+                                        </button>
                                     </div>
-                                    <button
-                                        onClick={handleDisburse}
-                                        disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && !transferProofFile)}
-                                        className="flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        <Check className="h-5 w-5 mr-2" />
-                                        {processing ? 'Processing...' : 'Confirm Disbursement'}
-                                    </button>
                                 </div>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 
