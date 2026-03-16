@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, FileText, User, Calendar, Tag, Building } from 'lucide-react';
+import { X, FileText, User, Calendar, Tag, Building, CreditCard, Eye, EyeOff, Sparkles, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 
 interface DisbursementDetailOverlayProps {
@@ -23,6 +23,9 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
         '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0
     });
     const [processing, setProcessing] = useState(false);
+    const [showProof, setShowProof] = useState(false);
+    const [aiResult, setAiResult] = useState<any>(null);
+    const [analyzing, setAnalyzing] = useState(false);
 
     const handleDenominationChange = (value: string, count: number) => {
         if (!isPending) return;
@@ -52,18 +55,41 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
         }
     };
 
+    const handleAnalyze = async () => {
+        try {
+            setAnalyzing(true);
+            const result = await requisitionService.analyzeDisbursementProof(disbursement.id);
+            setAiResult(result);
+            setShowProof(true);
+        } catch (err: any) {
+            alert(err.message || 'AI analysis failed');
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
+    const proofUrl = disbursement.transfer_proof_url ? requisitionService.getFileUrl(disbursement.transfer_proof_url) : null;
+    const amountMismatch = aiResult && Math.abs(aiResult.ocrData.total_amount - aiResult.recordedAmount) > 0.01;
+
     return (
         <div className="fixed inset-0 bg-brand-navy/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl overflow-hidden flex flex-col lg:flex-row max-h-[90vh]">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col lg:flex-row max-h-[90vh]">
                 
-                {/* Left Panel: Disbursement Details */}
+                {/* Left Panel: Disbursement Details & Proof */}
                 <div className="flex-1 p-8 border-r border-gray-100 overflow-y-auto">
                     <div className="flex justify-between items-start mb-6">
                         <div>
                             <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${isPending ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
                                 {isPending ? 'Pending Acknowledgment' : 'Received & Confirmed'}
                             </span>
-                            <h3 className="text-2xl font-black text-brand-navy mt-2">Disbursement Details</h3>
+                            <h3 className="text-2xl font-black text-brand-navy mt-2 flex items-center gap-2">
+                                Disbursement Details
+                                {disbursement.payment_method !== 'CASH' && (
+                                    <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 bg-brand-pink/10 text-brand-pink rounded-lg uppercase">
+                                        <CreditCard className="h-3 w-3" /> {disbursement.payment_method}
+                                    </span>
+                                )}
+                            </h3>
                             <p className="text-gray-400 text-sm">#{disbursement.id.slice(0, 12)}</p>
                         </div>
                         <button onClick={onClose} className="lg:hidden text-gray-400 hover:text-gray-600">
@@ -77,7 +103,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                 <span className="text-[10px] text-gray-400 uppercase font-bold">Issued By</span>
                                 <div className="flex items-center mt-1">
                                     <User className="h-4 w-4 text-brand-green mr-2" />
-                                    <span className="text-sm font-medium text-brand-navy">{disbursement.cashier_name}</span>
+                                    <span className="text-sm font-medium text-brand-navy">{disbursement.cashier_name || 'N/A'}</span>
                                 </div>
                             </div>
                             <div className="bg-gray-50 rounded-2xl p-4">
@@ -89,10 +115,76 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                             </div>
                         </div>
 
+                        {/* Payment Method / Amount Section */}
                         <div>
-                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center">
-                                <Tag className="h-3 w-3 mr-1" /> Financial Breakdown
+                            <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center justify-between">
+                                <span className="flex items-center gap-1"><Tag className="h-3 w-3" /> Financial Breakdown</span>
+                                {proofUrl && (
+                                    <button 
+                                        onClick={() => setShowProof(!showProof)}
+                                        className="text-brand-pink flex items-center gap-1 hover:underline"
+                                    >
+                                        {showProof ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+                                        {showProof ? 'Hide Proof' : 'View Transfer Proof'}
+                                    </button>
+                                )}
                             </h4>
+
+                            {showProof && proofUrl && (
+                                <div className="mb-6 space-y-4">
+                                    <div className="relative aspect-[16/9] w-full bg-black rounded-2xl overflow-hidden border border-gray-100 flex items-center justify-center">
+                                        <img src={proofUrl} alt="Transfer Proof" className="max-w-full max-h-full object-contain" />
+                                    </div>
+                                    
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleAnalyze}
+                                            disabled={analyzing}
+                                            className="flex-1 py-3 rounded-xl bg-brand-navy text-white text-xs font-bold flex items-center justify-center gap-2 hover:bg-brand-navy/90 disabled:opacity-50"
+                                        >
+                                            {analyzing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                                            {aiResult ? 'Re-scan with AI' : 'Verify with AI'}
+                                        </button>
+                                    </div>
+
+                                    {aiResult && (
+                                        <div className={`p-4 rounded-2xl border-2 ${amountMismatch ? 'bg-red-50 border-red-100' : 'bg-green-50 border-green-100'}`}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">AI Scan Result</span>
+                                                {amountMismatch ? (
+                                                    <span className="flex items-center gap-1 text-[10px] font-bold text-red-600">
+                                                        <AlertTriangle className="h-3 w-3" /> Mismatch Detected
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1 text-[10px] font-bold text-green-600">
+                                                        <CheckCircle className="h-3 w-3" /> Verified
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <p className="text-[10px] text-gray-400 uppercase">Scanned Amount</p>
+                                                    <p className={`text-lg font-black ${amountMismatch ? 'text-red-700' : 'text-green-700'}`}>
+                                                        K{Number(aiResult.ocrData.total_amount).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[10px] text-gray-400 uppercase">Recorded Total</p>
+                                                    <p className="text-lg font-black text-brand-navy">
+                                                        K{Number(aiResult.recordedAmount).toLocaleString()}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            {aiResult.ocrData.vendor && (
+                                                <div className="mt-2 pt-2 border-t border-gray-100">
+                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Entity Name: <span className="text-brand-navy uppercase">{aiResult.ocrData.vendor}</span></p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                             {disbursement.payment_method === 'CASH' ? (
                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     {Object.entries(denominations).sort((a, b) => Number(b[0]) - Number(a[0])).map(([value, count]) => (
@@ -171,7 +263,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                     <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Department</p>
                                     <p className="font-bold text-brand-navy flex items-center">
                                         <Building className="h-3 w-3 mr-1" />
-                                        {requisition.departments?.name || 'N/A'}
+                                        {requisition.department || 'N/A'}
                                     </p>
                                 </div>
                                 <div>
@@ -183,10 +275,10 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                             <div>
                                 <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-3">Line Items</p>
                                 <div className="space-y-2">
-                                    {requisition.requisition_line_items?.map((item: any, idx: number) => (
+                                    {(requisition.line_items || requisition.requisition_line_items)?.map((item: any, idx: number) => (
                                         <div key={item.id || idx} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center">
                                             <span className="text-gray-600 truncate mr-2">{item.description}</span>
-                                            <span className="font-bold text-brand-navy whitespace-nowrap">K{Number(item.total_cost).toLocaleString()}</span>
+                                            <span className="font-bold text-brand-navy whitespace-nowrap">K{Number(item.total_cost || item.estimated_amount).toLocaleString()}</span>
                                         </div>
                                     ))}
                                 </div>

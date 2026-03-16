@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
+import { ocrService } from '../services/ai/ocr.service';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -277,9 +278,8 @@ export const getDisbursementHistory = async (req: any, res: any): Promise<any> =
                     status,
                     type,
                     requestor_id,
-                    departments!department_id (name),
-                    requisition_line_items (*),
-                    users!requestor_id (name)
+                    department,
+                    line_items (*)
                 ),
                 cashier:users!cashier_id (name)
             `)
@@ -350,5 +350,38 @@ export const updateDisbursement = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('Error updating disbursement:', error);
         res.status(500).json({ error: 'Failed to update disbursement', details: error.message });
+    }
+};
+
+export const analyzeDisbursementProof = async (req: any, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { data: disbursement, error: fetchError } = await supabase
+            .from('disbursements')
+            .select('transfer_proof_url, total_prepared')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !disbursement) {
+            return res.status(404).json({ error: 'Disbursement not found' });
+        }
+
+        if (!disbursement.transfer_proof_url) {
+            return res.status(400).json({ error: 'No proof of transfer uploaded for this disbursement' });
+        }
+
+        const { data: publicUrlData } = supabase.storage
+            .from('receipts')
+            .getPublicUrl(disbursement.transfer_proof_url);
+
+        const ocrResult = await ocrService.analyzeReceipt(publicUrlData.publicUrl);
+        
+        return res.json({
+            ocrData: ocrResult,
+            recordedAmount: disbursement.total_prepared
+        });
+    } catch (error: any) {
+        console.error('[DisbursementController] AI analysis failed:', error);
+        return res.status(500).json({ error: error.message || 'AI analysis failed' });
     }
 };

@@ -323,5 +323,25 @@ export const requisitionService = {
         }
 
         return response.json();
+    },
+
+    async analyzeDisbursementProof(id: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/disbursements/${id}/analyze-proof`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to analyze disbursement proof');
+        }
+
+        return response.json();
     }
 };
