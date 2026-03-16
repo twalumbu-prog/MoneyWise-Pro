@@ -84,11 +84,11 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                             </span>
                             <h3 className="text-2xl font-black text-brand-navy mt-2 flex items-center gap-2">
                                 Disbursement Details
-                                {disbursement.payment_method !== 'CASH' && (
-                                    <span className="flex items-center gap-1 text-xs font-bold px-2 py-0.5 bg-brand-pink/10 text-brand-pink rounded-lg uppercase">
-                                        <CreditCard className="h-3 w-3" /> {disbursement.payment_method}
-                                    </span>
-                                )}
+                                <span className={`flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg uppercase ${
+                                    disbursement.payment_method === 'CASH' ? 'bg-brand-green/10 text-brand-green' : 'bg-brand-pink/10 text-brand-pink'
+                                }`}>
+                                    <CreditCard className="h-3 w-3" /> {disbursement.payment_method || 'CASH'}
+                                </span>
                             </h3>
                             <p className="text-gray-400 text-sm">#{disbursement.id.slice(0, 12)}</p>
                         </div>
@@ -119,14 +119,16 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                         <div>
                             <h4 className="text-xs font-bold text-gray-400 uppercase mb-3 flex items-center justify-between">
                                 <span className="flex items-center gap-1"><Tag className="h-3 w-3" /> Financial Breakdown</span>
-                                {proofUrl && (
+                                {proofUrl ? (
                                     <button 
                                         onClick={() => setShowProof(!showProof)}
-                                        className="text-brand-pink flex items-center gap-1 hover:underline"
+                                        className="text-brand-pink flex items-center gap-1 hover:underline animate-pulse"
                                     >
                                         {showProof ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
                                         {showProof ? 'Hide Proof' : 'View Transfer Proof'}
                                     </button>
+                                ) : (
+                                    <span className="text-[10px] text-gray-300 italic">No Upload Attached</span>
                                 )}
                             </h4>
 

@@ -279,6 +279,7 @@ export const getDisbursementHistory = async (req: any, res: any): Promise<any> =
                     type,
                     requestor_id,
                     department,
+                    requestor:users!requestor_id (name),
                     line_items (*)
                 ),
                 cashier:users!cashier_id (name)
@@ -292,7 +293,7 @@ export const getDisbursementHistory = async (req: any, res: any): Promise<any> =
         // Flatten requestor name for convenience
         const formatted = data.map(d => ({
             ...d,
-            requestor_name: d.requisitions?.users?.name,
+            requestor_name: d.requisitions?.requestor?.name || d.requisitions?.staff_name,
             cashier_name: d.cashier?.name
         }));
 
