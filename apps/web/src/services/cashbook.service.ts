@@ -135,6 +135,7 @@ export const cashbookService = {
         personName: string;
         purpose: string;
         contactDetails: string;
+        date: string;
         amount: number;
         denominations: any;
         accountType?: string;

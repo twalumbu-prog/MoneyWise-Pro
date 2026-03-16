@@ -161,6 +161,7 @@ export const cashbookService = {
             personName: string;
             purpose: string;
             contactDetails?: string;
+            date?: string;
             amount: number;
             denominations?: any;
             accountType?: string;
@@ -173,7 +174,7 @@ export const cashbookService = {
             description: `Cash Inflow: ${data.personName} - ${data.purpose}`,
             debit: data.amount,
             credit: 0,
-            date: new Date().toISOString().split('T')[0],
+            date: data.date || new Date().toISOString().split('T')[0],
             created_by: userId,
             account_type: data.accountType || 'CASH'
         });

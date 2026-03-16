@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, User, Phone, FileText, Wallet, CheckCircle, AlertCircle } from 'lucide-react';
+import { X, User, Phone, FileText, Wallet, CheckCircle, AlertCircle, Calendar } from 'lucide-react';
 import { cashbookService } from '../services/cashbook.service';
 import { DenominationInput } from './DenominationInput';
 
@@ -13,6 +13,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
     const [personName, setPersonName] = useState('');
     const [purpose, setPurpose] = useState('');
     const [contactDetails, setContactDetails] = useState('');
+    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [denominations, setDenominations] = useState<any[]>([
         { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
     ]);
@@ -38,6 +39,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                 personName,
                 purpose,
                 contactDetails,
+                date,
                 amount: totalAmount,
                 denominations
             });
@@ -47,6 +49,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
             setPersonName('');
             setPurpose('');
             setContactDetails('');
+            setDate(new Date().toISOString().split('T')[0]);
             setDenominations([
                 { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
             ]);
@@ -121,6 +124,18 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                                         </div>
                                         <div className="relative group">
                                             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
+                                                <Calendar size={18} />
+                                            </div>
+                                            <input
+                                                type="date"
+                                                required
+                                                value={date}
+                                                onChange={(e) => setDate(e.target.value)}
+                                                className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all"
+                                            />
+                                        </div>
+                                        <div className="relative group">
+                                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
                                                 <Phone size={18} />
                                             </div>
                                             <input
@@ -138,7 +153,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 px-1">
                                         Purpose
                                     </label>
-                                    <div className="relative group">
+                                    <div className="relative group overflow-hidden">
                                         <div className="absolute top-4 left-0 pl-4 flex items-start pointer-events-none text-gray-400 group-focus-within:text-emerald-500 transition-colors">
                                             <FileText size={18} />
                                         </div>
@@ -148,7 +163,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                                             onChange={(e) => setPurpose(e.target.value)}
                                             placeholder="Reason for inflow..."
                                             rows={3}
-                                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none h-[92px]"
+                                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border-2 border-gray-100 rounded-2xl focus:border-emerald-500 focus:bg-white outline-none transition-all placeholder:text-gray-400 resize-none h-[142px]"
                                         />
                                     </div>
                                 </div>
@@ -166,6 +181,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({ isOpen, onClose, onSu
                             </div>
                         </div>
                     </div>
+
 
                     {/* Footer Actions - Fixed */}
                     <div className="px-8 py-6 border-t border-gray-100 flex items-center justify-between shrink-0 bg-white">

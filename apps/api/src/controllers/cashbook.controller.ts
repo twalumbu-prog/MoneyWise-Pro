@@ -166,7 +166,7 @@ export const returnExcessCash = async (req: any, res: any): Promise<any> => {
  */
 export const logCashInflow = async (req: any, res: any): Promise<any> => {
     try {
-        const { personName, purpose, contactDetails, amount, denominations, accountType } = req.body;
+        const { personName, purpose, contactDetails, date, amount, denominations, accountType } = req.body;
         const userId = (req as any).user.id;
         const organizationId = (req as any).user.organization_id;
 
@@ -180,7 +180,7 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
 
         const entry = await cashbookService.logInflow(
             organizationId,
-            { personName, purpose, contactDetails, amount, denominations, accountType },
+            { personName, purpose, contactDetails, date, amount, denominations, accountType },
             userId
         );
 
