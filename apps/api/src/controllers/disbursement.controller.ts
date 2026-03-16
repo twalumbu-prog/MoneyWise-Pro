@@ -9,8 +9,9 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         const { id } = req.params;
         const { denominations, total_prepared, payment_method, transfer_proof_url } = req.body;
         const cashier_id = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
 
-        // 1. Verify Requisition is APPROVED
+        if (!organizationId) throw new Error("Missing organization context");
         // Using single() to get one record
         const { data: requisition, error: reqError } = await supabase
             .from('requisitions')
@@ -43,7 +44,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 total_prepared: total_prepared,
                 payment_method: payment_method || 'CASH',
                 transfer_proof_url: transfer_proof_url,
-                denominations: denominations // Supabase handles JSON automatically
+                denominations: denominations,
+                organization_id: organizationId
             })
             .select('id')
             .single();
@@ -59,9 +61,6 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         if (updateError) throw updateError;
 
         // 4. Log Cash Disbursement in Cashbook
-        const organizationId = (req as any).user.organization_id;
-        if (!organizationId) throw new Error("Missing organization context");
-
         await cashbookService.logDisbursement(
             organizationId,
             id,
@@ -281,7 +280,7 @@ export const getDisbursementHistory = async (req: any, res: any): Promise<any> =
                 ),
                 cashier:users!cashier_id (name)
             `)
-            .eq('organization_id', organization_id)
+            .or(`organization_id.eq.${organization_id},organization_id.is.null`)
             .order('issued_at', { ascending: false })
             .limit(50);
 
