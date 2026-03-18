@@ -19,9 +19,9 @@ export class LencoService {
     private static readonly BASE_URL = 'https://api.lenco.co/access/v2';
     private static readonly SECRET_KEY = process.env.LENCO_SECRET_KEY;
 
-    private static get headers() {
+    private static getHeaders(secretKey?: string) {
         return {
-            'Authorization': `Bearer ${this.SECRET_KEY}`,
+            'Authorization': `Bearer ${secretKey || this.SECRET_KEY}`,
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         };
@@ -30,13 +30,13 @@ export class LencoService {
     /**
      * Resolve account details (Bank Account)
      */
-    static async resolveBankAccount(accountNumber: string, bankId: string): Promise<LencoAccountResolution> {
+    static async resolveBankAccount(accountNumber: string, bankId: string, secretKey?: string): Promise<LencoAccountResolution> {
         try {
             const response = await axios.post(`${this.BASE_URL}/resolve/bank-account`, {
                 accountNumber,
                 bankId
             }, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             // V2 response structure: data: { accountName, accountNumber, bank: { name, ... } }
             const data = response.data.data;
@@ -54,14 +54,14 @@ export class LencoService {
     /**
      * Resolve account details (Mobile Money)
      */
-    static async resolveMobileMoney(phone: string, operator: string): Promise<LencoAccountResolution> {
+    static async resolveMobileMoney(phone: string, operator: string, secretKey?: string): Promise<LencoAccountResolution> {
         try {
             const response = await axios.post(`${this.BASE_URL}/resolve/mobile-money`, {
                 phone,
                 operator,
                 country: 'zm'
             }, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             const data = response.data.data;
             return {
@@ -83,7 +83,7 @@ export class LencoService {
         phone: string,
         operator: string,
         narration: string
-    }, subaccountId: string) {
+    }, subaccountId: string, secretKey?: string) {
         try {
             const body = {
                 accountId: subaccountId, // debit account
@@ -96,7 +96,7 @@ export class LencoService {
             };
 
             const response = await axios.post(`${this.BASE_URL}/transfers/mobile-money`, body, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             return response.data.data;
         } catch (error: any) {
@@ -114,7 +114,7 @@ export class LencoService {
         accountNumber: string,
         bankId: string,
         narration: string
-    }, subaccountId: string) {
+    }, subaccountId: string, secretKey?: string) {
         try {
             const body = {
                 accountId: subaccountId,
@@ -127,7 +127,7 @@ export class LencoService {
             };
 
             const response = await axios.post(`${this.BASE_URL}/transfers/bank-account`, body, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             return response.data.data;
         } catch (error: any) {
@@ -139,10 +139,10 @@ export class LencoService {
     /**
      * Get account balance
      */
-    static async getAccountBalance(accountId: string) {
+    static async getAccountBalance(accountId: string, secretKey?: string) {
         try {
             const response = await axios.get(`${this.BASE_URL}/accounts/${accountId}/balance`, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             return response.data.data;
         } catch (error: any) {
@@ -154,10 +154,10 @@ export class LencoService {
     /**
      * Get transaction by ID
      */
-    static async getTransactionById(transactionId: string) {
+    static async getTransactionById(transactionId: string, secretKey?: string) {
         try {
             const response = await axios.get(`${this.BASE_URL}/transactions/${transactionId}`, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             return response.data.data;
         } catch (error: any) {
@@ -169,10 +169,10 @@ export class LencoService {
     /**
      * List transactions for an account
      */
-    static async getAccountTransactions(accountId: string, params: { from?: string; to?: string; type?: string; search?: string } = {}) {
+    static async getAccountTransactions(accountId: string, params: { from?: string; to?: string; type?: string; search?: string } = {}, secretKey?: string) {
         try {
             const response = await axios.get(`${this.BASE_URL}/transactions`, {
-                headers: this.headers,
+                headers: this.getHeaders(secretKey),
                 params: {
                     ...params,
                     accountId
@@ -188,10 +188,10 @@ export class LencoService {
     /**
      * Check collection status
      */
-    static async getCollectionStatus(reference: string) {
+    static async getCollectionStatus(reference: string, secretKey?: string) {
         try {
             const response = await axios.get(`${this.BASE_URL}/collections/status/${reference}`, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             return response.data.data;
         } catch (error: any) {
@@ -203,10 +203,10 @@ export class LencoService {
     /**
      * List all Lenco accounts (Subaccounts)
      */
-    static async listAccounts() {
+    static async listAccounts(secretKey?: string) {
         try {
             const response = await axios.get(`${this.BASE_URL}/accounts`, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             return response.data.data;
         } catch (error: any) {
@@ -218,14 +218,14 @@ export class LencoService {
     /**
      * Create a new Lenco account (Subaccount)
      */
-    static async createAccount(name: string, currency: string = 'ZMW') {
+    static async createAccount(name: string, currency: string = 'ZMW', secretKey?: string) {
         try {
             const response = await axios.post(`${this.BASE_URL}/accounts`, {
                 name,
                 currency,
                 type: 'default' // Or appropriate type based on Lenco V2
             }, {
-                headers: this.headers
+                headers: this.getHeaders(secretKey)
             });
             return response.data.data;
         } catch (error: any) {

@@ -145,6 +145,20 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
     const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
 
     console.log(`[Lenco Verify] Request: ref=${reference}, txId=${transactionId}, orgId=${organizationId}`);
+    
+    // Fetch organization specific secret key if available
+    let secretKey: string | undefined = undefined;
+    if (organizationId) {
+        try {
+            const orgResult = await pool.query('SELECT lenco_secret_key FROM organizations WHERE id = $1', [organizationId]);
+            if (orgResult.rows.length > 0) {
+                secretKey = orgResult.rows[0].lenco_secret_key;
+                console.log(`[Lenco Verify] Using organization-specific secret key for ${organizationId}`);
+            }
+        } catch (err) {
+            console.error('[Lenco Verify] Error fetching org secret key:', err);
+        }
+    }
 
     try {
         // 1. Check if the entry already exists in our database
@@ -170,7 +184,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
         if (transactionId && typeof transactionId === 'string') {
             console.log(`[Lenco Verify] Checking by transactionId: ${transactionId}`);
             try {
-                const transaction = await LencoService.getTransactionById(transactionId);
+                const transaction = await LencoService.getTransactionById(transactionId, secretKey);
                 
                 // CRITICAL: Robust null-check for Lenco API response
                 if (!transaction) throw new Error('Empty transaction response from Lenco');
@@ -201,7 +215,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
 
         // 3. Fallback to Collection Status
         console.log(`[Lenco Verify] Falling back to collection status check for ref: ${reference}`);
-        const lencoStatus = await LencoService.getCollectionStatus(reference);
+        const lencoStatus = await LencoService.getCollectionStatus(reference, secretKey);
         
         // Robust null-check
         if (!lencoStatus) throw new Error('Empty collection status response from Lenco');
@@ -249,9 +263,9 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
     try {
         console.log(`[Lenco Reconcile] Fetching summary for org: ${organizationId}`);
         
-        // 1. Get organization and its Lenco subaccount ID
+        console.log(`[Recon Debug] Stage 1: Fetching org ${organizationId}`);
         const orgResult = await pool.query(
-            'SELECT lenco_subaccount_id FROM organizations WHERE id = $1',
+            'SELECT lenco_subaccount_id, lenco_secret_key FROM organizations WHERE id = $1',
             [organizationId]
         );
 
@@ -260,7 +274,8 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        const subaccountId = orgResult.rows[0].lenco_subaccount_id;
+        const { lenco_subaccount_id: subaccountId, lenco_secret_key: secretKey } = orgResult.rows[0];
+        console.log(`[Recon Debug] Subaccount: ${subaccountId}, Key present: ${!!secretKey}`);
         if (!subaccountId) {
             console.warn(`[Lenco Reconcile] No subaccount linked for org: ${organizationId}`);
             return res.status(400).json({ error: 'No Lenco account linked to this organization' });
@@ -270,7 +285,9 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
         let externalBalance = 0;
         let lencoBalanceData: any = {};
         try {
-            lencoBalanceData = await LencoService.getAccountBalance(subaccountId);
+            console.log(`[Recon Debug] Stage 2: Lenco API call for ${subaccountId}`);
+            lencoBalanceData = await LencoService.getAccountBalance(subaccountId, secretKey);
+            console.log(`[Recon Debug] Lenco response:`, JSON.stringify(lencoBalanceData));
             const rawBalance = lencoBalanceData?.availableBalance || lencoBalanceData?.balance || '0';
             externalBalance = parseFloat(rawBalance);
             
@@ -287,10 +304,12 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
         // 3. Fetch balance from MoneyWise Ledger
         let internalBalance = 0;
         try {
+            console.log(`[Recon Debug] Stage 3: DB ledger fetch for org ${organizationId}`);
             const ledgerResult = await pool.query(
                 "SELECT balance_after FROM cashbook_entries WHERE organization_id = $1 AND account_type = 'MONEYWISE_WALLET' ORDER BY created_at DESC LIMIT 1",
                 [organizationId]
             );
+            console.log(`[Recon Debug] DB result rows: ${ledgerResult.rows.length}`);
             internalBalance = ledgerResult.rows.length > 0 ? parseFloat(ledgerResult.rows[0].balance_after) : 0;
             
             if (isNaN(internalBalance)) internalBalance = 0;
@@ -317,6 +336,10 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
 
     } catch (error: any) {
         console.error('[Lenco Reconcile] UNEXPECTED CRITICAL ERROR:', error);
-        res.status(500).json({ error: error.message || 'Internal reconciliation system error' });
+        res.status(500).json({ 
+            error: error.message || 'Internal reconciliation system error',
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
+            details: error.toString()
+        });
     }
 };

@@ -32,6 +32,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
     const [inflowType, setInflowType] = useState<'CASH' | 'WALLET'>(initialInflowType);
     const [walletAmount, setWalletAmount] = useState<string>('');
     const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
+    const [lencoPublicKey, setLencoPublicKey] = useState<string | null>(null);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [loadingOrg, setLoadingOrg] = useState(false);
     const [isVerifying, setIsVerifying] = useState(false);
@@ -52,6 +53,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
             setLoadingOrg(true);
             const org = await organizationService.getOrganization();
             setLencoSubaccountId(org.lenco_subaccount_id || null);
+            setLencoPublicKey(org.lenco_public_key || null);
             setOrganizationId(org.id || null);
         } catch (err) {
             console.error('Failed to load organization for wallet deposit:', err);
@@ -134,7 +136,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
         });
  
         LencoPay.getPaid({
-            key: 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
+            key: lencoPublicKey || 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
             amount: Number(walletAmount).toFixed(2), 
             currency: 'ZMW',
             reference: ref,

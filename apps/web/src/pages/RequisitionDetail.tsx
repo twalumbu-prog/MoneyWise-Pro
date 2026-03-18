@@ -47,6 +47,7 @@ export const RequisitionDetail: React.FC = () => {
     ]);
     const [submissionMethod, setSubmissionMethod] = useState<'CASH' | 'MONEYWISE_WALLET'>('CASH');
     const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
+    const [lencoPublicKey, setLencoPublicKey] = useState<string | null>(null);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [isVerifyingWallet, setIsVerifyingWallet] = useState(false);
     const [walletVerificationStep, setWalletVerificationStep] = useState<'IDLE' | 'POLLING' | 'SUCCESS' | 'FAILED'>('IDLE');
@@ -62,6 +63,7 @@ export const RequisitionDetail: React.FC = () => {
         try {
             const org = await organizationService.getOrganization();
             setLencoSubaccountId(org.lenco_subaccount_id || null);
+            setLencoPublicKey(org.lenco_public_key || null);
             setOrganizationId(org.id || null);
         } catch (err) {
             console.error('Failed to load organization for wallet deposit:', err);
@@ -169,7 +171,7 @@ export const RequisitionDetail: React.FC = () => {
         const ref = `CHG-${Date.now()}-${lencoSubaccountId}-${requisition?.id.slice(0, 8)}`;
 
         LencoPay.getPaid({
-            key: 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
+            key: lencoPublicKey || 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
             amount: amountToDeposit.toFixed(2),
             currency: 'ZMW',
             reference: ref,

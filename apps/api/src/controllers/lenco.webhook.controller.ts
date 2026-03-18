@@ -75,7 +75,31 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         return false;
     }
 
-    // 1. Try to lookup by lenco_subaccount_id if present in payload
+    // 1. Try to extract organization ID from reference using regex (Primary Source of Truth)
+    if (!organizationId && reference) {
+        const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+        const matches = reference.match(uuidRegex);
+        
+        if (matches && matches.length > 0) {
+            const potentialOrgIds = [...matches];
+            // We search from the end of the reference as our standard is DEP-timestamp-subaccount-ORGID
+            for (const id of potentialOrgIds.reverse()) {
+                try {
+                    const orgResult = await pool.query('SELECT id FROM organizations WHERE id = $1', [id]);
+                    if (orgResult.rows.length > 0) {
+                        organizationId = orgResult.rows[0].id;
+                        identificationStage = 'Stage 1: Reference Regex';
+                        console.log(`[Lenco Webhook] Identified organization ${organizationId} via regex matching in reference`);
+                        break;
+                    }
+                } catch (err) {
+                    console.error('[Lenco Webhook] Error verifying potential organization ID from reference:', err);
+                }
+            }
+        }
+    }
+
+    // 2. Fallback: Lookup by lenco_subaccount_id if present in payload
     if (!organizationId && accountId) {
         try {
             const orgResult = await pool.query(
@@ -84,34 +108,11 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             );
             if (orgResult.rows.length > 0) {
                 organizationId = orgResult.rows[0].id;
-                identificationStage = 'Stage 1: Subaccount ID';
+                identificationStage = 'Stage 2: Subaccount ID Fallback';
                 console.log(`[Lenco Webhook] Identified organization ${organizationId} via subaccount ${accountId}`);
             }
         } catch (err) {
             console.error('[Lenco Webhook] Error looking up organization by subaccount:', err);
-        }
-    }
-
-    // 2. Fallback: Extract organization ID from reference using regex
-    if (!organizationId && reference) {
-        const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
-        const matches = reference.match(uuidRegex);
-        
-        if (matches && matches.length > 0) {
-            const potentialOrgIds = [...matches];
-            for (const id of potentialOrgIds.reverse()) {
-                try {
-                    const orgResult = await pool.query('SELECT id FROM organizations WHERE id = $1', [id]);
-                    if (orgResult.rows.length > 0) {
-                        organizationId = orgResult.rows[0].id;
-                        identificationStage = 'Stage 2: Reference Regex';
-                        console.log(`[Lenco Webhook] Identified organization ${organizationId} via regex matching in reference`);
-                        break;
-                    }
-                } catch (err) {
-                    console.error('[Lenco Webhook] Error verifying potential organization ID from reference:', err);
-                }
-            }
         }
     }
 
