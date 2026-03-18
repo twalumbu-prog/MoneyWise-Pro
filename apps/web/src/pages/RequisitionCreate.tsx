@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Trash2 } from 'lucide-react';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Plus, Trash2, AlertTriangle, Clock } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 
 
@@ -39,6 +39,25 @@ export const RequisitionCreate: React.FC = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [activeRequisition, setActiveRequisition] = useState<any | null>(null);
+
+
+    React.useEffect(() => {
+        checkActiveRequisition();
+    }, []);
+
+    const checkActiveRequisition = async () => {
+        try {
+            const requisitions = await requisitionService.getAll();
+            const blockingStatuses = ['SUBMITTED', 'AUTHORISED', 'DISBURSED', 'RECEIVED'];
+            const blocking = requisitions.find((r: any) => blockingStatuses.includes(r.status));
+            if (blocking) {
+                setActiveRequisition(blocking);
+            }
+        } catch (err) {
+            console.error('Failed to check active requisitions:', err);
+        }
+    };
 
     const addLineItem = () => {
         const newItem: LineItem = {
@@ -58,7 +77,7 @@ export const RequisitionCreate: React.FC = () => {
 
     const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
         setLineItems(
-            lineItems.map((item) => {
+            lineItems.map((item: LineItem) => {
                 if (item.id === id) {
                     const updated = { ...item, [field]: value };
                     if (field === 'quantity' || field === 'unit_price') {
@@ -75,11 +94,14 @@ export const RequisitionCreate: React.FC = () => {
 
 
     const getEstimatedTotal = () => {
-        return lineItems.reduce((sum, item) => sum + Number(item.estimated_amount), 0);
+        return lineItems.reduce((sum: number, item: LineItem) => sum + Number(item.estimated_amount), 0);
     };
+
+    const isBlocked = !!activeRequisition;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        
         setLoading(true);
         setError(null);
 
@@ -92,7 +114,7 @@ export const RequisitionCreate: React.FC = () => {
             };
 
             if (reqType === 'EXPENSE') {
-                payload.items = lineItems.map(({ id, ...item }) => item);
+                payload.items = lineItems.map(({ id, ...item }: LineItem) => item);
             } else {
                 payload.staff_name = staffName;
                 payload.employee_id = employeeId;
@@ -125,11 +147,51 @@ export const RequisitionCreate: React.FC = () => {
                 </h1>
 
                 <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6 space-y-6">
-                    {error && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                            <p className="text-red-800">{error}</p>
+                    {activeRequisition && (
+                        <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 p-4 opacity-10">
+                                <Clock className="h-24 w-24 text-amber-600" />
+                            </div>
+                            <div className="relative z-10 flex items-start space-x-4">
+                                <div className="bg-amber-100 p-3 rounded-xl">
+                                    <AlertTriangle className="h-6 w-6 text-amber-600" />
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <h3 className="text-lg font-black text-amber-900 uppercase tracking-tight">Accountability Safeguard Active</h3>
+                                        <p className="text-amber-800 text-sm font-medium leading-relaxed">
+                                            You currently have an outstanding requisition that requires reconciliation. To maintain financial accountability, new requests are paused until your active cycle is completed.
+                                        </p>
+                                    </div>
+                                    
+                                    <div className="bg-white/60 rounded-xl p-4 border border-amber-100 flex justify-between items-center group">
+                                        <div>
+                                            <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest">Active Request</p>
+                                            <p className="text-sm font-bold text-brand-navy">#{activeRequisition.id.slice(0, 8)} - {activeRequisition.description}</p>
+                                            <div className="flex items-center mt-1">
+                                                <span className="w-2 h-2 rounded-full bg-amber-500 mr-2 animate-pulse" />
+                                                <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">{activeRequisition.status}</span>
+                                            </div>
+                                        </div>
+                                        <Link 
+                                            to={`/requisitions/${activeRequisition.id}`}
+                                            className="px-4 py-2 bg-amber-600 text-white text-xs font-black rounded-lg hover:bg-amber-700 transition-all flex items-center shadow-lg shadow-amber-100"
+                                        >
+                                            RECONCILE NOW
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     )}
+
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-4 flex items-start space-x-3">
+                            <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 flex-shrink-0" />
+                            <p className="text-red-800 text-sm">{error}</p>
+                        </div>
+                    )}
+
 
                     {/* Common Fields: Department */}
 
@@ -187,7 +249,7 @@ export const RequisitionCreate: React.FC = () => {
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-200">
-                                            {lineItems.map((item) => (
+                                            {lineItems.map((item: LineItem) => (
                                                 <tr key={item.id}>
                                                     <td className="px-4 py-3">
                                                         <input
@@ -245,7 +307,7 @@ export const RequisitionCreate: React.FC = () => {
 
                                 {/* Mobile View (Card Layout) */}
                                 <div className="md:hidden space-y-4">
-                                    {lineItems.map((item) => (
+                                    {lineItems.map((item: LineItem) => (
                                         <div key={item.id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 relative">
                                             <button
                                                 type="button"
@@ -415,7 +477,7 @@ export const RequisitionCreate: React.FC = () => {
                         </button>
                         <button
                             type="submit"
-                            disabled={loading}
+                            disabled={loading || isBlocked}
                             className="px-6 py-2.5 bg-brand-green text-white font-bold rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-200 transition-all transform hover:-translate-y-0.5"
                         >
                             {loading ? 'Submitting...' : 'Submit Requisition'}

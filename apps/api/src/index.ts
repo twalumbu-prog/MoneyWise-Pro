@@ -27,6 +27,7 @@ import aiRoutes from './routes/ai.routes';
 import organizationRoutes from './routes/organization.routes';
 import budgetRoutes from './routes/budget.routes';
 import reportRoutes from './routes/report.routes';
+import lencoRoutes from './routes/lenco.routes';
 
 dotenv.config();
 
@@ -57,7 +58,8 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS phone VARCHAR(50),
             ADD COLUMN IF NOT EXISTS address TEXT,
             ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100),
-            ADD COLUMN IF NOT EXISTS website VARCHAR(255);
+            ADD COLUMN IF NOT EXISTS website VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS lenco_subaccount_id VARCHAR(255);
         `);
 
         await migrationPool.query(`
@@ -230,6 +232,7 @@ app.use('/ai', aiRoutes);
 app.use('/organizations', organizationRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
+app.use('/lenco', lencoRoutes);
 
 app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');

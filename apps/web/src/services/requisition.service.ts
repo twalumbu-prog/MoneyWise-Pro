@@ -205,7 +205,7 @@ export const requisitionService = {
         return response.json();
     },
 
-    submitChange: async (id: string, denominations: any, change_amount: number) => {
+    submitChange: async (id: string, denominations: any, change_amount: number, submission_method: 'CASH' | 'MONEYWISE_WALLET' = 'CASH', change_external_reference?: string) => {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
 
@@ -215,7 +215,12 @@ export const requisitionService = {
                 'Content-Type': 'application/json',
                 Authorization: `Bearer ${token}`,
             },
-            body: JSON.stringify({ denominations, change_amount }),
+            body: JSON.stringify({ 
+                denominations, 
+                change_amount, 
+                submission_method, 
+                change_external_reference 
+            }),
         });
 
         if (!response.ok) {

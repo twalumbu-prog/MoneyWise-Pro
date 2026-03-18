@@ -12,7 +12,7 @@ export const OrganizationController = {
 
             const { data, error } = await supabase
                 .from('organizations')
-                .select('id, name, slug, email, phone, address, tax_id, website')
+                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id')
                 .eq('id', organization_id)
                 .single();
 
@@ -36,7 +36,7 @@ export const OrganizationController = {
             }
 
             // Extract allowed fields
-            const { name, email, phone, address, tax_id, website } = req.body;
+            const { name, email, phone, address, tax_id, website, lenco_subaccount_id } = req.body;
 
             // Optional: Check if user is an ADMIN. 
             // Depending on requirements, we might restrict org updates to admins.
@@ -57,6 +57,7 @@ export const OrganizationController = {
             if (address !== undefined) updateData.address = address;
             if (tax_id !== undefined) updateData.tax_id = tax_id;
             if (website !== undefined) updateData.website = website;
+            if (lenco_subaccount_id !== undefined) updateData.lenco_subaccount_id = lenco_subaccount_id;
 
             updateData.updated_at = new Date().toISOString();
 
@@ -64,7 +65,7 @@ export const OrganizationController = {
                 .from('organizations')
                 .update(updateData)
                 .eq('id', organization_id)
-                .select('id, name, slug, email, phone, address, tax_id, website')
+                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id')
                 .single();
 
             if (error) {

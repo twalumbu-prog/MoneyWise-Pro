@@ -89,6 +89,14 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                 }`}>
                                     <CreditCard className="h-3 w-3" /> {disbursement.payment_method || 'CASH'}
                                 </span>
+                                {disbursement.payment_method === 'MONEYWISE_WALLET' && (
+                                    <span className={`flex items-center gap-1 text-[10px] font-black px-2 py-0.5 rounded-lg uppercase ${
+                                        disbursement.status === 'SUCCESSFUL' ? 'bg-green-100 text-green-700' : 
+                                        disbursement.status === 'FAILED' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {disbursement.status || 'PROCESSING'}
+                                    </span>
+                                )}
                             </h3>
                             <p className="text-gray-400 text-sm">#{disbursement.id.slice(0, 12)}</p>
                         </div>
@@ -204,20 +212,39 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                     ))}
                                 </div>
                             ) : (
-                                <div className="bg-gray-50 rounded-2xl p-6 border-2 border-dashed border-gray-200 text-center">
-                                    <span className="text-xs text-brand-navy font-bold">{disbursement.payment_method} Transfer</span>
-                                    {isPending ? (
-                                        <div className="mt-4">
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={totalPrepared}
-                                                onChange={(e) => setTotalPrepared(e.target.value)}
-                                                className="block w-full text-center bg-white border-gray-200 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green text-lg font-bold p-3"
-                                            />
+                                <div className="space-y-4">
+                                    <div className="bg-gray-50 rounded-2xl p-6 border-2 border-dashed border-gray-200 text-center">
+                                        <span className="text-xs text-brand-navy font-bold">{disbursement.payment_method === 'MONEYWISE_WALLET' ? 'MoneyWise Wallet' : disbursement.payment_method} Transfer</span>
+                                        {isPending ? (
+                                            <div className="mt-4">
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={totalPrepared}
+                                                    onChange={(e) => setTotalPrepared(e.target.value)}
+                                                    className="block w-full text-center bg-white border-gray-200 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green text-lg font-bold p-3"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="text-2xl font-black text-brand-navy mt-1">K{Number(totalPrepared).toLocaleString()}</div>
+                                        )}
+                                    </div>
+                                    
+                                    {disbursement.payment_method === 'MONEYWISE_WALLET' && (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
+                                                <p className="text-[10px] text-gray-400 uppercase font-bold">Recipient Account</p>
+                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_account || 'N/A'}</p>
+                                            </div>
+                                            <div className="bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
+                                                <p className="text-[10px] text-gray-400 uppercase font-bold">Bank / Provider</p>
+                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_bank_code === '01' ? 'Airtel Money' : disbursement.recipient_bank_code === '02' ? 'MTN Money' : (disbursement.recipient_bank_code || 'N/A')}</p>
+                                            </div>
+                                            <div className="col-span-2 bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
+                                                <p className="text-[10px] text-gray-400 uppercase font-bold">Account Name</p>
+                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_account_name || 'N/A'}</p>
+                                            </div>
                                         </div>
-                                    ) : (
-                                        <div className="text-2xl font-black text-brand-navy mt-1">K{Number(totalPrepared).toLocaleString()}</div>
                                     )}
                                 </div>
                             )}

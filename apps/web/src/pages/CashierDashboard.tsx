@@ -1,9 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
-import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2, CreditCard } from 'lucide-react';
+import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2, CreditCard, Loader2, Wallet, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { DisbursementDetailOverlay } from '../components/DisbursementDetailOverlay';
+import { lencoService } from '../services/lenco.service';
+import { organizationService } from '../services/organization.service';
+import { cashbookService } from '../services/cashbook.service';
+
+const LENCO_FEE = 8.5;
 
 // Helper to calculate total value of denominations
 const calculateTotal = (denominations: Record<string, number>) => {
@@ -13,7 +18,7 @@ const calculateTotal = (denominations: Record<string, number>) => {
 };
 
 export const CashierDashboard: React.FC = () => {
-    const { } = useAuth();
+    const { session } = useAuth();
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [selectedReq, setSelectedReq] = useState<Requisition | null>(null);
     const [denominations, setDenominations] = useState<Record<string, number>>({
@@ -21,8 +26,11 @@ export const CashierDashboard: React.FC = () => {
     });
 
     // New state for disbursement method
-    const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK'>('CASH');
+    const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET'>('CASH');
     const [transferAmount, setTransferAmount] = useState<string>('');
+    const [recipientAccount, setRecipientAccount] = useState<string>('');
+    const [recipientBankCode, setRecipientBankCode] = useState<string>('');
+    const [recipientAccountName, setRecipientAccountName] = useState<string>('');
     const [transferProofFile, setTransferProofFile] = useState<File | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -36,9 +44,48 @@ export const CashierDashboard: React.FC = () => {
     const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [editingDisb, setEditingDisb] = useState<any | null>(null);
 
+    // Wallet status state
+    const [walletBalance, setWalletBalance] = useState<number | null>(null);
+    const [fetchingBalance, setFetchingBalance] = useState(false);
+    const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
+
     useEffect(() => {
         loadRequisitions();
+        fetchWalletStatus();
     }, []);
+
+    const fetchWalletStatus = async () => {
+        try {
+            setFetchingBalance(true);
+            const org = await organizationService.getOrganization();
+            if (org.lenco_subaccount_id) {
+                setLencoSubaccountId(org.lenco_subaccount_id);
+                
+                // Fetch balance from internal ledger (as requested: "actual amount on the cash ledger")
+                const ledgerBalance = await cashbookService.getBalance('MONEYWISE_WALLET');
+                setWalletBalance(ledgerBalance);
+                
+                // Optional: Verify with Lenco API but handle safely
+                try {
+                    const accounts = await lencoService.getAccounts();
+                    if (Array.isArray(accounts)) {
+                        const wallet = accounts.find((a: any) => a.id === org.lenco_subaccount_id);
+                        if (wallet && wallet.balance && typeof wallet.balance.amount !== 'undefined') {
+                            console.log(`[Lenco] Live API Balance: K${wallet.balance.amount}`);
+                            // We stick to ledgerBalance for the UI as per user request, 
+                            // but we've verified the API connection.
+                        }
+                    }
+                } catch (apiErr) {
+                    console.warn('[Lenco] Could not fetch live balance from API, using ledger only.');
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch wallet status:', err);
+        } finally {
+            setFetchingBalance(false);
+        }
+    };
 
     const loadRequisitions = async () => {
         try {
@@ -82,42 +129,49 @@ export const CashierDashboard: React.FC = () => {
     };
 
     const handleDisburse = async () => {
-        if (!selectedReq) return;
-
-        const estimatedTotal = Number(selectedReq.estimated_total);
-        const isNonCash = paymentMethod !== 'CASH';
-
-        let totalPrepared = 0;
-
-        if (isNonCash) {
-            totalPrepared = Number(transferAmount);
-            if (!totalPrepared || totalPrepared <= 0) {
-                alert('Please enter a valid transfer amount.');
-                return;
-            }
-            if (!transferProofFile) {
-                alert('Please upload a proof of transfer document.');
-                return;
-            }
-        } else {
-            totalPrepared = calculateTotal(denominations);
-        }
-
-        if (totalPrepared < estimatedTotal) {
-            alert(`Total prepared/transferred (K${totalPrepared.toFixed(2)}) cannot be less than the requisition amount (K${estimatedTotal.toFixed(2)})`);
-            return;
-        }
-
-        if (totalPrepared > estimatedTotal) {
-            const confirmed = window.confirm(
-                `You are about to disburse K${totalPrepared.toFixed(2)}, which is MORE than the requested amount of K${estimatedTotal.toFixed(2)}. \n\nThis is usually because exact denominations are unavailable. The extra amount will be recorded and expected to be returned alongside actual change. \n\nDo you want to proceed?`
-            );
-            if (!confirmed) return;
-        }
+        if (!selectedReq || processing) return;
 
         try {
             setProcessing(true);
-            const token = (await import('../lib/supabase')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+            setError(null);
+            
+            const estimatedTotal = Number(selectedReq.estimated_total);
+            const isNonCash = paymentMethod !== 'CASH';
+
+            let totalPrepared = 0;
+
+            if (isNonCash) {
+                totalPrepared = Number(transferAmount);
+                if (!totalPrepared || totalPrepared <= 0) {
+                    alert('Please enter a valid transfer amount.');
+                    setProcessing(false);
+                    return;
+                }
+                if (paymentMethod !== 'MONEYWISE_WALLET' && !transferProofFile) {
+                    alert('Please upload a proof of transfer document.');
+                    setProcessing(false);
+                    return;
+                }
+            } else {
+                totalPrepared = calculateTotal(denominations);
+            }
+
+            if (totalPrepared < estimatedTotal) {
+                alert(`Total prepared/transferred (K${totalPrepared.toFixed(2)}) cannot be less than the requisition amount (K${estimatedTotal.toFixed(2)})`);
+                setProcessing(false);
+                return;
+            }
+
+            if (totalPrepared > estimatedTotal) {
+                const confirmed = window.confirm(
+                    `You are about to disburse K${totalPrepared.toFixed(2)}, which is MORE than the requested amount of K${estimatedTotal.toFixed(2)}. \n\nThis is usually because exact denominations are unavailable. The extra amount will be recorded and expected to be returned alongside actual change. \n\nDo you want to proceed?`
+                );
+                if (!confirmed) {
+                    setProcessing(false);
+                    return;
+                }
+            }
+
             const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
             let uploadedUrl = null;
@@ -139,28 +193,37 @@ export const CashierDashboard: React.FC = () => {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Authorization: `Bearer ${await token}`,
+                    Authorization: `Bearer ${session?.access_token}`,
                 },
                 body: JSON.stringify({
                     denominations: isNonCash ? {} : denominations,
                     total_prepared: totalPrepared,
                     payment_method: paymentMethod,
-                    transfer_proof_url: uploadedUrl
+                    transfer_proof_url: uploadedUrl,
+                    recipient_account: recipientAccount,
+                    recipient_bank_code: recipientBankCode,
+                    recipient_account_name: recipientAccountName
                 }),
             });
 
-            if (!response.ok) throw new Error('Disbursement failed');
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Disbursement failed');
+            }
 
             alert('Disbursement recorded successfully!');
             setSelectedReq(null);
             setPaymentMethod('CASH');
             setTransferAmount('');
+            setRecipientAccount('');
+            setRecipientBankCode('');
+            setRecipientAccountName('');
             setTransferProofFile(null);
             setDenominations({ '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0 });
             loadRequisitions();
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
-            alert('Failed to record disbursement');
+            alert(err.message || 'Failed to record disbursement');
         } finally {
             setProcessing(false);
         }
@@ -339,6 +402,13 @@ export const CashierDashboard: React.FC = () => {
                                             <Building className="h-6 w-6 mb-2" />
                                             <span className="text-xs font-medium text-center">Bank Transfer</span>
                                         </button>
+                                        <button
+                                            onClick={() => setPaymentMethod('MONEYWISE_WALLET')}
+                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'MONEYWISE_WALLET' ? 'bg-brand-pink/10 border-brand-pink text-brand-pink' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                        >
+                                            <CreditCard className="h-6 w-6 mb-2" />
+                                            <span className="text-xs font-medium text-center">MoneyWise Wallet</span>
+                                        </button>
                                     </div>
 
                                     {paymentMethod === 'CASH' ? (
@@ -376,52 +446,160 @@ export const CashierDashboard: React.FC = () => {
                                                 />
                                             </div>
 
-                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                    Proof of Transfer Document
-                                                </label>
-                                                <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md group hover:bg-gray-50 transition-colors">
-                                                    <div className="space-y-1 text-center">
-                                                        {transferProofFile ? (
-                                                            <div className="flex flex-col items-center">
-                                                                <div className="flex items-center space-x-2 text-brand-green mb-2">
-                                                                    <File className="h-8 w-8" />
-                                                                    <span className="text-sm font-medium">{transferProofFile.name}</span>
+                                            {paymentMethod === 'MONEYWISE_WALLET' && (
+                                                <>
+                                                    <div className="grid grid-cols-2 gap-4">
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                                Recipient Account
+                                                            </label>
+                                                            <input
+                                                                type="text"
+                                                                value={recipientAccount}
+                                                                onChange={(e) => setRecipientAccount(e.target.value)}
+                                                                placeholder="e.g. 0123456789"
+                                                                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                                Bank Code (ZMN)
+                                                            </label>
+                                                            <select
+                                                                value={recipientBankCode}
+                                                                onChange={(e) => setRecipientBankCode(e.target.value)}
+                                                                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                                                            >
+                                                                 <option value="">Select Bank / Operator</option>
+                                                                 <option value="airtel">Airtel Money</option>
+                                                                 <option value="mtn">MTN Money</option>
+                                                                 <option value="zamtel">Zamtel Money</option>
+                                                                 <option value="zanaco">ZANACO</option>
+                                                                 <option value="sc">Standard Chartered</option>
+                                                                 <option value="absa">Absa</option>
+                                                                 <option value="fnb">FNB</option>
+                                                                 <option value="ecobank">Ecobank</option>
+                                                                 <option value="atlas_mara">Atlas Mara</option>
+                                                                 <option value="indo_zambia">Indo Zambia</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                            Recipient Name
+                                                        </label>
+                                                        <input
+                                                            type="text"
+                                                            value={recipientAccountName}
+                                                            onChange={(e) => setRecipientAccountName(e.target.value)}
+                                                            placeholder="e.g. John Doe"
+                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                                                        />
+                                                    </div>
+
+                                                    {/* Wallet Safeguard UI */}
+                                                    {lencoSubaccountId && (
+                                                        <div className={`p-4 rounded-xl border ${walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance ? 'bg-red-50 border-red-100' : 'bg-brand-gray/30 border-gray-100'}`}>
+                                                            <div className="flex justify-between items-start">
+                                                                <div className="space-y-1">
+                                                                    <div className="flex items-center space-x-2">
+                                                                        <Wallet className={`h-4 w-4 ${walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance ? 'text-red-500' : 'text-brand-green'}`} />
+                                                                        <span className="text-sm font-bold text-brand-navy">MoneyWise Wallet Safeguard</span>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-500">
+                                                                        All wallet withdrawals incur a fixed Lenco transaction charge of <span className="font-bold text-brand-navy">K{LENCO_FEE}</span>
+                                                                    </p>
                                                                 </div>
-                                                                <button
-                                                                    onClick={() => setTransferProofFile(null)}
-                                                                                                                                  className="text-xs text-red-500 hover:text-red-700 flex items-center"
-                                                                >
-                                                                    <X className="h-3 w-3 mr-1" /> Remove
-                                                                </button>
+                                                                <div className="text-right">
+                                                                    <p className="text-[10px] text-gray-400 uppercase font-black tracking-wider">Available Balance</p>
+                                                                    {fetchingBalance ? (
+                                                                        <Loader2 className="h-4 w-4 animate-spin text-brand-green ml-auto" />
+                                                                    ) : (
+                                                                        <p className={`text-lg font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance ? 'text-red-600' : 'text-brand-green'}`}>
+                                                                            K{walletBalance?.toLocaleString() || '0.00'}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                        ) : (
-                                                            <>
-                                                                <Upload className="mx-auto h-12 w-12 text-gray-400 group-hover:text-brand-green transition-colors" />
-                                                                <div className="flex text-sm text-gray-600 justify-center">
-                                                                    <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-brand-green hover:text-green-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-brand-green">
-                                                                        <span>Upload a file</span>
-                                                                        <input
-                                                                            ref={fileInputRef}
-                                                                            type="file"
-                                                                            className="sr-only"
-                                                                            accept="image/*,.pdf"
-                                                                            onChange={(e) => {
-                                                                                if (e.target.files && e.target.files[0]) {
-                                                                                    setTransferProofFile(e.target.files[0]);
-                                                                                }
-                                                                            }}
-                                                                        />
-                                                                    </label>
-                                                                    <p className="pl-1">or drag and drop</p>
+
+                                                            <div className="mt-4 pt-4 border-t border-dashed border-gray-200 grid grid-cols-2 gap-4">
+                                                                <div>
+                                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Requisition Total</p>
+                                                                    <p className="text-sm font-bold text-brand-navy">
+                                                                        K{Number(selectedReq.estimated_total).toLocaleString()}
+                                                                    </p>
                                                                 </div>
-                                                                <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
-                                                            </>
-                                                        )
-                                                        }
+                                                                <div>
+                                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Lenco Fee</p>
+                                                                    <p className="text-sm font-bold text-gray-600">K{LENCO_FEE}</p>
+                                                                </div>
+                                                                <div className="col-span-2 pt-2 flex justify-between items-center border-t border-gray-100 mt-2">
+                                                                    <p className="text-xs font-black text-brand-navy uppercase">Total Wallet Deduction</p>
+                                                                    <p className={`text-xl font-black ${walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance ? 'text-red-600' : 'text-brand-navy'}`}>
+                                                                        K{(Number(selectedReq.estimated_total) + LENCO_FEE).toLocaleString()}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            
+                                                            {walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance && (
+                                                                <div className="mt-4 p-3 bg-red-100 rounded-lg flex items-center space-x-2 border border-red-200 animate-pulse">
+                                                                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                                                                    <p className="text-xs font-bold text-red-700">Insufficient funds in MoneyWise Wallet for this disbursement.</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+
+                                            {paymentMethod !== 'MONEYWISE_WALLET' && (
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                        Proof of Transfer Document
+                                                    </label>
+                                                    <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md group hover:bg-gray-50 transition-colors">
+                                                        <div className="space-y-1 text-center">
+                                                            {transferProofFile ? (
+                                                                <div className="flex flex-col items-center">
+                                                                    <div className="flex items-center space-x-2 text-brand-green mb-2">
+                                                                        <File className="h-8 w-8" />
+                                                                        <span className="text-sm font-medium">{transferProofFile.name}</span>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => setTransferProofFile(null)}
+                                                                        className="text-xs text-red-500 hover:text-red-700 flex items-center"
+                                                                    >
+                                                                        <X className="h-3 w-3 mr-1" /> Remove
+                                                                    </button>
+                                                                </div>
+                                                            ) : (
+                                                                <>
+                                                                    <Upload className="mx-auto h-12 w-12 text-gray-400 group-hover:text-brand-green transition-colors" />
+                                                                    <div className="flex text-sm text-gray-600 justify-center">
+                                                                        <label className="relative cursor-pointer bg-transparent rounded-md font-medium text-brand-green hover:text-green-600 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-brand-green">
+                                                                            <span>Upload a file</span>
+                                                                            <input
+                                                                                ref={fileInputRef}
+                                                                                type="file"
+                                                                                className="sr-only"
+                                                                                accept="image/*,.pdf"
+                                                                                onChange={(e) => {
+                                                                                    if (e.target.files && e.target.files[0]) {
+                                                                                        setTransferProofFile(e.target.files[0]);
+                                                                                    }
+                                                                                }}
+                                                                            />
+                                                                        </label>
+                                                                        <p className="pl-1">or drag and drop</p>
+                                                                    </div>
+                                                                    <p className="text-xs text-gray-500">PNG, JPG, PDF up to 10MB</p>
+                                                                </>
+                                                            )
+                                                            }
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
                                     )}
 
@@ -439,11 +617,20 @@ export const CashierDashboard: React.FC = () => {
                                         </div>
                                         <button
                                             onClick={handleDisburse}
-                                            disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && !transferProofFile)}
-                                            className="flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed"
+                                            disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && paymentMethod !== 'MONEYWISE_WALLET' && !transferProofFile) || (paymentMethod === 'MONEYWISE_WALLET' && (!recipientAccount || !recipientBankCode || (walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance)))}
+                                            className="w-full flex items-center justify-center px-6 py-4 border border-transparent text-lg font-bold rounded-xl text-white bg-brand-navy hover:bg-brand-navy/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-navy disabled:bg-gray-400 disabled:cursor-not-allowed shadow-[0_4px_0_0_rgba(0,0,0,0.1)] active:translate-y-0.5 active:shadow-none transition-all"
                                         >
-                                            <Check className="h-5 w-5 mr-2" />
-                                            {processing ? 'Processing...' : 'Confirm Disbursement'}
+                                            {processing ? (
+                                                <>
+                                                    <Loader2 className="animate-spin h-5 w-5 mr-3" />
+                                                    Processing...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Check className="h-6 w-6 mr-3" />
+                                                    Confirm & Disburse Funds
+                                                </>
+                                            )}
                                         </button>
                                     </div>
                                 </div>

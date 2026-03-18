@@ -12,6 +12,7 @@ export interface Organization {
     address?: string;
     tax_id?: string;
     website?: string;
+    lenco_subaccount_id?: string;
 }
 
 export const organizationService = {

@@ -6,6 +6,8 @@ import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { ocrService } from '../services/ai/ocr.service';
+import { LencoService } from '../services/lenco.service';
+import { handleCollectionSuccessful } from './lenco.webhook.controller';
 
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     try {
@@ -61,6 +63,26 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
 
         if (!organization_id) {
             return res.status(400).json({ error: 'Organization context missing. Please contact support.' });
+        }
+
+        // 0. Check for existing active requisitions (Accountability Safeguard)
+        const blockingStatuses = ['SUBMITTED', 'AUTHORISED', 'DISBURSED', 'RECEIVED'];
+        const { data: activeReq, error: activeError } = await supabase
+            .from('requisitions')
+            .select('id, status')
+            .eq('requestor_id', requestor_id)
+            .in('status', blockingStatuses)
+            .maybeSingle();
+
+        if (activeError) {
+            console.error('Error checking active requisitions:', activeError);
+        }
+
+        if (activeReq) {
+            return res.status(400).json({ 
+                error: 'Accountability Block: Multiple requisitions not allowed.',
+                message: `You have an outstanding requisition (#${activeReq.id.slice(0, 8)}) with status "${activeReq.status}". Please submit any pending change or complete the existing cycle before requesting more funds.`
+            });
         }
 
         // 1. Insert Requisition
@@ -539,7 +561,7 @@ export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
 export const submitChange = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
-        const { denominations, change_amount } = req.body;
+        const { denominations, change_amount, submission_method, change_external_reference } = req.body;
         const user_id = (req as any).user.id;
 
         // 1. Verify Requisition
@@ -562,30 +584,142 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
             .from('disbursements')
             .update({
                 returned_denominations: denominations,
-                actual_change_amount: change_amount
+                actual_change_amount: change_amount,
+                change_submission_method: submission_method || 'CASH',
+                change_external_reference: change_external_reference || null
             })
             .eq('requisition_id', id);
 
         if (disbError) throw disbError;
 
-        // 3. Update Requisition Status
-        const { error: statusError } = await supabase
-            .from('requisitions')
-            .update({ status: 'CHANGE_SUBMITTED', updated_at: new Date().toISOString() })
-            .eq('id', id);
+        // 3. Automated Finalization for Wallet Submission
+        if (submission_method === 'MONEYWISE_WALLET') {
+            console.log(`[SubmitChange] Automated finalization for Wallet submission (Req ${id})`);
+            
+            // Re-fetch with full details for finalization (need organization and line items)
+            const { data: fullReq } = await supabase
+                .from('requisitions')
+                .select('*, line_items(*), disbursements(*)')
+                .eq('id', id)
+                .single();
 
-        if (statusError) {
-            console.error('[SubmitChange] Status update failed:', statusError);
-            throw statusError;
+            const organizationId = (req as any).user.organization_id;
+            const disbursement = fullReq?.disbursements?.[0];
+
+            if (!fullReq || !disbursement || !organizationId) {
+                throw new Error("Required information for automated finalization is missing");
+            }
+
+            // A. Verify External Reference
+            if (!change_external_reference) {
+                return res.status(400).json({ error: 'Missing external reference for wallet submission' });
+            }
+
+            // B. Ensure Entry exists in Cashbook (Process Lenco status if needed)
+            const { data: existingEntry } = await supabase
+                .from('cashbook_entries')
+                .select('id')
+                .like('description', `%${change_external_reference}`)
+                .maybeSingle();
+
+            if (!existingEntry) {
+                console.log(`[SubmitChange] Ref ${change_external_reference} not in ledger. Checking Lenco...`);
+                const lencoStatus = await LencoService.getCollectionStatus(change_external_reference);
+                if (lencoStatus && lencoStatus.status === 'successful') {
+                    await handleCollectionSuccessful(lencoStatus, organizationId);
+                } else {
+                    return res.status(400).json({ 
+                        error: 'Wallet deposit not found or still pending', 
+                        message: `We couldn't find a successful deposit for reference ${change_external_reference}. Please ensure the deposit is completed.`
+                    });
+                }
+            }
+
+            // C. Calculate Discrepancy (same logic as confirmChange)
+            const totalDisbursed = Number(disbursement.total_prepared || 0);
+            const isLoanOrAdvance = fullReq.type === 'LOAN' || fullReq.type === 'ADVANCE';
+            const lineItems = fullReq.line_items || [];
+            
+            let actualExpenditure = 0;
+            if (isLoanOrAdvance) {
+                actualExpenditure = Number(fullReq.estimated_total || 0);
+            } else {
+                // INCLUDE all line items (including withdrawal fees) for accounting discrepancy calculation
+                actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0);
+            }
+
+            const confirmedChange = Number(change_amount || 0);
+            const discrepancy = totalDisbursed - actualExpenditure - confirmedChange;
+
+            // D. Auto-Update Disbursement Confirmation Fields
+            await supabase
+                .from('disbursements')
+                .update({
+                    confirmed_denominations: denominations,
+                    confirmed_change_amount: confirmedChange,
+                    confirmed_by: user_id,
+                    confirmed_at: new Date().toISOString(),
+                    discrepancy_amount: discrepancy
+                })
+                .eq('id', disbursement.id);
+
+            // E. Generate Voucher
+            const voucherRef = `PV-${fullReq.reference_number || id.slice(0, 6)}`;
+            const { data: voucher, error: voucherError } = await supabase
+                .from('vouchers')
+                .insert({
+                    requisition_id: id,
+                    organization_id: organizationId,
+                    created_by: user_id,
+                    reference_number: voucherRef,
+                    total_credit: actualExpenditure,
+                    total_debit: actualExpenditure,
+                    status: 'DRAFT'
+                })
+                .select()
+                .single();
+
+            if (voucherError) throw voucherError;
+
+            // F. Finalize Ledger
+            await cashbookService.finalizeDisbursement(
+                organizationId,
+                id,
+                actualExpenditure,
+                voucher.id,
+                discrepancy,
+                voucher.reference_number,
+                submission_method
+            );
+
+            // G. Complete Requisition
+            await supabase
+                .from('requisitions')
+                .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+                .eq('id', id);
+
+            res.json({ message: 'Change submitted and requisition completed automatically via Wallet', voucher_id: voucher.id });
+            
+            // H. Trigger Notification
+            emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                console.error('[Notification Error] Failed to send AUTO_COMPLETED email:', err)
+            );
+        } else {
+            // Standard Cash Workflow: Just move to CHANGE_SUBMITTED
+            const { error: statusError } = await supabase
+                .from('requisitions')
+                .update({ status: 'CHANGE_SUBMITTED', updated_at: new Date().toISOString() })
+                .eq('id', id);
+
+            if (statusError) throw statusError;
+
+            res.json({ message: 'Change submitted successfully' });
+
+            // Trigger Notification
+            emailService.notifyRequisitionEvent(id, 'CHANGE_SUBMITTED').catch(err =>
+                console.error('[Notification Error] Failed to send CHANGE_SUBMITTED email:', err)
+            );
         }
-
-        console.log(`[SubmitChange] Success for Req ${id}`);
-        res.json({ message: 'Change submitted successfully' });
-
-        // 4. Trigger Notification
-        emailService.notifyRequisitionEvent(id, 'CHANGE_SUBMITTED').catch(err =>
-            console.error('[Notification Error] Failed to send CHANGE_SUBMITTED email:', err)
-        );
     } catch (error: any) {
         console.error('Error submitting change:', error);
         res.status(500).json({
@@ -638,7 +772,7 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         if (isLoanOrAdvance) {
             actualExpenditure = Number(requisition.estimated_total || 0);
         } else {
-            actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0) || Number(requisition.actual_total || 0);
+            actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0);
         }
 
         const confirmedChange = Number(confirmed_change_amount || 0);
@@ -686,13 +820,45 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         // We assume actualExpenditure is already set by trackExpenses.
         if (!organizationId) throw new Error("Missing organization context");
 
+        const submissionMethod = disbursement.change_submission_method || 'CASH';
+
+        // Additional Verification for Wallet Submission
+        if (submissionMethod === 'MONEYWISE_WALLET') {
+            const ref = disbursement.change_external_reference;
+            if (!ref) {
+                return res.status(400).json({ error: 'Missing external reference for wallet submission' });
+            }
+
+            // Verify the transaction exists and is successful
+            const { data: existingEntry } = await supabase
+                .from('cashbook_entries')
+                .select('id')
+                .like('description', `%${ref}`)
+                .maybeSingle();
+
+            if (!existingEntry) {
+                // If not in DB, try one last check on Lenco
+                console.log(`[ConfirmChange] Ref ${ref} not found in ledger. Checking Lenco...`);
+                const lencoStatus = await LencoService.getCollectionStatus(ref);
+                if (lencoStatus && lencoStatus.status === 'successful') {
+                    await handleCollectionSuccessful(lencoStatus, organizationId);
+                } else {
+                    return res.status(400).json({ 
+                        error: 'Wallet deposit not found or still pending', 
+                        message: `We couldn't find a successful deposit for reference ${ref}. Please ensure the requestor has completed the deposit.`
+                    });
+                }
+            }
+        }
+
         await cashbookService.finalizeDisbursement(
             organizationId,
             id,
             actualExpenditure,
             voucher.id,
             discrepancy,
-            voucher.reference_number
+            voucher.reference_number,
+            submissionMethod
         );
 
         // 6. Update Requisition Status

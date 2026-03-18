@@ -11,6 +11,7 @@ export interface CashbookEntry {
     credit: number;
     balance_after: number;
     entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE' | 'INFLOW';
+    account_type: 'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET';
     requisition_id?: string;
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';

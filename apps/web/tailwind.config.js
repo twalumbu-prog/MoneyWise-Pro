@@ -14,6 +14,7 @@ export default {
                     green: '#03D47C',
                     navy: '#002E3B',
                     gray: '#F7F9FA',
+                    pink: '#FF2970',
                 }
             }
         },

@@ -39,7 +39,7 @@ const CashLedger: React.FC = () => {
         new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0]
     );
     const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
-    const [selectedAccountType, setSelectedAccountType] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK'>('CASH');
+    const [selectedAccountType, setSelectedAccountType] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET'>('MONEYWISE_WALLET');
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
     const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
     const [isClassifying, setIsClassifying] = useState(false);
@@ -403,6 +403,12 @@ const CashLedger: React.FC = () => {
 
                         <div className="flex ml-0 md:ml-4 bg-gray-100 p-1 rounded-lg">
                             <button
+                                onClick={() => setSelectedAccountType('MONEYWISE_WALLET')}
+                                className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${selectedAccountType === 'MONEYWISE_WALLET' ? 'bg-white shadow-sm text-brand-pink' : 'text-gray-500 hover:text-gray-700'}`}
+                            >
+                                MoneyWise Wallet
+                            </button>
+                            <button
                                 onClick={() => setSelectedAccountType('CASH')}
                                 className={`px-4 py-1.5 text-sm font-semibold rounded-md transition-all ${selectedAccountType === 'CASH' ? 'bg-white shadow-sm text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
                             >
@@ -500,6 +506,8 @@ const CashLedger: React.FC = () => {
                 isOpen={isInflowModalOpen}
                 onClose={() => setIsInflowModalOpen(false)}
                 onSuccess={loadData}
+                initialInflowType={selectedAccountType === 'MONEYWISE_WALLET' ? 'WALLET' : 'CASH'}
+                isReadOnlyType={selectedAccountType === 'MONEYWISE_WALLET'}
             />
 
             {/* Command Center */}
@@ -508,8 +516,8 @@ const CashLedger: React.FC = () => {
                 {/* Visual Balance */}
                 <div className="flex items-center gap-4 border-b md:border-b-0 md:border-r border-gray-100 pb-4 md:pb-0 md:pr-6 w-full md:w-auto">
                     <div>
-                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-0.5">Verified Balance</span>
-                        <span className="text-3xl font-black text-brand-navy tracking-tight">{formatCurrency(balance)}</span>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-0.5">Verified {selectedAccountType.replace('_', ' ')} Balance</span>
+                        <span className={`text-3xl font-black tracking-tight ${selectedAccountType === 'MONEYWISE_WALLET' ? 'text-brand-pink' : 'text-brand-navy'}`}>{formatCurrency(balance)}</span>
                     </div>
                 </div>
 
@@ -754,7 +762,8 @@ const CashLedger: React.FC = () => {
                                                         entry.entry_type === 'ADJUSTMENT' ? 'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200' :
                                                             entry.entry_type === 'CLOSING_BALANCE' ? 'bg-slate-100 text-slate-700 border border-slate-200' :
                                                                 entry.entry_type === 'OPENING_BALANCE' ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' :
-                                                                    'bg-gray-50 text-gray-700 border border-gray-200'
+                                                                    entry.entry_type === 'WALLET_DEPOSIT' || entry.account_type === 'MONEYWISE_WALLET' ? 'bg-pink-50 text-brand-pink border border-pink-200' :
+                                                                        'bg-gray-50 text-gray-700 border border-gray-200'
                                                     }`}>
                                                     {entry.entry_type.replace('_', ' ')}
                                                 </span>

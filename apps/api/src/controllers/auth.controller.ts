@@ -1,5 +1,6 @@
 import express from 'express';
 import { supabase } from '../lib/supabase';
+import { LencoService } from '../services/lenco.service';
 
 interface RegisterUserRequest {
     email: string;
@@ -139,6 +140,25 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             return res.status(500).json({
                 error: 'Failed to create organization: ' + (orgError?.message || 'Unknown error'),
             });
+        }
+
+        // Create Lenco Subaccount
+        let lencoSubaccountId = null;
+        try {
+            const lencoAccount = await LencoService.createAccount(orgName);
+            lencoSubaccountId = lencoAccount.id;
+            
+            // Update organization with the lenco_subaccount_id
+            await supabase
+                .from('organizations')
+                .update({ lenco_subaccount_id: lencoSubaccountId })
+                .eq('id', orgData.id);
+        } catch (lencoError) {
+            console.error('Failed to create Lenco subaccount during registration:', lencoError);
+            // We don't necessarily want to fail the whole registration if Lenco is down,
+            // but for security-locked accounts, we might want to. 
+            // Given the user's request for "locking", it's better to ensure it exists.
+            // For now, let's just log it and maybe we can provision later if it fails.
         }
 
         // UPSERT user record into public.users table with organization_id

@@ -1,75 +1,172 @@
+const LENCO_TRANSACTION_FEE = 8.5;
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
 import { ocrService } from '../services/ai/ocr.service';
+import { LencoService } from '../services/lenco.service';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
-        const { denominations, total_prepared, payment_method, transfer_proof_url } = req.body;
+        const { denominations, total_prepared, payment_method, transfer_proof_url, recipient_account, recipient_bank_code, recipient_account_name } = req.body;
         const cashier_id = (req as any).user.id;
         const organizationId = (req as any).user.organization_id;
 
         if (!organizationId) throw new Error("Missing organization context");
-        // Using single() to get one record
-        const { data: requisition, error: reqError } = await supabase
+        // 1. Atomic status check and lock
+        // We try to update the status to 'DISBURSED' only if it is currently 'AUTHORISED'.
+        // This prevents double-disbursement race conditions.
+        const { data: lockResult, error: lockError } = await supabase
             .from('requisitions')
-            .select('status, estimated_total')
+            .update({ status: 'DISBURSED', updated_at: new Date().toISOString() })
             .eq('id', id)
-            .single();
+            .eq('status', 'AUTHORISED')
+            .select('estimated_total');
 
-        if (reqError || !requisition) {
-            return res.status(404).json({ error: 'Requisition not found' });
+        if (lockError || !lockResult || lockResult.length === 0) {
+            return res.status(400).json({ 
+                error: 'Requisition cannot be disbursed. It may have already been processed or is not in AUTHORISED status.' 
+            });
         }
 
-        if (requisition.status !== 'AUTHORISED') {
-            return res.status(400).json({ error: 'Requisition must be AUTHORISED to disburse' });
-        }
+        const requisition = lockResult[0];
 
         // 2. Validate Disbursement Amount
         const estimatedTotal = Number(requisition.estimated_total);
-        if (total_prepared < estimatedTotal) {
+        const totalPreparedNum = Number(total_prepared);
+        const isWallet = payment_method === 'MONEYWISE_WALLET';
+        const totalDeduction = totalPreparedNum + (isWallet ? LENCO_TRANSACTION_FEE : 0);
+
+        if (totalPreparedNum < estimatedTotal) {
             return res.status(400).json({
                 error: `Disbursement amount (K${total_prepared}) cannot be less than the authorized amount (K${estimatedTotal})`
             });
         }
 
-        // 3. Create Disbursement Record
+        // 3. Process Lenco Payout if using Wallet
+        let lencoReference = null;
+        if (payment_method === 'MONEYWISE_WALLET') {
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('lenco_subaccount_id')
+                .eq('id', organizationId)
+                .single();
+
+            if (!org?.lenco_subaccount_id) {
+                throw new Error("Organization is not configured for MoneyWise Wallet (missing Lenco Subaccount ID)");
+            }
+
+            if (!recipient_account || !recipient_bank_code) {
+                return res.status(400).json({ error: 'Recipient account and bank code are required for Wallet transfers' });
+            }
+
+            const mobileOps = ['mtn', 'airtel', 'zamtel'];
+            const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
+
+            try {
+                if (isMobile) {
+                    const payout = await LencoService.createMobileMoneyPayout({
+                        amount: total_prepared,
+                        reference: `REQ-${id.slice(0, 8)}-${Date.now()}`,
+                        phone: recipient_account,
+                        operator: recipient_bank_code,
+                        narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                    }, org.lenco_subaccount_id);
+                    lencoReference = payout.reference;
+                } else {
+                    const payout = await LencoService.createBankPayout({
+                        amount: total_prepared,
+                        reference: `REQ-${id.slice(0, 8)}-${Date.now()}`,
+                        accountNumber: recipient_account,
+                        bankId: recipient_bank_code,
+                        narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                    }, org.lenco_subaccount_id);
+                    lencoReference = payout.reference;
+                }
+            } catch (payoutError: any) {
+                console.error('[Lenco Payout Failed] Reverting requisition status:', payoutError);
+                // Revert status to AUTHORISED so it can be tried again
+                await supabase
+                    .from('requisitions')
+                    .update({ status: 'AUTHORISED', updated_at: new Date().toISOString() })
+                    .eq('id', id);
+                
+                return res.status(500).json({ 
+                    error: 'Lenco payout failed. The requisition status has been reset and you can try again.',
+                    details: payoutError.message 
+                });
+            }
+        }
+
+        // 4. Create Disbursement Record
         const { data: disbursementData, error: disbError } = await supabase
             .from('disbursements')
             .insert({
                 requisition_id: id,
                 cashier_id: cashier_id,
-                total_prepared: total_prepared,
+                total_prepared: totalDeduction, // Now includes Lenco fee if wallet
                 payment_method: payment_method || 'CASH',
                 transfer_proof_url: transfer_proof_url,
                 denominations: denominations,
-                organization_id: organizationId
+                organization_id: organizationId,
+                recipient_account,
+                recipient_bank_code,
+                recipient_account_name,
+                external_reference: lencoReference
             })
             .select('id')
             .single();
 
-        if (disbError) throw disbError;
+        if (disbError) {
+            // Revert status to AUTHORISED if record creation fails
+            console.error('[Disbursement Record Failed] Reverting requisition status:', disbError);
+            await supabase
+                .from('requisitions')
+                .update({ status: 'AUTHORISED', updated_at: new Date().toISOString() })
+                .eq('id', id);
+            throw disbError;
+        }
 
-        // 3. Update Requisition Status to DISBURSED
-        const { error: updateError } = await supabase
-            .from('requisitions')
-            .update({ status: 'DISBURSED', updated_at: new Date().toISOString() })
-            .eq('id', id);
-
-        if (updateError) throw updateError;
+        // 3. Status is already DISBURSED from step 1
 
         // 4. Log Cash Disbursement in Cashbook
+        const mainDescription = `${payment_method && payment_method !== 'CASH' ? payment_method : 'Cash'} disbursed for Requisition #${id.slice(0, 8)}`;
+
         await cashbookService.logDisbursement(
             organizationId,
             id,
-            total_prepared,
+            totalDeduction, // Use totalDeduction (incl. fee) for unified ledger tracking
             cashier_id,
-            `${payment_method && payment_method !== 'CASH' ? payment_method : 'Cash'} disbursed for Requisition #${id.slice(0, 8)}`,
+            mainDescription,
             payment_method || 'CASH'
         );
+
+        // 5. Log Lenco Transaction Fee as Line Item if applicable
+        if (isWallet) {
+            // A. Add as Line Item to Requisition for reporting and visibility
+            // We no longer create a separate cashbook EXPENSE entry because it's consolidated in the DISBURSEMENT credit.
+
+            // B. Add as Line Item to Requisition for reporting and visibility
+            await supabase.from('line_items').insert({
+                requisition_id: id,
+                description: 'Withdrawal Fee (MoneyWise Wallet)',
+                quantity: 1,
+                unit_price: LENCO_TRANSACTION_FEE,
+                estimated_amount: LENCO_TRANSACTION_FEE,
+                actual_amount: LENCO_TRANSACTION_FEE,
+                account_id: '0dbe62e3-2917-4e4b-9620-6394f0029c1d' // "Transaction Charges" account
+            });
+
+            // C. Update Requisition header to include the fee in authorized/actual totals
+            // Fetch current totals first to be safe, though we have lockResult[0]
+            const currentEstimated = Number(requisition.estimated_total || 0);
+            await supabase.from('requisitions').update({
+                estimated_total: currentEstimated + LENCO_TRANSACTION_FEE,
+                actual_total: currentEstimated + LENCO_TRANSACTION_FEE // Pre-set actual total for now
+            }).eq('id', id);
+        }
 
         // 5. Log Action
         await supabase

@@ -8,7 +8,7 @@ export interface CashbookEntry {
     debit: number;
     credit: number;
     balance_after: number;
-    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE' | 'INFLOW';
+    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE' | 'INFLOW' | 'EXPENSE';
     requisition_id?: string;
     requisitions?: {
         department?: string;
@@ -218,6 +218,9 @@ export const cashbookService = {
                         id, description, quantity, unit_price, estimated_amount, actual_amount, account_id,
                         accounts ( id, code, name, category )
                     ),
+                    disbursements (
+                        id, total_prepared, actual_change_amount, confirmed_change_amount, change_submission_method, confirmed_at
+                    ),
                     qb_sync_status, qb_sync_error
                 ),
                 users!created_by(name)
@@ -287,7 +290,8 @@ export const cashbookService = {
         actualExpenditure: number,
         voucherId: string,
         discrepancy: number = 0,
-        voucherNumber?: string
+        voucherNumber?: string,
+        changeSubmissionMethod: string = 'CASH'
     ) {
         // 1. Find the original disbursement entry
         const { data: originalEntry, error: findError } = await supabase
@@ -336,7 +340,19 @@ export const cashbookService = {
             return;
         }
 
-        const newCredit = actualExpenditure + discrepancy;
+        let newCredit = actualExpenditure + discrepancy;
+        
+        // ACCOUNTING LOGIC:
+        // By allowing newCredit to be actualExpenditure + discrepancy, we "net off" the return.
+        // If it's a cross-account return (Cash req -> Wallet return), we still keep full credit
+        // because the cash is physically gone from the box and entered a different ledger.
+        if (changeSubmissionMethod === 'MONEYWISE_WALLET' && originalEntry.account_type === 'CASH') {
+            newCredit = Number(originalEntry.credit); 
+            console.log(`[Cashbook] Cross-account change (Wallet into Cash req). Keeping original credit: ${newCredit}`);
+        }
+        // For same-account Wallet returns, we now allow netting off to satisfy the request
+        // to not show separate inflow entries in the ledger list.
+
         const newDescription = discrepancy !== 0
             ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
             : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
@@ -508,5 +524,47 @@ export const cashbookService = {
         }
 
         return { success: true, closingBalance: physicalCount };
+    },
+
+    /**
+     * Updates a disbursement's confirmed change amount.
+     * Used by the Lenco webhook to handle wallet-based change submissions.
+     */
+    async updateDisbursementForChange(
+        organizationId: string,
+        shortReqId: string,
+        amount: number,
+        reference: string
+    ) {
+        // Find the requisition by short ID suffix
+        // We use .select('id') and .ilike('id', `%${shortReqId}`) to find the full UUID from the short version
+        const { data: req, error: reqError } = await supabase
+            .from('requisitions')
+            .select('id')
+            .eq('organization_id', organizationId)
+            // Use ilike to match the prefix (e.g., d852055e%)
+            .ilike('id', `${shortReqId}%`)
+            .maybeSingle();
+
+        if (reqError || !req) {
+            console.error(`[Cashbook Service] Requisition look-up failed for shortId=${shortReqId}:`, reqError);
+            return { data: null, error: reqError || new Error('Requisition not found for short ID') };
+        }
+
+        console.log(`[Cashbook Service] Updating disbursement for req ${req.id} (shortId=${shortReqId}) with confirmedChange=${amount}`);
+
+        // Update the disbursement for this requisition
+        const { data, error } = await supabase
+            .from('disbursements')
+            .update({
+                confirmed_change_amount: amount,
+                change_external_reference: reference,
+                confirmed_at: new Date().toISOString(),
+                change_submission_method: 'MONEYWISE_WALLET'
+            })
+            .eq('requisition_id', req.id)
+            .select();
+
+        return { data, error };
     }
 };

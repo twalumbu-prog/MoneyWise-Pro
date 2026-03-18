@@ -1,7 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { organizationService } from '../../services/organization.service';
-import { Building2, Mail, Phone, MapPin, Globe, Loader2, CheckCircle, AlertCircle, FileText, Trash2, AlertTriangle, X } from 'lucide-react';
+import { 
+    Building2, 
+    Mail, 
+    Phone, 
+    MapPin, 
+    Globe, 
+    Loader2, 
+    CheckCircle, 
+    AlertCircle, 
+    FileText, 
+    Trash2, 
+    AlertTriangle, 
+    X, 
+    Wallet
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { lencoService } from '../../services/lenco.service';
 
 export const GeneralSettings: React.FC = () => {
     const [loading, setLoading] = useState(true);
@@ -16,6 +31,10 @@ export const GeneralSettings: React.FC = () => {
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
 
+    // Lenco state
+    const [lencoAccounts, setLencoAccounts] = useState<any[]>([]);
+    const [fetchingLenco, setFetchingLenco] = useState(false);
+
     // Form state
     const [formData, setFormData] = useState({
         name: '',
@@ -25,6 +44,13 @@ export const GeneralSettings: React.FC = () => {
         tax_id: '',
         website: ''
     });
+
+    const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
+    const [provisioning, setProvisioning] = useState(false);
+    const [availableAccounts, setAvailableAccounts] = useState<any[]>([]);
+    const [showLinkSelector, setShowLinkSelector] = useState(false);
+    const [linking, setLinking] = useState(false);
+    const [selectedLencoId, setSelectedLencoId] = useState('');
 
     useEffect(() => {
         loadOrganization();
@@ -43,6 +69,12 @@ export const GeneralSettings: React.FC = () => {
                 tax_id: data.tax_id || '',
                 website: data.website || ''
             });
+            setLencoSubaccountId(data.lenco_subaccount_id || null);
+
+            // Fetch Lenco accounts as well
+            if (isAdmin) {
+                fetchLencoAccounts();
+            }
         } catch (err: any) {
             console.error('Failed to load organization:', err);
             setError('Failed to load organization details.');
@@ -51,7 +83,78 @@ export const GeneralSettings: React.FC = () => {
         }
     };
 
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const fetchLencoAccounts = async () => {
+        try {
+            setFetchingLenco(true);
+            const accounts = await lencoService.getAccounts();
+            setLencoAccounts(accounts);
+        } catch (err) {
+            console.error('Failed to fetch Lenco accounts:', err);
+        } finally {
+            setFetchingLenco(false);
+        }
+    };
+
+    const handleProvisionWallet = async () => {
+        if (!isAdmin) return;
+        
+        try {
+            setProvisioning(true);
+            setError(null);
+            const orgData = await organizationService.getOrganization();
+            const result = await lencoService.provisionOrganizationSubaccount(orgData.id);
+            
+            if (result.success) {
+                setLencoSubaccountId(result.lenco_subaccount_id);
+                setSuccessMessage('Lenco wallet successfully provisioned and locked to your organization.');
+                setTimeout(() => setSuccessMessage(null), 5000);
+                fetchLencoAccounts();
+            }
+        } catch (err: any) {
+            console.error('Provisioning failed:', err);
+            setError(err.message || 'Failed to provision Lenco wallet');
+        } finally {
+            setProvisioning(false);
+        }
+    };
+
+    const fetchAvailableAccounts = async () => {
+        try {
+            setLoading(true);
+            const accounts = await lencoService.getAvailableAccounts();
+            setAvailableAccounts(accounts);
+            setShowLinkSelector(true);
+        } catch (err: any) {
+            console.error('Failed to fetch available accounts:', err);
+            setError('Failed to fetch available Lenco accounts.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleLinkAccount = async () => {
+        if (!selectedLencoId || !isAdmin) return;
+
+        try {
+            setLinking(true);
+            setError(null);
+            const orgData = await organizationService.getOrganization();
+            await lencoService.linkOrganizationSubaccount(orgData.id, selectedLencoId);
+            
+            setLencoSubaccountId(selectedLencoId);
+            setShowLinkSelector(false);
+            setSuccessMessage('Lenco wallet successfully linked and locked to your organization.');
+            setTimeout(() => setSuccessMessage(null), 5000);
+            fetchLencoAccounts();
+        } catch (err: any) {
+            console.error('Linking failed:', err);
+            setError(err.message || 'Failed to link Lenco wallet');
+        } finally {
+            setLinking(false);
+        }
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
@@ -273,6 +376,146 @@ export const GeneralSettings: React.FC = () => {
                                     />
                                 </div>
                             </div>
+
+                            {/* Lenco Integration Setting */}
+                            <div className="md:col-span-2 pt-6 border-t border-gray-100">
+                                <div className="bg-brand-pink/5 rounded-2xl p-6 border-2 border-brand-pink/10">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <label className="text-sm font-bold text-brand-pink flex items-center">
+                                            <div className="w-5 h-5 bg-brand-pink text-white rounded flex items-center justify-center text-[10px] mr-2">L</div>
+                                            Integrated Lenco Wallet
+                                        </label>
+                                        {lencoSubaccountId && (
+                                            <div className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-black uppercase tracking-wider">
+                                                <CheckCircle className="w-3 h-3 mr-1" />
+                                                Active & Locked
+                                            </div>
+                                        )}
+                                    </div>
+                                    
+                                    <p className="text-xs text-brand-navy/60 mb-6 font-brand-family">
+                                        For security, each organization's wallet is automatically provisioned and locked. This prevents unauthorized fund transfers between organization wallets.
+                                    </p>
+
+                                    {lencoSubaccountId ? (
+                                        <div className="bg-white/80 rounded-xl p-4 border border-brand-pink/20 flex items-center justify-between">
+                                            <div className="flex items-center">
+                                                <div className="p-2 bg-brand-pink/10 rounded-lg mr-4">
+                                                    <Wallet className="h-5 w-5 text-brand-pink" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Linked Subaccount ID</p>
+                                                    <p className="text-sm font-black text-brand-navy mt-0.5">{lencoSubaccountId}</p>
+                                                    {fetchingLenco ? (
+                                                        <div className="flex items-center mt-1 text-[10px] text-gray-400">
+                                                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                                            Fetching account details...
+                                                        </div>
+                                                    ) : (() => {
+                                                        const acc = lencoAccounts.find(a => a.id === lencoSubaccountId);
+                                                        if (acc) {
+                                                            const name = acc.accountName || acc.name || acc.details?.accountName || 'Unknown Name';
+                                                            const number = acc.accountNumber || acc.details?.accountNumber || (acc.details?.tillNumber ? `Till: ${acc.details.tillNumber}` : '');
+                                                            return (
+                                                                <p className="text-xs font-bold text-brand-pink mt-1">
+                                                                    {name} {number ? `(${number})` : ''}
+                                                                </p>
+                                                            );
+                                                        }
+                                                        return (
+                                                            <button 
+                                                                onClick={fetchLencoAccounts}
+                                                                className="text-[10px] font-bold text-brand-pink/60 hover:text-brand-pink mt-1 underline"
+                                                            >
+                                                                Refresh account details
+                                                            </button>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            </div>
+                                            <div className="p-2 bg-gray-50 rounded-lg" title="Wallet is locked to this organization">
+                                                <X className="h-4 w-4 text-gray-300" />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-brand-pink/20 rounded-2xl bg-white/50 space-y-4">
+                                            {showLinkSelector ? (
+                                                <div className="w-full max-w-md px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                                                    <label className="block text-[10px] font-black text-brand-pink uppercase tracking-widest mb-2">Select Available Wallet</label>
+                                                    <div className="flex flex-col sm:flex-row gap-3">
+                                                        <select
+                                                            value={selectedLencoId}
+                                                            onChange={(e) => setSelectedLencoId(e.target.value)}
+                                                            className="flex-1 bg-white border-2 border-brand-pink/10 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-pink/20 transition-all font-brand-family"
+                                                        >
+                                                            <option value="">Select an account...</option>
+                                                            {availableAccounts.map(acc => {
+                                                                const name = acc.accountName || acc.details?.accountName || 'Unknown Name';
+                                                                const number = acc.accountNumber || (acc.details?.tillNumber ? `Till: ${acc.details.tillNumber}` : '');
+                                                                return (
+                                                                    <option key={acc.id} value={acc.id}>
+                                                                        {name} {number ? `(${number})` : ''}
+                                                                    </option>
+                                                                );
+                                                            })}
+                                                        </select>
+                                                        <div className="flex gap-2 w-full sm:w-auto">
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleLinkAccount}
+                                                                disabled={!selectedLencoId || linking}
+                                                                className="flex-1 sm:flex-none px-6 py-3 bg-brand-pink text-white text-xs font-black rounded-xl hover:bg-pink-600 disabled:opacity-50 shadow-md shadow-pink-100 transition-all active:scale-95 font-brand-family flex items-center justify-center whitespace-nowrap"
+                                                            >
+                                                                {linking ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Link Wallet'}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowLinkSelector(false)}
+                                                                className="flex-1 sm:flex-none px-6 py-3 bg-gray-100 text-gray-500 text-xs font-black rounded-xl hover:bg-gray-200 transition-all outline-none font-brand-family flex items-center justify-center"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    <p className="text-sm text-gray-500 font-brand-family">No Lenco wallet is currently provisioned for this organization.</p>
+                                                    <div className="flex flex-wrap justify-center gap-3">
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleProvisionWallet}
+                                                            disabled={provisioning || saving}
+                                                            className="inline-flex items-center px-6 py-3 bg-brand-pink text-white text-sm font-black rounded-xl shadow-lg shadow-pink-100 hover:bg-pink-600 focus:outline-none transition-all active:scale-95 disabled:opacity-50"
+                                                        >
+                                                            {provisioning ? (
+                                                                <>
+                                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                                                    Provisioning...
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                                                    Provision New Wallet
+                                                                </>
+                                                            )}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={fetchAvailableAccounts}
+                                                            disabled={provisioning || saving}
+                                                            className="inline-flex items-center px-6 py-3 bg-white border-2 border-brand-pink/20 text-brand-pink text-sm font-black rounded-xl hover:bg-brand-pink/5 focus:outline-none transition-all active:scale-95 disabled:opacity-50"
+                                                        >
+                                                            <Wallet className="h-4 w-4 mr-2" />
+                                                            Link Existing Wallet
+                                                        </button>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </div>
 
                         {isAdmin && (
@@ -306,108 +549,104 @@ export const GeneralSettings: React.FC = () => {
             </div>
 
             {/* Danger Zone */}
-            {
-                isAdmin && (
-                    <div className="mt-8 bg-red-50/30 border border-red-200 rounded-xl overflow-hidden">
-                        <div className="p-6 border-b border-red-100 bg-red-50/50">
-                            <h3 className="text-lg font-bold text-red-700 flex items-center">
-                                <AlertTriangle className="h-5 w-5 mr-2" />
-                                Danger Zone
-                            </h3>
-                            <p className="text-red-900/70 text-sm mt-1">
-                                Irreversible and destructive actions for this organization.
+            {isAdmin && (
+                <div className="mt-8 bg-red-50/30 border border-red-200 rounded-xl overflow-hidden">
+                    <div className="p-6 border-b border-red-100 bg-red-50/50">
+                        <h3 className="text-lg font-bold text-red-700 flex items-center">
+                            <AlertTriangle className="h-5 w-5 mr-2" />
+                            Danger Zone
+                        </h3>
+                        <p className="text-red-900/70 text-sm mt-1">
+                            Irreversible and destructive actions for this organization.
+                        </p>
+                    </div>
+                    <div className="p-6 flex items-center justify-between">
+                        <div>
+                            <h4 className="text-sm font-bold text-gray-900">Delete Organization</h4>
+                            <p className="text-sm text-gray-500 mt-1 max-w-xl">
+                                Permanently delete this organization, all of its financial records (vouchers, ledgers, requisitions), and permanently remove all user accounts associated with it. <strong>This action cannot be undone.</strong>
                             </p>
                         </div>
-                        <div className="p-6 flex items-center justify-between">
-                            <div>
-                                <h4 className="text-sm font-bold text-gray-900">Delete Organization</h4>
-                                <p className="text-sm text-gray-500 mt-1 max-w-xl">
-                                    Permanently delete this organization, all of its financial records (vouchers, ledgers, requisitions), and permanently remove all user accounts associated with it. <strong>This action cannot be undone.</strong>
-                                </p>
+                        <button
+                            onClick={() => setShowDeleteModal(true)}
+                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2 whitespace-nowrap"
+                        >
+                            Delete Organization
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-red-50/30">
+                            <div className="flex items-center text-red-600">
+                                <AlertTriangle className="h-5 w-5 mr-2" />
+                                <h3 className="font-bold">Delete Organization</h3>
                             </div>
                             <button
-                                onClick={() => setShowDeleteModal(true)}
-                                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2 whitespace-nowrap"
+                                onClick={() => !deleting && setShowDeleteModal(false)}
+                                disabled={deleting}
+                                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
                             >
-                                Delete Organization
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="p-6 space-y-4">
+                            <div className="bg-red-50 text-red-800 p-4 rounded-xl text-sm border border-red-100 leading-relaxed">
+                                <p className="font-bold mb-2">Warning: This is a permanent action.</p>
+                                <p>This will permanently destroy the organization <strong>{formData.name}</strong>, clear all financial and configuration databases, and permanently delete all user profiles. Your team members will have to sign up again from scratch.</p>
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-2">
+                                    Please type <strong>{formData.name}</strong> to confirm.
+                                </label>
+                                <input
+                                    type="text"
+                                    value={deleteConfirmText}
+                                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                                    disabled={deleting}
+                                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all disabled:bg-gray-50"
+                                    placeholder={formData.name}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                            <button
+                                type="button"
+                                onClick={() => setShowDeleteModal(false)}
+                                disabled={deleting}
+                                className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleDeleteOrganization}
+                                disabled={deleteConfirmText !== formData.name || deleting}
+                                className="inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50 disabled:bg-red-400"
+                            >
+                                {deleting ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Permanently Delete
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
-                )
-            }
-
-            {/* Delete Confirmation Modal */}
-            {
-                showDeleteModal && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                        <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                            <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-red-50/30">
-                                <div className="flex items-center text-red-600">
-                                    <AlertTriangle className="h-5 w-5 mr-2" />
-                                    <h3 className="font-bold">Delete Organization</h3>
-                                </div>
-                                <button
-                                    onClick={() => !deleting && setShowDeleteModal(false)}
-                                    disabled={deleting}
-                                    className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <div className="p-6 space-y-4">
-                                <div className="bg-red-50 text-red-800 p-4 rounded-xl text-sm border border-red-100 leading-relaxed">
-                                    <p className="font-bold mb-2">Warning: This is a permanent action.</p>
-                                    <p>This will permanently destroy the organization <strong>{formData.name}</strong>, clear all financial and configuration databases, and permanently delete all user profiles. Your team members will have to sign up again from scratch.</p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                                        Please type <strong>{formData.name}</strong> to confirm.
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={deleteConfirmText}
-                                        onChange={(e) => setDeleteConfirmText(e.target.value)}
-                                        disabled={deleting}
-                                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all disabled:bg-gray-50"
-                                        placeholder={formData.name}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowDeleteModal(false)}
-                                    disabled={deleting}
-                                    className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
-                                >
-                                    Cancel
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleDeleteOrganization}
-                                    disabled={deleteConfirmText !== formData.name || deleting}
-                                    className="inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-red-600 rounded-xl hover:bg-red-700 focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50 disabled:bg-red-400"
-                                >
-                                    {deleting ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            Deleting...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Trash2 className="h-4 w-4 mr-2" />
-                                            Permanently Delete
-                                        </>
-                                    )}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )
-            }
-        </div >
+                </div>
+            )}
+        </div>
     );
 };

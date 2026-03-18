@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw, X, Eye, Sparkles } from 'lucide-react';
+import { ArrowLeft, CheckCircle, FileText, AlertCircle, RefreshCw, X, Eye, Sparkles, Wallet } from 'lucide-react';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { voucherService } from '../services/voucher.service';
 import { useAuth } from '../context/AuthContext';
 import { DenominationInput } from '../components/DenominationInput';
 import { ReceiptInsightsPanel } from '../components/ReceiptInsightsPanel';
+import { organizationService } from '../services/organization.service';
+import { lencoService } from '../services/lenco.service';
 
 export const RequisitionDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -43,12 +45,28 @@ export const RequisitionDetail: React.FC = () => {
     const [confirmedDenominations, setConfirmedDenominations] = useState<any[]>([
         { value: 500, count: 0 }, { value: 200, count: 0 }, { value: 100, count: 0 }, { value: 50, count: 0 }, { value: 20, count: 0 }, { value: 10, count: 0 }, { value: 5, count: 0 }, { value: 2, count: 0 }, { value: 1, count: 0 }, { value: 0.50, count: 0 }
     ]);
+    const [submissionMethod, setSubmissionMethod] = useState<'CASH' | 'MONEYWISE_WALLET'>('CASH');
+    const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
+    const [organizationId, setOrganizationId] = useState<string | null>(null);
+    const [isVerifyingWallet, setIsVerifyingWallet] = useState(false);
+    const [walletVerificationStep, setWalletVerificationStep] = useState<'IDLE' | 'POLLING' | 'SUCCESS' | 'FAILED'>('IDLE');
 
     useEffect(() => {
         if (id) {
             loadRequisition(id);
+            loadOrganization();
         }
     }, [id]);
+
+    const loadOrganization = async () => {
+        try {
+            const org = await organizationService.getOrganization();
+            setLencoSubaccountId(org.lenco_subaccount_id || null);
+            setOrganizationId(org.id || null);
+        } catch (err) {
+            console.error('Failed to load organization for wallet deposit:', err);
+        }
+    };
 
     // Sync expenseItems when requisition loads
     useEffect(() => {
@@ -112,9 +130,119 @@ export const RequisitionDetail: React.FC = () => {
         }
     };
 
+    const handleWalletDeposit = () => {
+        if (!requisition) return;
+        const totalDisbursed = (requisition as any).disbursements?.[0]?.total_prepared || 0;
+        let actualTotal = 0;
+        const isWallet = (requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET';
+        const withdrawalFee = isWallet ? 8.5 : 0;
+        
+        if (isLoanOrAdvance) {
+            actualTotal = Number(requisition.estimated_total || 0);
+        } else {
+            // Filter out system-generated withdrawal fees from actual expenditure calculation
+            actualTotal = expenseItems
+                .filter(item => item.description !== 'Withdrawal Fee (MoneyWise Wallet)')
+                .reduce((sum, item) => sum + (item.actual_amount || 0), 0);
+        }
+        
+        // For Wallet: User receives Principal (Total - Fee), so change is (Principal - Actual Spent)
+        // (TotalPrepared - Fee) - ActualTotal
+        const amountToDeposit = Math.max(0, (totalDisbursed - withdrawalFee) - actualTotal);
+
+        if (amountToDeposit <= 0) {
+            alert('There is no change to deposit. You have spent the full amount or more.');
+            return;
+        }
+
+        if (!lencoSubaccountId) {
+            alert('This organization does not have a linked Lenco Wallet. Please configure it in Settings > General.');
+            return;
+        }
+
+        const LencoPay: any = (window as any).LencoPay;
+        if (!LencoPay) {
+            alert('Lenco Payment SDK is not currently loaded. Please refresh or contact support.');
+            return;
+        }
+
+        const ref = `CHG-${Date.now()}-${lencoSubaccountId}-${requisition?.id.slice(0, 8)}`;
+
+        LencoPay.getPaid({
+            key: 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
+            amount: amountToDeposit.toFixed(2),
+            currency: 'ZMW',
+            reference: ref,
+            accountId: lencoSubaccountId,
+            email: user?.email || 'customer@example.com',
+            name: user?.user_metadata?.full_name || 'MoneyWise User',
+            channels: ['card', 'mobile-money'],
+            onSuccess: async (response: any) => {
+                const transactionId = response.id || response.transactionId;
+                setIsVerifyingWallet(true);
+                setWalletVerificationStep('POLLING');
+                
+                let attempts = 0;
+                const maxAttempts = 15;
+                
+                const pollStatus = async () => {
+                    attempts++;
+                    try {
+                        const result = await lencoService.verifyStatus(ref, transactionId, organizationId || undefined);
+                        if (result.verified) {
+                            setWalletVerificationStep('SUCCESS');
+                            // Now we can submit the change
+                            await submitChangeViaWallet(ref, amountToDeposit);
+                            return true;
+                        }
+                    } catch (err: any) {
+                        console.error('Wallet verification attempt failed:', err);
+                    }
+                    
+                    if (attempts < maxAttempts) {
+                        setTimeout(pollStatus, 3000);
+                    } else {
+                        setWalletVerificationStep('FAILED');
+                        setIsVerifyingWallet(false);
+                        alert('We confirmed the payment with Lenco, but it hasn\'t appeared in your ledger yet. We will continue to check in the background. You can try submitting again in a moment.');
+                    }
+                    return false;
+                };
+                
+                pollStatus();
+            },
+            onClose: () => {
+                console.log('Payment window closed');
+            }
+        });
+    };
+
+    const submitChangeViaWallet = async (ref: string, amount: number) => {
+        if (!requisition) return;
+        try {
+            setProcessing(true);
+            await requisitionService.submitChange(requisition.id, [], amount, 'MONEYWISE_WALLET', ref);
+            alert('Change submitted successfully via MoneyWise Wallet');
+            loadRequisition(requisition.id);
+        } catch (err: any) {
+            console.error(err);
+            alert('Failed to submit change: ' + err.message);
+        } finally {
+            setProcessing(false);
+            setIsVerifyingWallet(false);
+        }
+    };
+
     const handleSubmitChange = async () => {
         if (!requisition) return;
+
+        if (submissionMethod === 'MONEYWISE_WALLET') {
+            handleWalletDeposit();
+            return;
+        }
+
         const amount = returnedDenominations.reduce((sum, d) => sum + (d.value * d.count), 0);
+        // ... (rest of the existing cash logic)
 
         // Calculated expected change: Total Disbursed - Actual Expenditure
         const isLoanOrAdvance = requisition.type === 'LOAN' || requisition.type === 'ADVANCE';
@@ -124,7 +252,9 @@ export const RequisitionDetail: React.FC = () => {
         if (isLoanOrAdvance) {
             actualTotal = Number(requisition.estimated_total || 0);
         } else {
-            actualTotal = expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0);
+            actualTotal = expenseItems
+                .filter(item => item.description !== 'Withdrawal Fee (MoneyWise Wallet)')
+                .reduce((sum, item) => sum + (item.actual_amount || 0), 0);
         }
 
         const expectedChange = totalDisbursed - actualTotal;
@@ -599,43 +729,119 @@ export const RequisitionDetail: React.FC = () => {
                             </div>
 
                             <div className="bg-white p-4 rounded-lg border border-green-200">
-                                <div className="flex justify-between items-center mb-4 text-sm">
-                                    <span className="text-gray-500">Total Disbursed:</span>
-                                    <span className="font-semibold text-gray-900">K{Number((requisition as any).disbursements?.[0]?.total_prepared || 0).toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between items-center mb-4 text-sm">
-                                    <span className="text-gray-500">Actual Expenditure:</span>
-                                    <span className="font-semibold text-gray-900">
-                                        K{isLoanOrAdvance
-                                            ? Number(requisition.estimated_total || 0).toFixed(2)
-                                            : expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0).toFixed(2)}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-4">
-                                    <span className="text-sm font-bold text-gray-700">Calculated Change:</span>
-                                    <span className="text-lg font-bold text-brand-green">
-                                        K{isLoanOrAdvance
-                                            ? (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - Number(requisition.estimated_total || 0)).toFixed(2)
-                                            : (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - expenseItems.reduce((sum, item) => sum + (item.actual_amount || 0), 0)).toFixed(2)}
-                                    </span>
-                                </div>
-
-                                <DenominationInput
-                                    denominations={returnedDenominations}
-                                    onChange={setReturnedDenominations}
-                                    label="Denominations Returned"
-                                />
-
-                                <div className="mt-6 flex justify-end">
+                                <div className="flex bg-gray-50 p-1 mb-6 rounded-xl">
                                     <button
-                                        onClick={handleSubmitChange}
-                                        disabled={processing}
-                                        className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-bold rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
+                                        type="button"
+                                        onClick={() => setSubmissionMethod('CASH')}
+                                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${submissionMethod === 'CASH' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                                     >
-                                        <RefreshCw className={`h-4 w-4 mr-2 ${processing ? 'animate-spin' : ''}`} />
-                                        Submit Change & Complete
+                                        Return Cash
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSubmissionMethod('MONEYWISE_WALLET')}
+                                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${submissionMethod === 'MONEYWISE_WALLET' ? 'bg-white text-brand-pink shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Deposit to Wallet
                                     </button>
                                 </div>
+
+                                <div className="space-y-3 mb-6">
+                                    <div className="flex justify-between items-center text-gray-500">
+                                        <span className="text-sm">Total Disbursed (incl. Fee):</span>
+                                        <span className="text-sm font-medium">K{Number((requisition as any).disbursements?.[0]?.total_prepared || 0).toFixed(2)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm font-medium text-gray-900">Actual Expenditure:</span>
+                                        <span className="text-sm font-bold text-red-600">
+                                            K{isLoanOrAdvance
+                                                ? Number(requisition.estimated_total || 0).toFixed(2)
+                                                : expenseItems
+                                                    .filter(item => item.description !== 'Withdrawal Fee (MoneyWise Wallet)')
+                                                    .reduce((sum, item) => sum + (item.actual_amount || 0), 0).toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-3 border-t border-gray-100">
+                                        <span className="text-sm font-bold text-gray-700">Calculated Change:</span>
+                                        <span className="text-lg font-bold text-brand-green">
+                                            K{Math.max(0, (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - ((requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET' ? 8.5 : 0)) - (
+                                                isLoanOrAdvance 
+                                                    ? Number(requisition.estimated_total || 0) 
+                                                    : expenseItems
+                                                        .filter(item => item.description !== 'Withdrawal Fee (MoneyWise Wallet)')
+                                                        .reduce((sum, item) => sum + (item.actual_amount || 0), 0)
+                                            )).toFixed(2)}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {submissionMethod === 'CASH' ? (
+                                    <>
+                                        <DenominationInput
+                                            denominations={returnedDenominations}
+                                            onChange={setReturnedDenominations}
+                                            label="Denominations Returned"
+                                        />
+
+                                        <div className="mt-6 flex justify-end">
+                                            <button
+                                                onClick={handleSubmitChange}
+                                                disabled={processing}
+                                                className="inline-flex items-center px-6 py-2 border border-transparent text-sm font-bold rounded-xl shadow-lg shadow-green-200 text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
+                                            >
+                                                <RefreshCw className={`h-4 w-4 mr-2 ${processing ? 'animate-spin' : ''}`} />
+                                                Submit Change & Complete
+                                            </button>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <div className="space-y-4">
+                                        {isVerifyingWallet ? (
+                                            <div className="py-8 flex flex-col items-center justify-center space-y-4 text-center">
+                                                <div className="relative">
+                                                    <div className="h-16 w-16 border-4 border-brand-pink/20 border-t-brand-pink rounded-full animate-spin" />
+                                                    <Wallet className="h-6 w-6 text-brand-pink absolute inset-0 m-auto animate-pulse" />
+                                                </div>
+                                                <div>
+                                                    <h3 className="text-sm font-bold text-gray-900">
+                                                        {walletVerificationStep === 'POLLING' ? 'Verifying Deposit...' : 
+                                                         walletVerificationStep === 'SUCCESS' ? 'Success! Recording...' : 
+                                                         walletVerificationStep === 'FAILED' ? 'Verification Failed' : 'Processing...'}
+                                                    </h3>
+                                                    <p className="text-xs text-gray-500 mt-1">
+                                                        {walletVerificationStep === 'POLLING' ? 'Checking with Lenco. This takes a few seconds.' : 
+                                                         walletVerificationStep === 'SUCCESS' ? 'Your deposit was found and is being recorded.' : 
+                                                         walletVerificationStep === 'FAILED' ? 'We couldn\'t find your deposit. Please try again.' : 'Please wait.'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="bg-pink-50/50 p-6 rounded-2xl border border-pink-100 flex flex-col items-center text-center">
+                                                <Wallet className="h-8 w-8 text-brand-pink mb-2" />
+                                                <p className="text-sm text-gray-700 mb-4">
+                                                    Deposit the exact change amount into the MoneyWise Wallet. Your requisition will be automatically updated once verified.
+                                                </p>
+                                                <button
+                                                    onClick={handleWalletDeposit}
+                                                    disabled={processing || (isLoanOrAdvance 
+                                                        ? (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - Number(requisition.estimated_total || 0) - ((requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET' ? 8.5 : 0)) <= 0
+                                                        : (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - ((requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET' ? 8.5 : 0) - expenseItems.filter(item => item.description !== 'Withdrawal Fee (MoneyWise Wallet)').reduce((sum, item) => sum + (item.actual_amount || 0), 0)) <= 0
+                                                    )}
+                                                    className="w-full flex justify-center items-center px-6 py-3 bg-brand-pink text-white rounded-xl font-bold shadow-lg shadow-pink-100 hover:bg-pink-600 transition-all active:scale-95 disabled:opacity-50"
+                                                >
+                                                    <Wallet className="h-4 w-4 mr-2" />
+                                                    Deposit K{Math.max(0, (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - ((requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET' ? 8.5 : 0)) - (
+                                                        isLoanOrAdvance 
+                                                            ? Number(requisition.estimated_total || 0) 
+                                                            : expenseItems
+                                                                .filter(item => item.description !== 'Withdrawal Fee (MoneyWise Wallet)')
+                                                                .reduce((sum, item) => sum + (item.actual_amount || 0), 0)
+                                                    )).toFixed(2)} to Wallet
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
