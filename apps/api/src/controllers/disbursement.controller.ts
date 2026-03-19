@@ -522,11 +522,12 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
 
         if (statusCheck.status === 'successful') {
             // CRITICAL: Finalize Ledger and Fees NOW that we are sure it succeeded.
-            // Check if already logged to prevent double-entry (e.g. if polled twice)
+            // Only skip if the DISBURSED entry specifically exists — NOT voucher/reconciliation entries
             const { data: existingLedger } = await supabase
                 .from('cashbook_entries')
                 .select('id')
                 .eq('requisition_id', id)
+                .eq('status', 'DISBURSED')
                 .maybeSingle();
 
             if (!existingLedger) {
