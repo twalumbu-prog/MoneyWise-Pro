@@ -39,6 +39,7 @@ export const CashierDashboard: React.FC = () => {
     const [processing, setProcessing] = useState(false);
     const [verifying, setVerifying] = useState(false);
     const [verificationStep, setVerificationStep] = useState<string>('');
+    const [verifiedDetails, setVerifiedDetails] = useState<any | null>(null);
     
     // Additional Lenco states
     const [subMethod, setSubMethod] = useState<'MOBILE_MONEY' | 'BANK_TRANSFER'>('MOBILE_MONEY');
@@ -201,14 +202,13 @@ export const CashierDashboard: React.FC = () => {
                 attempts++;
                 const result = await lencoService.verifyDisbursementStatus(reqId);
                 
-                if (result.status === 'SUCCESSFUL') {
+                if (result.status === 'successful' || result.status === 'SUCCESSFUL') {
                     clearInterval(interval);
-                    setVerifying(false);
-                    alert('Disbursement successful and verified!');
+                    setVerificationStep('Verification Successful!');
+                    setVerifiedDetails(result.details);
+                    // Do NOT setVerifying(false) or show alert yet, we want them to see the success UI
                     loadRequisitions();
-                    setSelectedReq(null);
-                    resetForm();
-                } else if (result.status === 'FAILED') {
+                } else if (result.status === 'failed' || result.status === 'FAILED') {
                     clearInterval(interval);
                     setVerifying(false);
                     alert(`Disbursement Failed: ${result.error || 'Unknown error'}`);
@@ -237,6 +237,8 @@ export const CashierDashboard: React.FC = () => {
         setRecipientAccountName('');
         setAccountResolved(false);
         setTransferProofFile(null);
+        setVerifiedDetails(null);
+        setVerifying(false);
         setDenominations({ '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0 });
     };
 
@@ -748,34 +750,80 @@ export const CashierDashboard: React.FC = () => {
                                                         <div className="fixed inset-0 bg-brand-navy/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 text-center">
                                                             <div className="max-w-md w-full animate-in zoom-in-95 duration-300">
                                                                 <div className="bg-white p-8 rounded-3xl shadow-2xl space-y-6 relative overflow-hidden">
-                                                                    {/* Progress gradient bar */}
-                                                                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gray-100 overflow-hidden">
-                                                                        <div className="h-full bg-brand-green animate-progress w-full"></div>
-                                                                    </div>
-                                                                    
-                                                                    <div className="h-20 w-20 bg-brand-green/10 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-brand-green/20">
-                                                                        <Loader2 className="h-10 w-10 text-brand-green animate-spin" />
-                                                                    </div>
-                                                                    
-                                                                    <h3 className="text-2xl font-black text-brand-navy">Processing Payout</h3>
-                                                                    <p className="text-gray-500 font-medium">
-                                                                        {verificationStep}
-                                                                    </p>
-                                                                    
-                                                                    <div className="grid grid-cols-2 gap-4 text-left bg-gray-50 p-4 rounded-2xl border border-gray-100">
-                                                                        <div>
-                                                                            <p className="text-[10px] text-gray-400 uppercase font-bold">Recipient</p>
-                                                                            <p className="text-sm font-black text-brand-navy truncate">{recipientAccountName}</p>
-                                                                        </div>
-                                                                        <div>
-                                                                            <p className="text-[10px] text-gray-400 uppercase font-bold">Amount</p>
-                                                                            <p className="text-sm font-black text-brand-pink">K{Number(selectedReq.estimated_total).toLocaleString()}</p>
-                                                                        </div>
-                                                                    </div>
+                                                                    {!verifiedDetails ? (
+                                                                        <>
+                                                                            {/* Progress gradient bar */}
+                                                                            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gray-100 overflow-hidden">
+                                                                                <div className="h-full bg-brand-green animate-progress w-full"></div>
+                                                                            </div>
+                                                                            
+                                                                            <div className="h-20 w-20 bg-brand-green/10 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-brand-green/20">
+                                                                                <Loader2 className="h-10 w-10 text-brand-green animate-spin" />
+                                                                            </div>
+                                                                            
+                                                                            <h3 className="text-2xl font-black text-brand-navy">Processing Payout</h3>
+                                                                            <p className="text-gray-500 font-medium">
+                                                                                {verificationStep}
+                                                                            </p>
+                                                                            
+                                                                            <div className="grid grid-cols-2 gap-4 text-left bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                                                                <div>
+                                                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Recipient</p>
+                                                                                    <p className="text-sm font-black text-brand-navy truncate">{recipientAccountName}</p>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Amount</p>
+                                                                                    <p className="text-sm font-black text-brand-pink">K{Number(selectedReq.estimated_total).toLocaleString()}</p>
+                                                                                </div>
+                                                                            </div>
 
-                                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                                                                        Please don't close this window
-                                                                    </p>
+                                                                            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                                                                Please don't close this window
+                                                                            </p>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            {/* Success View */}
+                                                                            <div className="absolute top-0 left-0 right-0 h-1.5 bg-brand-green"></div>
+                                                                            
+                                                                            <div className="h-20 w-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-green-100 animate-in zoom-in">
+                                                                                <CheckCircle className="h-10 w-10 text-green-500" />
+                                                                            </div>
+                                                                            
+                                                                            <h3 className="text-2xl font-black text-brand-navy">Transfer Successful!</h3>
+                                                                            <p className="text-green-600 font-bold text-sm bg-green-50 py-2 px-4 rounded-full inline-block border border-green-100">
+                                                                                Successfully logged to MoneyWise Ledger
+                                                                            </p>
+                                                                            
+                                                                            <div className="bg-gray-50 p-5 rounded-2xl border border-gray-100 space-y-4 text-left">
+                                                                                <div className="grid grid-cols-2 gap-4">
+                                                                                    <div>
+                                                                                        <p className="text-[10px] text-gray-400 uppercase font-bold">Lenco Ref</p>
+                                                                                        <p className="text-xs font-mono font-black text-brand-navy">{verifiedDetails.reference || 'N/A'}</p>
+                                                                                    </div>
+                                                                                    <div>
+                                                                                        <p className="text-[10px] text-gray-400 uppercase font-bold">Amount Sent</p>
+                                                                                        <p className="text-sm font-black text-brand-green">K{Number(verifiedDetails.amount || selectedReq.estimated_total).toLocaleString()}</p>
+                                                                                    </div>
+                                                                                </div>
+                                                                                
+                                                                                <div className="pt-3 border-t border-gray-200">
+                                                                                    <p className="text-[10px] text-gray-400 uppercase font-bold">Sent To</p>
+                                                                                    <p className="text-sm font-black text-gray-700 truncate">{recipientAccountName}</p>
+                                                                                </div>
+                                                                            </div>
+
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setSelectedReq(null);
+                                                                                    resetForm();
+                                                                                }}
+                                                                                className="w-full py-4 bg-brand-navy text-white rounded-xl font-bold hover:bg-brand-navy/90 transition-colors shadow-sm"
+                                                                            >
+                                                                                Done
+                                                                            </button>
+                                                                        </>
+                                                                    )}
                                                                 </div>
                                                             </div>
                                                         </div>
