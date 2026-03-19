@@ -66,7 +66,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 0. Check for existing active requisitions (Accountability Safeguard)
-        const blockingStatuses = ['SUBMITTED', 'AUTHORISED', 'DISBURSED', 'RECEIVED'];
+        const blockingStatuses = ['DISBURSED', 'RECEIVED'];
         const { data: activeReq, error: activeError } = await supabase
             .from('requisitions')
             .select('id, status')
