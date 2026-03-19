@@ -171,7 +171,7 @@ export const RequisitionDetail: React.FC = () => {
         const ref = `CHG-${Date.now()}-${lencoSubaccountId}-${requisition?.id.slice(0, 8)}`;
 
         LencoPay.getPaid({
-            key: lencoPublicKey || 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
+            key: lencoPublicKey,
             amount: amountToDeposit.toFixed(2),
             currency: 'ZMW',
             reference: ref,

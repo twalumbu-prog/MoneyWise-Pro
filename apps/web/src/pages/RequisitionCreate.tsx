@@ -3,6 +3,7 @@ import { Layout } from '../components/Layout';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Plus, Trash2, AlertTriangle, Clock } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
+import { useAuth } from '../context/AuthContext';
 
 
 interface LineItem {
@@ -17,6 +18,7 @@ interface LineItem {
 export const RequisitionCreate: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
+    const { user } = useAuth();
     const reqType = (searchParams.get('type') || 'EXPENSE').toUpperCase();
 
     const [description, setDescription] = useState('');
@@ -43,16 +45,29 @@ export const RequisitionCreate: React.FC = () => {
 
 
     React.useEffect(() => {
-        checkActiveRequisition();
-    }, []);
+        if (user?.id) {
+            checkActiveRequisition();
+        }
+    }, [user?.id]);
 
     const checkActiveRequisition = async () => {
         try {
             const requisitions = await requisitionService.getAll();
             const blockingStatuses = ['DISBURSED', 'RECEIVED'];
-            const blocking = requisitions.find((r: any) => blockingStatuses.includes(r.status));
+            console.log('[Safeguard] Full user context:', { id: user?.id, email: user?.email });
+            const blocking = requisitions.find((r: any) => {
+                const isMatch = blockingStatuses.includes(r.status) && String(r.requestor_id) === String(user?.id);
+                if (blockingStatuses.includes(r.status)) {
+                    console.log(`[Safeguard] Checking Req #${r.id.slice(0,8)}: status=${r.status}, requestor=${r.requestor_id}, current_user=${user?.id}, matches=${isMatch}`);
+                }
+                return isMatch;
+            });
             if (blocking) {
+                console.log('[Safeguard] Blocking requisition verified:', blocking.id);
                 setActiveRequisition(blocking);
+            } else {
+                console.log('[Safeguard] No relevant blocking requisition for user:', user?.id);
+                setActiveRequisition(null);
             }
         } catch (err) {
             console.error('Failed to check active requisitions:', err);
