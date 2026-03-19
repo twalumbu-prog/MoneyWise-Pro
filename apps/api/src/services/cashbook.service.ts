@@ -177,6 +177,7 @@ export const cashbookService = {
             .from('cashbook_entries')
             .select('id')
             .eq('requisition_id', requisitionId)
+            .eq('status', 'DISBURSED')
             .maybeSingle();
 
         if (existingLedger) {

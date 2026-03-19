@@ -322,7 +322,11 @@ export const CashierDashboard: React.FC = () => {
 
             const result = await response.json();
 
-            if (result.status === 'initiated') {
+            if (!response.ok) {
+                throw new Error(result.error || result.message || 'Failed to initiate disbursement');
+            }
+
+            if (paymentMethod === 'MONEYWISE_WALLET') {
                 pollDisbursementStatus(selectedReq.id);
             } else {
                 alert('Disbursement recorded successfully!');
