@@ -52,11 +52,26 @@ export const AccountingModal: React.FC<AccountingModalProps> = ({
 
             // Default to first bank account if available
             if (banks.length > 0) {
-                // Try to find "Petty Cash" or "Bank" as preferred defaults
-                const defaultAcc = banks.find((b: any) =>
-                    b.Name.toLowerCase().includes('petty') ||
-                    b.Name.toLowerCase().includes('cash')
-                ) || banks[0];
+                const isWallet = (requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET';
+                
+                let defaultAcc;
+                if (isWallet) {
+                    // Try to find an account named "Wallet", "MoneyWise", or "Lenco"
+                    defaultAcc = banks.find((b: any) =>
+                        b.Name.toLowerCase().includes('wallet') ||
+                        b.Name.toLowerCase().includes('moneywise') ||
+                        b.Name.toLowerCase().includes('lenco')
+                    );
+                }
+
+                // Fallback to Petty Cash or first bank if wallet account not found or not a wallet req
+                if (!defaultAcc) {
+                    defaultAcc = banks.find((b: any) =>
+                        b.Name.toLowerCase().includes('petty') ||
+                        b.Name.toLowerCase().includes('cash')
+                    ) || banks[0];
+                }
+
                 setSelectedPaymentAccount({ id: defaultAcc.Id, name: defaultAcc.Name });
             }
 

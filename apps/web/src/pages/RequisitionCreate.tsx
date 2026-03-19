@@ -49,7 +49,7 @@ export const RequisitionCreate: React.FC = () => {
     const checkActiveRequisition = async () => {
         try {
             const requisitions = await requisitionService.getAll();
-            const blockingStatuses = ['SUBMITTED', 'AUTHORISED', 'DISBURSED', 'RECEIVED'];
+            const blockingStatuses = ['DISBURSED', 'RECEIVED'];
             const blocking = requisitions.find((r: any) => blockingStatuses.includes(r.status));
             if (blocking) {
                 setActiveRequisition(blocking);

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Layout } from '../components/Layout';
-import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2, CreditCard, Loader2, Wallet, AlertTriangle } from 'lucide-react';
+import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2, CreditCard, Loader2, Wallet, AlertTriangle, Sparkles, CheckCircle, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { DisbursementDetailOverlay } from '../components/DisbursementDetailOverlay';
@@ -26,7 +26,7 @@ export const CashierDashboard: React.FC = () => {
     });
 
     // New state for disbursement method
-    const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET'>('CASH');
+    const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET'>('MONEYWISE_WALLET');
     const [transferAmount, setTransferAmount] = useState<string>('');
     const [recipientAccount, setRecipientAccount] = useState<string>('');
     const [recipientBankCode, setRecipientBankCode] = useState<string>('');
@@ -37,6 +37,15 @@ export const CashierDashboard: React.FC = () => {
     const [isDataLoading, setIsDataLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [processing, setProcessing] = useState(false);
+    const [verifying, setVerifying] = useState(false);
+    const [verificationStep, setVerificationStep] = useState<string>('');
+    
+    // Additional Lenco states
+    const [subMethod, setSubMethod] = useState<'MOBILE_MONEY' | 'BANK_TRANSFER'>('MOBILE_MONEY');
+    const [banks, setBanks] = useState<any[]>([]);
+    const [resolvingAccount, setResolvingAccount] = useState(false);
+    const [accountResolved, setAccountResolved] = useState(false);
+    const [resolutionError, setResolutionError] = useState<string | null>(null);
     
     // New state for tabs and history
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
@@ -52,7 +61,17 @@ export const CashierDashboard: React.FC = () => {
     useEffect(() => {
         loadRequisitions();
         fetchWalletStatus();
+        loadBanks();
     }, []);
+
+    const loadBanks = async () => {
+        try {
+            const bankList = await lencoService.getBanks();
+            setBanks(bankList);
+        } catch (err) {
+            console.error('Failed to load banks:', err);
+        }
+    };
 
     const fetchWalletStatus = async () => {
         try {
@@ -126,6 +145,99 @@ export const CashierDashboard: React.FC = () => {
             ...prev,
             [value]: Math.max(0, count)
         }));
+    };
+
+    const resolveRecipient = async () => {
+        if (!recipientAccount || (subMethod === 'BANK_TRANSFER' && !recipientBankCode)) return;
+
+        try {
+            setResolvingAccount(true);
+            setAccountResolved(false);
+            setResolutionError(null);
+            setError(null);
+
+            let result;
+            if (subMethod === 'MOBILE_MONEY') {
+                // Auto-detect operator if it's missing or if it was manually selected
+                let operator = recipientBankCode;
+                const phone = recipientAccount.startsWith('0') ? '260' + recipientAccount.slice(1) : recipientAccount;
+                
+                if (!operator) {
+                    if (phone.startsWith('26097') || phone.startsWith('26077')) operator = 'airtel';
+                    else if (phone.startsWith('26096') || phone.startsWith('26076')) operator = 'mtn';
+                    else if (phone.startsWith('26095')) operator = 'zamtel';
+                }
+
+                if (!operator) throw new Error('Could not detect mobile operator. Please select one.');
+                
+                setRecipientBankCode(operator);
+                result = await lencoService.resolveMobileMoney(recipientAccount, operator);
+            } else {
+                result = await lencoService.resolveBankAccount(recipientAccount, recipientBankCode);
+            }
+
+            if (result && result.accountName) {
+                setRecipientAccountName(result.accountName);
+                setAccountResolved(true);
+            } else {
+                setResolutionError('Account name not found. Please verify details.');
+            }
+        } catch (err: any) {
+            setResolutionError(err.message || 'Failed to resolve account');
+        } finally {
+            setResolvingAccount(false);
+        }
+    };
+
+    const pollDisbursementStatus = async (reqId: string) => {
+        setVerifying(true);
+        setVerificationStep('Waiting for Lenco confirmation...');
+        
+        let attempts = 0;
+        const maxAttempts = 12; // 1 minute (5s intervals)
+        
+        const interval = setInterval(async () => {
+            try {
+                attempts++;
+                const result = await lencoService.verifyDisbursementStatus(reqId);
+                
+                if (result.status === 'SUCCESSFUL') {
+                    clearInterval(interval);
+                    setVerifying(false);
+                    alert('Disbursement successful and verified!');
+                    loadRequisitions();
+                    setSelectedReq(null);
+                    resetForm();
+                } else if (result.status === 'FAILED') {
+                    clearInterval(interval);
+                    setVerifying(false);
+                    alert(`Disbursement Failed: ${result.error || 'Unknown error'}`);
+                    loadRequisitions();
+                }
+                
+                if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    setVerifying(false);
+                    alert('Disbursement is taking longer than expected. Please check history in a few minutes.');
+                    loadRequisitions();
+                    setSelectedReq(null);
+                    resetForm();
+                }
+            } catch (err) {
+                console.error('Polling error:', err);
+            }
+        }, 5000);
+    };
+
+    const resetForm = () => {
+        setPaymentMethod('CASH');
+        setTransferAmount('');
+        setRecipientAccount('');
+        setRecipientBankCode('');
+        setRecipientAccountName('');
+        setAccountResolved(false);
+        setTransferProofFile(null);
+        setDenominations({ '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0 });
     };
 
     const handleDisburse = async () => {
@@ -206,21 +318,16 @@ export const CashierDashboard: React.FC = () => {
                 }),
             });
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Disbursement failed');
-            }
+            const result = await response.json();
 
-            alert('Disbursement recorded successfully!');
-            setSelectedReq(null);
-            setPaymentMethod('CASH');
-            setTransferAmount('');
-            setRecipientAccount('');
-            setRecipientBankCode('');
-            setRecipientAccountName('');
-            setTransferProofFile(null);
-            setDenominations({ '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0 });
-            loadRequisitions();
+            if (result.status === 'initiated') {
+                pollDisbursementStatus(selectedReq.id);
+            } else {
+                alert('Disbursement recorded successfully!');
+                setSelectedReq(null);
+                resetForm();
+                loadRequisitions();
+            }
         } catch (err: any) {
             console.error(err);
             alert(err.message || 'Failed to record disbursement');
@@ -379,35 +486,51 @@ export const CashierDashboard: React.FC = () => {
                                     </div>
 
                                     {/* Payment Method Selection */}
-                                    <h3 className="text-sm font-medium text-gray-700 mb-3">Disbursement Method</h3>
-                                    <div className="grid grid-cols-3 gap-3 mb-6">
-                                        <button
-                                            onClick={() => setPaymentMethod('CASH')}
-                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'CASH' ? 'bg-brand-navy/10 border-brand-navy text-brand-navy' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                        >
-                                            <Banknote className="h-6 w-6 mb-2" />
-                                            <span className="text-xs font-medium">Cash</span>
-                                        </button>
-                                        <button
-                                            onClick={() => setPaymentMethod('AIRTEL_MONEY')}
-                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'AIRTEL_MONEY' ? 'bg-red-50 border-red-500 text-red-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                        >
-                                            <File className="h-6 w-6 mb-2" />
-                                            <span className="text-xs font-medium text-center">Airtel Money</span>
-                                        </button>
-                                        <button
-                                            onClick={() => setPaymentMethod('BANK')}
-                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'BANK' ? 'bg-blue-50 border-blue-500 text-blue-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                        >
-                                            <Building className="h-6 w-6 mb-2" />
-                                            <span className="text-xs font-medium text-center">Bank Transfer</span>
-                                        </button>
+                                    <h3 className="text-[11px] font-black text-gray-400 uppercase tracking-wider mb-3">Select Method</h3>
+                                    
+                                    <div className="relative flex bg-gray-100 p-1.5 rounded-2xl mb-8 overflow-hidden h-[54px]">
+                                        {/* Gliding background pill */}
+                                        <div 
+                                            className="absolute top-1.5 bottom-1.5 bg-white rounded-xl shadow-sm transition-all duration-400 ease-[cubic-bezier(0.34,1.56,0.64,1)] z-0"
+                                            style={{
+                                                left: paymentMethod === 'MONEYWISE_WALLET' ? '6px' :
+                                                      paymentMethod === 'AIRTEL_MONEY' ? 'calc(25% + 3px)' :
+                                                      paymentMethod === 'BANK' ? 'calc(50% + 3px)' : 
+                                                      'calc(75% + 3px)',
+                                                width: 'calc(25% - 9px)'
+                                            }}
+                                        />
+
                                         <button
                                             onClick={() => setPaymentMethod('MONEYWISE_WALLET')}
-                                            className={`flex flex-col items-center justify-center p-3 border rounded-lg transition-colors ${paymentMethod === 'MONEYWISE_WALLET' ? 'bg-brand-pink/10 border-brand-pink text-brand-pink' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 transition-all duration-300 ${paymentMethod === 'MONEYWISE_WALLET' ? 'text-brand-pink' : 'text-gray-500 hover:text-gray-700'}`}
                                         >
-                                            <CreditCard className="h-6 w-6 mb-2" />
-                                            <span className="text-xs font-medium text-center">MoneyWise Wallet</span>
+                                            <CreditCard className={`h-4 w-4 ${paymentMethod === 'MONEYWISE_WALLET' ? 'animate-pulse' : ''}`} />
+                                            <span className="text-[11px] font-black whitespace-nowrap">MoneyWise</span>
+                                        </button>
+
+                                        <button
+                                            onClick={() => setPaymentMethod('AIRTEL_MONEY')}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 transition-all duration-300 ${paymentMethod === 'AIRTEL_MONEY' ? 'text-red-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            <Smartphone className="h-4 w-4" />
+                                            <span className="text-[11px] font-black whitespace-nowrap">Airtel</span>
+                                        </button>
+
+                                        <button
+                                            onClick={() => setPaymentMethod('BANK')}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 transition-all duration-300 ${paymentMethod === 'BANK' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            <Building className="h-4 w-4" />
+                                            <span className="text-[11px] font-black whitespace-nowrap">Bank</span>
+                                        </button>
+
+                                        <button
+                                            onClick={() => setPaymentMethod('CASH')}
+                                            className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 transition-all duration-300 ${paymentMethod === 'CASH' ? 'text-brand-navy' : 'text-gray-500 hover:text-gray-700'}`}
+                                        >
+                                            <Banknote className="h-4 w-4" />
+                                            <span className="text-[11px] font-black whitespace-nowrap">Cash</span>
                                         </button>
                                     </div>
 
@@ -448,58 +571,128 @@ export const CashierDashboard: React.FC = () => {
 
                                             {paymentMethod === 'MONEYWISE_WALLET' && (
                                                 <>
+                                                    {/* Sub-method Toggle */}
+                                                    <div className="flex bg-gray-100 p-1 rounded-xl mb-4">
+                                                        <button
+                                                            onClick={() => {
+                                                                setSubMethod('MOBILE_MONEY');
+                                                                setRecipientBankCode('');
+                                                                setRecipientAccountName('');
+                                                                setAccountResolved(false);
+                                                            }}
+                                                            className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-lg transition-all ${subMethod === 'MOBILE_MONEY' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500'}`}
+                                                        >
+                                                            Mobile Money
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                setSubMethod('BANK_TRANSFER');
+                                                                setRecipientBankCode('');
+                                                                setRecipientAccountName('');
+                                                                setAccountResolved(false);
+                                                            }}
+                                                            className={`flex-1 flex items-center justify-center py-2 text-xs font-bold rounded-lg transition-all ${subMethod === 'BANK_TRANSFER' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500'}`}
+                                                        >
+                                                            Bank Transfer
+                                                        </button>
+                                                    </div>
+
                                                     <div className="grid grid-cols-2 gap-4">
                                                         <div>
                                                             <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                                Recipient Account
+                                                                {subMethod === 'MOBILE_MONEY' ? 'Phone Number' : 'Account Number'}
                                                             </label>
+                                                        <div className="relative">
                                                             <input
                                                                 type="text"
                                                                 value={recipientAccount}
-                                                                onChange={(e) => setRecipientAccount(e.target.value)}
-                                                                placeholder="e.g. 0123456789"
-                                                                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
+                                                                onChange={(e) => {
+                                                                    setRecipientAccount(e.target.value);
+                                                                    setAccountResolved(false);
+                                                                }}
+                                                                placeholder={subMethod === 'MOBILE_MONEY' ? '097XXXXXXX' : 'Account Number'}
+                                                                className={`block w-full border-gray-200 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-3 border ${subMethod === 'MOBILE_MONEY' && recipientBankCode ? 'pr-12' : ''}`}
                                                             />
-                                                        </div>
-                                                        <div>
-                                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                                Bank Code (ZMN)
-                                                            </label>
-                                                            <select
-                                                                value={recipientBankCode}
-                                                                onChange={(e) => setRecipientBankCode(e.target.value)}
-                                                                className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
-                                                            >
-                                                                 <option value="">Select Bank / Operator</option>
-                                                                 <option value="airtel">Airtel Money</option>
-                                                                 <option value="mtn">MTN Money</option>
-                                                                 <option value="zamtel">Zamtel Money</option>
-                                                                 <option value="zanaco">ZANACO</option>
-                                                                 <option value="sc">Standard Chartered</option>
-                                                                 <option value="absa">Absa</option>
-                                                                 <option value="fnb">FNB</option>
-                                                                 <option value="ecobank">Ecobank</option>
-                                                                 <option value="atlas_mara">Atlas Mara</option>
-                                                                 <option value="indo_zambia">Indo Zambia</option>
-                                                            </select>
+                                                            {subMethod === 'MOBILE_MONEY' && recipientBankCode && (
+                                                                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
+                                                                    <div className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${
+                                                                        recipientBankCode === 'airtel' ? 'bg-red-100 text-red-600' :
+                                                                        recipientBankCode === 'mtn' ? 'bg-yellow-100 text-yellow-700' :
+                                                                        'bg-green-100 text-green-700'
+                                                                    }`}>
+                                                                        {recipientBankCode}
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                     <div>
                                                         <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                            Recipient Name
+                                                            {subMethod === 'MOBILE_MONEY' ? 'Recipient Name' : 'Select Bank'}
                                                         </label>
-                                                        <input
-                                                            type="text"
-                                                            value={recipientAccountName}
-                                                            onChange={(e) => setRecipientAccountName(e.target.value)}
-                                                            placeholder="e.g. John Doe"
-                                                            className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-2 border"
-                                                        />
+                                                        {subMethod === 'MOBILE_MONEY' ? (
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="text"
+                                                                    readOnly
+                                                                    value={recipientAccountName}
+                                                                    placeholder="Name will show once confirmed"
+                                                                    className={`block w-full border-gray-200 rounded-xl shadow-sm bg-gray-50 sm:text-sm p-3 border font-bold ${accountResolved ? 'text-green-700 border-green-100' : 'text-gray-400 italic'}`}
+                                                                />
+                                                                {accountResolved && (
+                                                                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                                                                        <CheckCircle className="h-4 w-4 text-green-500" />
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ) : (
+                                                            <select
+                                                                value={recipientBankCode}
+                                                                onChange={(e) => {
+                                                                    setRecipientBankCode(e.target.value);
+                                                                    setAccountResolved(false);
+                                                                }}
+                                                                className="block w-full border-gray-200 rounded-xl shadow-sm focus:ring-brand-green focus:border-brand-green sm:text-sm p-3 border"
+                                                            >
+                                                                <option value="">Select Bank</option>
+                                                                {banks.map(bank => (
+                                                                    <option key={bank.id} value={bank.id}>{bank.name}</option>
+                                                                ))}
+                                                            </select>
+                                                        )}
                                                     </div>
+                                                </div>
+
+                                                {subMethod === 'BANK_TRANSFER' && recipientAccountName && (
+                                                    <div className="mt-2 flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1">
+                                                        <CheckCircle className={`h-3 w-3 ${accountResolved ? 'text-green-500' : 'text-gray-400'}`} />
+                                                        <p className={`text-[11px] font-bold ${accountResolved ? 'text-green-700' : 'text-gray-500 italic'}`}>
+                                                            {recipientAccountName}
+                                                        </p>
+                                                    </div>
+                                                )}
+
+                                                    <div className="mt-2">
+                                                        <button
+                                                            onClick={resolveRecipient}
+                                                            disabled={resolvingAccount || !recipientAccount || (subMethod === 'BANK_TRANSFER' && !recipientBankCode)}
+                                                            className="w-full flex items-center justify-center gap-2 py-2 px-4 bg-gray-100 text-brand-navy rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors disabled:opacity-50"
+                                                        >
+                                                            {resolvingAccount ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3 text-brand-pink" />}
+                                                            {accountResolved ? 'Change Details' : 'Confirm'}
+                                                        </button>
+                                                    </div>
+
+                                                    {resolutionError && (
+                                                        <div className="mt-2 p-3 bg-red-50 border border-red-100 rounded-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                                                            <AlertTriangle className="h-4 w-4 text-red-500" />
+                                                            <p className="text-xs font-bold text-red-700">{resolutionError}</p>
+                                                        </div>
+                                                    )}
 
                                                     {/* Wallet Safeguard UI */}
                                                     {lencoSubaccountId && (
-                                                        <div className={`p-4 rounded-xl border ${walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance ? 'bg-red-50 border-red-100' : 'bg-brand-gray/30 border-gray-100'}`}>
+                                                        <div className={`mt-4 p-4 rounded-xl border ${walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance ? 'bg-red-50 border-red-100' : 'bg-brand-gray/30 border-gray-100'}`}>
                                                             <div className="flex justify-between items-start">
                                                                 <div className="space-y-1">
                                                                     <div className="flex items-center space-x-2">
@@ -547,6 +740,44 @@ export const CashierDashboard: React.FC = () => {
                                                                     <p className="text-xs font-bold text-red-700">Insufficient funds in MoneyWise Wallet for this disbursement.</p>
                                                                 </div>
                                                             )}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Verification Overlay */}
+                                                    {verifying && (
+                                                        <div className="fixed inset-0 bg-brand-navy/80 backdrop-blur-md z-[100] flex items-center justify-center p-6 text-center">
+                                                            <div className="max-w-md w-full animate-in zoom-in-95 duration-300">
+                                                                <div className="bg-white p-8 rounded-3xl shadow-2xl space-y-6 relative overflow-hidden">
+                                                                    {/* Progress gradient bar */}
+                                                                    <div className="absolute top-0 left-0 right-0 h-1.5 bg-gray-100 overflow-hidden">
+                                                                        <div className="h-full bg-brand-green animate-progress w-full"></div>
+                                                                    </div>
+                                                                    
+                                                                    <div className="h-20 w-20 bg-brand-green/10 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-brand-green/20">
+                                                                        <Loader2 className="h-10 w-10 text-brand-green animate-spin" />
+                                                                    </div>
+                                                                    
+                                                                    <h3 className="text-2xl font-black text-brand-navy">Processing Payout</h3>
+                                                                    <p className="text-gray-500 font-medium">
+                                                                        {verificationStep}
+                                                                    </p>
+                                                                    
+                                                                    <div className="grid grid-cols-2 gap-4 text-left bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                                                        <div>
+                                                                            <p className="text-[10px] text-gray-400 uppercase font-bold">Recipient</p>
+                                                                            <p className="text-sm font-black text-brand-navy truncate">{recipientAccountName}</p>
+                                                                        </div>
+                                                                        <div>
+                                                                            <p className="text-[10px] text-gray-400 uppercase font-bold">Amount</p>
+                                                                            <p className="text-sm font-black text-brand-pink">K{Number(selectedReq.estimated_total).toLocaleString()}</p>
+                                                                        </div>
+                                                                    </div>
+
+                                                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                                                        Please don't close this window
+                                                                    </p>
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     )}
                                                 </>

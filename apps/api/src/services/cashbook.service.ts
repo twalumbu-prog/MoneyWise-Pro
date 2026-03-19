@@ -340,19 +340,6 @@ export const cashbookService = {
             return;
         }
 
-        let newCredit = actualExpenditure + discrepancy;
-        
-        // ACCOUNTING LOGIC:
-        // By allowing newCredit to be actualExpenditure + discrepancy, we "net off" the return.
-        // If it's a cross-account return (Cash req -> Wallet return), we still keep full credit
-        // because the cash is physically gone from the box and entered a different ledger.
-        if (changeSubmissionMethod === 'MONEYWISE_WALLET' && originalEntry.account_type === 'CASH') {
-            newCredit = Number(originalEntry.credit); 
-            console.log(`[Cashbook] Cross-account change (Wallet into Cash req). Keeping original credit: ${newCredit}`);
-        }
-        // For same-account Wallet returns, we now allow netting off to satisfy the request
-        // to not show separate inflow entries in the ledger list.
-
         const newDescription = discrepancy !== 0
             ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
             : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
@@ -361,7 +348,7 @@ export const cashbookService = {
         const { error: updateError } = await supabase
             .from('cashbook_entries')
             .update({
-                credit: newCredit,
+                credit: actualExpenditure + discrepancy,
                 description: newDescription,
                 status: 'COMPLETED',
                 voucher_id: voucherId

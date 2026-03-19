@@ -1,9 +1,9 @@
 import axios from 'axios';
 
 export interface LencoAccountResolution {
-    account_name: string;
-    account_number: string;
-    bank_name?: string;
+    accountName: string;
+    accountNumber: string;
+    bankName?: string;
 }
 
 export interface LencoPayoutRequest {
@@ -41,9 +41,9 @@ export class LencoService {
             // V2 response structure: data: { accountName, accountNumber, bank: { name, ... } }
             const data = response.data.data;
             return {
-                account_name: data.accountName,
-                account_number: data.accountNumber,
-                bank_name: data.bank?.name
+                accountName: data.accountName,
+                accountNumber: data.accountNumber,
+                bankName: data.bank?.name
             };
         } catch (error: any) {
             console.error('Lenco bank resolution failed:', error.response?.data || error.message);
@@ -65,8 +65,8 @@ export class LencoService {
             });
             const data = response.data.data;
             return {
-                account_name: data.accountName,
-                account_number: data.phone
+                accountName: data.accountName,
+                accountNumber: data.phone
             };
         } catch (error: any) {
             console.error('Lenco mobile money resolution failed:', error.response?.data || error.message);
@@ -183,6 +183,68 @@ export class LencoService {
             console.error('Lenco transactions list failed:', error.response?.data || error.message);
             throw new Error(error.response?.data?.message || 'Failed to list transactions');
         }
+    }
+
+    /**
+     * Check transfer/payout status
+     */
+    static async getTransferStatus(reference: string, secretKey?: string) {
+        try {
+            const response = await axios.get(`${this.BASE_URL}/transfers/status/${reference}`, {
+                headers: this.getHeaders(secretKey)
+            });
+            return response.data.data;
+        } catch (error: any) {
+            console.error('Lenco transfer status check failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to check transfer status');
+        }
+    }
+
+    /**
+     * Get transfer details by Lenco ID
+     */
+    static async getTransferById(transferId: string, secretKey?: string) {
+        try {
+            const response = await axios.get(`${this.BASE_URL}/transfers/${transferId}`, {
+                headers: this.getHeaders(secretKey)
+            });
+            return response.data.data;
+        } catch (error: any) {
+            console.error('Lenco transfer fetch failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to fetch transfer details');
+        }
+    }
+
+    /**
+     * Get list of banks with their codes
+     */
+    static async getBanks(secretKey?: string) {
+        try {
+            const response = await axios.get(`${this.BASE_URL}/banks`, {
+                headers: this.getHeaders(secretKey)
+            });
+            // Filter for Zambia (ZM) banks primarily
+            const allBanks = response.data.data;
+            return allBanks.filter((b: any) => b.country?.toLowerCase() === 'zm' || !b.country);
+        } catch (error: any) {
+            console.error('Lenco banks list failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to fetch banks');
+        }
+    }
+
+    /**
+     * Helper to resolve mobile operator from phone number prefix (Zambia)
+     */
+    static resolveMobileOperator(phone: string): string | null {
+        // Clean phone number (remove +, spaces, 26, etc)
+        const clean = phone.replace(/[^0-9]/g, '');
+        const normalized = clean.startsWith('260') ? '0' + clean.substring(3) : clean;
+        
+        if (normalized.startsWith('097') || normalized.startsWith('077')) return 'airtel';
+        if (normalized.startsWith('096') || normalized.startsWith('076')) return 'mtn';
+        if (normalized.startsWith('095') || normalized.startsWith('075')) return 'zamtel';
+        
+        return null;
     }
 
     /**

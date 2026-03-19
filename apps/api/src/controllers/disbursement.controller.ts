@@ -66,25 +66,46 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
 
             try {
+                let payout;
                 if (isMobile) {
-                    const payout = await LencoService.createMobileMoneyPayout({
+                    payout = await LencoService.createMobileMoneyPayout({
                         amount: total_prepared,
                         reference: `REQ-${id.slice(0, 8)}-${Date.now()}`,
                         phone: recipient_account,
                         operator: recipient_bank_code,
                         narration: `Disbursement for Requisition #${id.slice(0, 8)}`
                     }, org.lenco_subaccount_id);
-                    lencoReference = payout.reference;
                 } else {
-                    const payout = await LencoService.createBankPayout({
+                    payout = await LencoService.createBankPayout({
                         amount: total_prepared,
                         reference: `REQ-${id.slice(0, 8)}-${Date.now()}`,
                         accountNumber: recipient_account,
                         bankId: recipient_bank_code,
                         narration: `Disbursement for Requisition #${id.slice(0, 8)}`
                     }, org.lenco_subaccount_id);
-                    lencoReference = payout.reference;
                 }
+                
+                lencoReference = payout.reference;
+                console.log(`[Lenco Payout] Initiated: ${lencoReference}. Waiting for confirmation...`);
+
+                // Initial short wait for immediate confirmation
+                let statusCheck = await LencoService.getTransferStatus(lencoReference);
+                let attempts = 0;
+                while (statusCheck.status === 'pending' && attempts < 3) {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    statusCheck = await LencoService.getTransferStatus(lencoReference);
+                    attempts++;
+                }
+
+                if (statusCheck.status === 'failed') {
+                    throw new Error(statusCheck.message || 'Lenco reported transfer failure');
+                }
+
+                // If still pending, we store it but tell the UI it's processing
+                // For now, if it's successful, we proceed as normal.
+                // If it's still pending after 6 seconds, we'll return a special status.
+                (req as any).lencoStatus = statusCheck.status;
+
             } catch (payoutError: any) {
                 console.error('[Lenco Payout Failed] Reverting requisition status:', payoutError);
                 // Revert status to AUTHORISED so it can be tried again
@@ -95,7 +116,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 
                 return res.status(500).json({ 
                     error: 'Lenco payout failed. The requisition status has been reset and you can try again.',
-                    details: payoutError.message 
+                    details: payoutError.message,
+                    isLencoError: true
                 });
             }
         }
@@ -134,39 +156,21 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         // 4. Log Cash Disbursement in Cashbook
         const mainDescription = `${payment_method && payment_method !== 'CASH' ? payment_method : 'Cash'} disbursed for Requisition #${id.slice(0, 8)}`;
 
-        await cashbookService.logDisbursement(
-            organizationId,
-            id,
-            totalDeduction, // Use totalDeduction (incl. fee) for unified ledger tracking
-            cashier_id,
-            mainDescription,
-            payment_method || 'CASH'
-        );
-
-        // 5. Log Lenco Transaction Fee as Line Item if applicable
-        if (isWallet) {
-            // A. Add as Line Item to Requisition for reporting and visibility
-            // We no longer create a separate cashbook EXPENSE entry because it's consolidated in the DISBURSEMENT credit.
-
-            // B. Add as Line Item to Requisition for reporting and visibility
-            await supabase.from('line_items').insert({
-                requisition_id: id,
-                description: 'Withdrawal Fee (MoneyWise Wallet)',
-                quantity: 1,
-                unit_price: LENCO_TRANSACTION_FEE,
-                estimated_amount: LENCO_TRANSACTION_FEE,
-                actual_amount: LENCO_TRANSACTION_FEE,
-                account_id: '0dbe62e3-2917-4e4b-9620-6394f0029c1d' // "Transaction Charges" account
-            });
-
-            // C. Update Requisition header to include the fee in authorized/actual totals
-            // Fetch current totals first to be safe, though we have lockResult[0]
-            const currentEstimated = Number(requisition.estimated_total || 0);
-            await supabase.from('requisitions').update({
-                estimated_total: currentEstimated + LENCO_TRANSACTION_FEE,
-                actual_total: currentEstimated + LENCO_TRANSACTION_FEE // Pre-set actual total for now
-            }).eq('id', id);
+        if (!isWallet) {
+            // ONLY log immediate cashbook entry if it's NOT a wallet transfer.
+            // Wallet transfers are logged in verifyDisbursementStatus once confirmed by Lenco.
+            await cashbookService.logDisbursement(
+                organizationId,
+                id,
+                totalDeduction,
+                cashier_id,
+                mainDescription,
+                payment_method || 'CASH'
+            );
         }
+
+        // 5. Fee application is DEFERRED for Wallet transfers to avoid fake charges if it fails.
+        // It will be handled in verifyDisbursementStatus.
 
         // 5. Log Action
         await supabase
@@ -184,8 +188,11 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             });
 
         res.json({
-            message: 'Requisition disbursed successfully',
-            disbursement_id: disbursementData.id
+            message: (req as any).lencoStatus === 'pending' 
+                ? 'Disbursement initiated and is currently being processed by Lenco' 
+                : 'Requisition disbursed successfully',
+            disbursement_id: disbursementData.id,
+            lencoStatus: (req as any).lencoStatus || 'successful'
         });
 
         // 6. Trigger notification
@@ -481,5 +488,142 @@ export const analyzeDisbursementProof = async (req: any, res: Response) => {
     } catch (error: any) {
         console.error('[DisbursementController] AI analysis failed:', error);
         return res.status(500).json({ error: error.message || 'AI analysis failed' });
+    }
+};
+
+/**
+ * Verify the status of a Lenco payout and finalize the disbursement if successful
+ */
+export const verifyDisbursementStatus = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params; // Requisition ID
+        const organizationId = req.user.organization_id;
+
+        // 1. Fetch disbursement record
+        const { data: disbursement, error: disbError } = await supabase
+            .from('disbursements')
+            .select('*, requisitions(status, estimated_total)')
+            .eq('requisition_id', id)
+            .single();
+
+        if (disbError || !disbursement) {
+            return res.status(404).json({ error: 'Disbursement record not found' });
+        }
+
+        if (!disbursement.external_reference) {
+            return res.status(400).json({ error: 'Not a Lenco-managed disbursement' });
+        }
+
+        // 2. Poll Lenco for status
+        const statusCheck = await LencoService.getTransferStatus(disbursement.external_reference);
+        console.log(`[Lenco Verify] Reference: ${disbursement.external_reference}, Status: ${statusCheck.status}`);
+
+        if (statusCheck.status === 'successful') {
+            // CRITICAL: Finalize Ledger and Fees NOW that we are sure it succeeded.
+            // Check if already logged to prevent double-entry (e.g. if polled twice)
+            const { data: existingLedger } = await supabase
+                .from('cashbook_entries')
+                .select('id')
+                .eq('requisition_id', id)
+                .maybeSingle();
+
+            if (!existingLedger) {
+                console.log(`[Lenco Verify] Finalizing ledger for ${id}...`);
+                
+                // A. Log Cashbook Entry
+                const totalDeduction = Number(disbursement.total_prepared);
+                const mainDescription = `${disbursement.payment_method} disbursed for Requisition #${id.slice(0, 8)}`;
+                
+                await cashbookService.logDisbursement(
+                    organizationId,
+                    id,
+                    totalDeduction,
+                    disbursement.cashier_id,
+                    mainDescription,
+                    disbursement.payment_method
+                );
+
+                // B. Add withdrawal fee line item
+                await supabase.from('line_items').insert({
+                    requisition_id: id,
+                    description: 'Withdrawal Fee (MoneyWise Wallet)',
+                    quantity: 1,
+                    unit_price: LENCO_TRANSACTION_FEE,
+                    estimated_amount: LENCO_TRANSACTION_FEE,
+                    actual_amount: LENCO_TRANSACTION_FEE,
+                    account_id: '0dbe62e3-2917-4e4b-9620-6394f0029c1d' // "Transaction Charges" account
+                });
+
+                // C. Update Requisition header to include the fee
+                const currentEstimated = Number(disbursement.requisitions?.estimated_total || 0);
+                await supabase.from('requisitions').update({
+                    estimated_total: currentEstimated + LENCO_TRANSACTION_FEE,
+                    actual_total: currentEstimated + LENCO_TRANSACTION_FEE
+                }).eq('id', id);
+
+                console.log(`[Lenco Verify] Ledger finalized for ${id}.`);
+            }
+
+            return res.json({ 
+                status: 'successful', 
+                message: 'Transaction verified as successful',
+                details: statusCheck
+            });
+        }
+
+        if (statusCheck.status === 'failed') {
+            // CRITICAL: Revert everything if Lenco now reports failure
+            console.warn(`[Lenco Verify] Transaction FAILED for ${id}. Reverting records.`);
+
+            // A. Revert Requisition to AUTHORISED so it can be corrected/retried
+            await supabase
+                .from('requisitions')
+                .update({ 
+                    status: 'AUTHORISED', 
+                    updated_at: new Date().toISOString() 
+                })
+                .eq('id', id);
+
+            // B. Delete the disbursement record since it didn't happen
+            await supabase.from('disbursements').delete().eq('id', disbursement.id);
+
+            // C. Delete the cashbook entry if it was already created
+            // We fetch the entry first so we know where to start recalculation from
+            const { data: ledgerEntry } = await supabase
+                .from('cashbook_entries')
+                .select('date, created_at')
+                .eq('requisition_id', id)
+                .maybeSingle();
+
+            if (ledgerEntry) {
+                await supabase.from('cashbook_entries').delete().eq('requisition_id', id);
+
+                // Recalculate balances starting from the point of deletion
+                await cashbookService.recalculateBalancesFrom(
+                    organizationId, 
+                    ledgerEntry.date, 
+                    ledgerEntry.created_at,
+                    disbursement.payment_method
+                );
+            }
+
+            // D. Delete any audit logs for this disbursement (optional but cleaner)
+
+            return res.status(400).json({ 
+                status: 'failed', 
+                error: 'Transfer failed on Lenco: ' + (statusCheck.message || 'Unknown error'),
+                details: statusCheck
+            });
+        }
+
+        return res.json({ 
+            status: 'pending', 
+            message: 'Transaction is still processing',
+            details: statusCheck
+        });
+
+    } catch (error: any) {
+        console.error('Error verifying disbursement status:', error);
+        res.status(500).json({ error: 'Failed to verify status', details: error.message });
     }
 };

@@ -17,7 +17,8 @@ import {
     acknowledgeReceipt, 
     getDisbursementHistory, 
     updateDisbursement,
-    analyzeDisbursementProof
+    analyzeDisbursementProof,
+    verifyDisbursementStatus
 } from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
 import { requireAuth } from '../middleware/auth';
@@ -36,6 +37,7 @@ router.post('/:id/disburse', disburseRequisition);
 router.post('/:id/acknowledge', acknowledgeReceipt);
 router.patch('/disbursements/:id', updateDisbursement);
 router.post('/disbursements/:id/analyze-proof', analyzeDisbursementProof);
+router.get('/:id/verify-disbursement', verifyDisbursementStatus);
 
 // Expense Tracking & Change Flow
 router.put('/:id/expenses', updateRequisitionExpenses);

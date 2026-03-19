@@ -136,23 +136,16 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             const parts = reference.split('-');
             const shortReqId = parts[parts.length - 1];
             
-            // Update disbursements table
-            const { error: updateError } = await cashbookService.updateDisbursementForChange(
+            // Update disbursements table metadata
+            await cashbookService.updateDisbursementForChange(
                 organizationId,
                 shortReqId,
                 parseFloat(amount),
                 reference
             );
             
-            if (updateError) {
-                console.error(`[Lenco Webhook] Error updating disbursement for change:`, updateError);
-            } else {
-                console.log(`[Lenco Webhook] SUCCESS: Updated disbursement for requisition matching shortId=${shortReqId}`);
-            }
-            
-            // ALWAYS return true for CHG- references to prevent duplicate ledger entries.
-            // If the metadata update failed above, it's manually fixable, but we don't want a rogue INFLOW entry.
-            return true;
+            console.log(`[Lenco Webhook] Meta-data updated for change return. Proceeding to ledger inflow.`);
+            // Note: We NO LONGER return true here. We allow the standard INFLOW entry code below to run.
         }
 
         const narration = `A deposit of K${formattedAmount} has been successfully deposited to the MoneyWise Wallet. Reference: ${reference || 'N/A'}`;

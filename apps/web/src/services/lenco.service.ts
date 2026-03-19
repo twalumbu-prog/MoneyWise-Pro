@@ -122,5 +122,89 @@ export const lencoService = {
         }
 
         return response.json();
+    },
+
+    async getBanks() {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/lenco/banks`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to fetch banks');
+        }
+
+        return response.json();
+    },
+
+    async resolveBankAccount(accountNumber: string, bankId: string, organizationId?: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const headers: any = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        };
+        if (organizationId) headers['x-organization-id'] = organizationId;
+
+        const response = await fetch(`${API_URL}/lenco/resolve-bank`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ accountNumber, bankId })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to resolve bank account');
+        }
+
+        return response.json();
+    },
+
+    async resolveMobileMoney(phone: string, operator: string, organizationId?: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const headers: any = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        };
+        if (organizationId) headers['x-organization-id'] = organizationId;
+
+        const response = await fetch(`${API_URL}/lenco/resolve-momo`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ phone, operator })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to resolve mobile money account');
+        }
+
+        return response.json();
+    },
+
+    async verifyDisbursementStatus(requisitionId: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${requisitionId}/verify-disbursement`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to verify disbursement status');
+        }
+
+        return response.json();
     }
 };

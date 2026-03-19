@@ -343,3 +343,65 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
         });
     }
 };
+
+/**
+ * Fetch list of banks for a specific country (Zambia default)
+ */
+export const getBanks = async (req: Request, res: Response) => {
+    try {
+        const banks = await LencoService.getBanks();
+        res.json(banks);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * Resolve a bank account name
+ */
+export const resolveBankAccount = async (req: Request, res: Response) => {
+    const { accountNumber, bankId } = req.body;
+    const organizationId = req.headers['x-organization-id'] as string;
+
+    if (!accountNumber || !bankId) {
+        return res.status(400).json({ error: 'accountNumber and bankId are required' });
+    }
+
+    let secretKey: string | undefined = undefined;
+    if (organizationId) {
+        const orgResult = await pool.query('SELECT lenco_secret_key FROM organizations WHERE id = $1', [organizationId]);
+        if (orgResult.rows.length > 0) secretKey = orgResult.rows[0].lenco_secret_key;
+    }
+
+    try {
+        const resolution = await LencoService.resolveBankAccount(accountNumber, bankId, secretKey);
+        res.json(resolution);
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+/**
+ * Resolve a mobile money account name
+ */
+export const resolveMobileMoney = async (req: Request, res: Response) => {
+    const { phone, operator } = req.body;
+    const organizationId = req.headers['x-organization-id'] as string;
+
+    if (!phone || !operator) {
+        return res.status(400).json({ error: 'phone and operator are required' });
+    }
+
+    let secretKey: string | undefined = undefined;
+    if (organizationId) {
+        const orgResult = await pool.query('SELECT lenco_secret_key FROM organizations WHERE id = $1', [organizationId]);
+        if (orgResult.rows.length > 0) secretKey = orgResult.rows[0].lenco_secret_key;
+    }
+
+    try {
+        const resolution = await LencoService.resolveMobileMoney(phone, operator, secretKey);
+        res.json(resolution);
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+};
