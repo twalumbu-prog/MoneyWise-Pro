@@ -83,17 +83,34 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
     }
 
     // FIX (Issue 10): Deduplicate collections based on Lenco reference.
-    // Lenco retries webhooks on 5xx responses — without this, each retry creates a duplicate deposit.
+    // Strategy 1: Try external_reference column (available after migration)
+    // Strategy 2: Fallback to description-based LIKE check (always works)
     if (reference) {
-        const { data: existingEntry } = await supabase
+        try {
+            const { data: existingByRef, error: refError } = await supabase
+                .from('cashbook_entries')
+                .select('id')
+                .eq('external_reference', reference)
+                .maybeSingle();
+            
+            if (!refError && existingByRef) {
+                console.log(`[Lenco Webhook] DUPLICATE IGNORED (by ref): Collection ${reference} already logged.`);
+                return true;
+            }
+        } catch (_) {
+            // Column may not exist yet — fall through to description-based check
+        }
+
+        // Fallback: description-based dedup (works before migration)
+        const { data: existingByDesc } = await supabase
             .from('cashbook_entries')
             .select('id')
-            .eq('external_reference', reference)
+            .like('description', `%${reference}%`)
             .maybeSingle();
-        
-        if (existingEntry) {
-            console.log(`[Lenco Webhook] DUPLICATE IGNORED: Collection ${reference} already logged.`);
-            return true; // Acknowledge to Lenco so they stop retrying
+
+        if (existingByDesc) {
+            console.log(`[Lenco Webhook] DUPLICATE IGNORED (by desc): Collection ${reference} already logged.`);
+            return true;
         }
     }
 
@@ -152,11 +169,19 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             console.log(`[Lenco Webhook] Identified change submission: ${reference}`);
             
             const parts = reference.split('-');
-            const shortReqId = parts[parts.length - 1];
+            let reqIdToUse = '';
+            
+            // Old format: CHG - timestamp - uuid1-uuid2-uuid3-uuid4-uuid5 - shortId (8 parts)
+            // New format: CHG - timestamp - uuid1-uuid2-uuid3-uuid4-uuid5 (7 parts)
+            if (parts.length >= 8) {
+                reqIdToUse = parts[parts.length - 1]; // Use the short ID at the end
+            } else {
+                reqIdToUse = parts.slice(2).join('-'); // Reconstruct the full UUID
+            }
             
             await cashbookService.updateDisbursementForChange(
                 organizationId,
-                shortReqId,
+                reqIdToUse,
                 parseFloat(amount),
                 reference
             );
@@ -166,17 +191,36 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
         const narration = `A deposit of K${formattedAmount} has been successfully deposited to the MoneyWise Wallet. Reference: ${reference || 'N/A'}`;
         
-        // Pass the Lenco reference as external_reference so we can deduplicate future retries
-        await cashbookService.createEntry(organizationId, {
-            date: new Date().toISOString().split('T')[0],
-            description: narration,
-            debit: parseFloat(amount),
-            credit: 0,
-            entry_type: 'INFLOW',
-            account_type: 'MONEYWISE_WALLET',
-            status: 'COMPLETED',
-            external_reference: reference || undefined
-        } as any);
+        // Try to create the entry with external_reference (for dedup after migration).
+        // If the column doesn't exist yet, fall back to creating without it.
+        try {
+            await cashbookService.createEntry(organizationId, {
+                date: new Date().toISOString().split('T')[0],
+                description: narration,
+                debit: parseFloat(amount),
+                credit: 0,
+                entry_type: 'INFLOW',
+                account_type: 'MONEYWISE_WALLET',
+                status: 'COMPLETED',
+                external_reference: reference || undefined
+            } as any);
+        } catch (insertError: any) {
+            // If it failed due to unknown column, retry without external_reference
+            if (insertError.message?.includes('external_reference') || insertError.code === '42703') {
+                console.warn('[Lenco Webhook] external_reference column not yet available, inserting without it.');
+                await cashbookService.createEntry(organizationId, {
+                    date: new Date().toISOString().split('T')[0],
+                    description: narration,
+                    debit: parseFloat(amount),
+                    credit: 0,
+                    entry_type: 'INFLOW',
+                    account_type: 'MONEYWISE_WALLET',
+                    status: 'COMPLETED',
+                });
+            } else {
+                throw insertError;
+            }
+        }
 
         console.log(`[Lenco Webhook] SUCCESS: Logged wallet deposit of K${formattedAmount} for org ${organizationId}`);
         return true;

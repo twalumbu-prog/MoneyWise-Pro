@@ -168,7 +168,7 @@ export const RequisitionDetail: React.FC = () => {
             return;
         }
 
-        const ref = `CHG-${Date.now()}-${lencoSubaccountId}-${requisition?.id.slice(0, 8)}`;
+        const ref = `CHG-${Date.now()}-${requisition?.id}`;
 
         LencoPay.getPaid({
             key: lencoPublicKey,

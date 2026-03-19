@@ -590,26 +590,54 @@ export const cashbookService = {
      */
     async updateDisbursementForChange(
         organizationId: string,
-        shortReqId: string,
+        reqId: string,
         amount: number,
         reference: string
     ) {
-        // Find the requisition by short ID suffix
-        // We use .select('id') and .ilike('id', `%${shortReqId}`) to find the full UUID from the short version
-        const { data: req, error: reqError } = await supabase
-            .from('requisitions')
-            .select('id')
-            .eq('organization_id', organizationId)
-            // Use ilike to match the prefix (e.g., d852055e%)
-            .ilike('id', `${shortReqId}%`)
-            .maybeSingle();
+        let finalReqId = reqId;
+        let reqData = null;
 
-        if (reqError || !req) {
-            console.error(`[Cashbook Service] Requisition look-up failed for shortId=${shortReqId}:`, reqError);
-            return { data: null, error: reqError || new Error('Requisition not found for short ID') };
+        // If the reqId is not a full UUID (old CHG reference format had a short 8-char ID),
+        // we must perform a JS-side prefix lookup because Postgres blocks `.ilike()` on UUID columns.
+        if (reqId.length < 36) {
+            const { data: allReqs, error: fetchError } = await supabase
+                .from('requisitions')
+                .select('id')
+                .eq('organization_id', organizationId);
+
+            if (fetchError || !allReqs) {
+                console.error(`[Cashbook Service] Failed to fetch requisitions for shortId lookup:`, fetchError);
+                return { data: null, error: fetchError || new Error('Failed to fetch requisitions') };
+            }
+
+            const matchingReq = allReqs.find(r => r.id.startsWith(reqId));
+            if (matchingReq) {
+                finalReqId = matchingReq.id;
+                reqData = matchingReq;
+            }
+        } else {
+            // Find the requisition by exact UUID (the new CHG reference format includes the full UUID)
+            const { data: req, error: reqError } = await supabase
+                .from('requisitions')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('id', reqId)
+                .maybeSingle();
+                
+            if (req) {
+                 reqData = req;
+            } else if (reqError) {
+                 console.error(`[Cashbook Service] Requisition look-up failed for id=${reqId}:`, reqError);
+                 return { data: null, error: reqError };
+            }
         }
 
-        console.log(`[Cashbook Service] Updating disbursement for req ${req.id} (shortId=${shortReqId}) with confirmedChange=${amount}`);
+        if (!reqData) {
+            console.error(`[Cashbook Service] Requisition not found for id/shortId=${reqId}`);
+            return { data: null, error: new Error('Requisition not found') };
+        }
+
+        console.log(`[Cashbook Service] Updating disbursement for req ${finalReqId} with confirmedChange=${amount}`);
 
         // Update the disbursement for this requisition
         const { data, error } = await supabase
@@ -620,7 +648,7 @@ export const cashbookService = {
                 confirmed_at: new Date().toISOString(),
                 change_submission_method: 'MONEYWISE_WALLET'
             })
-            .eq('requisition_id', req.id)
+            .eq('requisition_id', finalReqId)
             .select();
 
         return { data, error };
