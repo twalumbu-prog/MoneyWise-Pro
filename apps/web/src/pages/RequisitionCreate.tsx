@@ -41,7 +41,7 @@ export const RequisitionCreate: React.FC = () => {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [activeRequisition, setActiveRequisition] = useState<any | null>(null);
+    const [activeRequisitions, setActiveRequisitions] = useState<any[]>([]);
 
 
     React.useEffect(() => {
@@ -55,23 +55,29 @@ export const RequisitionCreate: React.FC = () => {
             const requisitions = await requisitionService.getAll();
             const blockingStatuses = ['DISBURSED', 'RECEIVED'];
             console.log('[Safeguard] Full user context:', { id: user?.id, email: user?.email });
-            const blocking = requisitions.find((r: any) => {
+            const blockingReqs = requisitions.filter((r: any) => {
                 const isMatch = blockingStatuses.includes(r.status) && String(r.requestor_id) === String(user?.id);
                 if (blockingStatuses.includes(r.status)) {
                     console.log(`[Safeguard] Checking Req #${r.id.slice(0,8)}: status=${r.status}, requestor=${r.requestor_id}, current_user=${user?.id}, matches=${isMatch}`);
                 }
                 return isMatch;
             });
-            if (blocking) {
-                console.log('[Safeguard] Blocking requisition verified:', blocking.id);
-                setActiveRequisition(blocking);
+            if (blockingReqs.length > 0) {
+                console.log(`[Safeguard] Found ${blockingReqs.length} blocking requisitions.`);
+                setActiveRequisitions(blockingReqs);
             } else {
                 console.log('[Safeguard] No relevant blocking requisition for user:', user?.id);
-                setActiveRequisition(null);
+                setActiveRequisitions([]);
             }
         } catch (err) {
             console.error('Failed to check active requisitions:', err);
         }
+    };
+
+    const getActionText = (status: string) => {
+        if (status === 'DISBURSED') return 'Acknowledge Receipt';
+        if (status === 'RECEIVED') return 'Enter Expenses';
+        return 'Reconcile Now';
     };
 
     const addLineItem = () => {
@@ -112,7 +118,7 @@ export const RequisitionCreate: React.FC = () => {
         return lineItems.reduce((sum: number, item: LineItem) => sum + Number(item.estimated_amount), 0);
     };
 
-    const isBlocked = !!activeRequisition;
+    const isBlocked = activeRequisitions.length > 0;
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -162,41 +168,45 @@ export const RequisitionCreate: React.FC = () => {
                 </h1>
 
                 <form onSubmit={handleSubmit} className="bg-white shadow rounded-lg p-6 space-y-6">
-                    {activeRequisition && (
-                        <div className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 p-4 opacity-10">
-                                <Clock className="h-24 w-24 text-amber-600" />
-                            </div>
-                            <div className="relative z-10 flex items-start space-x-4">
-                                <div className="bg-amber-100 p-3 rounded-xl">
-                                    <AlertTriangle className="h-6 w-6 text-amber-600" />
-                                </div>
-                                <div className="space-y-3">
-                                    <div>
-                                        <h3 className="text-lg font-black text-amber-900 uppercase tracking-tight">Accountability Safeguard Active</h3>
-                                        <p className="text-amber-800 text-sm font-medium leading-relaxed">
-                                            You currently have an outstanding requisition that requires reconciliation. To maintain financial accountability, new requests are paused until your active cycle is completed.
-                                        </p>
+                    {activeRequisitions.length > 0 && (
+                        <div className="space-y-4">
+                            {activeRequisitions.map((req: any) => (
+                                <div key={req.id} className="bg-amber-50 border-2 border-amber-200 rounded-2xl p-6 relative overflow-hidden">
+                                    <div className="absolute top-0 right-0 p-4 opacity-10">
+                                        <Clock className="h-24 w-24 text-amber-600" />
                                     </div>
-                                    
-                                    <div className="bg-white/60 rounded-xl p-4 border border-amber-100 flex justify-between items-center group">
-                                        <div>
-                                            <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest">Active Request</p>
-                                            <p className="text-sm font-bold text-brand-navy">#{activeRequisition.id.slice(0, 8)} - {activeRequisition.description}</p>
-                                            <div className="flex items-center mt-1">
-                                                <span className="w-2 h-2 rounded-full bg-amber-500 mr-2 animate-pulse" />
-                                                <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">{activeRequisition.status}</span>
+                                    <div className="relative z-10 flex items-start space-x-4">
+                                        <div className="bg-amber-100 p-3 rounded-xl">
+                                            <AlertTriangle className="h-6 w-6 text-amber-600" />
+                                        </div>
+                                        <div className="space-y-3 w-full">
+                                            <div>
+                                                <h3 className="text-lg font-black text-amber-900 uppercase tracking-tight">Accountability Safeguard Active</h3>
+                                                <p className="text-amber-800 text-sm font-medium leading-relaxed">
+                                                    You currently have an outstanding requisition that requires reconciliation. To maintain financial accountability, new requests are paused until your active cycle is completed.
+                                                </p>
+                                            </div>
+                                            
+                                            <div className="bg-white/60 rounded-xl p-4 border border-amber-100 flex flex-col sm:flex-row justify-between sm:items-center group gap-3">
+                                                <div>
+                                                    <p className="text-[10px] text-amber-600 font-black uppercase tracking-widest">Active Request</p>
+                                                    <p className="text-sm font-bold text-brand-navy">#{req.id.slice(0, 8)} - {req.description}</p>
+                                                    <div className="flex items-center mt-1">
+                                                        <span className={`w-2 h-2 rounded-full mr-2 ${req.status === 'RECEIVED' ? 'bg-blue-500' : 'bg-amber-500 animate-pulse'}`} />
+                                                        <span className={`text-xs font-bold uppercase tracking-wider ${req.status === 'RECEIVED' ? 'text-blue-700' : 'text-amber-700'}`}>{req.status}</span>
+                                                    </div>
+                                                </div>
+                                                <Link 
+                                                    to={`/requisitions/${req.id}`}
+                                                    className="px-4 py-2 bg-amber-600 text-white text-xs font-black rounded-lg hover:bg-amber-700 transition-all flex justify-center items-center shadow-lg shadow-amber-100 whitespace-nowrap"
+                                                >
+                                                    {getActionText(req.status)}
+                                                </Link>
                                             </div>
                                         </div>
-                                        <Link 
-                                            to={`/requisitions/${activeRequisition.id}`}
-                                            className="px-4 py-2 bg-amber-600 text-white text-xs font-black rounded-lg hover:bg-amber-700 transition-all flex items-center shadow-lg shadow-amber-100"
-                                        >
-                                            RECONCILE NOW
-                                        </Link>
                                     </div>
                                 </div>
-                            </div>
+                            ))}
                         </div>
                     )}
 
