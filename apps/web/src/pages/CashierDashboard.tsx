@@ -197,7 +197,7 @@ export const CashierDashboard: React.FC = () => {
         let attempts = 0;
         const maxAttempts = 12; // 1 minute (5s intervals)
         
-        const interval = setInterval(async () => {
+        const checkStatus = async () => {
             try {
                 attempts++;
                 const result = await lencoService.verifyDisbursementStatus(reqId);
@@ -226,7 +226,12 @@ export const CashierDashboard: React.FC = () => {
             } catch (err) {
                 console.error('Polling error:', err);
             }
-        }, 5000);
+        };
+        
+        // FIX (Issue 7): Fire immediately first, then every 5 seconds
+        // Prevents a 5-second window where a fast Lenco payout is missed on the first poll
+        checkStatus();
+        const interval = setInterval(checkStatus, 5000);
     };
 
     const resetForm = () => {

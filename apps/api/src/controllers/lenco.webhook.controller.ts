@@ -3,27 +3,34 @@ import crypto from 'crypto';
 import pool from '../db';
 import { LencoService } from '../services/lenco.service';
 import { cashbookService } from '../services/cashbook.service';
+import { supabase } from '../lib/supabase';
 
 /**
  * Handles Lenco webhooks for collections and transfers
  */
 export const handleLencoWebhook = async (req: Request, res: Response) => {
     const signature = req.headers['x-lenco-signature'] as string;
-    const apiToken = process.env.LENCO_SECRET_KEY;
 
-    // Verify webhook signature
-    if (apiToken && signature) {
+    // FIX (Issue 3): Strictly enforce webhook signature. Reject any request
+    // that is missing or has an invalid signature to prevent forged events.
+    if (!signature) {
+        console.warn('[Lenco Webhook] REJECTED: Missing x-lenco-signature header');
+        return res.status(401).json({ error: 'Unauthorized: Missing signature' });
+    }
+
+    // We attempt to verify against the global key. In a multi-tenant setup,
+    // once Lenco supports per-account webhook keys, this should be fetched
+    // per organization (see audit report Issue 4).
+    const apiToken = process.env.LENCO_SECRET_KEY;
+    if (apiToken) {
         const webhookHashKey = crypto.createHash("sha256").update(apiToken).digest("hex");
         const bodyString = JSON.stringify(req.body);
         const expectedSignature = crypto.createHmac('sha512', webhookHashKey).update(bodyString).digest('hex');
 
         if (signature !== expectedSignature) {
-            console.warn('[Lenco Webhook] Invalid signature detected');
-            return res.status(401).json({ error: 'Invalid signature' });
+            console.warn('[Lenco Webhook] REJECTED: Invalid signature');
+            return res.status(401).json({ error: 'Unauthorized: Invalid signature' });
         }
-    } else if (!signature) {
-        console.warn('[Lenco Webhook] Missing signature');
-        // In production, you might want to return 401 here
     }
 
     const event = req.body;
@@ -75,6 +82,21 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         return false;
     }
 
+    // FIX (Issue 10): Deduplicate collections based on Lenco reference.
+    // Lenco retries webhooks on 5xx responses — without this, each retry creates a duplicate deposit.
+    if (reference) {
+        const { data: existingEntry } = await supabase
+            .from('cashbook_entries')
+            .select('id')
+            .eq('external_reference', reference)
+            .maybeSingle();
+        
+        if (existingEntry) {
+            console.log(`[Lenco Webhook] DUPLICATE IGNORED: Collection ${reference} already logged.`);
+            return true; // Acknowledge to Lenco so they stop retrying
+        }
+    }
+
     // 1. Try to extract organization ID from reference using regex (Primary Source of Truth)
     if (!organizationId && reference) {
         const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
@@ -124,19 +146,14 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
     try {
         console.log(`[Lenco Webhook] Identification successful: ${identificationStage} -> ${organizationId}`);
         
-        // Net Accounting: If this is a change submission (prefix CHG-), we update the disbursement
-        // record but DO NOT create a separate ledger entry. The ledger balance will be updated 
-        // by netting off the original disbursement credit during finalization.
         const formattedAmount = parseFloat(amount).toFixed(2);
 
         if (reference && reference.startsWith('CHG-')) {
             console.log(`[Lenco Webhook] Identified change submission: ${reference}`);
             
-            // Extract short ID (last part of reference)
             const parts = reference.split('-');
             const shortReqId = parts[parts.length - 1];
             
-            // Update disbursements table metadata
             await cashbookService.updateDisbursementForChange(
                 organizationId,
                 shortReqId,
@@ -145,11 +162,11 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             );
             
             console.log(`[Lenco Webhook] Meta-data updated for change return. Proceeding to ledger inflow.`);
-            // Note: We NO LONGER return true here. We allow the standard INFLOW entry code below to run.
         }
 
         const narration = `A deposit of K${formattedAmount} has been successfully deposited to the MoneyWise Wallet. Reference: ${reference || 'N/A'}`;
         
+        // Pass the Lenco reference as external_reference so we can deduplicate future retries
         await cashbookService.createEntry(organizationId, {
             date: new Date().toISOString().split('T')[0],
             description: narration,
@@ -157,8 +174,9 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             credit: 0,
             entry_type: 'INFLOW',
             account_type: 'MONEYWISE_WALLET',
-            status: 'COMPLETED'
-        });
+            status: 'COMPLETED',
+            external_reference: reference || undefined
+        } as any);
 
         console.log(`[Lenco Webhook] SUCCESS: Logged wallet deposit of K${formattedAmount} for org ${organizationId}`);
         return true;
@@ -196,6 +214,7 @@ async function handleTransferSuccessful(data: any) {
             console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference}`);
             
             // Trigger ledger finalization and withdrawal fee addition
+            // The DB UNIQUE constraint prevents duplicates if polling already ran
             await cashbookService.finalizeWalletDisbursementLedger(requisitionId);
         } else {
             await client.query('COMMIT');
@@ -211,14 +230,53 @@ async function handleTransferSuccessful(data: any) {
 
 /**
  * Handles 'transfer.failed' event
+ * FIX (Issue 6): Revert the requisition to AUTHORISED and clean up the failed disbursement record.
+ * Previously this only logged the failure without reverting state.
  */
 async function handleTransferFailed(data: any) {
     const { reference, failure_reason } = data;
-    console.error(`[Lenco Webhook] Transfer failed for ${reference}: ${failure_reason}`);
+    console.error(`[Lenco Webhook] Transfer FAILED for ${reference}: ${failure_reason}`);
     
-    await pool.query(`
-        UPDATE disbursements 
-        SET external_reference = $2
-        WHERE external_reference = $1 OR id::text = $1
-    `, [reference, data.id]);
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        // 1. Find the disbursement linked to this reference
+        const result = await client.query(`
+            SELECT id, requisition_id
+            FROM disbursements 
+            WHERE external_reference = $1 OR external_reference = $2
+        `, [reference, data.id]);
+
+        if (result.rows.length > 0) {
+            const { id: disbursementId, requisition_id: requisitionId } = result.rows[0];
+
+            // 2. Revert the requisition back to AUTHORISED so it can be retried
+            await client.query(
+                `UPDATE requisitions SET status = 'AUTHORISED', updated_at = NOW() WHERE id = $1`,
+                [requisitionId]
+            );
+
+            // 3. Delete the failed disbursement record so it doesn't pollute history
+            await client.query(`DELETE FROM disbursements WHERE id = $1`, [disbursementId]);
+
+            // 4. Log an audit trail entry
+            await client.query(`
+                INSERT INTO audit_logs (entity_type, entity_id, action, changes)
+                VALUES ('REQUISITION', $1, 'TRANSFER_FAILED', $2)
+            `, [requisitionId, JSON.stringify({ reference, failure_reason, reverted_to: 'AUTHORISED' })]);
+
+            console.log(`[Lenco Webhook] REVERTED: Requisition ${requisitionId} reset to AUTHORISED after transfer failure.`);
+        } else {
+            console.warn(`[Lenco Webhook] transfer.failed: No disbursement found for reference ${reference}`);
+        }
+
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        console.error('[Lenco Webhook] Error handling transfer failure:', error);
+        throw error;
+    } finally {
+        client.release();
+    }
 }

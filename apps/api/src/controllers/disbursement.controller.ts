@@ -70,7 +70,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 if (isMobile) {
                     payout = await LencoService.createMobileMoneyPayout({
                         amount: total_prepared,
-                        reference: `REQ-${id.slice(0, 8)}-${Date.now()}`,
+                        reference: `REQ-${id}-${Date.now()}`,  // FIX: Use full UUID, not truncated
                         phone: recipient_account,
                         operator: recipient_bank_code,
                         narration: `Disbursement for Requisition #${id.slice(0, 8)}`
@@ -78,7 +78,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 } else {
                     payout = await LencoService.createBankPayout({
                         amount: total_prepared,
-                        reference: `REQ-${id.slice(0, 8)}-${Date.now()}`,
+                        reference: `REQ-${id}-${Date.now()}`,  // FIX: Use full UUID, not truncated
                         accountNumber: recipient_account,
                         bankId: recipient_bank_code,
                         narration: `Disbursement for Requisition #${id.slice(0, 8)}`
@@ -499,11 +499,12 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
         const { id } = req.params; // Requisition ID
         const organizationId = req.user.organization_id;
 
-        // 1. Fetch disbursement record
+        // FIX (Issue 12): Scope the query to the user's organization to prevent cross-org access
         const { data: disbursement, error: disbError } = await supabase
             .from('disbursements')
             .select('*, requisitions(status, estimated_total)')
             .eq('requisition_id', id)
+            .eq('organization_id', organizationId)
             .single();
 
         if (disbError || !disbursement) {

@@ -15,7 +15,7 @@ export interface CashbookEntry {
         [key: string]: any; // Allow other requisition fields
     };
     created_by?: string;
-    status?: 'PENDING' | 'COMPLETED';
+    status?: 'PENDING' | 'COMPLETED' | 'DISBURSED';
     account_type?: string;
     organization_id?: string;
 }
@@ -124,7 +124,7 @@ export const cashbookService = {
             date: new Date().toISOString().split('T')[0],
             requisition_id: requisitionId,
             created_by: cashierId,
-            status: 'PENDING',
+            status: 'DISBURSED',  // Fixed: was 'PENDING', must match duplicate guard
             account_type: accountType
         });
     },
