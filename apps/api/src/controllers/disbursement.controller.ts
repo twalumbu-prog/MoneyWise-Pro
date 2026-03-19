@@ -50,7 +50,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         if (payment_method === 'MONEYWISE_WALLET') {
             const { data: org } = await supabase
                 .from('organizations')
-                .select('lenco_subaccount_id')
+                .select('lenco_subaccount_id, lenco_secret_key')
                 .eq('id', organizationId)
                 .single();
 
@@ -74,7 +74,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         phone: recipient_account,
                         operator: recipient_bank_code,
                         narration: `Disbursement for Requisition #${id.slice(0, 8)}`
-                    }, org.lenco_subaccount_id);
+                    }, org.lenco_subaccount_id, org.lenco_secret_key);
                 } else {
                     payout = await LencoService.createBankPayout({
                         amount: total_prepared,
@@ -82,18 +82,18 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         accountNumber: recipient_account,
                         bankId: recipient_bank_code,
                         narration: `Disbursement for Requisition #${id.slice(0, 8)}`
-                    }, org.lenco_subaccount_id);
+                    }, org.lenco_subaccount_id, org.lenco_secret_key);
                 }
                 
                 lencoReference = payout.reference;
                 console.log(`[Lenco Payout] Initiated: ${lencoReference}. Waiting for confirmation...`);
 
                 // Initial short wait for immediate confirmation
-                let statusCheck = await LencoService.getTransferStatus(lencoReference);
+                let statusCheck = await LencoService.getTransferStatus(lencoReference, org.lenco_secret_key);
                 let attempts = 0;
                 while (statusCheck.status === 'pending' && attempts < 3) {
                     await new Promise(resolve => setTimeout(resolve, 2000));
-                    statusCheck = await LencoService.getTransferStatus(lencoReference);
+                    statusCheck = await LencoService.getTransferStatus(lencoReference, org.lenco_secret_key);
                     attempts++;
                 }
 
@@ -515,7 +515,9 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
         }
 
         // 2. Poll Lenco for status
-        const statusCheck = await LencoService.getTransferStatus(disbursement.external_reference);
+        // Fetch org secret key first
+        const { data: orgKeys } = await supabase.from('organizations').select('lenco_secret_key').eq('id', organizationId).single();
+        const statusCheck = await LencoService.getTransferStatus(disbursement.external_reference, orgKeys?.lenco_secret_key);
         console.log(`[Lenco Verify] Reference: ${disbursement.external_reference}, Status: ${statusCheck.status}`);
 
         if (statusCheck.status === 'successful') {
