@@ -189,21 +189,18 @@ async function handleTransferSuccessful(data: any) {
 
         if (result.rows.length > 0) {
             const requisitionId = result.rows[0].requisition_id;
-            // Update requisition status as well
-            await client.query(`
-                UPDATE requisitions 
-                SET status = 'COMPLETED',
-                    updated_at = NOW()
-                WHERE id = $1
-            `, [requisitionId]);
+            // We NO LONGER set status to 'COMPLETED' here.
+            // It must remain 'DISBURSED' so the user can acknowledge receipt and reconcile.
+            await client.query('COMMIT');
+            
+            console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference}`);
+            
+            // Trigger ledger finalization and withdrawal fee addition
+            await cashbookService.finalizeWalletDisbursementLedger(requisitionId);
+        } else {
+            await client.query('COMMIT');
+            console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference} but no matching disbursement found.`);
         }
-
-        // If requisition exists, maybe update it?
-        // Note: The disbursement controller might have already handled the ledger entry as 'PENDING'
-        // or we do it here upon confirmation.
-
-        await client.query('COMMIT');
-        console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference}`);
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;

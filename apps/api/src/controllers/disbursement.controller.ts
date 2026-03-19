@@ -530,40 +530,7 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
                 .maybeSingle();
 
             if (!existingLedger) {
-                console.log(`[Lenco Verify] Finalizing ledger for ${id}...`);
-                
-                // A. Log Cashbook Entry
-                const totalDeduction = Number(disbursement.total_prepared);
-                const mainDescription = `${disbursement.payment_method} disbursed for Requisition #${id.slice(0, 8)}`;
-                
-                await cashbookService.logDisbursement(
-                    organizationId,
-                    id,
-                    totalDeduction,
-                    disbursement.cashier_id,
-                    mainDescription,
-                    disbursement.payment_method
-                );
-
-                // B. Add withdrawal fee line item
-                await supabase.from('line_items').insert({
-                    requisition_id: id,
-                    description: 'Withdrawal Fee (MoneyWise Wallet)',
-                    quantity: 1,
-                    unit_price: LENCO_TRANSACTION_FEE,
-                    estimated_amount: LENCO_TRANSACTION_FEE,
-                    actual_amount: LENCO_TRANSACTION_FEE,
-                    account_id: '0dbe62e3-2917-4e4b-9620-6394f0029c1d' // "Transaction Charges" account
-                });
-
-                // C. Update Requisition header to include the fee
-                const currentEstimated = Number(disbursement.requisitions?.estimated_total || 0);
-                await supabase.from('requisitions').update({
-                    estimated_total: currentEstimated + LENCO_TRANSACTION_FEE,
-                    actual_total: currentEstimated + LENCO_TRANSACTION_FEE
-                }).eq('id', id);
-
-                console.log(`[Lenco Verify] Ledger finalized for ${id}.`);
+                await cashbookService.finalizeWalletDisbursementLedger(id);
             }
 
             return res.json({ 

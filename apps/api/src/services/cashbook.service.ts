@@ -148,8 +148,78 @@ export const cashbookService = {
             date: new Date().toISOString().split('T')[0],
             requisition_id: requisitionId,
             created_by: userId,
+            status: 'PENDING',
             account_type: accountType
         });
+    },
+
+    /**
+     * Finalize the ledger for a successful Wallet disbursement (Lenco payout)
+     * Handles creating the Cashbook Entry and appending the K8.5 fee to the requisition.
+     */
+    async finalizeWalletDisbursementLedger(requisitionId: string): Promise<void> {
+        const LENCO_TRANSACTION_FEE = 8.5;
+
+        // 1. Fetch disbursement record
+        const { data: disbursement, error: disbError } = await supabase
+            .from('disbursements')
+            .select('*, requisitions(status, estimated_total, actual_total)')
+            .eq('requisition_id', requisitionId)
+            .single();
+
+        if (disbError || !disbursement) {
+            console.error(`[Ledger Finalization] Disbursement record not found for requisition ${requisitionId}`);
+            return;
+        }
+
+        // 2. Prevent Double Entry
+        const { data: existingLedger } = await supabase
+            .from('cashbook_entries')
+            .select('id')
+            .eq('requisition_id', requisitionId)
+            .maybeSingle();
+
+        if (existingLedger) {
+            console.log(`[Ledger Finalization] Ledger entry already exists for ${requisitionId}, skipping.`);
+            return;
+        }
+
+        console.log(`[Ledger Finalization] Finalizing ledger for ${requisitionId}...`);
+        
+        // A. Log Cashbook Entry
+        const totalDeduction = Number(disbursement.total_prepared);
+        const mainDescription = `${disbursement.payment_method} disbursed for Requisition #${requisitionId.slice(0, 8)}`;
+        
+        await this.logDisbursement(
+            disbursement.organization_id,
+            requisitionId,
+            totalDeduction,
+            disbursement.cashier_id,
+            mainDescription,
+            disbursement.payment_method
+        );
+
+        // B. Add withdrawal fee line item
+        await supabase.from('line_items').insert({
+            requisition_id: requisitionId,
+            description: 'Withdrawal Fee (MoneyWise Wallet)',
+            quantity: 1,
+            unit_price: LENCO_TRANSACTION_FEE,
+            estimated_amount: LENCO_TRANSACTION_FEE,
+            actual_amount: LENCO_TRANSACTION_FEE,
+            account_id: '0dbe62e3-2917-4e4b-9620-6394f0029c1d' // "Transaction Charges" account
+        });
+
+        // C. Update Requisition header to include the fee
+        const currentEstimated = Number(disbursement.requisitions?.estimated_total || 0);
+        const currentActual = disbursement.requisitions?.actual_total ? Number(disbursement.requisitions?.actual_total) : null;
+        
+        await supabase.from('requisitions').update({
+            estimated_total: currentEstimated + LENCO_TRANSACTION_FEE,
+            actual_total: currentActual ? currentActual + LENCO_TRANSACTION_FEE : null
+        }).eq('id', requisitionId);
+
+        console.log(`[Ledger Finalization] Ledger finalized for ${requisitionId}.`);
     },
 
     /**
