@@ -163,7 +163,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
     try {
         console.log(`[Lenco Webhook] Identification successful: ${identificationStage} -> ${organizationId}`);
         
-        const formattedAmount = parseFloat(amount).toFixed(2);
+        const formattedAmount = Number(amount).toLocaleString();
 
         if (reference && reference.startsWith('CHG-')) {
             console.log(`[Lenco Webhook] Identified change submission: ${reference}`);
@@ -171,12 +171,13 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             const parts = reference.split('-');
             let reqIdToUse = '';
             
-            // Old format: CHG - timestamp - uuid1-uuid2-uuid3-uuid4-uuid5 - shortId (8 parts)
-            // New format: CHG - timestamp - uuid1-uuid2-uuid3-uuid4-uuid5 (7 parts)
+            // Reference formats: 
+            // - CHG-timestamp-uuid (7 parts)
+            // - CHG-timestamp-uuid-shortId (8 parts)
             if (parts.length >= 8) {
-                reqIdToUse = parts[parts.length - 1]; // Use the short ID at the end
+                reqIdToUse = parts[parts.length - 1];
             } else {
-                reqIdToUse = parts.slice(2).join('-'); // Reconstruct the full UUID
+                reqIdToUse = parts.slice(2).join('-');
             }
             
             await cashbookService.updateDisbursementForChange(
@@ -186,14 +187,10 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 reference
             );
             
-            console.log(`[Lenco Webhook] Meta-data updated for change return. Proceeding to ledger inflow.`);
-        }
-
-        const narration = `A deposit of K${formattedAmount} has been successfully deposited to the MoneyWise Wallet. Reference: ${reference || 'N/A'}`;
-        
-        // Try to create the entry with external_reference (for dedup after migration).
-        // If the column doesn't exist yet, fall back to creating without it.
-        try {
+            console.log(`[Lenco Webhook] Meta-data updated for change return. Skipping ledger entry for pure netting.`);
+        } else {
+            const narration = `A deposit of K${formattedAmount} has been successfully deposited to the MoneyWise Wallet. Reference: ${reference || 'N/A'}`;
+            
             await cashbookService.createEntry(organizationId, {
                 date: new Date().toISOString().split('T')[0],
                 description: narration,
@@ -201,31 +198,15 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 credit: 0,
                 entry_type: 'INFLOW',
                 account_type: 'MONEYWISE_WALLET',
-                status: 'COMPLETED',
-                external_reference: reference || undefined
-            } as any);
-        } catch (insertError: any) {
-            // If it failed due to unknown column, retry without external_reference
-            if (insertError.message?.includes('external_reference') || insertError.code === '42703') {
-                console.warn('[Lenco Webhook] external_reference column not yet available, inserting without it.');
-                await cashbookService.createEntry(organizationId, {
-                    date: new Date().toISOString().split('T')[0],
-                    description: narration,
-                    debit: parseFloat(amount),
-                    credit: 0,
-                    entry_type: 'INFLOW',
-                    account_type: 'MONEYWISE_WALLET',
-                    status: 'COMPLETED',
-                });
-            } else {
-                throw insertError;
-            }
+                status: 'COMPLETED'
+            });
+            console.log(`[Lenco Webhook] Standard collection logged as INFLOW.`);
         }
 
-        console.log(`[Lenco Webhook] SUCCESS: Logged wallet deposit of K${formattedAmount} for org ${organizationId}`);
+        console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);
         return true;
     } catch (error) {
-        console.error(`[Lenco Webhook] FAILURE: Error logging inflow:`, error);
+        console.error(`[Lenco Webhook] FAILURE: Error processing collection:`, error);
         throw error;
     }
 }

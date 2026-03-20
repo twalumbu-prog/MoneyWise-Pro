@@ -30,15 +30,19 @@ export const cashbookService = {
             .select('balance_after')
             .eq('organization_id', organizationId)
             .eq('account_type', accountType)
+            .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         if (error || !data) return 0;
-        return parseFloat(data.balance_after);
+        return parseFloat(data.balance_after || '0');
     },
 
     async recalculateBalancesFrom(organizationId: string, targetDate: string, targetCreatedAt: string, accountType: string = 'CASH') {
+        console.log(`[Ledger] Recalculating balances for Org ${organizationId.slice(0, 8)}, Account ${accountType} from ${targetDate} ${targetCreatedAt.slice(11, 19)}`);
+
+        // 1. Find the entry immediately BEFORE the target (logical temporal predecessor)
         const { data: prevEntry } = await supabase
             .from('cashbook_entries')
             .select('balance_after')
@@ -48,11 +52,14 @@ export const cashbookService = {
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
-        let runningBalance = prevEntry ? parseFloat(prevEntry.balance_after) : 0;
+        let runningBalance = prevEntry ? parseFloat(prevEntry.balance_after || '0') : 0;
+        console.log(`[Ledger] Previous balance found: ${runningBalance}`);
 
-        const { data: entries } = await supabase
+        // 2. Fetch all entries from the target point forward (inclusive of the target)
+        // We use the same temporal logic: today's remaining entries + all future entries
+        const { data: entries, error } = await supabase
             .from('cashbook_entries')
             .select('*')
             .eq('organization_id', organizationId)
@@ -61,16 +68,35 @@ export const cashbookService = {
             .order('date', { ascending: true })
             .order('created_at', { ascending: true });
 
-        if (!entries) return;
+        if (error) {
+            console.error(`[Ledger] Error fetching entries for recalculation:`, error);
+            return;
+        }
+
+        if (!entries || entries.length === 0) {
+            console.warn(`[Ledger] No entries found for recalculation at or after ${targetDate} ${targetCreatedAt}`);
+            return;
+        }
+
+        console.log(`[Ledger] Updating ${entries.length} entries...`);
 
         for (const entry of entries) {
-            const newBalance = runningBalance + parseFloat(entry.debit) - parseFloat(entry.credit);
-            await supabase
+            const debit = parseFloat(entry.debit || '0');
+            const credit = parseFloat(entry.credit || '0');
+            const newBalance = runningBalance + debit - credit;
+            
+            const { error: updateError } = await supabase
                 .from('cashbook_entries')
                 .update({ balance_after: newBalance })
                 .eq('id', entry.id);
+
+            if (updateError) {
+                console.error(`[Ledger] Failed to update balance for entry ${entry.id}:`, updateError);
+            }
+            
             runningBalance = newBalance;
         }
+        console.log(`[Ledger] Finished recalculating. Final balance: ${runningBalance}`);
     },
 
     /**
@@ -392,9 +418,23 @@ export const cashbookService = {
 
             const createdBy = disb?.cashier_id || req?.requestor_id;
 
-            const newDescription = discrepancy !== 0
-                ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
-                : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
+        // 1.5 Fetch disbursement to get confirmed change for the description
+        const { data: disbursement } = await supabase
+            .from('disbursements')
+            .select('confirmed_change_amount, change_submission_method, total_prepared')
+            .eq('requisition_id', requisitionId)
+            .single();
+
+        const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
+        const changeMethod = disbursement?.change_submission_method || 'CASH';
+        
+        let newDescription = discrepancy !== 0
+            ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
+            : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
+
+        if (confirmedChange > 0) {
+            newDescription += ` | Net Effect - Change of K${confirmedChange.toFixed(2)} returned via ${changeMethod}`;
+        }
 
             await this.createEntry(organizationId, {
                 entry_type: 'DISBURSEMENT',

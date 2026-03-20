@@ -146,15 +146,20 @@ export const returnExcessCash = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'User organization context missing' });
         }
 
-        const entry = await cashbookService.logReturn(
-            organizationId,
-            requisitionId,
-            amount,
-            userId,
-            description
-        );
+        // We no longer call cashbookService.logReturn to avoid duplicate entries.
+        // Instead, we let the finalization logic handle the netting.
+        // We just ensure the disbursement record is updated with the returned amount.
+        const { error: updateError } = await supabase
+            .from('disbursements')
+            .update({
+                actual_change_amount: amount,
+                change_submission_method: 'CASH'
+            })
+            .eq('requisition_id', requisitionId);
 
-        res.json(entry);
+        if (updateError) throw updateError;
+
+        res.json({ message: 'Cash return recorded for netting.' });
     } catch (error: any) {
         console.error('Error logging cash return:', error);
         res.status(500).json({ error: 'Failed to log cash return', details: error.message });
