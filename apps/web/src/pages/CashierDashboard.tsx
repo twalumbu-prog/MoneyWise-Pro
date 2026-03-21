@@ -7,6 +7,8 @@ import { DisbursementDetailOverlay } from '../components/DisbursementDetailOverl
 import { lencoService } from '../services/lenco.service';
 import { organizationService } from '../services/organization.service';
 import { cashbookService } from '../services/cashbook.service';
+import { supabase } from '../lib/supabase';
+
 
 const LENCO_FEE = 8.5;
 
@@ -74,31 +76,60 @@ export const CashierDashboard: React.FC = () => {
         }
     };
 
-    const fetchWalletStatus = async () => {
+    const fetchWalletStatus = async (orgId?: string) => {
         try {
             setFetchingBalance(true);
-            const org = await organizationService.getOrganization();
-            if (org.lenco_subaccount_id) {
-                setLencoSubaccountId(org.lenco_subaccount_id);
+            
+            // If orgId is provided, we use it. Otherwise we fetch the current user's org.
+            let targetOrgId = orgId;
+            let subaccountId = null;
+
+            if (!targetOrgId) {
+                const org = await organizationService.getOrganization();
+                targetOrgId = org.id;
+                subaccountId = org.lenco_subaccount_id;
+            } else {
+                // Fetch the specific org details to get its lenco subaccount ID
+                // BUT wait, requisitionService.getAllAdmin flatly returns all fields including organization_id.
+                // Requisition object might not have full organization details though.
+                // Let's assume we might need to fetch the subaccount ID if it's not in the requisition object.
+                // Actually, our updated getRequisitionById returns organization details, 
+                // but getAllAdmin might not yet.
                 
-                // Fetch balance from internal ledger (as requested: "actual amount on the cash ledger")
-                const ledgerBalance = await cashbookService.getBalance('MONEYWISE_WALLET');
+                // For robustness, if orgId is provided, we fetch the balance for that orgId.
+                // We'll also need the subaccount ID to show the safeguard and verify Lenco connection.
+                // I'll fetch the org details here.
+                const { data: orgData } = await (supabase as any)
+                    .from('organizations')
+                    .select('lenco_subaccount_id')
+                    .eq('id', targetOrgId)
+                    .single();
+                subaccountId = orgData?.lenco_subaccount_id;
+            }
+
+
+            if (subaccountId) {
+                setLencoSubaccountId(subaccountId);
+                
+                // Fetch balance from internal ledger (scoped to targetOrgId)
+                const ledgerBalance = await cashbookService.getBalance('MONEYWISE_WALLET', targetOrgId);
                 setWalletBalance(ledgerBalance);
                 
                 // Optional: Verify with Lenco API but handle safely
                 try {
                     const accounts = await lencoService.getAccounts();
                     if (Array.isArray(accounts)) {
-                        const wallet = accounts.find((a: any) => a.id === org.lenco_subaccount_id);
+                        const wallet = accounts.find((a: any) => a.id === subaccountId);
                         if (wallet && wallet.balance && typeof wallet.balance.amount !== 'undefined') {
-                            console.log(`[Lenco] Live API Balance: K${wallet.balance.amount}`);
-                            // We stick to ledgerBalance for the UI as per user request, 
-                            // but we've verified the API connection.
+                            console.log(`[Lenco] Live API Balance for ${subaccountId}: K${wallet.balance.amount}`);
                         }
                     }
                 } catch (apiErr) {
                     console.warn('[Lenco] Could not fetch live balance from API, using ledger only.');
                 }
+            } else {
+                setLencoSubaccountId(null);
+                setWalletBalance(null);
             }
         } catch (err) {
             console.error('Failed to fetch wallet status:', err);
@@ -106,6 +137,7 @@ export const CashierDashboard: React.FC = () => {
             setFetchingBalance(false);
         }
     };
+
 
     const loadRequisitions = async () => {
         try {
@@ -140,6 +172,16 @@ export const CashierDashboard: React.FC = () => {
             loadHistory();
         }
     }, [activeTab]);
+
+    // Refetch wallet status when a requisition is selected
+    useEffect(() => {
+        if (selectedReq) {
+            fetchWalletStatus(selectedReq.organization_id);
+        } else {
+            fetchWalletStatus();
+        }
+    }, [selectedReq]);
+
 
     const handleDenominationChange = (value: string, count: number) => {
         setDenominations(prev => ({

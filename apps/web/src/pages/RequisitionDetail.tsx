@@ -7,8 +7,8 @@ import { voucherService } from '../services/voucher.service';
 import { useAuth } from '../context/AuthContext';
 import { DenominationInput } from '../components/DenominationInput';
 import { ReceiptInsightsPanel } from '../components/ReceiptInsightsPanel';
-import { organizationService } from '../services/organization.service';
 import { lencoService } from '../services/lenco.service';
+
 
 export const RequisitionDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
@@ -55,20 +55,20 @@ export const RequisitionDetail: React.FC = () => {
     useEffect(() => {
         if (id) {
             loadRequisition(id);
-            loadOrganization();
         }
     }, [id]);
 
-    const loadOrganization = async () => {
-        try {
-            const org = await organizationService.getOrganization();
-            setLencoSubaccountId(org.lenco_subaccount_id || null);
-            setLencoPublicKey(org.lenco_public_key || null);
-            setOrganizationId(org.id || null);
-        } catch (err) {
-            console.error('Failed to load organization for wallet deposit:', err);
+    // Update organization-related state when requisition loads
+    useEffect(() => {
+        if (requisition?.organization) {
+            setLencoSubaccountId(requisition.organization.lenco_subaccount_id || null);
+            setLencoPublicKey(requisition.organization.lenco_public_key || null);
+            setOrganizationId(requisition.organization.id || null);
         }
-    };
+    }, [requisition]);
+
+
+
 
     // Sync expenseItems when requisition loads
     useEffect(() => {

@@ -765,7 +765,7 @@ const CashLedger: React.FC = () => {
                                                                     entry.entry_type === 'WALLET_DEPOSIT' || entry.account_type === 'MONEYWISE_WALLET' ? 'bg-pink-50 text-brand-pink border border-pink-200' :
                                                                         'bg-gray-50 text-gray-700 border border-gray-200'
                                                     }`}>
-                                                    {entry.entry_type.replace('_', ' ')}
+                                                    {(entry.entry_type || 'TRANSACTION').replace('_', ' ')}
                                                 </span>
                                                 {getEntryStatus(entry)}
                                             </div>

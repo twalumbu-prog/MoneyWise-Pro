@@ -210,10 +210,10 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
         // Fetch requisition with line items and account details
         const { data, error } = await supabase
             .from('requisitions')
-            .select('*, line_items(*, accounts(code, name)), disbursements(*)')
+            .select('*, organization:organizations(id, name, lenco_subaccount_id, lenco_public_key), line_items(*, accounts(code, name)), disbursements(*)')
             .eq('id', id)
-            .eq('organization_id', organization_id)
             .single();
+
 
         if (error) {
             if (error.code === 'PGRST116') { // JSON code for no rows returned

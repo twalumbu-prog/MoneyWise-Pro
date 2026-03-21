@@ -79,15 +79,19 @@ export const cashbookService = {
         return response.data;
     },
 
-    async getBalance(accountType: string = 'CASH') {
+    async getBalance(accountType: string = 'CASH', organizationId?: string) {
         const { data: { session } } = await supabase.auth.getSession();
         const token = session?.access_token;
+        const params = new URLSearchParams({ accountType });
+        if (organizationId) params.append('organizationId', organizationId);
+
         const response = await axios.get<{ balance: number }>(
-            `${API_URL}/cashbook/balance?accountType=${accountType}`,
+            `${API_URL}/cashbook/balance?${params.toString()}`,
             { headers: { Authorization: `Bearer ${token}` } }
         );
         return response.data.balance;
     },
+
 
     async getSummary(startDate: string, endDate: string, accountType: string = 'CASH') {
         const { data: { session } } = await supabase.auth.getSession();

@@ -195,10 +195,14 @@ export class LencoService {
             });
             return response.data.data;
         } catch (error: any) {
+            if (error.response?.status === 404) {
+                return null; // Return null if not found, allowing pre-check
+            }
             console.error('Lenco transfer status check failed:', error.response?.data || error.message);
             throw new Error(error.response?.data?.message || 'Failed to check transfer status');
         }
     }
+
 
     /**
      * Get transfer details by Lenco ID

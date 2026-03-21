@@ -45,8 +45,17 @@ export interface Requisition {
     repayment_period?: number;
     interest_rate?: number;
     monthly_deduction?: number;
+    organization_id: string;
     disbursements?: any[];
+
+    organization?: {
+        id: string;
+        name: string;
+        lenco_subaccount_id: string;
+        lenco_public_key: string;
+    };
 }
+
 
 export const requisitionService = {
     async acknowledge(id: string, signature: string) {

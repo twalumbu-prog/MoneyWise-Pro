@@ -37,14 +37,21 @@ export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
  */
 export const getCashBalance = async (req: any, res: any): Promise<any> => {
     try {
-        const { accountType } = req.query;
-        const organizationId = (req as any).user.organization_id;
+        const { accountType, organizationId } = req.query;
+        const userOrgId = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
 
-        if (!organizationId) {
-            return res.status(400).json({ error: 'User organization context missing' });
+        // Use requested org if provided and user is authorized (Admin/Accountant), else fallback to user's org
+        let targetOrgId = userOrgId;
+        if (organizationId && (userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER')) {
+            targetOrgId = organizationId;
         }
 
-        const balance = await cashbookService.getCurrentBalance(organizationId, accountType as string);
+        if (!targetOrgId) {
+            return res.status(400).json({ error: 'Organization context missing' });
+        }
+
+        const balance = await cashbookService.getCurrentBalance(targetOrgId, accountType as string);
         res.json({ balance });
     } catch (error: any) {
         console.error('Error fetching cash balance:', error);
