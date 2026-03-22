@@ -306,17 +306,32 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
         try {
             console.log(`[Recon Debug] Stage 3: DB ledger fetch for org ${organizationId}`);
             const ledgerResult = await pool.query(
-                "SELECT balance_after FROM cashbook_entries WHERE organization_id = $1 AND account_type = 'MONEYWISE_WALLET' ORDER BY created_at DESC LIMIT 1",
+                "SELECT balance_after FROM cashbook_entries WHERE organization_id = $1 AND account_type = 'MONEYWISE_WALLET' ORDER BY date DESC, created_at DESC LIMIT 1",
                 [organizationId]
             );
             console.log(`[Recon Debug] DB result rows: ${ledgerResult.rows.length}`);
-            internalBalance = ledgerResult.rows.length > 0 ? parseFloat(ledgerResult.rows[0].balance_after) : 0;
+            
+            if (ledgerResult.rows.length > 0) {
+                const rawInternal = ledgerResult.rows[0].balance_after;
+                internalBalance = typeof rawInternal === 'string' ? parseFloat(rawInternal) : (Number(rawInternal) || 0);
+            }
             
             if (isNaN(internalBalance)) internalBalance = 0;
         } catch (dbErr: any) {
             console.error(`[Lenco Reconcile] Database error fetching ledger for ${organizationId}:`, dbErr.message);
-            return res.status(500).json({ error: 'Database error fetching ledger balance' });
+            // Don't 500, just return with 0 internal balance and a warning
+            return res.json({
+                organizationId,
+                subaccountId,
+                externalBalance,
+                internalBalance: 0,
+                discrepancy: externalBalance,
+                isReconciled: false,
+                error: `Ledger error: ${dbErr.message}`,
+                lastCheckedAt: new Date().toISOString()
+            });
         }
+
 
         // 4. Return summary
         const discrepancy = externalBalance - internalBalance;

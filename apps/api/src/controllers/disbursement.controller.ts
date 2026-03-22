@@ -138,19 +138,20 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
             } catch (payoutError: any) {
                 console.error('[Lenco Payout Failed] Error during wallet disbursal:', payoutError);
+                console.error(`[Disbursement] CRITICAL ERROR for req ${id}:`, payoutError.message);
                 
-                // CRITICAL: We DO NOT revert status here if we suspect the money might have moved.
-                // Revert ONLY if we are sure it's a "Failed to initiate" error and NOT a "Database timeout after initiation"
-                // For safety, we keep it as DISBURSED or a new status.
-                // Given the current status is already set to DISBURSED in the lock result at top, 
-                // we just let it stay there and return the error.
-                
+                // REVERT TO AUTHORISED so user can retry.
+                // Our idempotency check at the top of this function will prevent double-spending
+                // if the previous attempt actually succeeded on Lenco but failed to respond.
+                await supabase
+                    .from('requisitions')
+                    .update({ status: 'AUTHORISED' })
+                    .eq('id', id);
+
                 return res.status(500).json({ 
-                    error: 'Uncertain disbursal state. The requisition has been marked as DISBURSED to prevent double-spending, but the wallet transfer encountered an error.',
+                    error: `Disbursal error: ${payoutError.message}. The requisition has been reset to AUTHORISED. Please try again or check the ledger for manual verification.`,
                     details: payoutError.message,
-                    isLencoError: true,
-                    reference: stableRef,
-                    hint: 'Please check Lenco dashboard. If the transfer failed there, you can manually revert the status to AUTHORISED.'
+                    stableRef: stableRef
                 });
             }
         }
