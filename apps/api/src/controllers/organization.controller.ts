@@ -71,6 +71,11 @@ export const OrganizationController = {
                 .single();
 
             if (error) {
+                if (error.code === '23505') {
+                    if (error.message.includes('lenco_public_key')) return res.status(400).json({ error: 'This Lenco Public Key is already in use by another organization.' });
+                    if (error.message.includes('lenco_secret_key')) return res.status(400).json({ error: 'This Lenco Secret Key is already in use by another organization.' });
+                    if (error.message.includes('lenco_subaccount_id')) return res.status(400).json({ error: 'This Lenco Subaccount ID is already in use by another organization.' });
+                }
                 return res.status(400).json({ error: error.message });
             }
 
