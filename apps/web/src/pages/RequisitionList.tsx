@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
-import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Eye, Edit, Trash2, MoreVertical, FileText, History, ChevronDown, XCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { FileText, History, XCircle } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { useAuth } from '../context/AuthContext';
+import { RequisitionInbox } from '../components/RequisitionInbox';
+import RequisitionModal from '../components/requisitions/RequisitionModal';
+import { Search, RefreshCw, Plus } from 'lucide-react';
+import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 
 interface Requisition {
     id: string;
@@ -16,7 +20,19 @@ interface Requisition {
     type?: string;
 }
 
-const TAB_FILTERS = ['ALL', 'DRAFT', 'SUBMITTED', 'AUTHORISED', 'DISBURSED', 'RECEIVED', 'REJECTED'];
+// Determine completed statuses (for filtering active requisitions in Requestor view)
+const COMPLETED_STATUSES = Object.keys(REQUISITION_STATUS_CONFIG).filter(
+    key => REQUISITION_STATUS_CONFIG[key].isCompleted
+);
+
+const TABS = [
+    { label: 'All Requests', value: 'ALL' },
+    { label: 'Approvals', value: 'PENDING_APPROVAL' },
+    { label: 'Reviewed', value: 'REVIEWED' },
+    { label: 'Disbursed', value: 'DISBURSED' },
+    { label: 'Returned', value: 'CHANGE_SUBMITTED' },
+    { label: 'Completed', value: 'COMPLETED' },
+];
 
 export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
@@ -24,10 +40,12 @@ export const RequisitionList: React.FC = () => {
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [filterStatus, setFilterStatus] = useState('ALL');
-    const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
     const [currentView, setCurrentView] = useState<'active' | 'history'>('active');
-    const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false);
+    const [selectedRequisition, setSelectedRequisition] = useState<RequisitionType | null>(null);
+    const [viewMode, setViewMode] = useState<'inbox' | 'scheduled'>('inbox');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeTab, setActiveTab] = useState('ALL');
+    const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false); // State for mobile bottom sheet
 
     const isRequestor = userRole === 'REQUESTOR';
 
@@ -49,349 +67,198 @@ export const RequisitionList: React.FC = () => {
         }
     };
 
-    const getStatusBadge = (status: string) => {
-        const styles = {
-            DRAFT: 'bg-gray-100 text-gray-800',
-            AUTHORISED: 'bg-green-100 text-green-800',
-            DISBURSED: 'bg-blue-100 text-blue-800',
-            RECEIVED: 'bg-purple-100 text-purple-800',
-            REJECTED: 'bg-red-100 text-red-800',
-        };
-        return styles[status as keyof typeof styles] || styles.DRAFT;
+    const handleStatusChange = async () => {
+        await loadRequisitions();
+        if (selectedRequisition) {
+            try {
+                const updated = await requisitionService.getById(selectedRequisition.id);
+                setSelectedRequisition(updated);
+            } catch (err) {
+                console.error('Failed to refresh selected requisition:', err);
+            }
+        }
     };
 
+
+
     // Determine completed statuses (for filtering active requisitions)
-    const COMPLETED_STATUSES = ['RECEIVED', 'REJECTED'];
+    
 
     const filteredRequisitions = requisitions.filter(req => {
+        // Apply search filter
+        const matchesSearch = req.description.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                             (req.requestor_name || '').toLowerCase().includes(searchQuery.toLowerCase());
+        if (!matchesSearch) return false;
+
+        // Apply tab filter
+        const config = getStatusConfig(req.status);
+        if (activeTab === 'REVIEWED') {
+            if (!['AUTHORISED', 'REJECTED'].includes(req.status)) return false;
+        } else if (activeTab === 'COMPLETED') {
+            if (!config.isCompleted) return false;
+        } else if (activeTab !== 'ALL') {
+            if (config.tab !== activeTab) return false;
+        }
+
         // For requestors in active view, exclude completed requisitions
         if (isRequestor && currentView === 'active' && COMPLETED_STATUSES.includes(req.status)) {
             return false;
         }
 
-        // Apply status filter
-        return filterStatus === 'ALL' ? true : req.status === filterStatus;
+        return true;
     });
 
     return (
         <Layout>
-            <div className={`space-y-6 ${isRequestor ? 'pb-32' : ''}`}>
-                {/* Page Header */}
-                <div className="flex justify-between items-center">
-                    <h1 className="text-2xl font-bold text-brand-navy">
-                        {isRequestor
-                            ? (currentView === 'active' ? 'Active Requisitions' : 'Requisition History')
-                            : 'Requisitions'
-                        }
-                    </h1>
-                    <div className={`relative ${isRequestor ? 'hidden md:block' : ''}`}>
-                        <button
-                            onClick={() => setIsNewRequisitionOpen(!isNewRequisitionOpen)}
-                            className="flex items-center px-4 py-2.5 bg-brand-green text-white font-bold rounded-xl hover:bg-green-600 transition-all shadow-lg shadow-green-200 transform hover:-translate-y-0.5"
-                        >
-                            <Plus className="h-5 w-5 mr-2" />
-                            <span className="hidden sm:inline">New Requisition</span>
-                            <span className="sm:hidden text-xs">New</span>
-                            <ChevronDown className={`ml-2 h-4 w-4 transition-transform ${isNewRequisitionOpen ? 'rotate-180' : ''}`} />
-                        </button>
+            <div className={`space-y-8 ${isRequestor ? 'pb-32' : ''}`}>
+                {/* Desktop Action Row (Unified with Navigation Edges) */}
+                <div className="hidden md:block pt-2 mb-4">
+                    <div className="flex items-center justify-between gap-6">
+                        {/* View Switcher */}
+                        <div className="flex items-center bg-gray-100/50 p-1.5 rounded-2xl w-fit border border-gray-100 shadow-inner">
+                            <button 
+                                onClick={() => setViewMode('inbox')}
+                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${viewMode === 'inbox' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
+                            >
+                                Requisition Inbox
+                            </button>
+                            <button 
+                                onClick={() => setViewMode('scheduled')}
+                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${viewMode === 'scheduled' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
+                            >
+                                Scheduled
+                            </button>
+                        </div>
 
-                        {isNewRequisitionOpen && (
-                            <>
-                                <div
-                                    className="fixed inset-0 z-10"
-                                    onClick={() => setIsNewRequisitionOpen(false)}
-                                ></div>
-                                <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl ring-1 ring-black ring-opacity-5 z-20 overflow-hidden border border-gray-100">
-                                    <div className="py-2">
-                                        <button
-                                            onClick={() => {
-                                                setIsNewRequisitionOpen(false);
-                                                navigate('/requisitions/new?type=EXPENSE');
-                                            }}
-                                            className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center transition-colors border-b border-gray-50"
-                                        >
-                                            <div className="h-8 w-8 rounded-lg bg-brand-gray flex items-center justify-center mr-3 text-brand-navy">
-                                                <FileText className="h-4 w-4" />
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-brand-navy">New Expense</div>
-                                                <div className="text-xs text-gray-500">General office expenses</div>
-                                            </div>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setIsNewRequisitionOpen(false);
-                                                navigate('/requisitions/new?type=ADVANCE');
-                                            }}
-                                            className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center transition-colors border-b border-gray-50"
-                                        >
-                                            <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center mr-3 text-emerald-600">
-                                                <History className="h-4 w-4" />
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-brand-navy">Salary Advance</div>
-                                                <div className="text-xs text-gray-500">Quick funds request</div>
-                                            </div>
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                setIsNewRequisitionOpen(false);
-                                                navigate('/requisitions/new?type=LOAN');
-                                            }}
-                                            className="w-full text-left px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 flex items-center transition-colors"
-                                        >
-                                            <div className="h-8 w-8 rounded-lg bg-blue-50 flex items-center justify-center mr-3 text-blue-600">
-                                                <Plus className="h-4 w-4" />
-                                            </div>
-                                            <div>
-                                                <div className="font-bold text-brand-navy">Staff Loan</div>
-                                                <div className="text-xs text-gray-500">Long-term financing</div>
-                                            </div>
-                                        </button>
-                                    </div>
-                                </div>
-                            </>
-                        )}
+                        {/* Search & Actions */}
+                        <div className="flex items-center space-x-4 flex-1 max-w-2xl">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                <input 
+                                    type="text"
+                                    placeholder="Find messages, requisitions and more"
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 transition-all font-bold text-brand-navy placeholder:text-gray-400 shadow-sm"
+                                />
+                            </div>
+                            <button 
+                                onClick={loadRequisitions}
+                                className="p-3.5 bg-white text-gray-400 hover:text-[#006AFF] rounded-2xl border border-gray-100 transition-all shadow-sm hover:shadow"
+                                title="Refresh"
+                            >
+                                <RefreshCw size={20} />
+                            </button>
+                            <button 
+                                onClick={() => navigate('/requisitions/new')}
+                                className="bg-[#006AFF] text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-blue-600 transition-all flex items-center space-x-2 whitespace-nowrap"
+                            >
+                                <Plus size={20} />
+                                <span>New Request</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Status Filters - Hide for requestors in active view */}
-                {!(isRequestor && currentView === 'active') && (
-                    <div className="flex overflow-x-auto pb-2 gap-2 no-scrollbar">
-                        {TAB_FILTERS.map((status) => (
-                            <button
-                                key={status}
-                                onClick={() => setFilterStatus(status)}
-                                className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors border ${filterStatus === status
-                                    ? 'bg-brand-navy text-white border-brand-navy shadow-md'
-                                    : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                                    }`}
-                            >
-                                {status === 'ALL' ? 'All' : status.charAt(0) + status.slice(1).toLowerCase()}
-                            </button>
-                        ))}
-                    </div>
-                )}
+                {/* Status Tabs Row (Stand-alone) */}
+                <div className="hidden md:flex items-center space-x-2 pb-2">
+                    {TABS.map((tab) => (
+                        <button
+                            key={tab.value}
+                            onClick={() => setActiveTab(tab.value)}
+                            className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all whitespace-nowrap border
+                                ${activeTab === tab.value 
+                                    ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30 shadow-sm' 
+                                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50 border-transparent'}`}
+                        >
+                            {tab.label}
+                        </button>
+                    ))}
+                </div>
 
-                {loading && (
-                    <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-12 text-center">
-                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-200 border-t-brand-green mb-4"></div>
-                        <p className="text-gray-500 font-medium">Loading requisitions...</p>
+                {/* Page Header (Mobile Only) */}
+                <div className="md:hidden px-4">
+                    <div className="flex justify-between items-center mb-6">
+                        <h1 className="text-2xl font-bold text-brand-navy">
+                            {isRequestor
+                                ? (currentView === 'active' ? 'Active Requisitions' : 'Requisition History')
+                                : 'Requisitions'
+                            }
+                        </h1>
+                        <button
+                            onClick={() => setIsNewRequisitionOpen(!isNewRequisitionOpen)}
+                            className="flex items-center p-3 bg-brand-green text-white rounded-xl shadow-lg"
+                        >
+                            <Plus size={20} />
+                        </button>
                     </div>
-                )}
+                </div>
 
-                {error && (
-                    <div className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center text-red-700">
-                        <div className="p-2 bg-red-100 rounded-lg mr-3">
-                            <XCircle className="h-5 w-5" />
+                <div className="w-full">
+                    {loading && (
+                        <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
+                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>
+                            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Syncing your inbox...</p>
                         </div>
-                        <p className="font-medium">{error}</p>
-                    </div>
-                )}
+                    )}
 
-                {!loading && !error && filteredRequisitions.length === 0 && (
-                    <div className="bg-white shadow-sm border border-gray-100 rounded-xl p-12 text-center">
-                        <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-gray-50 mb-4">
-                            <FileText className="h-8 w-8 text-gray-300" />
+                    {error && (
+                        <div className="bg-red-50 border border-red-100 rounded-2xl p-6 flex items-center text-red-700">
+                            <div className="p-3 bg-red-100 rounded-xl mr-4">
+                                <XCircle className="h-6 w-6" />
+                            </div>
+                            <p className="font-bold">{error}</p>
                         </div>
-                        <h3 className="text-lg font-bold text-gray-900">No requisitions found</h3>
-                        <p className="text-gray-500 mt-1 max-w-sm mx-auto">There are no requisitions matching your current filters.</p>
-                    </div>
-                )}
+                    )}
 
-                {!loading && !error && filteredRequisitions.length > 0 && (
-                    <>
-                        {/* Mobile Card View */}
-                        <div className="md:hidden space-y-4">
-                            {/* Backdrop for closing dropdowns */}
-                            {activeDropdown && (
-                                <div
-                                    className="fixed inset-0 z-10"
-                                    onClick={() => setActiveDropdown(null)}
-                                ></div>
-                            )}
+                    {!loading && !error && filteredRequisitions.length === 0 && (
+                        <div className="bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
+                            <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
+                                <FileText className="h-10 w-10 text-gray-200" />
+                            </div>
+                            <h3 className="text-xl font-bold text-brand-navy">No requisitions found</h3>
+                            <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Your request list is currently empty.</p>
+                        </div>
+                    )}
 
-                            {filteredRequisitions.map((req) => (
-                                <div
-                                    key={req.id}
-                                    className="bg-white shadow-sm border border-gray-100 rounded-xl p-5 space-y-3 relative cursor-pointer active:bg-gray-50 transition-colors"
-                                    onClick={() => navigate(`/requisitions/${req.id}`)}
-                                >
-                                    {/* Top Row: Title | Amount | Kebab */}
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex-grow mr-2 min-w-0">
-                                            <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">{req.department}</div>
-                                            <h3 className="text-base font-bold text-brand-navy truncate">{req.description}</h3>
-                                        </div>
-
-                                        <div className="flex items-center space-x-3 flex-shrink-0">
-                                            <span className="text-lg font-bold text-brand-green">K{req.estimated_total.toLocaleString()}</span>
-
-                                            {/* Kebab Menu */}
-                                            <div className="relative">
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setActiveDropdown(activeDropdown === req.id ? null : req.id);
-                                                    }}
-                                                    className="p-1 text-gray-300 hover:text-brand-navy rounded-full hover:bg-gray-50 transition-colors"
-                                                >
-                                                    <MoreVertical className="h-5 w-5" />
-                                                </button>
-
-                                                {activeDropdown === req.id && (
-                                                    <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-xl z-20 border border-gray-100 py-1 overflow-hidden">
-                                                        <button
-                                                            className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 flex items-center font-medium"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setActiveDropdown(null);
-                                                                // Handle Edit
-                                                            }}
-                                                        >
-                                                            <Edit className="h-4 w-4 mr-2 text-gray-400" />
-                                                            Edit
-                                                        </button>
-                                                        <button
-                                                            className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center font-medium"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setActiveDropdown(null);
-                                                                // Handle Delete
-                                                            }}
-                                                        >
-                                                            <Trash2 className="h-4 w-4 mr-2" />
-                                                            Delete
-                                                        </button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
+                    {!loading && !error && filteredRequisitions.length > 0 && (
+                        <>
+                            {/* Mobile Card View */}
+                            <div className="md:hidden space-y-4">
+                                {/* ... existing mobile logic remains ... */}
+                                {filteredRequisitions.map((req) => (
+                                    <div key={req.id} className="bg-white p-4 rounded-2xl border border-gray-100" onClick={() => navigate(`/requisitions/${req.id}`)}>
+                                        <h3 className="font-bold text-brand-navy">{req.description}</h3>
+                                        <p className="text-xs text-gray-400">{req.status}</p>
                                     </div>
+                                ))}
+                            </div>
 
-                                    {/* Second Row: Status | Requestor | Date */}
-                                    <div className="flex items-center justify-between pt-2">
-                                        <div className="flex items-center gap-2">
-                                            <span
-                                                className={`px-2.5 py-0.5 text-[10px] font-bold rounded-full uppercase tracking-wide border ${getStatusBadge(
-                                                    req.status
-                                                ).replace('bg-', 'border-').replace('text-', 'text-').replace('100', '200')}`}
-                                            >
-                                                {req.status}
-                                            </span>
-                                            <span className="px-2 py-0.5 bg-gray-50 text-gray-600 rounded-full font-bold text-[10px] uppercase tracking-wide border border-gray-100">
-                                                {req.requestor_name || 'Self'}
-                                            </span>
-                                        </div>
-                                        <span className="text-[10px] font-medium text-gray-400">
-                                            {new Date(req.created_at).toLocaleDateString()}
-                                        </span>
-                                    </div>
-
-                                    {/* Decorative type indicator */}
-                                    {req.type && (
-                                        <div className={`absolute left-0 top-6 w-1 h-8 rounded-r-full ${req.type === 'LOAN' ? 'bg-blue-400' :
-                                            req.type === 'ADVANCE' ? 'bg-emerald-400' :
-                                                'bg-brand-navy'
-                                            }`}></div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
-
-                        {/* Desktop Table View */}
-                        <div className="hidden md:block bg-white shadow-sm border border-gray-100 rounded-xl overflow-hidden">
-                            <table className="min-w-full divide-y divide-gray-100">
-                                <thead className="bg-gray-50/50">
-                                    <tr>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            ID
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Requestor
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Department
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Type
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Description
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Total
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Status
-                                        </th>
-                                        <th className="px-6 py-4 text-left text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Created
-                                        </th>
-                                        <th className="px-6 py-4 text-right text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-50">
-                                    {filteredRequisitions.map((req) => (
-                                        <tr key={req.id} className="hover:bg-gray-50/50 transition-colors group">
-                                            <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400 font-mono">
-                                                ...{req.id.slice(-4)}
-                                            </td>
-                                            <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                                                {req.requestor_name || 'Self'}
-                                            </td>
-                                            <td className="px-6 py-4 text-xs font-medium text-gray-500">
-                                                {req.department || '-'}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${req.type === 'LOAN' ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                    req.type === 'ADVANCE' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' :
-                                                        'bg-gray-50 text-gray-600 border-gray-100'
-                                                    }`}>
-                                                    {req.type || 'EXPENSE'}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 text-sm text-brand-navy font-medium">
-                                                {req.description}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-brand-navy">
-                                                K{req.estimated_total.toLocaleString()}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span
-                                                    className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold rounded-full uppercase tracking-wide ${getStatusBadge(
-                                                        req.status
-                                                    )}`}
-                                                >
-                                                    {req.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-400">
-                                                {new Date(req.created_at).toLocaleDateString()}
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <div className="flex justify-end space-x-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <Link to={`/requisitions/${req.id}`} className="p-1 text-gray-400 hover:text-brand-navy rounded hover:bg-gray-100 transition-colors">
-                                                        <Eye className="h-5 w-5" />
-                                                    </Link>
-                                                    <button className="p-1 text-gray-400 hover:text-amber-600 rounded hover:bg-amber-50 transition-colors">
-                                                        <Edit className="h-5 w-5" />
-                                                    </button>
-                                                    <button className="p-1 text-gray-400 hover:text-red-600 rounded hover:bg-red-50 transition-colors">
-                                                        <Trash2 className="h-5 w-5" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </>
-                )}
+                            {/* Desktop View (Overhauled Inbox) */}
+                            <div className="hidden md:block">
+                                <RequisitionInbox 
+                                    requisitions={filteredRequisitions} 
+                                    onRowClick={async (id) => {
+                                        try {
+                                            const fullReq = await requisitionService.getById(id);
+                                            setSelectedRequisition(fullReq);
+                                        } catch (err) {
+                                            console.error('Failed to fetch requisition details:', err);
+                                        }
+                                    }}
+                                />
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
+
+            <RequisitionModal 
+                requisition={selectedRequisition} 
+                isOpen={!!selectedRequisition} 
+                onClose={() => setSelectedRequisition(null)}
+                onStatusChange={handleStatusChange}
+            />
 
             {/* Premium Bottom Sheet - Mobile Only */}
             {isRequestor && (
@@ -405,7 +272,7 @@ export const RequisitionList: React.FC = () => {
 
                     {/* Bottom Sheet Container */}
                     <div
-                        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-[2.5rem] shadow-2xl z-[70] transition-transform duration-500 ease-out md:hidden flex flex-col max-h-[85vh] ${isNewRequisitionOpen ? 'translate-y-0' : 'translate-y-full'
+                        className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-[70] transition-transform duration-500 ease-out md:hidden flex flex-col max-h-[85vh] ${isNewRequisitionOpen ? 'translate-y-0' : 'translate-y-full'
                             }`}
                     >
                         {/* Drag Handle */}
@@ -490,7 +357,7 @@ export const RequisitionList: React.FC = () => {
                     <button
                         onClick={() => {
                             setCurrentView(currentView === 'active' ? 'history' : 'active');
-                            setFilterStatus('ALL');
+                            setActiveTab('ALL');
                         }}
                         className="flex-1 flex items-center justify-center p-3 text-white border-l border-white/10 active:scale-95 transition-all"
                     >

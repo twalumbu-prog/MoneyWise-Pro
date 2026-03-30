@@ -207,9 +207,9 @@ const runMigration = async () => {
     }
 };
 
-// Run migrations on startup
+// Run migrations on startup (Non-fatal for local dev)
 runMigration().catch(err => {
-    console.error('[Migration] Critical failure during startup:', err);
+    console.error('[Migration] Critical failure during startup (continuing anyway):', err);
 });
 
 const app = express();

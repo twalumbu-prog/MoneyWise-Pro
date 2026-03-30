@@ -326,9 +326,9 @@ export const RequisitionDetail: React.FC = () => {
     const isLoanOrAdvance = requisition.type === 'LOAN' || requisition.type === 'ADVANCE';
     const isRequestor = user?.id === requisition.requestor_id;
     const canAcknowledge = isRequestor && requisition.status === 'DISBURSED';
-    const canTrackExpenses = isRequestor && requisition.status === 'RECEIVED' && !isLoanOrAdvance;
+    const canTrackExpenses = isRequestor && (requisition.status === 'RECEIVED' || requisition.status === 'EXPENSED') && !isLoanOrAdvance;
     // Allow submitting change even for loans if they landed in RECEIVED (excess disbursement)
-    const canSubmitChange = isRequestor && requisition.status === 'RECEIVED';
+    const canSubmitChange = isRequestor && (requisition.status === 'RECEIVED' || requisition.status === 'EXPENSED');
     const canConfirmChange = (userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'ADMIN') && requisition.status === 'CHANGE_SUBMITTED';
     const canGenerateVoucher = (requisition.status === 'RECEIVED' || requisition.status === 'CHANGE_SUBMITTED' || requisition.status === 'COMPLETED');
     const canApprove = (userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'MANAGER') && (requisition.status === 'SUBMITTED' || requisition.status === 'DRAFT');
@@ -447,7 +447,7 @@ export const RequisitionDetail: React.FC = () => {
                             <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
                                 ${requisition.status === 'AUTHORISED' ? 'bg-green-100 text-green-800' :
                                     requisition.status === 'DISBURSED' ? 'bg-blue-100 text-blue-800' :
-                                        requisition.status === 'RECEIVED' ? 'bg-purple-100 text-purple-800' :
+                                        (requisition.status === 'RECEIVED' || requisition.status === 'EXPENSED') ? 'bg-purple-100 text-purple-800' :
                                             'bg-gray-100 text-gray-800'}`}>
                                 {requisition.status}
                             </span>
@@ -502,7 +502,7 @@ export const RequisitionDetail: React.FC = () => {
                             </div>
 
                             {/* Actual Total Display */}
-                            {(requisition.status === 'RECEIVED' || requisition.status === 'COMPLETED') && (
+                            {(requisition.status === 'RECEIVED' || requisition.status === 'EXPENSED' || requisition.status === 'COMPLETED') && (
                                 <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6 bg-gray-50">
                                     <dt className="text-sm font-medium text-gray-900">Total Actual</dt>
                                     <dd className="mt-1 text-sm font-bold text-gray-900 sm:mt-0 sm:col-span-2">

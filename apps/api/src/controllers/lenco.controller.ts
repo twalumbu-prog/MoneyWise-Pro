@@ -150,9 +150,14 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
     let secretKey: string | undefined = undefined;
     if (organizationId) {
         try {
-            const orgResult = await pool.query('SELECT lenco_secret_key FROM organizations WHERE id = $1', [organizationId]);
-            if (orgResult.rows.length > 0) {
-                secretKey = orgResult.rows[0].lenco_secret_key;
+            const { data: orgData, error: orgError } = await supabase
+                .from('organizations')
+                .select('lenco_secret_key')
+                .eq('id', organizationId)
+                .single();
+                
+            if (!orgError && orgData?.lenco_secret_key) {
+                secretKey = orgData.lenco_secret_key;
                 console.log(`[Lenco Verify] Using organization-specific secret key for ${organizationId}`);
             }
         } catch (err) {
@@ -264,17 +269,18 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
         console.log(`[Lenco Reconcile] Fetching summary for org: ${organizationId}`);
         
         console.log(`[Recon Debug] Stage 1: Fetching org ${organizationId}`);
-        const orgResult = await pool.query(
-            'SELECT lenco_subaccount_id, lenco_secret_key FROM organizations WHERE id = $1',
-            [organizationId]
-        );
+        const { data: orgData, error: orgError } = await supabase
+            .from('organizations')
+            .select('lenco_subaccount_id, lenco_secret_key')
+            .eq('id', organizationId)
+            .single();
 
-        if (orgResult.rows.length === 0) {
+        if (orgError || !orgData) {
             console.warn(`[Lenco Reconcile] Organization not found: ${organizationId}`);
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        const { lenco_subaccount_id: subaccountId, lenco_secret_key: secretKey } = orgResult.rows[0];
+        const { lenco_subaccount_id: subaccountId, lenco_secret_key: secretKey } = orgData;
         console.log(`[Recon Debug] Subaccount: ${subaccountId}, Key present: ${!!secretKey}`);
         if (!subaccountId) {
             console.warn(`[Lenco Reconcile] No subaccount linked for org: ${organizationId}`);
@@ -304,16 +310,19 @@ export const getReconciliationSummary = async (req: Request, res: Response) => {
         // 3. Fetch balance from MoneyWise Ledger
         let internalBalance = 0;
         try {
-            console.log(`[Recon Debug] Stage 3: DB ledger fetch for org ${organizationId}`);
-            const ledgerResult = await pool.query(
-                "SELECT balance_after FROM cashbook_entries WHERE organization_id = $1 AND account_type = 'MONEYWISE_WALLET' ORDER BY date DESC, created_at DESC LIMIT 1",
-                [organizationId]
-            );
-            console.log(`[Recon Debug] DB result rows: ${ledgerResult.rows.length}`);
+            console.log(`[Recon Debug] Stage 3: DB ledger fetch for org ${organizationId} via Supabase`);
+            const { data: ledgerData, error: ledgerError } = await supabase
+                .from('cashbook_entries')
+                .select('balance_after')
+                .eq('organization_id', organizationId)
+                .eq('account_type', 'MONEYWISE_WALLET')
+                .order('date', { ascending: false })
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
             
-            if (ledgerResult.rows.length > 0) {
-                const rawInternal = ledgerResult.rows[0].balance_after;
-                internalBalance = typeof rawInternal === 'string' ? parseFloat(rawInternal) : (Number(rawInternal) || 0);
+            if (!ledgerError && ledgerData) {
+                internalBalance = Number(ledgerData.balance_after) || 0;
             }
             
             if (isNaN(internalBalance)) internalBalance = 0;
@@ -384,8 +393,12 @@ export const resolveBankAccount = async (req: Request, res: Response) => {
 
     let secretKey: string | undefined = undefined;
     if (organizationId) {
-        const orgResult = await pool.query('SELECT lenco_secret_key FROM organizations WHERE id = $1', [organizationId]);
-        if (orgResult.rows.length > 0) secretKey = orgResult.rows[0].lenco_secret_key;
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key')
+            .eq('id', organizationId)
+            .single();
+        if (orgData?.lenco_secret_key) secretKey = orgData.lenco_secret_key;
     }
 
     try {
@@ -409,8 +422,12 @@ export const resolveMobileMoney = async (req: Request, res: Response) => {
 
     let secretKey: string | undefined = undefined;
     if (organizationId) {
-        const orgResult = await pool.query('SELECT lenco_secret_key FROM organizations WHERE id = $1', [organizationId]);
-        if (orgResult.rows.length > 0) secretKey = orgResult.rows[0].lenco_secret_key;
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key')
+            .eq('id', organizationId)
+            .single();
+        if (orgData?.lenco_secret_key) secretKey = orgData.lenco_secret_key;
     }
 
     try {

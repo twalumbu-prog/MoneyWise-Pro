@@ -124,9 +124,14 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // We search from the end of the reference as our standard is DEP-timestamp-subaccount-ORGID
             for (const id of potentialOrgIds.reverse()) {
                 try {
-                    const orgResult = await pool.query('SELECT id FROM organizations WHERE id = $1', [id]);
-                    if (orgResult.rows.length > 0) {
-                        organizationId = orgResult.rows[0].id;
+                    const { data: org, error } = await supabase
+                        .from('organizations')
+                        .select('id')
+                        .eq('id', id)
+                        .maybeSingle();
+                        
+                    if (!error && org) {
+                        organizationId = org.id;
                         identificationStage = 'Stage 1: Reference Regex';
                         console.log(`[Lenco Webhook] Identified organization ${organizationId} via regex matching in reference`);
                         break;
@@ -141,12 +146,14 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
     // 2. Fallback: Lookup by lenco_subaccount_id if present in payload
     if (!organizationId && accountId) {
         try {
-            const orgResult = await pool.query(
-                'SELECT id FROM organizations WHERE lenco_subaccount_id = $1',
-                [accountId]
-            );
-            if (orgResult.rows.length > 0) {
-                organizationId = orgResult.rows[0].id;
+            const { data: org, error } = await supabase
+                .from('organizations')
+                .select('id')
+                .eq('lenco_subaccount_id', accountId)
+                .maybeSingle();
+
+            if (!error && org) {
+                organizationId = org.id;
                 identificationStage = 'Stage 2: Subaccount ID Fallback';
                 console.log(`[Lenco Webhook] Identified organization ${organizationId} via subaccount ${accountId}`);
             }
@@ -189,8 +196,10 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             
             console.log(`[Lenco Webhook] Meta-data updated for change return. Skipping ledger entry for pure netting.`);
         } else {
+            const formattedAmount = parseFloat(amount).toLocaleString(undefined, { minimumFractionDigits: 2 });
             const narration = `A deposit of K${formattedAmount} has been successfully deposited to the MoneyWise Wallet. Reference: ${reference || 'N/A'}`;
             
+            // 1. Log the Gross Inflow
             await cashbookService.createEntry(organizationId, {
                 date: new Date().toISOString().split('T')[0],
                 description: narration,
@@ -200,7 +209,22 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 account_type: 'MONEYWISE_WALLET',
                 status: 'COMPLETED'
             });
-            console.log(`[Lenco Webhook] Standard collection logged as INFLOW.`);
+
+            // 2. Log the 1% Transaction Charge
+            const feeAmount = parseFloat(amount) * 0.01;
+            const feeDescription = `Transaction Fee (1%) for Wallet Deposit - Ref: ${reference || 'N/A'}`;
+            
+            await cashbookService.createEntry(organizationId, {
+                date: new Date().toISOString().split('T')[0],
+                description: feeDescription,
+                debit: 0,
+                credit: feeAmount,
+                entry_type: 'ADJUSTMENT',
+                account_type: 'MONEYWISE_WALLET',
+                status: 'COMPLETED'
+            });
+
+            console.log(`[Lenco Webhook] Standard collection logged as INFLOW + 1% Fee ADJUSTMENT.`);
         }
 
         console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);

@@ -45,6 +45,7 @@ export interface Requisition {
     repayment_period?: number;
     interest_rate?: number;
     monthly_deduction?: number;
+    actual_total?: number;
     organization_id: string;
     disbursements?: any[];
 
@@ -55,9 +56,80 @@ export interface Requisition {
         lenco_public_key: string;
     };
 }
+export const REQUISITION_STATUS_CONFIG: Record<string, { 
+    label: string, 
+    color: string, 
+    tab: string, 
+    isCompleted: boolean,
+    iconType: 'clock' | 'check' | 'alert' | 'rotate' | 'check-circle'
+}> = {
+    'DRAFT': { label: 'Draft', color: 'gray', tab: 'ALL', isCompleted: false, iconType: 'rotate' },
+    'PENDING_APPROVAL': { label: 'Awaiting Approval', color: 'amber', tab: 'PENDING_APPROVAL', isCompleted: false, iconType: 'clock' },
+    'AUTHORISED': { label: 'Authorised', color: 'blue', tab: 'REVIEWED', isCompleted: false, iconType: 'check-circle' },
+    'REJECTED': { label: 'Rejected', color: 'red', tab: 'ALL', isCompleted: false, iconType: 'alert' },
+    'DISBURSED': { label: 'Disbursed', color: 'emerald', tab: 'DISBURSED', isCompleted: false, iconType: 'check' },
+    'EXPENSED': { label: 'Expensed', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'clock' },
+    'CHANGE_SUBMITTED': { label: 'Returned', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'check-circle' },
+    'RECEIVED': { label: 'Received', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'check-circle' },
+    'CATEGORIZED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
+    'COMPLETED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
+    'ACCOUNTED': { label: 'Accounted', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' }
+};
 
+export const getStatusConfig = (status: string) => {
+    return REQUISITION_STATUS_CONFIG[status] || { 
+        label: status.charAt(0) + status.slice(1).toLowerCase(), 
+        color: 'gray', 
+        tab: 'ALL', 
+        isCompleted: false,
+        iconType: 'clock' 
+    };
+};
 
 export const requisitionService = {
+    async disburse(id: string, payload: {
+        payment_method: string;
+        total_prepared: number;
+        recipient_account?: string;
+        recipient_bank_code?: string;
+        recipient_account_name?: string;
+    }) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/disburse`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Disbursement failed');
+        }
+
+        return data; // { message, disbursement_id, lencoStatus }
+    },
+
+    async verifyDisbursement(id: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/verify-disbursement`, {
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+
+        const data = await response.json();
+        // Don't throw on non-2xx — status can be 'pending' or 'failed', caller handles it
+        return data; // { status: 'successful' | 'pending' | 'failed', message, details }
+    },
+
     async acknowledge(id: string, signature: string) {
         const { data: session } = await supabase.auth.getSession();
         const token = session.session?.access_token;
@@ -357,5 +429,108 @@ export const requisitionService = {
         }
 
         return response.json();
+    },
+
+    async getMessages(id: string): Promise<RequisitionMessage[]> {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/messages`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) throw new Error('Failed to fetch messages');
+        return response.json();
+    },
+
+    async sendMessage(id: string, content: string, type: 'CHAT' | 'SYSTEM' = 'CHAT', metadata: any = {}): Promise<RequisitionMessage> {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/messages`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`
+            },
+            body: JSON.stringify({ content, type, metadata })
+        });
+
+        if (!response.ok) throw new Error('Failed to send message');
+        return response.json();
+    },
+
+    async approveCategorization(id: string, overrides: { id: string, account_id: string }[] = []) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/approve-categorization`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ overrides }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to approve categorization');
+        }
+
+        return response.json();
+    },
+
+    async retriggerAI(id: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/retrigger-ai`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${token}`,
+            },
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.message || err.error || 'Failed to retrigger AI categorization');
+        }
+
+        return response.json();
+    },
+
+    async postToQuickBooks(id: string, data: { payment_account_id: string, payment_account_name: string }) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/requisitions/${id}/post-quickbooks`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify(data),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to post to QuickBooks');
+        }
+
+        return response.json();
     }
 };
+
+export interface RequisitionMessage {
+    id: string;
+    requisition_id: string;
+    user_id: string;
+    user_name: string;
+    message_type: 'CHAT' | 'SYSTEM';
+    content: string;
+    metadata: any;
+    created_at: string;
+}

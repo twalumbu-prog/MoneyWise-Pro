@@ -54,19 +54,12 @@ export const RequisitionCreate: React.FC = () => {
         try {
             const requisitions = await requisitionService.getAll();
             const blockingStatuses = ['DISBURSED', 'RECEIVED'];
-            console.log('[Safeguard] Full user context:', { id: user?.id, email: user?.email });
             const blockingReqs = requisitions.filter((r: any) => {
-                const isMatch = blockingStatuses.includes(r.status) && String(r.requestor_id) === String(user?.id);
-                if (blockingStatuses.includes(r.status)) {
-                    console.log(`[Safeguard] Checking Req #${r.id.slice(0,8)}: status=${r.status}, requestor=${r.requestor_id}, current_user=${user?.id}, matches=${isMatch}`);
-                }
-                return isMatch;
+                return blockingStatuses.includes(r.status) && String(r.requestor_id) === String(user?.id);
             });
             if (blockingReqs.length > 0) {
-                console.log(`[Safeguard] Found ${blockingReqs.length} blocking requisitions.`);
                 setActiveRequisitions(blockingReqs);
             } else {
-                console.log('[Safeguard] No relevant blocking requisition for user:', user?.id);
                 setActiveRequisitions([]);
             }
         } catch (err) {

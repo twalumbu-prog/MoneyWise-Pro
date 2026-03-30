@@ -1,11 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import path from 'path';
 
-// Load .env
-dotenv.config();
+const envPath = path.resolve(__dirname, '../../.env');
+dotenv.config({ path: envPath });
+dotenv.config(); // Fallback to CWD
 
 console.log('[Supabase] Loading environment variables...');
 console.log('[Supabase] CWD:', process.cwd());
+console.log('[Supabase] envPath used:', envPath);
 
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';

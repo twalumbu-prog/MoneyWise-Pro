@@ -15,6 +15,7 @@ export interface CashbookEntry {
     requisition_id?: string;
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
+    reference_number?: string;
     requisitions?: {
         id: string;
         reference_number: string;

@@ -2,12 +2,16 @@ import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Home, FileText, CheckCircle, FileSpreadsheet, Settings, LogOut, Wallet, Menu, X, ChevronLeft, ChevronRight, BarChart3 } from 'lucide-react';
+import { TopNavbar } from './TopNavbar';
+import { SubNavbar } from './SubNavbar';
 
 interface LayoutProps {
     children: React.ReactNode;
+    backgroundColor?: string;
+    noPadding?: boolean;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F8F9FA]', noPadding = false }) => {
     const { user, userRole, signOut, organizationName, notificationCounts } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -20,10 +24,17 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
     const isRequestor = userRole === 'REQUESTOR';
 
     return (
-        <div className="min-h-screen bg-brand-gray flex flex-col md:flex-row font-sans">
-            {/* Mobile Header - Hide for Requestors */}
-            {!isRequestor && (
-                <div className="md:hidden bg-white shadow-sm p-4 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
+        <div className={`min-h-screen ${backgroundColor} flex flex-col font-sans`}>
+            {/* Desktop Navigation (New UI Overhaul) */}
+            <div className="hidden md:block sticky top-0 z-30">
+                <TopNavbar />
+                <SubNavbar />
+            </div>
+
+            {/* Mobile Header (Existing) */}
+            <div className="md:hidden">
+                {!isRequestor && (
+                    <div className="bg-white shadow-sm p-4 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
                     <div className="flex items-center">
                         <div>
                             <h1 className="text-lg font-bold text-brand-navy leading-tight">MoneyWise</h1>
@@ -50,12 +61,15 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <div className="fixed inset-0 z-10 bg-brand-navy/20 backdrop-blur-sm md:hidden" onClick={() => setIsMobileMenuOpen(false)}></div>
             )}
 
-            {/* Mobile Navigation Drawer - Hide for Requestors */}
-            {!isRequestor && (
-                <div
-                    className={`fixed inset-y-0 left-0 z-20 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out md:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
-                        }`}
-                >
+            </div>
+
+            <div className="flex flex-1 overflow-hidden">
+                {/* Mobile Navigation Drawer - Hide for Requestors (Existing) */}
+                {!isRequestor && (
+                    <div
+                        className={`fixed inset-y-0 left-0 z-20 w-72 bg-white shadow-2xl transform transition-transform duration-300 ease-in-out md:hidden ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
+                            }`}
+                    >
                     <div className="flex flex-col h-full">
                         <div className="p-6 border-b border-gray-50 flex justify-between items-center">
                             <div className="flex items-center">
@@ -126,9 +140,9 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 </div>
             )}
 
-            {/* Desktop Sidebar - Hide for Requestors */}
+            {/* Desktop Sidebar - HIDDEN in new UI overhaul */}
             {!isRequestor && (
-                <aside className={`hidden md:flex flex-col bg-white border-r border-gray-100 sticky top-0 h-screen transition-all duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-72'}`}>
+                <aside className={`hidden flex-col bg-white border-r border-gray-100 sticky top-0 h-screen transition-all duration-300 ${isSidebarCollapsed ? 'w-20' : 'w-72'}`}>
                     <div className={`p-4 ${isSidebarCollapsed ? 'items-center justify-center' : 'p-8'} transition-all`}>
                         <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
                             {!isSidebarCollapsed && (
@@ -286,11 +300,12 @@ export const Layout: React.FC<LayoutProps> = ({ children }) => {
                 )}
 
                 {/* Page Content */}
-                <main className="flex-1 overflow-x-hidden overflow-y-auto bg-brand-gray p-6 md:p-8">
-                    {children}
-
-
+                <main className="flex-1 overflow-x-hidden overflow-y-auto">
+                    <div className={noPadding ? 'w-full h-full' : 'max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8'}>
+                        {children}
+                    </div>
                 </main>
+            </div>
             </div>
         </div>
     );

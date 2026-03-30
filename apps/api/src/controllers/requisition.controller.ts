@@ -8,6 +8,8 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { ocrService } from '../services/ai/ocr.service';
 import { LencoService } from '../services/lenco.service';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
+import { RequisitionMessageService } from '../services/requisition_message.service';
+import { aiService } from '../services/ai/ai.service';
 
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     try {
@@ -136,7 +138,16 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
 
         res.status(201).json(requisition);
 
-        // 3. Trigger notification
+        // 3. Trigger initial system message
+        await RequisitionMessageService.createMessage({
+            requisitionId: requisition.id,
+            userId: requestor_id,
+            content: 'Requisition submitted for approval',
+            type: 'SYSTEM',
+            metadata: { stage: 'APPROVAL' }
+        });
+
+        // 4. Trigger notification
         emailService.notifyRequisitionEvent(requisition.id, 'NEW_REQUISITION').catch(err =>
             console.error('[Notification Error] Failed to send NEW_REQUISITION email:', err)
         );
@@ -210,7 +221,7 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
         // Fetch requisition with line items and account details
         const { data, error } = await supabase
             .from('requisitions')
-            .select('*, organization:organizations(id, name, lenco_subaccount_id, lenco_public_key), line_items(*, accounts(code, name)), disbursements(*)')
+            .select('*, organization:organizations(id, name, lenco_subaccount_id, lenco_public_key), line_items(*, accounts(code, name)), disbursements(*, cashier:users!disbursements_cashier_id_fkey(name))')
             .eq('id', id)
             .single();
 
@@ -223,9 +234,18 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
         }
 
         // Transform response to match previous API format (items array instead of nested)
+        // AND map disbursement fields for the document viewer
         const responseData = {
             ...data,
-            items: data.line_items
+            items: data.line_items,
+            disbursements: data.disbursements?.map((d: any) => ({
+                ...d,
+                amount: d.total_prepared,
+                method: d.payment_method,
+                recipient_provider: d.recipient_bank_code,
+                recipient_value: d.recipient_account,
+                processed_by_name: d.cashier?.name || 'System Admin'
+            }))
         };
         delete (responseData as any).line_items;
 
@@ -327,21 +347,52 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
 
         const userRole = (req as any).user.role;
 
-        if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN') {
-            return res.status(403).json({ error: 'Unauthorized: Accountant access required' });
+        if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN' && userRole !== 'MANAGER') {
+            return res.status(403).json({ error: 'Unauthorized: Accountant, Admin or Manager access required' });
         }
 
-        const allowedStatuses = ['AUTHORISED', 'REJECTED', 'DISBURSED'];
+        const allowedStatuses = ['AUTHORISED', 'REJECTED', 'DISBURSED', 'EXPENSED'];
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({ error: 'Invalid status' });
         }
 
+        // Generate Sequential Reference ONLY if status is AUTHORISED and it doesn't have one yet
+        let refNum = null;
+        if (status === 'AUTHORISED') {
+            const { data: currentReq } = await supabase
+                .from('requisitions')
+                .select('reference_number')
+                .eq('id', id)
+                .single();
+
+            if (currentReq && !currentReq.reference_number) {
+                const { data: newRef, error: refError } = await supabase
+                    .rpc('generate_sequential_reference', {
+                        p_org_id: (req as any).user.organization_id,
+                        p_entity_type: 'REQUISITION',
+                        p_prefix: 'REQ'
+                    });
+
+                if (!refError) {
+                    refNum = newRef;
+                } else {
+                    console.error('Error generating reference number during approval:', refError);
+                }
+            }
+        }
+
+        const updateData: any = {
+            status,
+            updated_at: new Date().toISOString()
+        };
+
+        if (refNum) {
+            updateData.reference_number = refNum;
+        }
+
         const { data, error } = await supabase
             .from('requisitions')
-            .update({
-                status,
-                updated_at: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', id)
             .eq('organization_id', (req as any).user.organization_id)
             .select()
@@ -349,6 +400,22 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
 
         if (error) throw error;
         if (!data) return res.status(404).json({ error: 'Requisition not found' });
+
+        // Trigger system message
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId: (req as any).user.id,
+            content: status === 'AUTHORISED' ? 'How would you like to disburse these funds?' : 
+                     status === 'DISBURSED' ? 'Transaction needs to be expensed' : 
+                     `Status updated to ${status}`,
+            type: 'SYSTEM',
+            metadata: { 
+                status,
+                stage: status === 'AUTHORISED' ? 'DISBURSAL' : 
+                       status === 'DISBURSED' ? 'EXPENSE_TRACKING' : 
+                       undefined
+            }
+        });
 
         // Trigger AI learning if authorized
         if (status === 'AUTHORISED') {
@@ -387,7 +454,7 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         // 1. Verify Requisition exists and is in correct status (RECEIVED)
         const { data: requisition, error: reqError } = await supabase
             .from('requisitions')
-            .select('status, requestor_id')
+            .select('status, requestor_id, estimated_total')
             .eq('id', id)
             .single();
 
@@ -399,10 +466,9 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             return res.status(403).json({ error: 'Unauthorized' });
         }
 
-        // Allow updating expenses if status is RECEIVED (or maybe COMPLETED if we allow edits?)
-        // For strict flow: RECEIVED.
-        if (requisition.status !== 'RECEIVED') {
-            return res.status(400).json({ error: 'Requisition must be RECEIVED to track expenses' });
+        // Allow updating expenses if status is DISBURSED, EXPENSED or RECEIVED
+        if (requisition.status !== 'RECEIVED' && requisition.status !== 'DISBURSED' && requisition.status !== 'EXPENSED') {
+            return res.status(400).json({ error: 'Requisition must be DISBURSED, EXPENSED or RECEIVED to track expenses' });
         }
 
         // 2. Update Line Items
@@ -437,11 +503,16 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             .eq('requisition_id', id);
 
         const actualTotal = allItems?.reduce((sum: number, item: any) => sum + (item.actual_amount || 0), 0) || 0;
+        
+        // Use the fetched requisition to check estimated_total
+        const estimatedTotal = requisition.estimated_total;
+        const status = (Math.abs(actualTotal - (estimatedTotal || 0)) < 0.01) ? 'RECEIVED' : 'EXPENSED';
 
         await supabase
             .from('requisitions')
             .update({
                 actual_total: actualTotal,
+                status,
                 updated_at: new Date().toISOString()
             })
             .eq('id', id);
@@ -493,6 +564,16 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         }
 
         res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
+
+        // 5. Trigger AI Review & Categorization stage automatically
+        const organizationId = (req as any).user.organization_id;
+        const userId = (req as any).user.id;
+        
+        // If there's no change or if we want to trigger it anyway to show the categories
+        // The UI will handle the change submission cards if needed, but AI can start categorizing now.
+        await triggerAIReview(id, organizationId, userId).catch(err => 
+            console.error('[AI Review] Auto-trigger failed:', err)
+        );
 
     } catch (error: any) {
         console.error('Error updating expenses:', error);
@@ -692,13 +773,10 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 submission_method
             );
 
-            // G. Complete Requisition
-            await supabase
-                .from('requisitions')
-                .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
-                .eq('id', id);
+            // G. Trigger AI Review & Categorization
+            await triggerAIReview(id, organizationId, user_id);
 
-            res.json({ message: 'Change submitted and requisition completed automatically via Wallet', voucher_id: voucher.id });
+            res.json({ message: 'Change submitted and logged via Wallet. Proceeding to AI Review.', voucher_id: voucher.id });
             
             // H. Trigger Notification
             emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
@@ -861,13 +939,10 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
             submissionMethod
         );
 
-        // 6. Update Requisition Status
-        await supabase
-            .from('requisitions')
-            .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
-            .eq('id', id);
+        // 6. Trigger AI Review & Categorization
+        await triggerAIReview(id, organizationId, cashier_id);
 
-        res.json({ message: 'Change confirmed, voucher created, and ledger updated', discrepancy, voucher_id: voucher.id });
+        res.json({ message: 'Change confirmed and logged in ledger. Proceeding to AI Review.', discrepancy, voucher_id: voucher.id });
 
         // 8. Trigger Notification
         emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
@@ -881,3 +956,305 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         res.status(500).json({ error: 'Failed to confirm change', details: error.message });
     }
 };
+
+export const getRequisitionMessages = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const messages = await RequisitionMessageService.getMessages(id);
+        res.json(messages);
+    } catch (error: any) {
+        console.error('Error fetching requisition messages:', error);
+        res.status(500).json({ error: 'Failed to fetch messages', details: error.message });
+    }
+};
+
+export const sendRequisitionMessage = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const { content, type = 'CHAT', metadata = {} } = req.body;
+        const userId = (req as any).user.id;
+
+        const message = await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId,
+            content,
+            type,
+            metadata
+        });
+
+        res.status(201).json(message);
+    } catch (error: any) {
+        console.error('Error sending requisition message:', error);
+        res.status(500).json({ error: 'Failed to send message', details: error.message });
+    }
+};
+
+/**
+ * Helper to trigger AI Categorization and send the Review message
+ */
+async function triggerAIReview(requisitionId: string, organizationId: string, userId: string) {
+    try {
+        console.log(`[AI Review] Triggering for Req ${requisitionId}`);
+        
+        // 1. Update Status
+        await supabase
+            .from('requisitions')
+            .update({ status: 'CATEGORIZING', updated_at: new Date().toISOString() })
+            .eq('id', requisitionId);
+
+        // 2. Create Initial "AI Thinking" Message immediately to provide visual feedback
+        const { data: initialMsg } = await RequisitionMessageService.createMessage({
+            requisitionId,
+            userId,
+            content: 'AI is categorizing your transaction. Please wait...',
+            type: 'SYSTEM',
+            metadata: { stage: 'AI_REVIEW', isThinking: true }
+        });
+
+        // 2. Fetch Line Items
+        const { data: lineItems } = await supabase
+            .from('line_items')
+            .select('*')
+            .eq('requisition_id', requisitionId);
+
+        if (!lineItems || lineItems.length === 0) return;
+
+        // 3. Get Chart of Accounts for Grounding
+        const { data: accounts, error: accountsError } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true);
+
+        if (accountsError || !accounts || accounts.length === 0) {
+            console.warn(`[AI Review] No active accounts found for organization ${organizationId}. Skipping AI categorization.`);
+            
+            await RequisitionMessageService.createMessage({
+                requisitionId,
+                userId,
+                content: 'AI categorization is currently disabled because your Chart of Accounts is not set up. Please import or create accounts to enable this feature.',
+                type: 'SYSTEM',
+                metadata: { stage: 'AI_REVIEW_DISABLED' }
+            });
+            return;
+        }
+
+        // 4. Get Suggestions
+        const suggestions = await aiService.suggestBatch(accounts || [], lineItems.map(li => ({
+            description: li.description,
+            amount: li.actual_amount || li.estimated_amount
+        })));
+
+        // 5. Update Line Items & Prepare metadata
+        const itemsMetadata = [];
+        for (let i = 0; i < lineItems.length; i++) {
+            const li = lineItems[i];
+            const suggestion = suggestions[i];
+            
+            // CRITICAL FIX: Resolve the account UUID from the code returned by AI
+            // If we don't do this, the join in the reports/ledger will fail.
+            const matchedAccount = accounts?.find(a => String(a.code) === String(suggestion.account_code));
+            const accountId = matchedAccount ? matchedAccount.id : null;
+
+            await supabase
+                .from('line_items')
+                .update({
+                    account_id: accountId,
+                    qb_account_id: matchedAccount?.qb_account_id || null,
+                    qb_account_name: matchedAccount?.name || null,
+                    ai_reasoning: suggestion.reasoning,
+                    ai_confidence: suggestion.confidence,
+                    ai_decision_path: suggestion.method
+                })
+                .eq('id', li.id);
+
+            itemsMetadata.push({
+                id: li.id,
+                description: li.description,
+                amount: li.actual_amount || li.estimated_amount,
+                category_code: suggestion.account_code,
+                category_name: matchedAccount?.name || suggestion.account_code,
+                reasoning: suggestion.reasoning,
+                confidence: suggestion.confidence,
+                method: suggestion.method
+            });
+        }
+
+        // 6. Send/Update System Message
+        const { data: existingMsg } = await supabase
+            .from('requisition_messages')
+            .select('id')
+            .eq('requisition_id', requisitionId)
+            .contains('metadata', { stage: 'AI_REVIEW' })
+            .limit(1)
+            .single();
+
+        const messageContent = 'AI has categorized your transaction. Please review and approve.';
+        const messageMetadata = { 
+            stage: 'AI_REVIEW',
+            items: itemsMetadata
+        };
+
+        if (existingMsg) {
+            await RequisitionMessageService.updateMessage(existingMsg.id, {
+                content: messageContent,
+                metadata: messageMetadata
+            });
+        } else {
+            await RequisitionMessageService.createMessage({
+                requisitionId,
+                userId,
+                content: messageContent,
+                type: 'SYSTEM',
+                metadata: messageMetadata
+            });
+        }
+    } catch (err) {
+        console.error('[AI Review Error]', err);
+    }
+}
+
+export const approveCategorization = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const { overrides } = req.body; // Array of { id: string, account_id: string }
+        const user_id = (req as any).user.id;
+
+        // 1. Apply overrides if provided (User manually edited AI suggestions)
+        if (overrides && Array.isArray(overrides)) {
+            const organizationId = (req as any).user.organization_id;
+            
+            // Fetch all expense accounts for this org to enable denormalization
+            const { data: accounts } = await supabase
+                .from('accounts')
+                .select('id, name, qb_account_id')
+                .eq('organization_id', organizationId);
+
+            for (const item of overrides) {
+                if (!item.id || !item.account_id) continue;
+                
+                const matchedAccount = accounts?.find(a => a.id === item.account_id);
+
+                await supabase
+                    .from('line_items')
+                    .update({ 
+                        account_id: item.account_id,
+                        qb_account_id: matchedAccount?.qb_account_id || null,
+                        qb_account_name: matchedAccount?.name || null,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', item.id);
+            }
+        }
+
+        // 2. Check for QuickBooks integration
+        const organizationId = (req as any).user.organization_id;
+        const { data: qbIntegration } = await supabase
+            .from('integrations')
+            .select('id')
+            .eq('provider', 'QUICKBOOKS')
+            .eq('organization_id', organizationId)
+            .single();
+
+        const isQBConnected = !!qbIntegration;
+        const nextStatus = isQBConnected ? 'CATEGORIZED' : 'COMPLETED';
+
+        // 3. Update Requisition Status
+        const { error } = await supabase
+            .from('requisitions')
+            .update({ 
+                status: nextStatus, 
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', id);
+
+        if (error) throw error;
+
+        // Send "Approved" message to the right (Blue)
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId: user_id,
+            content: isQBConnected ? 'Categorization Approved' : 'Categorization Approved. Requisition COMPLETED.',
+            type: 'CHAT',
+            metadata: { isSummary: true, isCategorizationApproval: true }
+        });
+
+        if (isQBConnected) {
+            // Send QuickBooks Posting card
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: user_id,
+                content: 'Post this transaction to QuickBooks?',
+                metadata: { stage: 'QUICKBOOKS_POSTING' }
+            });
+        } else {
+            // Send final completion message
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: user_id,
+                content: 'Transaction has been fully categorized. Since QuickBooks is not connected, this requisition is now marked as COMPLETED.',
+                type: 'SYSTEM',
+                metadata: { stage: 'COMPLETED' }
+            });
+        }
+
+        res.json({ message: 'Categorization approved' });
+    } catch (error: any) {
+        console.error('Error approving categorization:', error);
+        res.status(500).json({ error: 'Failed to approve categorization', details: error.message });
+    }
+};
+
+export const retriggerAICategorization = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = (req as any).user.organization_id;
+        const user_id = (req as any).user.id;
+
+        // Simply call the helper
+        await triggerAIReview(id, organization_id, user_id);
+
+        res.json({ message: 'AI Categorization re-triggered successfully' });
+    } catch (error: any) {
+        console.error('Error re-triggering AI categorization:', error);
+        res.status(500).json({ error: 'Failed to re-trigger AI categorization', details: error.message });
+    }
+};
+
+export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const { payment_account_id, payment_account_name } = req.body;
+        const organization_id = (req as any).user.organization_id;
+        const user_id = (req as any).user.id;
+
+        const { data: items } = await supabase
+            .from('line_items')
+            .select('*')
+            .eq('requisition_id', id);
+
+        if (!items || items.length === 0) throw new Error("No items to post");
+
+        const qbResult = await QuickBooksService.createExpense(
+            id, user_id, organization_id, payment_account_id, payment_account_name
+        );
+
+        if (!qbResult.success) throw new Error(qbResult.error as string);
+
+        await supabase.from('requisitions').update({ status: 'ACCOUNTED' }).eq('id', id);
+
+        // Send Success message
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId: user_id,
+            content: 'Successfully posted to QuickBooks',
+            type: 'SYSTEM',
+            metadata: { stage: 'POSTED_SUCCESS', qbExpenseId: qbResult.qbId }
+        });
+
+        res.json({ message: 'Success', qb_expense_id: qbResult.qbId });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+

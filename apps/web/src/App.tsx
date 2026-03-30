@@ -13,10 +13,12 @@ import { VoucherDetail } from './pages/VoucherDetail';
 import CashLedger from './pages/CashLedger';
 import { Reporting } from './pages/Reporting';
 import { Settings } from './pages/Settings';
+import { Intelligence } from './pages/Intelligence';
 import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsOfService } from './pages/TermsOfService';
 import { Disconnect } from './pages/Disconnect';
 import { Join } from './pages/Join';
+import { ComingSoonPage } from './pages/ComingSoonPage';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -170,6 +172,22 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <Settings />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/intelligence"
+                        element={
+                            <ProtectedRoute>
+                                <Intelligence />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/audit"
+                        element={
+                            <ProtectedRoute>
+                                <ComingSoonPage featureName="Audit & Compliance" />
                             </ProtectedRoute>
                         }
                     />

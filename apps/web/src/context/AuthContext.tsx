@@ -12,6 +12,7 @@ export interface NotificationCounts {
 
 interface AuthContextType {
     user: User | null;
+    userName: string | null;
     userRole: string | null;
     userStatus: string | null;
     organizationId: string | null;
@@ -38,6 +39,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userStatus, setUserStatus] = useState<string | null>(null);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [organizationName, setOrganizationName] = useState<string | null>(null);
+    const [userName, setUserName] = useState<string | null>(null);
     const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({
         requisitions: 0, approvals: 0, vouchers: 0, disbursements: 0, settings: 0
     });
@@ -63,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const fetchRoleAndOrg = async (userId: string) => {
             const { data, error } = await supabase
                 .from('users')
-                .select('role, status, organization_id, organizations(name)')
+                .select('role, status, name, organization_id, organizations(name)')
                 .eq('id', userId)
                 .single();
 
@@ -71,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const userData = data as any;
                 setUserRole(userData.role);
                 setUserStatus(userData.status);
+                setUserName(userData.name);
                 setOrganizationId(userData.organization_id);
                 setOrganizationName(userData.organizations?.name || null);
                 refreshNotifications();
@@ -236,7 +239,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return (
         <AuthContext.Provider value={{
-            user, session, userRole, userStatus, organizationId, organizationName, loading,
+            user, userName, session, userRole, userStatus, organizationId, organizationName, loading,
             notificationCounts, refreshNotifications,
             signIn, signInWithPassword, signUpWithPassword, joinOrganization, signUp, signOut
         }}>

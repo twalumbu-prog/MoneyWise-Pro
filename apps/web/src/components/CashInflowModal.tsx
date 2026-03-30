@@ -125,11 +125,14 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
             return;
         }
 
+        const targetNet = Number(walletAmount);
+        const payableGross = targetNet / 0.99;
         const ref = `DEP-${Date.now()}-${lencoSubaccountId}-${organizationId}`;
         setCurrentReference(ref);
 
         console.log('Initiating Lenco deposit', {
-            amount: Number(walletAmount).toFixed(2),
+            targetNet: targetNet.toFixed(2),
+            payableGross: payableGross.toFixed(2),
             reference: ref,
             accountId: lencoSubaccountId,
             email: 'customer@example.com'
@@ -137,7 +140,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
  
         LencoPay.getPaid({
             key: lencoPublicKey || 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
-            amount: Number(walletAmount).toFixed(2), 
+            amount: payableGross.toFixed(2), 
             currency: 'ZMW',
             reference: ref,
             accountId: lencoSubaccountId,
@@ -462,9 +465,19 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                                     className="w-full pl-12 pr-6 py-5 bg-white border-2 border-pink-100 rounded-2xl focus:border-brand-pink focus:ring-4 focus:ring-brand-pink/10 outline-none transition-all text-2xl font-black text-brand-navy placeholder:text-gray-300"
                                                 />
                                             </div>
-                                            <p className="mt-4 text-sm text-gray-500 bg-white/50 p-4 rounded-xl italic">
-                                                You will be redirected to the secure Lenco payment gateway to complete your transaction via Card, Mobile Money, or Bank Transfer.
-                                            </p>
+                                            <div className="mt-4 space-y-2">
+                                                <div className="flex justify-between items-center bg-white/50 p-4 rounded-xl text-sm">
+                                                    <span className="text-gray-500 font-medium">Target Deposit</span>
+                                                    <span className="text-gray-900 font-bold">K {(Number(walletAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center bg-white/50 p-4 rounded-xl text-sm">
+                                                    <span className="text-gray-500 font-medium">Transaction Fee (1%)</span>
+                                                    <span className="text-brand-pink font-bold">+ K {((Number(walletAmount) / 0.99 - Number(walletAmount)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <p className="text-[10px] text-gray-400 italic px-2">
+                                                    You will be redirected to the secure Lenco payment gateway to pay the total amount of <strong>K {((Number(walletAmount) / 0.99) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> via Card or Mobile Money.
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -478,7 +491,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                             <div className="flex flex-col">
                                 <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Total {inflowType === 'CASH' ? 'Inflow' : 'Deposit'} Amount</span>
                                 <span className={`text-2xl font-black ${inflowType === 'CASH' ? 'text-emerald-600' : 'text-brand-pink'}`}>
-                                    K {(inflowType === 'CASH' ? totalAmount : Number(walletAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    K {(inflowType === 'CASH' ? totalAmount : (Number(walletAmount) / 0.99) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
                             <div className="flex space-x-3">

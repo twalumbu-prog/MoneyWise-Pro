@@ -10,7 +10,12 @@ import {
     submitChange,
     confirmChange,
     markRequisitionRead,
-    analyzeReceiptItem
+    analyzeReceiptItem,
+    getRequisitionMessages,
+    sendRequisitionMessage,
+    approveCategorization,
+    retriggerAICategorization,
+    postToQuickBooks
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -45,6 +50,13 @@ router.post('/:id/items/:itemId/analyze-receipt', analyzeReceiptItem);
 router.post('/:id/submit-change', submitChange);
 router.post('/:id/confirm-change', confirmChange);
 router.post('/:id/post-voucher', postVoucher);
+router.post('/:id/approve-categorization', approveCategorization);
+router.post('/:id/retrigger-ai', retriggerAICategorization);
+router.post('/:id/post-quickbooks', postToQuickBooks);
+
+// Message routes
+router.get('/:id/messages', getRequisitionMessages);
+router.post('/:id/messages', sendRequisitionMessage);
 
 // Standard routes
 router.post('/', createRequisition);

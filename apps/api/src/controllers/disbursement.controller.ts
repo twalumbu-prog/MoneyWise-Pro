@@ -6,6 +6,7 @@ import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
 import { ocrService } from '../services/ai/ocr.service';
 import { LencoService } from '../services/lenco.service';
+import { RequisitionMessageService } from '../services/requisition_message.service';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -33,21 +34,20 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 1. Atomic status check and lock
-
-        // We try to update the status to 'DISBURSED' only if it is currently 'AUTHORISED'.
-        // This prevents double-disbursement race conditions.
-        // We also fetch organization_id here to ensure we use the correct one for Lenco.
+        // We try to update the status to 'DISBURSED' only if it is currently 'AUTHORISED'
+        // AND it belongs to the requesting user's organization.
+        // This prevents double-disbursement race conditions AND cross-org disbursals.
         const { data: lockResult, error: lockError } = await supabase
             .from('requisitions')
             .update({ status: 'DISBURSED', updated_at: new Date().toISOString() })
             .eq('id', id)
             .eq('status', 'AUTHORISED')
+            .eq('organization_id', organizationId)   // ← Org boundary hard-enforced at DB level
             .select('estimated_total, organization_id');
-
 
         if (lockError || !lockResult || lockResult.length === 0) {
             return res.status(400).json({ 
-                error: 'Requisition cannot be disbursed. It may have already been processed or is not in AUTHORISED status.' 
+                error: 'Requisition cannot be disbursed. It may have already been processed, is not in AUTHORISED status, or does not belong to your organization.' 
             });
         }
 
@@ -56,8 +56,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         // 2. Validate Disbursement Amount
         const estimatedTotal = Number(requisition.estimated_total);
         const totalPreparedNum = Number(total_prepared);
-        const isWallet = payment_method === 'MONEYWISE_WALLET';
-        const totalDeduction = totalPreparedNum + (isWallet ? LENCO_TRANSACTION_FEE : 0);
+        const isDigital = payment_method === 'MONEYWISE_WALLET' || payment_method === 'MOBILE_MONEY';
+        const totalDeduction = totalPreparedNum + (isDigital ? LENCO_TRANSACTION_FEE : 0);
 
         if (totalPreparedNum < estimatedTotal) {
             return res.status(400).json({
@@ -88,9 +88,10 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             try {
                 // IDEMPOTENCY CHECK: Check if this reference already exists on Lenco
                 console.log(`[Lenco] Checking for existing transfer with reference: ${stableRef}`);
-                let statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
-                
+                let statusCheck;
                 let payout;
+                
+                statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
                 if (statusCheck) {
                     console.log(`[Lenco] Found existing transfer: ${statusCheck.status}. Using existing reference.`);
                     payout = statusCheck;
@@ -119,6 +120,12 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 }
                 
                 lencoReference = payout.reference;
+
+                // Handle immediate failure from Lenco (e.g. amount below minimum)
+                if (payout.status === 'failed') {
+                    const reason = payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco';
+                    throw new Error(reason);
+                }
                 
                 // Poll for status if we just created it or if it was pending
                 let attempts = 0;
@@ -131,10 +138,13 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 }
 
                 if (currentStatus === 'failed') {
-                    throw new Error(statusCheck?.message || 'Lenco reported transfer failure');
+                    // Use reasonForFailure from the status check or the payout itself
+                    const reason = statusCheck?.reasonForFailure || statusCheck?.message || payout.reasonForFailure || 'Lenco reported transfer failure';
+                    throw new Error(reason);
                 }
 
                 (req as any).lencoStatus = currentStatus;
+                (req as any).lencoFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
 
             } catch (payoutError: any) {
                 console.error('[Lenco Payout Failed] Error during wallet disbursal:', payoutError);
@@ -192,7 +202,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         // 4. Log Cash Disbursement in Cashbook
         const mainDescription = `${payment_method && payment_method !== 'CASH' ? payment_method : 'Cash'} disbursed for Requisition #${id.slice(0, 8)}`;
 
-        if (!isWallet) {
+        if (!isDigital) {
             // ONLY log immediate cashbook entry if it's NOT a wallet transfer.
             // Wallet transfers are logged in verifyDisbursementStatus once confirmed by Lenco.
             await cashbookService.logDisbursement(
@@ -204,6 +214,14 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 payment_method || 'CASH'
             );
 
+        } else if ((req as any).lencoStatus === 'successful') {
+            // CRITICAL: If the Wallet payout succeeded IMMEDIATELY during the initial call, 
+            // finalize the ledger now that the disbursement record has been securely created.
+            console.log(`[Lenco] Payout succeeded immediately for ${id}. Finalizing ledger post-record creation...`);
+            
+            // Extract actual fee if returned by Lenco
+            const actualFee = (req as any).lencoFee;
+            await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
         }
 
         // 5. Fee application is DEFERRED for Wallet transfers to avoid fake charges if it fails.
@@ -223,6 +241,37 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     disbursement_id: disbursementData.id
                 }
             });
+
+        // Consolidate into a single summary message
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId: cashier_id,
+            content: `Funds Disbursed: K${totalDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nMethod: ${payment_method || 'CASH'}\nRef: ${lencoReference || 'N/A'}\nStatus: ${ (req as any).lencoStatus === 'pending' ? 'PENDING' : 'SUCCESS' }`,
+            type: 'CHAT',
+            metadata: { 
+                isSummary: true, 
+                stage: 'DISBURSAL_SUCCESS',
+                disbursement_id: disbursementData.id,
+                payment_method
+            }
+        });
+
+        // Add a tiny delay to ensure distinct timestamps for sorting
+        await new Promise(resolve => setTimeout(resolve, 200));
+
+        // For Wallet/Mobile disbursements, we trigger the EXPENSE_TRACKING prompt IMMEDIATELY.
+        // We no longer wait for manual "acknowledgement" since the funds are transferred digitally.
+        if (payment_method === 'MONEYWISE_WALLET' || payment_method === 'MOBILE_MONEY') {
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: cashier_id,
+                content: `Funds received. Please record your expenditure and upload receipts.`,
+                type: 'SYSTEM',
+                metadata: { stage: 'EXPENSE_TRACKING' }
+            });
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
 
         res.json({
             message: (req as any).lencoStatus === 'pending' 
@@ -361,6 +410,14 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
                     changes: { from: 'DISBURSED', to: 'COMPLETED', auto_completed: true }
                 });
 
+            // Trigger system message
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: requestor_id,
+                content: 'Requisition completed (Auto-finalized)',
+                type: 'SYSTEM'
+            });
+
             res.json({
                 message: 'Cash receipt acknowledged and transaction completed (Loan/Advance)',
                 status: 'COMPLETED'
@@ -392,6 +449,15 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
                 user_id: requestor_id,
                 changes: { from: 'DISBURSED', to: 'RECEIVED' }
             });
+
+        // Trigger system message
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId: requestor_id,
+            content: 'Funds received and acknowledged',
+            type: 'SYSTEM',
+            metadata: { stage: 'EXPENSE_TRACKING' }
+        });
 
         res.json({
             message: 'Cash receipt acknowledged successfully',
@@ -576,7 +642,8 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
                 .maybeSingle();
 
             if (!existingLedger) {
-                await cashbookService.finalizeWalletDisbursementLedger(id);
+                const actualFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
+                await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
             }
 
             return res.json({ 

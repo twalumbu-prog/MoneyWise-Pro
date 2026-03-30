@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { LencoService } from './lenco.service';
 
 export interface CashbookEntry {
     id?: string;
@@ -18,6 +19,7 @@ export interface CashbookEntry {
     status?: 'PENDING' | 'COMPLETED' | 'DISBURSED';
     account_type?: string;
     organization_id?: string;
+    reference_number?: string;
 }
 
 export const cashbookService = {
@@ -104,6 +106,21 @@ export const cashbookService = {
      */
     async createEntry(organizationId: string, entry: Omit<CashbookEntry, 'id' | 'balance_after'>): Promise<CashbookEntry> {
         const accountType = entry.account_type || 'CASH';
+        let refNum = (entry as any).reference_number || null;
+
+        // Auto-generate reference for certain types if not provided
+        if (!refNum && ['INFLOW', 'RETURN', 'ADJUSTMENT'].includes(entry.entry_type)) {
+            const prefix = entry.entry_type === 'INFLOW' ? 'CR' : 
+                          entry.entry_type === 'RETURN' ? 'RT' : 'ADJ';
+            
+            const { data } = await supabase.rpc('generate_sequential_reference', {
+                p_org_id: organizationId,
+                p_entity_type: entry.entry_type,
+                p_prefix: prefix
+            });
+            refNum = data;
+        }
+
         // 1. Insert the entry first (we'll fix balance in a moment)
         const { data, error } = await supabase
             .from('cashbook_entries')
@@ -111,6 +128,7 @@ export const cashbookService = {
                 ...entry,
                 organization_id: organizationId,
                 account_type: accountType,
+                reference_number: refNum,
                 balance_after: 0
             })
             .select()
@@ -181,11 +199,9 @@ export const cashbookService = {
 
     /**
      * Finalize the ledger for a successful Wallet disbursement (Lenco payout)
-     * Handles creating the Cashbook Entry and appending the K8.5 fee to the requisition.
+     * Handles creating the Cashbook Entry and appending the transaction fee to the requisition.
      */
-    async finalizeWalletDisbursementLedger(requisitionId: string): Promise<void> {
-        const LENCO_TRANSACTION_FEE = 8.5;
-
+    async finalizeWalletDisbursementLedger(requisitionId: string, actualFee?: number): Promise<void> {
         // 1. Fetch disbursement record
         const { data: disbursement, error: disbError } = await supabase
             .from('disbursements')
@@ -197,6 +213,11 @@ export const cashbookService = {
             console.error(`[Ledger Finalization] Disbursement record not found for requisition ${requisitionId}`);
             return;
         }
+
+        // Determine fee: Use actualFee if provided, else calculate estimate, else fallback K8.5
+        const amount = Number(disbursement.total_prepared);
+        const feeToUse = actualFee !== undefined ? actualFee : 
+                        LencoService.calculatePayoutFee(amount, disbursement.payment_method || 'BANK');
 
         // 2. Prevent Double Entry
         const { data: existingLedger } = await supabase
@@ -211,10 +232,10 @@ export const cashbookService = {
             return;
         }
 
-        console.log(`[Ledger Finalization] Finalizing ledger for ${requisitionId}...`);
+        console.log(`[Ledger Finalization] Finalizing ledger for ${requisitionId} with fee ${feeToUse}...`);
         
         // A. Log Cashbook Entry
-        const totalDeduction = Number(disbursement.total_prepared);
+        const totalDeduction = amount;
         const mainDescription = `${disbursement.payment_method} disbursed for Requisition #${requisitionId.slice(0, 8)}`;
         
         await this.logDisbursement(
@@ -227,14 +248,16 @@ export const cashbookService = {
         );
 
         // B. Add withdrawal fee line item
+        const chargesAccountId = await this.getOrCreateTransactionChargesAccount(disbursement.organization_id);
+        
         await supabase.from('line_items').insert({
             requisition_id: requisitionId,
-            description: 'Withdrawal Fee (MoneyWise Wallet)',
+            description: `Withdrawal Fee (${disbursement.payment_method || 'Wallet'})`,
             quantity: 1,
-            unit_price: LENCO_TRANSACTION_FEE,
-            estimated_amount: LENCO_TRANSACTION_FEE,
-            actual_amount: LENCO_TRANSACTION_FEE,
-            account_id: '0dbe62e3-2917-4e4b-9620-6394f0029c1d' // "Transaction Charges" account
+            unit_price: feeToUse,
+            estimated_amount: feeToUse,
+            actual_amount: feeToUse,
+            account_id: chargesAccountId
         });
 
         // C. Update Requisition header to include the fee
@@ -242,8 +265,8 @@ export const cashbookService = {
         const currentActual = disbursement.requisitions?.actual_total ? Number(disbursement.requisitions?.actual_total) : null;
         
         await supabase.from('requisitions').update({
-            estimated_total: currentEstimated + LENCO_TRANSACTION_FEE,
-            actual_total: currentActual ? currentActual + LENCO_TRANSACTION_FEE : null
+            estimated_total: currentEstimated + feeToUse,
+            actual_total: currentActual ? currentActual + feeToUse : null
         }).eq('id', requisitionId);
 
         console.log(`[Ledger Finalization] Ledger finalized for ${requisitionId}.`);
@@ -692,5 +715,46 @@ export const cashbookService = {
             .select();
 
         return { data, error };
+    },
+
+    /**
+     * Finds or creates the standard "Transaction Charges" expense account for an organization.
+     */
+    async getOrCreateTransactionChargesAccount(organizationId: string): Promise<string> {
+        // 1. Try to find the account
+        const { data: existing, error } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('organization_id', organizationId)
+            // Look for common variants
+            .or('name.ilike.Transaction Charges,name.ilike.Bank charges,name.ilike.Withdrawal charges')
+            .limit(1)
+            .maybeSingle();
+
+        if (existing) {
+            return existing.id;
+        }
+
+        // 2. Create if missing
+        console.log(`[Ledger] Creating 'Transaction Charges' account for org ${organizationId}`);
+        const { data: newAccount, error: createError } = await supabase
+            .from('accounts')
+            .insert({
+                organization_id: organizationId,
+                name: 'Transaction Charges',
+                type: 'EXPENSE',
+                code: 'QB-28', // Standardizing on the QB-28 code the user mentioned
+                description: 'Automated bank and transaction fees'
+            })
+            .select('id')
+            .single();
+
+        if (createError) {
+            console.error(`[Ledger] FAILED to create charges account for ${organizationId}:`, createError);
+            // Even if it fails, the transaction will just be uncategorized (null), handled gracefully in UI.
+            return '';
+        }
+
+        return newAccount.id;
     }
 };

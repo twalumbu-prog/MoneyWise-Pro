@@ -24,6 +24,9 @@ export const aiService = {
     async suggestBatch(accounts: any[], lineItems: any[]): Promise<SuggestionResult[]> {
         console.log(`[AI Service] suggestBatch: Processing ${lineItems.length} items.`);
 
+        // 1. Ensure rules are loaded
+        await ruleEngine.loadRules();
+
         // Controlled concurrency: process in chunks of 5
         const CHUNK_SIZE = 5;
         const allResults: SuggestionResult[] = [];
@@ -40,35 +43,42 @@ export const aiService = {
 
     async classifyItem(accounts: any[], item: { description: string, amount: number }): Promise<SuggestionResult> {
         if (AI_TEST_MODE) {
+            // ... (keep mock logic)
             const desc = item.description.toLowerCase();
-            console.log(`[AI-TEST-MODE] AI Suggestion: ${item.description}`);
-
-            // Stress Test Suite Keywords
             if (desc.includes('kfc') || desc.includes('subway') || desc.includes('pizza') || desc.includes('diner')) return { account_code: '1001', confidence: 0.95, reasoning: 'MOCK: Staff Meal AI', method: 'AI' };
             if (desc.includes('microsoft') || desc.includes('amazon') || desc.includes('oracle') || desc.includes('zesco')) return { account_code: '4000', confidence: 0.95, reasoning: 'MOCK: Vendor AI', method: 'AI' };
             if (desc.includes('office') || desc.includes('stationery') || desc.includes('paper')) return { account_code: '6101', confidence: 0.95, reasoning: 'MOCK: Office Supplies AI', method: 'AI' };
             if (desc.includes('uber') || desc.includes('emirates') || desc.includes('hilton') || desc.includes('cab')) return { account_code: '6200', confidence: 0.95, reasoning: 'MOCK: Travel AI', method: 'AI' };
             if (desc.includes('water') || desc.includes('electric') || desc.includes('waste')) return { account_code: '6100', confidence: 0.98, reasoning: 'MOCK: Utility AI', method: 'AI' };
             if (desc.includes('consulting') || desc.includes('fee') || desc.includes('sale') || desc.includes('revenue')) return { account_code: '4100', confidence: 0.98, reasoning: 'MOCK: Income AI', method: 'AI' };
-
-            // Combined Scenarios & Boundary legacy keywords
-            if (desc.includes('utility')) return { account_code: '6100', confidence: 1.0, reasoning: 'MOCK: High confidence AI', method: 'AI' };
-            if (desc.includes('software')) return { account_code: '6200', confidence: 0.85, reasoning: 'MOCK: Medium confidence AI', method: 'AI' };
-            if (desc.includes('refund')) return { account_code: '4100', confidence: 0.85, reasoning: 'MOCK: Rule candidate', method: 'AI' };
-            if (desc.includes('miscellaneous')) return { account_code: '6900', confidence: 0.80, reasoning: 'MOCK: Medium-low conf AI', method: 'AI' };
-            if (desc.includes('transfer')) return { account_code: '1002', confidence: 0.95, reasoning: 'MOCK: High risk transfer', method: 'AI' };
-            if (desc.includes('subscription')) {
-                const confidence = desc.includes('recurring') ? 1.0 : 0.95;
-                return { account_code: '6300', confidence, reasoning: 'MOCK: Subscription learning candidate', method: 'AI' };
-            }
-            if (desc.includes('unknown')) return { account_code: '9000', confidence: 0.50, reasoning: 'MOCK: Unknown fallback', method: 'AI' };
-            if (desc.includes('promotional')) return { account_code: '4500', confidence: 1.0, reasoning: 'MOCK: Zero amount rule candidate', method: 'AI' };
-            if (desc.includes('employee')) return { account_code: '6500', confidence: 0.85, reasoning: 'MOCK: Review required employee reimbursement', method: 'AI' };
-            if (desc.includes('valid transaction')) return { account_code: '1234', confidence: 0.95, reasoning: 'MOCK: Valid transaction for learning', method: 'AI' };
-
             return { account_code: '9999', confidence: 0.50, reasoning: 'MOCK: Generic fallback', method: 'AI' };
         }
 
+        // TIER 1: Rule Engine (Pattern Matching) - Highest Priority
+        const ruleMatch = ruleEngine.match(item.description, item.amount);
+        if (ruleMatch.matched && ruleMatch.accountId) {
+            console.log(`[AI Service] Rule Match: ${item.description} -> ${ruleMatch.accountId}`);
+            return {
+                account_code: ruleMatch.accountId,
+                confidence: ruleMatch.confidence,
+                reasoning: ruleMatch.reasoning,
+                method: 'RULE'
+            };
+        }
+
+        // TIER 2: Memory Service (Historical Learning) - Second Priority
+        const memoryMatch = await memoryService.lookup({ description: item.description, amount: item.amount });
+        if (memoryMatch) {
+            console.log(`[AI Service] Memory Match: ${item.description} -> ${memoryMatch.account_id}`);
+            return {
+                account_code: memoryMatch.account_id,
+                confidence: memoryMatch.confidence,
+                reasoning: 'Matched historical transaction memory.',
+                method: 'MEMORY'
+            };
+        }
+
+        // TIER 3: AI Models (Ensemble Inference) - Fallback
         const timeout = <T>(promise: Promise<T>, ms: number, name: string): Promise<T> => {
             return new Promise((resolve, reject) => {
                 const timer = setTimeout(() => reject(new Error(`${name} timed out after ${ms}ms`)), ms);
@@ -111,19 +121,31 @@ export const aiService = {
 
         // Run in parallel
         const results = await Promise.all(aiPromises);
-        const validResults = results.filter(r => r && r.account_code);
+
+        // Filter results: MUST be in the provided accounts list
+        const validResults = results.filter((r: SuggestionResult) => {
+            if (!r || !r.account_code) return false;
+            // Ensure the code exists in our provided list
+            const exists = accounts.some((a: any) => String(a.code) === String(r.account_code));
+            if (!exists && r.account_code !== 'UNCATEGORIZED') {
+                console.warn(`[AI Service] Hallucination detected: AI suggested ${r.account_code} but it is not in the COA. Filtering out.`);
+                return false;
+            }
+            return true;
+        });
 
         if (validResults.length === 0) {
+            console.warn(`[AI Service] No valid suggestions from ensemble (all hallucinations or failures).`);
             return {
-                account_code: null,
+                account_code: 'UNCATEGORIZED',
                 confidence: 0,
-                reasoning: 'AI ensemble failed or no models configured.',
+                reasoning: `The AI suggested generic codes (${results.map((r: any) => r?.account_code).join(', ')}) instead of matching your specific chart of accounts. Please select the category manually.`,
                 method: 'AI-FAILED'
             };
         }
 
         // Rank by confidence (descending)
-        return validResults.sort((a, b) => b.confidence - a.confidence)[0];
+        return validResults.sort((a: SuggestionResult, b: SuggestionResult) => b.confidence - a.confidence)[0];
     },
 
     async callOpenAI(description: string, accounts: any[]) {

@@ -15,8 +15,8 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
         }
 
         // Determine which requisitions to include
-        // The user requested that ONLY COMPLETED transactions should be included in the reports
-        const allowedStatuses = ['COMPLETED'];
+        // INCLUDE CATEGORIZED: User wants to see impact immediately after approval
+        const allowedStatuses = ['CATEGORIZED', 'COMPLETED'];
 
         // Get all line items for requisitions in the allowed statuses and date range
         // Since we don't have a transaction date on line items, we'll use the requisition updated_at or created_at
@@ -25,7 +25,8 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
             .from('line_items')
             .select(`
                 *,
-                requisition:requisitions!inner(id, status, created_at, updated_at)
+                requisition:requisitions!inner(id, status, created_at, updated_at, organization_id),
+                accounts ( id, name, code )
             `)
             .eq('requisition.organization_id', organization_id)
             .in('requisition.status', allowedStatuses)
@@ -40,9 +41,11 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
         const expenditures = new Map<string, any>();
 
         for (const item of (lineItems || [])) {
-            // Fallback for missing QB account - we still want to track them as "Uncategorized"
+            // Priority: QB ID -> Local ID -> 'UNCATEGORIZED'
             const accountId = item.qb_account_id || item.account_id || 'UNCATEGORIZED';
-            const accountName = item.qb_account_name || 'Uncategorized Expense';
+            
+            // Priority: QB Name -> Local Account Name -> Fallback
+            const accountName = item.qb_account_name || (item as any).accounts?.name || 'Uncategorized Expense';
             
             const amount = Number(item.actual_amount || item.estimated_amount || 0);
 
@@ -77,23 +80,30 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'Organization context missing' });
         }
 
-        // Include only completed transactions as per user request
-        const allowedStatuses = ['COMPLETED'];
+        // Include both categorized and completed transactions
+        const allowedStatuses = ['CATEGORIZED', 'COMPLETED'];
+
+        // Identify if accountId is a UUID to avoid database casting errors
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
 
         let query = supabase
             .from('line_items')
             .select(`
                 *,
-                requisition:requisitions!inner(id, reference_number, status, description, created_at, updated_at, requestor_id, users(name))
+                requisition:requisitions!inner(id, reference_number, status, description, created_at, updated_at, requestor_id, requestor:users!requestor_id(name)),
+                accounts(id, name, code)
             `)
             .eq('requisition.organization_id', organization_id)
             .in('requisition.status', allowedStatuses);
 
         if (accountId === 'UNCATEGORIZED') {
             query = query.is('qb_account_id', null).is('account_id', null);
-        } else {
-            // line_items has qb_account_id
+        } else if (isUuid) {
+            // Check both fields if it's a UUID
             query = query.or(`qb_account_id.eq.${accountId},account_id.eq.${accountId}`);
+        } else {
+            // Not a UUID, so it must be a QuickBooks account ID or similar string
+            query = query.eq('qb_account_id', accountId);
         }
 
         if (startDate) query = query.gte('requisition.updated_at', startDate);
@@ -112,7 +122,7 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
             requisition_id: item.requisition.id,
             requisition_ref: item.requisition.reference_number,
             requisition_desc: item.requisition.description,
-            requestor_name: item.requisition.users?.name || 'Unknown'
+            requestor_name: item.requisition.requestor?.name || 'Unknown'
         }));
 
         res.json(items);

@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import * as ruleController from '../controllers/rule.controller';
 import * as metricsController from '../controllers/metrics.controller';
+import * as aiController from '../controllers/ai.controller';
 
 const router = Router();
+
+// Assistant & Intelligence
+router.post('/assistant', requireAuth, aiController.assistantChat);
 
 // Rule Management (Admin/Accountant only)
 router.get('/rules', requireAuth, requireRole(['ADMIN', 'ACCOUNTANT']), ruleController.getRules);

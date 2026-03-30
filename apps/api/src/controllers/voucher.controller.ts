@@ -84,6 +84,18 @@ export const createVoucherFromRequisition = async (req: any, res: any): Promise<
 
         const totalAmount = requisition.actual_total || requisition.estimated_total;
 
+        // Generate Sequential Reference (PV for Payment Voucher)
+        const { data: refNum, error: refError } = await supabase
+            .rpc('generate_sequential_reference', {
+                p_org_id: organization_id,
+                p_entity_type: 'VOUCHER',
+                p_prefix: 'PV'
+            });
+
+        if (refError) {
+            console.error('Error generating voucher reference number:', refError);
+        }
+
         // 2. Create Voucher Header
         const { data: voucher, error: vError } = await supabase
             .from('vouchers')
@@ -91,7 +103,7 @@ export const createVoucherFromRequisition = async (req: any, res: any): Promise<
                 requisition_id,
                 organization_id,
                 created_by: user_id,
-                reference_number: `VOU-${Date.now()}`,
+                reference_number: refNum || `VOU-${Date.now()}`,
                 total_debit: totalAmount,
                 total_credit: totalAmount,
                 status: 'DRAFT'
