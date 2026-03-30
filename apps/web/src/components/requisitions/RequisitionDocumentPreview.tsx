@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 import { Requisition } from '../../services/requisition.service';
 import { 
@@ -24,6 +25,44 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
 }) => {
     
     const renderDocument = () => {
+        if (type === 'all') {
+            const status = requisition.status || 'DRAFT';
+            return (
+                <div className="flex flex-col space-y-[4rem] print:space-y-0 bg-transparent">
+                    {/* PR Form */}
+                    {!['DRAFT', 'PENDING_APPROVAL'].includes(status) && (
+                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                            <PurchaseRequisitionForm requisition={requisition} />
+                        </div>
+                    )}
+                    {/* POP Proof */}
+                    {!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED'].includes(status) && (
+                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                            <CashDisbursalProof requisition={requisition} />
+                        </div>
+                    )}
+                    {/* Expense Summary */}
+                    {!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED', 'DISBURSED', 'EXPENSED'].includes(status) && (
+                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                            <ExpenseVarianceForm requisition={requisition} />
+                        </div>
+                    )}
+                    {/* Accounting Treatment */}
+                    {!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED', 'DISBURSED', 'EXPENSED', 'RECEIVED', 'CATEGORIZING'].includes(status) && (
+                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                            <AccountingTreatmentForm requisition={requisition} />
+                        </div>
+                    )}
+                    {/* QB Sync */}
+                    {['ACCOUNTED', 'COMPLETED'].includes(status) && (
+                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                            <QuickBooksSyncLog requisition={requisition} />
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
         switch (type) {
             case 'pr_form':
                 return <PurchaseRequisitionForm requisition={requisition} />;
@@ -41,11 +80,12 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
     };
 
     const handlePrint = () => {
+        // Ensuring scroll is lifted to true top before print
         window.print();
     };
 
-    return (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 md:p-10">
+    const modalContent = (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 md:p-10 print:block print:relative print:inset-auto print:p-0">
             {/* Backdrop */}
             <div 
                 className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300"
@@ -53,7 +93,7 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
             />
 
             {/* Preview Container */}
-            <div className="relative bg-[#F5F5F7] w-full max-w-5xl h-full max-h-[95vh] rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-400 border border-white/20">
+            <div className="relative bg-[#F5F5F7] w-full max-w-5xl h-full max-h-[95vh] rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-400 border border-white/20 print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:bg-white print:rounded-none print:block">
                 
                 {/* Modern Floating Header */}
                 <div className="absolute top-6 left-6 right-6 z-20 flex items-center justify-between px-6 py-3 bg-white/80 backdrop-blur-md rounded-2xl border border-white shadow-lg shadow-black/5">
@@ -85,9 +125,9 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
                 </div>
 
                 {/* Main Scrollable Area for Paper */}
-                <div className="flex-1 overflow-y-auto p-12 pt-32 pb-20 no-scrollbar">
+                <div className="flex-1 overflow-y-auto p-12 pt-32 pb-20 no-scrollbar print:overflow-visible print:h-auto print:flex-none print:p-0 print:block">
                     {/* Centered Paper Layout */}
-                    <div className="mx-auto max-w-[850px] shadow-2xl shadow-black/10 rounded-[4px] bg-white overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:w-full print:ring-0">
+                    <div className={`mx-auto max-w-[850px] ${type === 'all' ? '' : 'shadow-2xl shadow-black/10 rounded-[4px] bg-white overflow-hidden ring-1 ring-gray-900/5'} print:shadow-none print:w-full print:ring-0`}>
                         {renderDocument()}
                     </div>
                 </div>
@@ -101,22 +141,43 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
             {/* Print Injected Styles */}
             <style>{`
                 @media print {
+                    @page {
+                        size: auto;
+                        margin: 0.5cm;
+                    }
+                    body, html {
+                        height: max-content !important;
+                        overflow: visible !important;
+                        background: white !important;
+                    }
+                    /* Hide everything in root but keep the portal visible */
+                    #root {
+                        display: none !important;
+                    }
                     body * {
                         visibility: hidden;
                     }
                     .fixed.inset-0.z-\\[60\\] {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        padding: 0;
-                        margin: 0;
-                        height: auto;
-                        width: 100%;
+                        position: absolute !important;
+                        left: 0 !important;
+                        top: 0 !important;
+                        padding: 0 !important;
+                        margin: 0 !important;
+                        height: auto !important;
+                        width: 100% !important;
                         background: none !important;
                         backdrop-filter: none !important;
+                        display: block !important;
+                        overflow: visible !important;
                     }
-                    .fixed.inset-0.z-\\[60\\] * {
-                        visibility: visible;
+                    .fixed.inset-0.z-\\[60\\] *, .print-override * {
+                        visibility: visible !important;
+                    }
+                    .print-page {
+                        page-break-after: always;
+                    }
+                    .print-page:last-child {
+                        page-break-after: auto;
                     }
                     .printable-document {
                         box-shadow: none !important;
@@ -135,14 +196,12 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
                     .rounded-\\[4px\\] {
                         border-radius: 0 !important;
                     }
-                    @page {
-                        size: A4;
-                        margin: 0;
-                    }
                 }
             `}</style>
         </div>
     );
+
+    return createPortal(modalContent, document.body);
 };
 
 export default RequisitionDocumentPreview;

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Requisition } from '../../services/requisition.service';
-import { Lock } from 'lucide-react';
+import { Lock, FileDown } from 'lucide-react';
 import RequisitionDocumentPreview from './RequisitionDocumentPreview';
 
 interface RequisitionAttachmentsProps {
@@ -52,6 +52,22 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({ requisi
     return (
         <div className="flex-1 overflow-y-auto bg-[#E6F2FE] p-8">
             <div className="max-w-3xl mx-auto">
+                <div className="flex items-center justify-between xl:-mr-12 mb-6 animate-in fade-in duration-300">
+                    <div>
+                        <h3 className="text-xl font-black text-gray-900 tracking-tight">Audit Trail</h3>
+                        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">System Generated Documents</p>
+                    </div>
+                    {docs.some(d => d.isAvailable) && (
+                        <button
+                            onClick={() => setPreviewDoc({ type: 'all', title: 'Complete Audit Trail' })}
+                            className="h-11 px-6 bg-[#006AFF] hover:bg-[#0052cc] text-white rounded-full text-sm font-bold shadow-xl shadow-blue-500/20 transition-all flex items-center space-x-2"
+                        >
+                            <FileDown size={18} />
+                            <span>Combine to PDF</span>
+                        </button>
+                    )}
+                </div>
+
                 <div className="bg-white rounded-3xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] border border-gray-100 px-10 py-10">
                     {docs.map((doc, index) => (
                         <div key={doc.id} className="relative flex items-center">
