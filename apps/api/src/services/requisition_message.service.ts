@@ -55,7 +55,43 @@ export class RequisitionMessageService {
 
         if (error) throw error;
 
-        if (!data) return [];
+        // Lazy Initialization: If no messages exist, create the initial system message
+        if (!data || data.length === 0) {
+            console.log(`[RequisitionMessageService] No messages found for ${requisitionId}. Initializing...`);
+            
+            // 1. Fetch requisition to get context
+            const { data: req } = await supabase
+                .from('requisitions')
+                .select('requestor_id, status')
+                .eq('id', requisitionId)
+                .single();
+
+            if (req) {
+                // 2. Create the appropriate starting message
+                let stage = 'APPROVAL';
+                let content = 'Requisition submitted for approval';
+
+                // Map status to stage if it's already past initial approval
+                if (['AUTHORISED', 'DISBURSED', 'EXPENSED'].includes(req.status)) {
+                    stage = 'DISBURSAL';
+                    content = 'Status updated to AUTHORISED';
+                }
+
+                try {
+                    const initialMsg = await this.createMessage({
+                        requisitionId,
+                        userId: req.requestor_id,
+                        content,
+                        type: 'SYSTEM',
+                        metadata: { stage }
+                    });
+                    return [initialMsg];
+                } catch (createErr) {
+                    console.error('[RequisitionMessageService] Failed to lazy init message:', createErr);
+                    return [];
+                }
+            }
+        }
 
         return data.map((m: any) => ({
             ...m,
