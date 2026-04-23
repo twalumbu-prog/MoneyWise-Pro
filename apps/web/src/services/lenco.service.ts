@@ -211,7 +211,7 @@ export const lencoService = {
     /**
      * Calculate estimated payout fee based on Zambian tariff tiers
      */
-    calculatePayoutFee(amount: number, type: 'MOBILE_MONEY' | 'BANK' | string): number {
+    calculatePayoutFee(amount: number, _type: 'MOBILE_MONEY' | 'BANK' | string): number {
         // Updated tiered pricing based on Lenco V2 actuals for Zambia
         if (amount <= 150) return 8.50;
         if (amount <= 300) return 10.00;

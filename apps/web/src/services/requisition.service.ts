@@ -1,7 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { apiFetch } from '../lib/api';
 
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+
 
 interface LineItem {
     id?: string;
@@ -65,6 +65,7 @@ export interface Requisition {
         lenco_subaccount_id: string;
         lenco_public_key: string;
     };
+    receipts?: any[];
 }
 export const REQUISITION_STATUS_CONFIG: Record<string, { 
     label: string, 

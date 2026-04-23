@@ -6,8 +6,7 @@ import {
     CheckCircle, 
     AlertCircle, 
     Loader2, 
-    Save,
-    CreditCard
+    Save
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 

@@ -45,7 +45,7 @@ export const RequisitionList: React.FC = () => {
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [currentView, setCurrentView] = useState<'active' | 'history'>('active');
+    const [currentView] = useState<'active' | 'history'>('active');
     const [selectedRequisition, setSelectedRequisition] = useState<RequisitionType | null>(null);
     const [viewMode, setViewMode] = useState<'inbox' | 'scheduled'>('inbox');
     const [searchQuery, setSearchQuery] = useState('');

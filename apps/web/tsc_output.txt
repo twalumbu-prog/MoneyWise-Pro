@@ -1,0 +1,26 @@
+src/App.tsx(5,1): error TS6133: 'Dashboard' is declared but its value is never read.
+src/components/Layout.tsx(4,55): error TS6133: 'ChevronLeft' is declared but its value is never read.
+src/components/Layout.tsx(4,68): error TS6133: 'ChevronRight' is declared but its value is never read.
+src/components/Layout.tsx(17,12): error TS6133: 'isSidebarCollapsed' is declared but its value is never read.
+src/components/Layout.tsx(17,32): error TS6133: 'setIsSidebarCollapsed' is declared but its value is never read.
+src/components/requisitions/MobileRequisitionWizard.tsx(2,42): error TS6133: 'Minus' is declared but its value is never read.
+src/components/requisitions/MobileRequisitionWizard.tsx(2,57): error TS6133: 'ChevronDown' is declared but its value is never read.
+src/components/requisitions/MobileRequisitionWizard.tsx(2,70): error TS6133: 'Check' is declared but its value is never read.
+src/components/requisitions/MobileRequisitionWizard.tsx(2,149): error TS6133: 'FileText' is declared but its value is never read.
+src/components/requisitions/MobileRequisitionWizard.tsx(2,159): error TS6133: 'CreditCard' is declared but its value is never read.
+src/components/requisitions/MobileRequisitionWizard.tsx(243,98): error TS2339: Property 'name' does not exist on type 'User'.
+src/components/requisitions/RequisitionMessageCard.tsx(5,189): error TS6133: 'Trash2' is declared but its value is never read.
+src/components/requisitions/RequisitionMessageCard.tsx(45,12): error TS6133: 'scannedImageUrls' is declared but its value is never read.
+src/components/requisitions/RequisitionMessageCard.tsx(45,30): error TS6133: 'setScannedImageUrls' is declared but its value is never read.
+src/components/requisitions/RequisitionMessageCard.tsx(1340,55): error TS6133: 'change' is declared but its value is never read.
+src/components/requisitions/RequisitionMessageCard.tsx(2017,53): error TS2322: Type 'string | undefined' is not assignable to type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+src/components/settings/MyProfileSettings.tsx(10,5): error TS6133: 'CreditCard' is declared but its value is never read.
+src/pages/CashierDashboard.tsx(977,442): error TS2304: Cannot find name 'LENCO_FEE'.
+src/pages/RequisitionList.tsx(48,25): error TS6133: 'setCurrentView' is declared but its value is never read.
+src/services/ai.service.ts(1,1): error TS6133: 'supabase' is declared but its value is never read.
+src/services/ai.service.ts(4,7): error TS6133: 'API_URL' is declared but its value is never read.
+src/services/cashbook.service.ts(1,1): error TS6133: 'supabase' is declared but its value is never read.
+src/services/cashbook.service.ts(4,7): error TS6133: 'API_URL' is declared but its value is never read.
+src/services/lenco.service.ts(214,40): error TS6133: 'type' is declared but its value is never read.
+src/services/requisition.service.ts(4,7): error TS6133: 'API_URL' is declared but its value is never read.

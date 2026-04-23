@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { RequisitionMessage, requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
-import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Trash2, Sparkles } from 'lucide-react';
+import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles } from 'lucide-react';
 import { accountService, Account } from '../../services/account.service';
 import { integrationService } from '../../services/integration.service';
 import heic2any from 'heic2any';
@@ -42,7 +42,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [isSavingExpenses, setIsSavingExpenses] = useState(false);
     const [isExpenseExpanded, setIsExpenseExpanded] = useState(false);
     const [isScanning, setIsScanning] = useState(false);
-    const [scannedImageUrls, setScannedImageUrls] = useState<string[]>([]);
+    // Removed unused scannedImageUrls state
     const [expandedReceiptId, setExpandedReceiptId] = useState<string | null>(null);
     
     // AI Review State
@@ -1336,8 +1336,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         onClick={async () => {
                                             try {
                                                 setIsSavingExpenses(true);
-                                                const actualTotal = expenseItems.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0);
-                                                const change = (requisitionData.estimated_total || 0) - actualTotal;
+                                                
+                                                
                                                 
                                                 await requisitionService.updateExpenses(requisitionData.id, expenseItems.map((i: any) => ({
                                                     id: i.id,
@@ -2014,7 +2014,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             try {
                                                 setIsPostingQB(true);
                                                 await requisitionService.postToQuickBooks(requisitionData?.id || message.requisition_id, {
-                                                    payment_account_id: paymentAccountId || undefined,
+                                                    payment_account_id: paymentAccountId || '',
                                                     payment_account_name: creditAccountName
                                                 });
                                                 if (onAction) onAction('REFRESH');

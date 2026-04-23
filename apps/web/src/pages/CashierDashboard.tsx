@@ -974,7 +974,7 @@ export const CashierDashboard: React.FC = () => {
                                         </div>
                                         <button
                                             onClick={handleDisburse}
-                                            disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && paymentMethod !== 'MONEYWISE_WALLET' && !transferProofFile) || (paymentMethod === 'MONEYWISE_WALLET' && (!recipientAccount || !recipientBankCode || (walletBalance !== null && (Number(selectedReq.estimated_total) + LENCO_FEE) > walletBalance)))}
+                                            disabled={processing || (paymentMethod === 'CASH' ? calculateTotal(denominations) : Number(transferAmount || 0)) < Number(selectedReq.estimated_total) || (paymentMethod !== 'CASH' && paymentMethod !== 'MONEYWISE_WALLET' && !transferProofFile) || (paymentMethod === 'MONEYWISE_WALLET' && (!recipientAccount || !recipientBankCode || (walletBalance !== null && (Number(selectedReq.estimated_total) + lencoService.calculatePayoutFee(Number(selectedReq.estimated_total), 'MONEYWISE_WALLET')) > walletBalance)))}
                                             className="w-full flex items-center justify-center px-6 py-4 border border-transparent text-lg font-bold rounded-xl text-white bg-brand-navy hover:bg-brand-navy/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-navy disabled:bg-gray-400 disabled:cursor-not-allowed shadow-[0_4px_0_0_rgba(0,0,0,0.1)] active:translate-y-0.5 active:shadow-none transition-all"
                                         >
                                             {processing ? (

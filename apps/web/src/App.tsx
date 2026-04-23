@@ -2,7 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
+// src/App.tsx unused Dashboard removed
 import { RequisitionList } from './pages/RequisitionList';
 import { RequisitionCreate } from './pages/RequisitionCreate';
 import { Approvals } from './pages/Approvals';

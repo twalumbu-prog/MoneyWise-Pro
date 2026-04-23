@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, ArrowLeft, X, Plus, Minus, Trash2, ChevronDown, Check, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, FileText, CreditCard, Mail } from 'lucide-react';
+import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { useAuth } from '../../context/AuthContext';
@@ -45,7 +45,7 @@ const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
 );
 
 export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = ({ isOpen, onClose, onSuccess }) => {
-    const { user } = useAuth();
+    const { user, userName } = useAuth();
     const [activeTab, setActiveTab] = useState<WizardTab>('basic');
     const [stage, setStage] = useState<Stage>(1);
 
@@ -240,7 +240,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                     ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_name || undefined))
                     : (paymentMethod === 'bank' ? bankId : (paymentMethod === 'mobile' ? momoOperator : undefined)),
                 recipient_name: useMyAccount 
-                    ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || user?.name)
+                    ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
                     : resolvedName
             };
             await requisitionService.create(data);

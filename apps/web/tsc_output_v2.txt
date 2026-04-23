@@ -1,0 +1,4 @@
+src/App.tsx(5,1): error TS6133: 'Dashboard' is declared but its value is never read.
+src/components/requisitions/RequisitionMessageCard.tsx(1340,55): error TS6133: 'change' is declared but its value is never read.
+src/components/settings/MyProfileSettings.tsx(10,5): error TS6133: 'CreditCard' is declared but its value is never read.
+src/pages/RequisitionList.tsx(48,25): error TS6133: 'setCurrentView' is declared but its value is never read.

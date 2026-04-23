@@ -11,6 +11,7 @@ export interface Account {
     description: string;
     is_active: boolean;
     organization_id?: string;
+    qb_account_id?: string;
 }
 
 export const accountService = {

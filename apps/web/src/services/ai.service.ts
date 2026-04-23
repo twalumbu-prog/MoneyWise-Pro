@@ -1,7 +1,4 @@
-import { supabase } from '../lib/supabase';
 import { apiFetch } from '../lib/api';
-
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 export interface AccountingRule {
     id: string;

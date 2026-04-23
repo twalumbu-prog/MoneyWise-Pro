@@ -7,6 +7,7 @@ export interface IntegrationStatus {
     companyName?: string;
     lastSync?: string;
     details?: any;
+    config?: any;
 }
 
 export const integrationService = {

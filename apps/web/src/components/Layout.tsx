@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Settings, LogOut, Wallet, Menu, X, ChevronLeft, ChevronRight, BarChart3, PieChart, ShieldCheck } from 'lucide-react';
+import { FileText, Settings, LogOut, Wallet, Menu, X, BarChart3, PieChart, ShieldCheck } from 'lucide-react';
 import { TopNavbar } from './TopNavbar';
 import { SubNavbar } from './SubNavbar';
 
@@ -14,7 +14,6 @@ interface LayoutProps {
 export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F8F9FA]', noPadding = false }) => {
     const { user, userRole, signOut, organizationName, notificationCounts } = useAuth();
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const location = useLocation();
 
     const handleSignOut = async () => {
