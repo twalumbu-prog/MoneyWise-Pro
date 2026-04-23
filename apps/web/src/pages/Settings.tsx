@@ -13,18 +13,21 @@ import {
     RefreshCw,
     ArrowRightLeft,
     ArrowDownToLine,
-    BrainCircuit
+    BrainCircuit,
+    Beaker
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
 import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
 import { RuleManagement } from '../components/settings/RuleManagement';
 import { AIMetrics } from '../components/settings/AIMetrics';
+import { DebugSettings } from '../components/settings/DebugSettings';
+import { MyProfileSettings } from '../components/settings/MyProfileSettings';
 import { Layout } from '../components/Layout';
 
 export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
-    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'general');
+    const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
 
     // Integration State
     const [status, setStatus] = useState<IntegrationStatus | null>(null);
@@ -34,6 +37,7 @@ export const Settings: React.FC = () => {
     const [qbAccounts, setQbAccounts] = useState<any[]>([]);
     const [localAccounts, setLocalAccounts] = useState<Account[]>([]);
     const [saving, setSaving] = useState<string | null>(null);
+    const [mappingSearchQuery, setMappingSearchQuery] = useState('');
 
     useEffect(() => {
         if (activeTab === 'integrations') {
@@ -137,6 +141,66 @@ export const Settings: React.FC = () => {
         }
     };
 
+    const handleSmartMatch = async () => {
+        const unmapped = localAccounts.filter(a => !a.qb_account_id);
+        if (unmapped.length === 0) {
+            alert('All local accounts are already mapped to QuickBooks!');
+            return;
+        }
+
+        if (qbAccounts.length === 0) {
+            alert('No QuickBooks accounts found to match against. Try syncing first.');
+            return;
+        }
+
+        console.log(`[Smart Match] Attempting to match ${unmapped.length} unmapped accounts against ${qbAccounts.length} QB accounts...`);
+
+        let matchCount = 0;
+        const newLocalAccounts = [...localAccounts];
+
+        for (const account of unmapped) {
+            const localName = account.name.toLowerCase().trim();
+            const localCode = account.code.toLowerCase().trim();
+
+            // Find match in QB accounts
+            const match = qbAccounts.find(qa => {
+                const qbName = qa.Name.toLowerCase().trim();
+                const qbFullName = (qa.FullyQualifiedName || '').toLowerCase().trim();
+                const qbCode = (qa.AcctNum || '').toLowerCase().trim();
+
+                // 1. Exact Name Match
+                if (qbName === localName || qbFullName === localName) return true;
+
+                // 2. Subaccount Match (e.g., "Bank:Main" matches "Main")
+                if (qbFullName.endsWith(':' + localName)) return true;
+
+                // 3. Code Match
+                if (qbCode && qbCode === localCode) return true;
+
+                return false;
+            });
+
+            if (match) {
+                console.log(`[Smart Match] Found match: ${account.name} -> ${match.Name} (${match.Id})`);
+                try {
+                    await accountService.update(account.id, { qb_account_id: match.Id });
+                    const idx = newLocalAccounts.findIndex(a => a.id === account.id);
+                    newLocalAccounts[idx] = { ...newLocalAccounts[idx], qb_account_id: match.Id } as any;
+                    matchCount++;
+                } catch (err) {
+                    console.error(`[Smart Match] Failed to update mapping for ${account.name}:`, err);
+                }
+            }
+        }
+
+        setLocalAccounts(newLocalAccounts);
+        if (matchCount > 0) {
+            alert(`Smart Match Complete! Successfully linked ${matchCount} accounts.`);
+        } else {
+            alert('Smart Match finished, but no new matches were found. You may need to map these manually.');
+        }
+    };
+
     return (
         <Layout>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -151,6 +215,17 @@ export const Settings: React.FC = () => {
                     {/* Horizontal Navigation */}
                     <div className="w-full overflow-x-auto pb-2 -mb-2 custom-scrollbar">
                         <nav className="flex space-x-1 bg-gray-100 p-1 rounded-xl w-max min-w-full md:min-w-0 md:w-fit">
+                            <button
+                                onClick={() => handleTabChange('profile')}
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'profile'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <SettingsIcon className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>My Profile</span>
+                            </button>
+
                             <button
                                 onClick={() => handleTabChange('general')}
                                 className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'general'
@@ -205,11 +280,25 @@ export const Settings: React.FC = () => {
                                 <BrainCircuit className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
                                 <span>AI & Automation</span>
                             </button>
+
+                            <button
+                                onClick={() => handleTabChange('debug')}
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'debug'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <Beaker className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>Debug</span>
+                            </button>
                         </nav>
                     </div>
 
                     {/* Main Content Area */}
                     <div className="flex-1 min-w-0 w-full">
+                        {/* Profile Tab */}
+                        {activeTab === 'profile' && <MyProfileSettings />}
+
                         {/* General Tab */}
                         {activeTab === 'general' && <GeneralSettings />}
 
@@ -328,6 +417,29 @@ export const Settings: React.FC = () => {
                                                     Map your local expense categories to QuickBooks accounts to ensure correct accounting.
                                                 </p>
                                             </div>
+                                            <div className="flex items-center space-x-3">
+                                                <button
+                                                    onClick={handleSmartMatch}
+                                                    className="inline-flex items-center px-3 py-2 border border-brand-green/30 text-xs font-bold rounded-xl text-brand-green bg-brand-green/5 hover:bg-brand-green/10 transition-all"
+                                                >
+                                                    <RefreshCw className="h-3 w-3 mr-1.5" />
+                                                    Smart Match by Name
+                                                </button>
+                                                <div className="relative w-full sm:w-64">
+                                                    <input
+                                                        type="text"
+                                                        placeholder="Search local accounts..."
+                                                        value={mappingSearchQuery}
+                                                        onChange={(e) => setMappingSearchQuery(e.target.value)}
+                                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-brand-green focus:border-brand-green text-sm transition-all shadow-sm"
+                                                    />
+                                                    <div className="absolute left-3 top-2.5 text-gray-400">
+                                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                                        </svg>
+                                                    </div>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto custom-scrollbar shadow-sm">
@@ -346,7 +458,12 @@ export const Settings: React.FC = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="bg-white divide-y divide-gray-200">
-                                                    {localAccounts.filter(a => a.type === 'EXPENSE').map((account: any) => (
+                                                    {localAccounts
+                                                        .filter(a => (a.type === 'EXPENSE' || a.type === 'ASSET' || a.type === 'LIABILITY') && (
+                                                            a.name.toLowerCase().includes(mappingSearchQuery.toLowerCase()) ||
+                                                            a.code.toLowerCase().includes(mappingSearchQuery.toLowerCase())
+                                                        ))
+                                                        .map((account: any) => (
                                                         <tr key={account.id} className="hover:bg-gray-50 transition-colors">
                                                             <td className="px-6 py-4 whitespace-nowrap min-w-[250px]">
                                                                 <div className="flex items-center">
@@ -380,8 +497,22 @@ export const Settings: React.FC = () => {
                                                                     >
                                                                         <option value="">-- Select QuickBooks Account --</option>
                                                                         {qbAccounts
-                                                                            .filter((qa: any) => ['Expense', 'Other Expense', 'Cost of Goods Sold', 'Other Current Liability', 'Accounts Payable', 'Credit Card'].includes(qa.AccountType) || qa.Classification === 'Expense' || qa.Classification === 'Liability')
-                                                                            .sort((a: any, b: any) => a.Name.localeCompare(b.Name))
+                                                                            .sort((a: any, b: any) => {
+                                                                                // 1. Prioritize by type relevance
+                                                                                const isARel = (account.type === 'ASSET' && (['Bank', 'Other Current Asset', 'Fixed Asset', 'Accounts Receivable'].includes(a.AccountType) || a.Classification === 'Asset')) ||
+                                                                                              (account.type === 'LIABILITY' && (['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability'].includes(a.AccountType) || a.Classification === 'Liability')) ||
+                                                                                              (account.type === 'EXPENSE' && (['Expense', 'Other Expense', 'Cost of Goods Sold'].includes(a.AccountType) || a.Classification === 'Expense'));
+                                                                                
+                                                                                const isBRel = (account.type === 'ASSET' && (['Bank', 'Other Current Asset', 'Fixed Asset', 'Accounts Receivable'].includes(b.AccountType) || b.Classification === 'Asset')) ||
+                                                                                              (account.type === 'LIABILITY' && (['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability'].includes(b.AccountType) || b.Classification === 'Liability')) ||
+                                                                                              (account.type === 'EXPENSE' && (['Expense', 'Other Expense', 'Cost of Goods Sold'].includes(b.AccountType) || b.Classification === 'Expense'));
+
+                                                                                if (isARel && !isBRel) return -1;
+                                                                                if (!isARel && isBRel) return 1;
+
+                                                                                // 2. Alphabetical sort within relevance groups
+                                                                                return a.Name.localeCompare(b.Name);
+                                                                            })
                                                                             .map((qa: any) => (
                                                                                 <option key={qa.Id} value={qa.Id}>
                                                                                     {qa.Name} ({qa.AccountType})
@@ -412,6 +543,9 @@ export const Settings: React.FC = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* Debug Tab */}
+                        {activeTab === 'debug' && <DebugSettings />}
                     </div>
                 </div>
             </div>

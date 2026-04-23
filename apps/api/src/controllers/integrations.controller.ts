@@ -47,7 +47,7 @@ export const getIntegrationStatus = async (req: AuthRequest, res: Response<any>)
 
         const { data, error } = await supabase
             .from('integrations')
-            .select('provider, updated_at, token_expires_at')
+            .select('provider, updated_at, token_expires_at, config')
             .eq('provider', 'QUICKBOOKS')
             .eq('organization_id', organizationId)
             .single();
@@ -91,10 +91,17 @@ export const disconnectQuickBooks = async (req: AuthRequest, res: Response<any>)
 export const syncRequisition = async (req: AuthRequest, res: Response<any>) => {
     try {
         const { id } = req.params;
+        const { payment_account_id, payment_account_name } = req.body;
         const userId = (req as any).user.id;
         const organizationId = (req as any).user.organization_id;
 
-        const result = await QuickBooksService.createExpense(id, userId, organizationId);
+        const result = await QuickBooksService.createExpense(
+            id, 
+            userId, 
+            organizationId,
+            payment_account_id,
+            payment_account_name
+        );
         res.json(result);
     } catch (error: any) {
         res.status(500).json({ error: error.message });

@@ -8,6 +8,7 @@ export const ChartOfAccounts: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [actionLoading, setActionLoading] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // New Account Form State
     const [newAccount, setNewAccount] = useState<Partial<Account>>({
@@ -59,24 +60,48 @@ export const ChartOfAccounts: React.FC = () => {
         'EXPENSE': ['Operating Expense', 'Cost of Goods Sold', 'Payroll', 'Tax']
     };
 
+    const filteredAccounts = accounts.filter(acc => 
+        acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        acc.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (acc.type && acc.type.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (acc.description && acc.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+        (acc.subtype && acc.subtype.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
     if (loading && accounts.length === 0) {
         return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-brand-green" /></div>;
     }
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h3 className="text-lg font-bold text-brand-navy">Chart of Accounts</h3>
                     <p className="text-sm text-gray-500">Configure financial accounts for your organization.</p>
                 </div>
-                <button
-                    onClick={() => setIsAddModalOpen(true)}
-                    className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
-                >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Account
-                </button>
+                <div className="flex items-center space-x-3 w-full sm:w-auto">
+                    <div className="relative flex-1 sm:w-64">
+                        <input
+                            type="text"
+                            placeholder="Search accounts..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-brand-green focus:border-brand-green text-sm transition-all shadow-sm"
+                        />
+                        <div className="absolute left-3 top-2.5 text-gray-400">
+                            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setIsAddModalOpen(true)}
+                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all"
+                    >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add
+                    </button>
+                </div>
             </div>
 
             {error && (
@@ -97,23 +122,31 @@ export const ChartOfAccounts: React.FC = () => {
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {accounts.map((account) => (
-                            <tr key={account.id} className="hover:bg-gray-50 transition-colors">
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <div className="flex-shrink-0 h-8 px-2.5 min-w-[2rem] bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center font-bold text-xs border border-blue-100">
-                                        {account.code}
-                                    </div>
+                        {filteredAccounts.length > 0 ? (
+                            filteredAccounts.map((account) => (
+                                <tr key={account.id} className="hover:bg-gray-50 transition-colors">
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex-shrink-0 h-8 px-2.5 min-w-[2rem] bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center font-bold text-xs border border-blue-100">
+                                            {account.code}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{account.name}</td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full bg-blue-100 text-blue-800">
+                                            {account.type}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500">{account.subtype || '-'}</td>
+                                    <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">{account.description || '-'}</td>
+                                </tr>
+                            ))
+                        ) : (
+                            <tr>
+                                <td colSpan={5} className="px-6 py-12 text-center text-sm text-gray-500">
+                                    No accounts found matching "{searchQuery}"
                                 </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-bold">{account.name}</td>
-                                <td className="px-6 py-4 whitespace-nowrap">
-                                    <span className="px-2.5 py-0.5 inline-flex text-xs leading-5 font-bold rounded-full bg-blue-100 text-blue-800">
-                                        {account.type}
-                                    </span>
-                                </td>
-                                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-500">{account.subtype || '-'}</td>
-                                <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">{account.description || '-'}</td>
                             </tr>
-                        ))}
+                        )}
                     </tbody>
                 </table>
             </div>

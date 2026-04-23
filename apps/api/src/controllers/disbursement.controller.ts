@@ -1,4 +1,3 @@
-const LENCO_TRANSACTION_FEE = 8.5;
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
@@ -14,7 +13,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         const { denominations, total_prepared, payment_method, transfer_proof_url, recipient_account, recipient_bank_code, recipient_account_name } = req.body;
         const cashier_id = (req as any).user.id;
         const organizationId = (req as any).user.organization_id;
-
+        const isDigital = payment_method === 'MONEYWISE_WALLET' || payment_method === 'MOBILE_MONEY';
 
         if (!organizationId) throw new Error("Missing organization context");
 
@@ -34,12 +33,13 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 1. Atomic status check and lock
-        // We try to update the status to 'DISBURSED' only if it is currently 'AUTHORISED'
-        // AND it belongs to the requesting user's organization.
-        // This prevents double-disbursement race conditions AND cross-org disbursals.
+        // We try to update the status to 'DISBURSED' or 'RECEIVED' (for digital)
         const { data: lockResult, error: lockError } = await supabase
             .from('requisitions')
-            .update({ status: 'DISBURSED', updated_at: new Date().toISOString() })
+            .update({ 
+                status: isDigital ? 'RECEIVED' : 'DISBURSED', 
+                updated_at: new Date().toISOString() 
+            })
             .eq('id', id)
             .eq('status', 'AUTHORISED')
             .eq('organization_id', organizationId)   // ← Org boundary hard-enforced at DB level
@@ -56,8 +56,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         // 2. Validate Disbursement Amount
         const estimatedTotal = Number(requisition.estimated_total);
         const totalPreparedNum = Number(total_prepared);
-        const isDigital = payment_method === 'MONEYWISE_WALLET' || payment_method === 'MOBILE_MONEY';
-        const totalDeduction = totalPreparedNum + (isDigital ? LENCO_TRANSACTION_FEE : 0);
+        const fee = isDigital ? LencoService.calculatePayoutFee(totalPreparedNum, payment_method) : 0;
+        const totalDeduction = totalPreparedNum + fee;
 
         if (totalPreparedNum < estimatedTotal) {
             return res.status(400).json({
@@ -73,12 +73,16 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         if (payment_method === 'MONEYWISE_WALLET') {
             const { data: org } = await supabase
                 .from('organizations')
-                .select('lenco_subaccount_id, lenco_secret_key')
+                .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
                 .eq('id', targetOrgId)
                 .single();
 
             if (!org?.lenco_subaccount_id || !org?.lenco_secret_key) {
-                throw new Error("Organization is not properly configured for MoneyWise Wallet");
+                // If test mode is on, we can skip the strict credential check if desired, 
+                // but let's keep it robust.
+                if (!org?.payment_test_mode) {
+                    throw new Error("Organization is not properly configured for MoneyWise Wallet");
+                }
             }
 
             if (!recipient_account || !recipient_bank_code) {
@@ -86,65 +90,72 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             }
 
             try {
-                // IDEMPOTENCY CHECK: Check if this reference already exists on Lenco
-                console.log(`[Lenco] Checking for existing transfer with reference: ${stableRef}`);
-                let statusCheck;
-                let payout;
-                
-                statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
-                if (statusCheck) {
-                    console.log(`[Lenco] Found existing transfer: ${statusCheck.status}. Using existing reference.`);
-                    payout = statusCheck;
+                if (org?.payment_test_mode) {
+                    console.log(`[Payment Test Mode] Bypassing Lenco for Requisition ${id}`);
+                    lencoReference = `SIM-PAY-${id.slice(0, 8)}`;
+                    (req as any).lencoStatus = 'successful';
+                    (req as any).lencoFee = 0;
                 } else {
-                    // No existing transfer, create a new one
-                    const mobileOps = ['mtn', 'airtel', 'zamtel'];
-                    const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
-
-                    if (isMobile) {
-                        payout = await LencoService.createMobileMoneyPayout({
-                            amount: total_prepared,
-                            reference: stableRef,
-                            phone: recipient_account,
-                            operator: recipient_bank_code,
-                            narration: `Disbursement for Requisition #${id.slice(0, 8)}`
-                        }, org.lenco_subaccount_id, org.lenco_secret_key);
-                    } else {
-                        payout = await LencoService.createBankPayout({
-                            amount: total_prepared,
-                            reference: stableRef,
-                            accountNumber: recipient_account,
-                            bankId: recipient_bank_code,
-                            narration: `Disbursement for Requisition #${id.slice(0, 8)}`
-                        }, org.lenco_subaccount_id, org.lenco_secret_key);
-                    }
-                }
-                
-                lencoReference = payout.reference;
-
-                // Handle immediate failure from Lenco (e.g. amount below minimum)
-                if (payout.status === 'failed') {
-                    const reason = payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco';
-                    throw new Error(reason);
-                }
-                
-                // Poll for status if we just created it or if it was pending
-                let attempts = 0;
-                let currentStatus = payout.status;
-                while (currentStatus === 'pending' && attempts < 3) {
-                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    // IDEMPOTENCY CHECK: Check if this reference already exists on Lenco
+                    console.log(`[Lenco] Checking for existing transfer with reference: ${stableRef}`);
+                    let statusCheck;
+                    let payout;
+                    
                     statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
-                    currentStatus = statusCheck?.status || 'pending';
-                    attempts++;
-                }
+                    if (statusCheck) {
+                        console.log(`[Lenco] Found existing transfer: ${statusCheck.status}. Using existing reference.`);
+                        payout = statusCheck;
+                    } else {
+                        // No existing transfer, create a new one
+                        const mobileOps = ['mtn', 'airtel', 'zamtel'];
+                        const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
 
-                if (currentStatus === 'failed') {
-                    // Use reasonForFailure from the status check or the payout itself
-                    const reason = statusCheck?.reasonForFailure || statusCheck?.message || payout.reasonForFailure || 'Lenco reported transfer failure';
-                    throw new Error(reason);
-                }
+                        if (isMobile) {
+                            payout = await LencoService.createMobileMoneyPayout({
+                                amount: total_prepared,
+                                reference: stableRef,
+                                phone: recipient_account,
+                                operator: recipient_bank_code,
+                                narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                            }, org.lenco_subaccount_id, org.lenco_secret_key);
+                        } else {
+                            payout = await LencoService.createBankPayout({
+                                amount: total_prepared,
+                                reference: stableRef,
+                                accountNumber: recipient_account,
+                                bankId: recipient_bank_code,
+                                narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                            }, org.lenco_subaccount_id, org.lenco_secret_key);
+                        }
+                    }
+                    
+                    lencoReference = payout.reference;
 
-                (req as any).lencoStatus = currentStatus;
-                (req as any).lencoFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
+                    // Handle immediate failure from Lenco (e.g. amount below minimum)
+                    if (payout.status === 'failed') {
+                        const reason = payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco';
+                        throw new Error(reason);
+                    }
+                    
+                    // Poll for status if we just created it or if it was pending
+                    let attempts = 0;
+                    let currentStatus = payout.status;
+                    while (currentStatus === 'pending' && attempts < 3) {
+                        await new Promise(resolve => setTimeout(resolve, 2000));
+                        statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
+                        currentStatus = statusCheck?.status || 'pending';
+                        attempts++;
+                    }
+
+                    if (currentStatus === 'failed') {
+                        // Use reasonForFailure from the status check or the payout itself
+                        const reason = statusCheck?.reasonForFailure || statusCheck?.message || payout.reasonForFailure || 'Lenco reported transfer failure';
+                        throw new Error(reason);
+                    }
+
+                    (req as any).lencoStatus = currentStatus;
+                    (req as any).lencoFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
+                }
 
             } catch (payoutError: any) {
                 console.error('[Lenco Payout Failed] Error during wallet disbursal:', payoutError);
@@ -256,20 +267,32 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             }
         });
 
-        // Add a tiny delay to ensure distinct timestamps for sorting
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Increase artificial delay to 1000ms to guarantee strict database chronological ordering 
+        // between the CHAT summary and the SYSTEM expense tracking prompt
+        await new Promise(resolve => setTimeout(resolve, 1000));
 
         // For Wallet/Mobile disbursements, we trigger the EXPENSE_TRACKING prompt IMMEDIATELY.
         // We no longer wait for manual "acknowledgement" since the funds are transferred digitally.
         if (payment_method === 'MONEYWISE_WALLET' || payment_method === 'MOBILE_MONEY') {
-            await RequisitionMessageService.createMessage({
-                requisitionId: id,
-                userId: cashier_id,
-                content: `Funds received. Please record your expenditure and upload receipts.`,
-                type: 'SYSTEM',
-                metadata: { stage: 'EXPENSE_TRACKING' }
-            });
+            // Idempotency Check: Ensure we don't generate duplicate EXPENSE_TRACKING messages
+            const { data: existingMsg } = await supabase
+                .from('requisition_messages')
+                .select('id')
+                .eq('requisition_id', id)
+                .contains('metadata', { stage: 'EXPENSE_TRACKING' })
+                .limit(1)
+                .maybeSingle();
 
+            if (!existingMsg) {
+                await RequisitionMessageService.createMessage({
+                    requisitionId: id,
+                    userId: cashier_id,
+                    content: `Funds received. Please record your expenditure and upload receipts.`,
+                    type: 'SYSTEM',
+                    metadata: { stage: 'EXPENSE_TRACKING' }
+                });
+            }
+            
             await new Promise(resolve => setTimeout(resolve, 100));
         }
 
@@ -450,14 +473,25 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
                 changes: { from: 'DISBURSED', to: 'RECEIVED' }
             });
 
-        // Trigger system message
-        await RequisitionMessageService.createMessage({
-            requisitionId: id,
-            userId: requestor_id,
-            content: 'Funds received and acknowledged',
-            type: 'SYSTEM',
-            metadata: { stage: 'EXPENSE_TRACKING' }
-        });
+        // Idempotency Check for System message
+        const { data: existingMsg } = await supabase
+            .from('requisition_messages')
+            .select('id')
+            .eq('requisition_id', id)
+            .contains('metadata', { stage: 'EXPENSE_TRACKING' })
+            .limit(1)
+            .maybeSingle();
+
+        if (!existingMsg) {
+            // Trigger system message
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: requestor_id,
+                content: 'Funds received and acknowledged',
+                type: 'SYSTEM',
+                metadata: { stage: 'EXPENSE_TRACKING' }
+            });
+        }
 
         res.json({
             message: 'Cash receipt acknowledged successfully',

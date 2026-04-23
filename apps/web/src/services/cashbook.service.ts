@@ -1,5 +1,5 @@
-import axios from 'axios';
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -63,8 +63,6 @@ export const cashbookService = {
         accountType?: string;
         limit?: number;
     }) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
         const params = new URLSearchParams();
 
         if (filters?.startDate) params.append('startDate', filters.startDate);
@@ -73,68 +71,47 @@ export const cashbookService = {
         if (filters?.accountType) params.append('accountType', filters.accountType);
         if (filters?.limit) params.append('limit', filters.limit.toString());
 
-        const response = await axios.get<CashbookEntry[]>(
-            `${API_URL}/cashbook?${params.toString()}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const response = await apiFetch(`/cashbook?${params.toString()}`);
+        return response.json();
     },
 
     async getBalance(accountType: string = 'CASH', organizationId?: string) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
         const params = new URLSearchParams({ accountType });
         if (organizationId) params.append('organizationId', organizationId);
 
-        const response = await axios.get<{ balance: number }>(
-            `${API_URL}/cashbook/balance?${params.toString()}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data.balance;
+        const response = await apiFetch(`/cashbook/balance?${params.toString()}`);
+        const data = await response.json();
+        return data.balance;
     },
 
 
     async getSummary(startDate: string, endDate: string, accountType: string = 'CASH') {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await axios.get<CashbookSummary>(
-            `${API_URL}/cashbook/summary?startDate=${startDate}&endDate=${endDate}&accountType=${accountType}`,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const response = await apiFetch(`/cashbook/summary?startDate=${startDate}&endDate=${endDate}&accountType=${accountType}`);
+        return response.json();
     },
 
     async reconcile(physicalCount: number, denominations?: any, notes?: string, accountType: string = 'CASH') {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await axios.post(
-            `${API_URL}/cashbook/reconcile`,
-            { physicalCount, denominations, notes, accountType },
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const response = await apiFetch('/cashbook/reconcile', {
+            method: 'POST',
+            body: JSON.stringify({ physicalCount, denominations, notes, accountType }),
+        });
+        return response.json();
     },
 
     async returnCash(requisitionId: string, amount: number, description?: string) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await axios.post(
-            `${API_URL}/cashbook/return`,
-            { requisitionId, amount, description },
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const response = await apiFetch('/cashbook/return', {
+            method: 'POST',
+            body: JSON.stringify({ requisitionId, amount, description }),
+        });
+        return response.json();
     },
 
     async closeBook(physicalCount: number, date: string, notes?: string, accountType: string = 'CASH') {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await axios.post(
-            `${API_URL}/cashbook/close`,
-            { physicalCount, date, notes, accountType },
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const response = await apiFetch('/cashbook/close', {
+            method: 'POST',
+            body: JSON.stringify({ physicalCount, date, notes, accountType }),
+        });
+        return response.json();
     },
 
     async logInflow(data: {
@@ -146,37 +123,18 @@ export const cashbookService = {
         denominations: any;
         accountType?: string;
     }) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await axios.post(
-            `${API_URL}/cashbook/inflow`,
-            data,
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const response = await apiFetch('/cashbook/inflow', {
+            method: 'POST',
+            body: JSON.stringify(data),
+        });
+        return response.json();
     },
 
     async classifyBulk(requisitionIds?: string[]) {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await axios.post<{
-            message: string;
-            count: number;
-            total: number;
-            results?: Array<{
-                line_item_id: string;
-                description: string;
-                account_code: string;
-                account_name: string;
-                confidence: number;
-                reasoning: string;
-                method: string;
-            }>;
-        }>(
-            `${API_URL}/cashbook/classify-bulk`,
-            { requisitionIds },
-            { headers: { Authorization: `Bearer ${token}` } }
-        );
-        return response.data;
+        const response = await apiFetch('/cashbook/classify-bulk', {
+            method: 'POST',
+            body: JSON.stringify({ requisitionIds }),
+        });
+        return response.json();
     }
 };

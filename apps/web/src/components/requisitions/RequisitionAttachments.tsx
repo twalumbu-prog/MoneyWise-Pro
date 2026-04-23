@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Requisition } from '../../services/requisition.service';
+import { Requisition, requisitionService } from '../../services/requisition.service';
 import { Lock, FileDown } from 'lucide-react';
 import RequisitionDocumentPreview from './RequisitionDocumentPreview';
 
@@ -114,7 +114,7 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({ requisi
                                 }`}
                                 style={{ paddingTop: 4, paddingBottom: index < docs.length - 1 ? 56 : 4 }}
                             >
-                                <h4 className={`text-[16px] font-semibold tracking-tight leading-snug ${
+                                <h4 className={`text-[16px] font-normal md:font-semibold tracking-tight leading-snug ${
                                     doc.isAvailable ? 'text-gray-900' : 'text-gray-400'
                                 }`}>
                                     {doc.title}
@@ -157,6 +157,51 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({ requisi
                     requisition={requisition}
                     onClose={() => setPreviewDoc(null)}
                 />
+            )}
+
+            {/* Expense Receipts Section */}
+            {requisition.receipts && requisition.receipts.length > 0 && (
+                <div className="max-w-3xl mx-auto mt-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 className="text-xl font-black text-gray-900 tracking-tight">Expense Receipts</h3>
+                            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mt-1">Uploaded during expensing</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+                        {requisition.receipts.map((receipt: any, idx: number) => {
+                            const publicUrl = requisitionService.getFileUrl(receipt.file_url);
+                            return (
+                                <div key={receipt.id} className="group relative bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-all duration-300">
+                                    <div className="aspect-[3/4] overflow-hidden bg-gray-50">
+                                        <img 
+                                            src={publicUrl || ''} 
+                                            alt={`Receipt ${idx + 1}`}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center space-x-2">
+                                            <a 
+                                                href={publicUrl || ''} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white hover:bg-white hover:text-gray-900 transition-all"
+                                            >
+                                                <FileDown size={18} />
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div className="p-4 bg-white">
+                                        <p className="text-[12px] font-bold text-gray-900 truncate">Receipt #{idx + 1}</p>
+                                        <p className="text-[10px] text-gray-400 mt-1 uppercase tracking-wider">
+                                            {new Date(receipt.uploaded_at).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
             )}
         </div>
     );

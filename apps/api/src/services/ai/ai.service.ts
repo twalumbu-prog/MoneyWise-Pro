@@ -41,7 +41,7 @@ export const aiService = {
         return allResults;
     },
 
-    async classifyItem(accounts: any[], item: { description: string, amount: number }): Promise<SuggestionResult> {
+    async classifyItem(accounts: any[], item: { description: string, amount: number, receipt_data?: any }): Promise<SuggestionResult> {
         if (AI_TEST_MODE) {
             // ... (keep mock logic)
             const desc = item.description.toLowerCase();
@@ -92,7 +92,7 @@ export const aiService = {
         const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         if (OPENAI_API_KEY && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY') {
             aiPromises.push(timeout(
-                this.callOpenAI(item.description, accounts).then(res => ({
+                this.callOpenAI(item.description, item.amount, accounts, item.receipt_data).then(res => ({
                     account_code: res.account_code,
                     confidence: res.confidence,
                     reasoning: `OpenAI: ${res.reasoning || 'Categorized'}`,
@@ -102,7 +102,7 @@ export const aiService = {
                 'OpenAI'
             ).catch(err => {
                 console.warn(`[AI Service] OpenAI failed: ${err.message}`);
-                return null as any;
+                return { model: 'OpenAI', error: err.message } as any;
             }));
         }
 
@@ -110,36 +110,59 @@ export const aiService = {
         const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
         if (GEMINI_API_KEY && GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY') {
             aiPromises.push(timeout(
-                this.suggestCategoryGemini(accounts, item.description, item.amount),
+                this.suggestCategoryGemini(accounts, item.description, item.amount, item.receipt_data),
                 10000,
                 'Gemini'
             ).catch(err => {
                 console.warn(`[AI Service] Gemini failed: ${err.message}`);
-                return null as any;
+                return { model: 'Gemini', error: err.message } as any;
             }));
         }
 
-        // Run in parallel
+        // 3. ENSEMBLE RANKING & VALIDATION
         const results = await Promise.all(aiPromises);
 
-        // Filter results: MUST be in the provided accounts list
+        // Filter and validate results: MUST be in the provided accounts list
         const validResults = results.filter((r: SuggestionResult) => {
             if (!r || !r.account_code) return false;
-            // Ensure the code exists in our provided list
-            const exists = accounts.some((a: any) => String(a.code) === String(r.account_code));
-            if (!exists && r.account_code !== 'UNCATEGORIZED') {
-                console.warn(`[AI Service] Hallucination detected: AI suggested ${r.account_code} but it is not in the COA. Filtering out.`);
+            if (r.account_code === 'UNCATEGORIZED') return true;
+
+            // Robust matching: Try exact, then normalized, then partial
+            const normalizedSuggested = String(r.account_code).trim().toLowerCase();
+            
+            const matchedAccount = accounts.find((a: any) => {
+                const normalizedCode = String(a.code).trim().toLowerCase();
+                // 1. Exact match
+                if (normalizedCode === normalizedSuggested) return true;
+                // 2. Suggested code contains the account code (e.g. "1001 - Staff Meal" contains "1001")
+                if (normalizedSuggested.includes(normalizedCode)) return true;
+                // 3. Account code contains the suggested code (less common but possible)
+                if (normalizedCode.includes(normalizedSuggested)) return true;
                 return false;
+            });
+
+            if (matchedAccount) {
+                // Normalize the suggestion to the actual database code
+                r.account_code = String(matchedAccount.code);
+                return true;
             }
-            return true;
+
+            console.warn(`[AI Service] Hallucination detected: AI suggested "${r.account_code}" but no matching code was found in COA.`);
+            return false;
         });
 
         if (validResults.length === 0) {
-            console.warn(`[AI Service] No valid suggestions from ensemble (all hallucinations or failures).`);
+            const failureDetails = results.map((r: any) => {
+                const modelName = r?.method?.includes('OPENAI') ? 'OpenAI' : (r?.method?.includes('GEMINI') ? 'Gemini' : (r?.model || 'AI'));
+                if (!r || r.error) return `${modelName}: ${r?.error || 'Unknown Error'}`;
+                return `${modelName}: Suggested invalid code "${r.account_code}"`;
+            }).join('; ');
+
+            console.warn(`[AI Service] No valid suggestions: ${failureDetails}`);
             return {
                 account_code: 'UNCATEGORIZED',
                 confidence: 0,
-                reasoning: `The AI suggested generic codes (${results.map((r: any) => r?.account_code).join(', ')}) instead of matching your specific chart of accounts. Please select the category manually.`,
+                reasoning: `AI could not find a matching account in your Chart of Accounts. Details: ${failureDetails}. Please select the category manually.`,
                 method: 'AI-FAILED'
             };
         }
@@ -148,9 +171,9 @@ export const aiService = {
         return validResults.sort((a: SuggestionResult, b: SuggestionResult) => b.confidence - a.confidence)[0];
     },
 
-    async callOpenAI(description: string, accounts: any[]) {
+    async callOpenAI(description: string, amount: number, accounts: any[], receipt_data?: any) {
         const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-        const userPrompt = buildCategorizationPrompt(accounts, description, 0);
+        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data);
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
@@ -172,10 +195,10 @@ export const aiService = {
         return JSON.parse(data.choices[0].message.content);
     },
 
-    async suggestCategoryGemini(accounts: any[], description: string, amount: number): Promise<SuggestionResult> {
+    async suggestCategoryGemini(accounts: any[], description: string, amount: number, receipt_data?: any): Promise<SuggestionResult> {
         const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-        const userPrompt = buildCategorizationPrompt(accounts, description, amount);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
 
         const payload = {
             contents: [{
@@ -200,7 +223,12 @@ export const aiService = {
 
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error('Empty response from Gemini');
+        if (!text) {
+            console.warn('[AI Service] Gemini returned an empty response candidate.');
+            throw new Error('Empty response from Gemini');
+        }
+
+        console.log(`[AI Service] Gemini Raw Response for "${description.substring(0, 30)}...":`, text);
 
         const jsonText = text.replace(/```json\n?|\n?```/g, '').trim();
         const parsed = JSON.parse(jsonText);

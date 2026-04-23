@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -27,24 +28,14 @@ export interface AIMetric {
 export const aiService = {
     // Rules
     async getRules(): Promise<AccountingRule[]> {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await fetch(`${API_URL}/ai/rules`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await apiFetch('/ai/rules');
         if (!response.ok) throw new Error('Failed to fetch rules');
         return response.json();
     },
 
     async createRule(rule: Partial<AccountingRule>): Promise<AccountingRule> {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await fetch(`${API_URL}/ai/rules`, {
+        const response = await apiFetch('/ai/rules', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
             body: JSON.stringify(rule)
         });
         if (!response.ok) throw new Error('Failed to create rule');
@@ -52,14 +43,8 @@ export const aiService = {
     },
 
     async updateRule(id: string, rule: Partial<AccountingRule>): Promise<AccountingRule> {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await fetch(`${API_URL}/ai/rules/${id}`, {
+        const response = await apiFetch(`/ai/rules/${id}`, {
             method: 'PATCH',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            },
             body: JSON.stringify(rule)
         });
         if (!response.ok) throw new Error('Failed to update rule');
@@ -67,32 +52,21 @@ export const aiService = {
     },
 
     async deleteRule(id: string): Promise<void> {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await fetch(`${API_URL}/ai/rules/${id}`, {
+        const response = await apiFetch(`/ai/rules/${id}`, {
             method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` }
         });
         if (!response.ok) throw new Error('Failed to delete rule');
     },
 
     // Metrics
     async getDailyMetrics(days: number = 30): Promise<AIMetric[]> {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await fetch(`${API_URL}/ai/metrics/daily?days=${days}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await apiFetch(`/ai/metrics/daily?days=${days}`);
         if (!response.ok) throw new Error('Failed to fetch metrics');
         return response.json();
     },
 
     async getStats(): Promise<any> {
-        const { data: { session } } = await supabase.auth.getSession();
-        const token = session?.access_token;
-        const response = await fetch(`${API_URL}/ai/metrics/stats`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const response = await apiFetch('/ai/metrics/stats');
         if (!response.ok) throw new Error('Failed to fetch stats');
         return response.json();
     }

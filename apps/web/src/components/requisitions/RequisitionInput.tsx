@@ -37,7 +37,7 @@ const RequisitionInput: React.FC<RequisitionInputProps> = ({
     }, [message]);
 
     return (
-        <div className="flex items-end space-x-3 p-6 bg-white border-t border-blue-100/50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)] z-10">
+        <div className="flex items-end space-x-3 p-3 px-6 bg-white border-t border-blue-100/50 shadow-[0_-4px_20px_rgba(0,0,0,0.03)]">
             <div className="flex-1 relative bg-gray-50 border border-gray-100 rounded-full overflow-hidden focus-within:border-[#006AFF]/20 focus-within:bg-white transition-all duration-200">
                 <textarea
                     ref={textareaRef}
@@ -47,15 +47,15 @@ const RequisitionInput: React.FC<RequisitionInputProps> = ({
                     onKeyDown={handleKeyDown}
                     disabled={disabled}
                     placeholder={placeholder}
-                    className="w-full px-7 py-4 bg-transparent border-none focus:ring-0 outline-none shadow-none rounded-full text-[15px] font-medium text-gray-800 placeholder:text-gray-400/80 resize-none min-h-[56px] max-h-[150px] leading-relaxed"
+                    className="w-full px-5 py-2.5 bg-transparent border-none focus:ring-0 outline-none shadow-none rounded-full text-[13px] font-medium text-gray-800 placeholder:text-gray-400/80 resize-none min-h-[40px] max-h-[150px] leading-relaxed"
                 />
             </div>
             <button
                 onClick={handleSend}
                 disabled={disabled || !message.trim()}
-                className="flex items-center justify-center w-[56px] h-[56px] bg-[#006AFF] text-white rounded-full hover:bg-[#0052cc] disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm hover:shadow-md"
+                className="flex items-center justify-center w-[40px] h-[40px] min-w-[40px] bg-[#006AFF] text-white rounded-full hover:bg-[#0052cc] disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed transition-all active:scale-95 shadow-sm hover:shadow-md"
             >
-                <svg className="w-6 h-6 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-5 h-5 transform rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
             </button>

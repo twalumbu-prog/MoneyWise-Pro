@@ -376,3 +376,59 @@ export const resendInvite = async (req: AuthRequest, res: any): Promise<any> => 
         res.status(500).json({ error: 'Failed to resend invitation', details: error.message });
     }
 };
+
+export const getMyProfile = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const userId = (req as any).user.id;
+        
+        // We select individual fields. If payment_info is missing from the DB,
+        // this might fail. We'll try to select basic info first, then attempt payment_info.
+        const { data, error } = await supabase
+            .from('users')
+            .select('id, name, role, employee_id, payment_info')
+            .eq('id', userId)
+            .single();
+
+        if (error) {
+            // Fallback: Try selecting without payment_info if the first one failed
+            // (Likely due to column not existing yet)
+            console.warn('[GetMyProfile] Select with payment_info failed, trying basic select:', error.message);
+            const { data: basicData, error: basicError } = await supabase
+                .from('users')
+                .select('id, name, role, employee_id')
+                .eq('id', userId)
+                .single();
+            
+            if (basicError) throw basicError;
+            return res.json(basicData);
+        }
+
+        res.json(data);
+    } catch (error: any) {
+        console.error('[GetMyProfile] Final failure:', error);
+        res.status(500).json({ error: 'Failed to fetch profile', details: error.message });
+    }
+};
+
+export const updatePaymentInfo = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const userId = (req as any).user.id;
+        const { payment_info } = req.body;
+
+        if (!payment_info || typeof payment_info !== 'object') {
+            return res.status(400).json({ error: 'payment_info must be a valid object' });
+        }
+
+        const { error } = await supabase
+            .from('users')
+            .update({ payment_info })
+            .eq('id', userId);
+
+        if (error) throw error;
+        res.json({ message: 'Payment info updated successfully', payment_info });
+    } catch (error: any) {
+        console.error('Error updating payment info:', error);
+        res.status(500).json({ error: 'Failed to update payment info', details: error.message });
+    }
+};
+

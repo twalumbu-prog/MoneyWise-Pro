@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -9,6 +10,7 @@ interface LineItem {
     unit_price: number;
     estimated_amount: number;
     actual_amount?: number;
+    ai_extracted_amount?: number;
     receipt_url?: string;
     receipt_ocr_data?: any;
     receipt_ocr_status?: 'NONE' | 'PENDING' | 'DONE' | 'FAILED';
@@ -26,6 +28,10 @@ interface CreateRequisitionData {
     repayment_period?: number;
     interest_rate?: number;
     monthly_deduction?: number;
+    payment_method?: string;
+    recipient_account?: string;
+    recipient_bank_code?: string;
+    recipient_name?: string;
 }
 
 export interface Requisition {
@@ -46,6 +52,10 @@ export interface Requisition {
     interest_rate?: number;
     monthly_deduction?: number;
     actual_total?: number;
+    payment_method?: string;
+    recipient_account?: string;
+    recipient_bank_code?: string;
+    recipient_name?: string;
     organization_id: string;
     disbursements?: any[];
 
@@ -94,15 +104,8 @@ export const requisitionService = {
         recipient_bank_code?: string;
         recipient_account_name?: string;
     }) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/disburse`, {
+        const response = await apiFetch(`/requisitions/${id}/disburse`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify(payload),
         });
 
@@ -116,30 +119,15 @@ export const requisitionService = {
     },
 
     async verifyDisbursement(id: string) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/verify-disbursement`, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        });
-
+        const response = await apiFetch(`/requisitions/${id}/verify-disbursement`);
         const data = await response.json();
         // Don't throw on non-2xx — status can be 'pending' or 'failed', caller handles it
         return data; // { status: 'successful' | 'pending' | 'failed', message, details }
     },
 
     async acknowledge(id: string, signature: string) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/acknowledge`, {
+        const response = await apiFetch(`/requisitions/${id}/acknowledge`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({ signature }),
         });
 
@@ -152,15 +140,7 @@ export const requisitionService = {
     },
 
     async getAll() {
-        const session = await supabase.auth.getSession();
-        const token = session.data.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-        });
+        const response = await apiFetch('/requisitions');
 
         if (!response.ok) {
             throw new Error('Failed to fetch requisitions');
@@ -170,15 +150,7 @@ export const requisitionService = {
     },
 
     async getById(id: string) {
-        const session = await supabase.auth.getSession();
-        const token = session.data.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-        });
+        const response = await apiFetch(`/requisitions/${id}`);
 
         if (!response.ok) {
             throw new Error('Failed to fetch requisition');
@@ -188,35 +160,25 @@ export const requisitionService = {
     },
 
     async create(data: CreateRequisitionData) {
-        const session = await supabase.auth.getSession();
-        const token = session.data.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions`, {
+        const response = await apiFetch('/requisitions', {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
             body: JSON.stringify(data),
         });
 
         if (!response.ok) {
-            throw new Error('Failed to create requisition');
+            const err = await response.json().catch(() => ({}));
+            const errorObj: any = new Error(err.message || err.error || 'Failed to create requisition');
+            errorObj.activeRequisitionId = err.activeRequisitionId;
+            errorObj.code = err.code;
+            throw errorObj;
         }
 
         return response.json();
     },
 
     async update(id: string, data: Partial<CreateRequisitionData>) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}`, {
+        const response = await apiFetch(`/requisitions/${id}`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify(data),
         });
 
@@ -228,14 +190,7 @@ export const requisitionService = {
     },
 
     getAllAdmin: async () => {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/admin/all`, {
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
-        });
+        const response = await apiFetch('/requisitions/admin/all');
 
         if (!response.ok) {
             const err = await response.json();
@@ -246,15 +201,8 @@ export const requisitionService = {
     },
 
     updateStatus: async (id: string, status: string) => {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/status`, {
+        const response = await apiFetch(`/requisitions/${id}/status`, {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({ status }),
         });
 
@@ -266,15 +214,8 @@ export const requisitionService = {
     },
 
     updateExpenses: async (id: string, items: { id: string, actual_amount: number, receipt_url?: string }[]) => {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/expenses`, {
+        const response = await apiFetch(`/requisitions/${id}/expenses`, {
             method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({ items }),
         });
 
@@ -287,15 +228,8 @@ export const requisitionService = {
     },
 
     submitChange: async (id: string, denominations: any, change_amount: number, submission_method: 'CASH' | 'MONEYWISE_WALLET' = 'CASH', change_external_reference?: string) => {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/submit-change`, {
+        const response = await apiFetch(`/requisitions/${id}/submit-change`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({ 
                 denominations, 
                 change_amount, 
@@ -314,15 +248,8 @@ export const requisitionService = {
     },
 
     confirmChange: async (id: string, confirmed_denominations: any, confirmed_change_amount: number) => {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/confirm-change`, {
+        const response = await apiFetch(`/requisitions/${id}/confirm-change`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({ confirmed_denominations, confirmed_change_amount }),
         });
 
@@ -335,14 +262,8 @@ export const requisitionService = {
     },
 
     markRead: async (id: string) => {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/mark-read`, {
+        const response = await apiFetch(`/requisitions/${id}/mark-read`, {
             method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
         });
 
         if (!response.ok) {
@@ -357,15 +278,8 @@ export const requisitionService = {
     },
 
     async analyzeReceipt(requisitionId: string, itemId: string): Promise<void> {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${requisitionId}/items/${itemId}/analyze-receipt`, {
+        const response = await apiFetch(`/requisitions/${requisitionId}/items/${itemId}/analyze-receipt`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            }
         });
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
@@ -374,14 +288,7 @@ export const requisitionService = {
     },
 
     async getDisbursementHistory() {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/disbursements/history`, {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
+        const response = await apiFetch('/requisitions/disbursements/history');
 
         if (!response.ok) {
             throw new Error('Failed to fetch disbursement history');
@@ -391,15 +298,8 @@ export const requisitionService = {
     },
 
     async updateDisbursement(id: string, data: { total_prepared: number, denominations: any }) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/disbursements/${id}`, {
+        const response = await apiFetch(`/requisitions/disbursements/${id}`, {
             method: 'PATCH',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            },
             body: JSON.stringify(data)
         });
 
@@ -412,15 +312,8 @@ export const requisitionService = {
     },
 
     async analyzeDisbursementProof(id: string) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/disbursements/${id}/analyze-proof`, {
+        const response = await apiFetch(`/requisitions/disbursements/${id}/analyze-proof`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            }
         });
 
         if (!response.ok) {
@@ -432,29 +325,15 @@ export const requisitionService = {
     },
 
     async getMessages(id: string): Promise<RequisitionMessage[]> {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/messages`, {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
+        const response = await apiFetch(`/requisitions/${id}/messages`);
 
         if (!response.ok) throw new Error('Failed to fetch messages');
         return response.json();
     },
 
     async sendMessage(id: string, content: string, type: 'CHAT' | 'SYSTEM' = 'CHAT', metadata: any = {}): Promise<RequisitionMessage> {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/messages`, {
+        const response = await apiFetch(`/requisitions/${id}/messages`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`
-            },
             body: JSON.stringify({ content, type, metadata })
         });
 
@@ -463,15 +342,8 @@ export const requisitionService = {
     },
 
     async approveCategorization(id: string, overrides: { id: string, account_id: string }[] = []) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/approve-categorization`, {
+        const response = await apiFetch(`/requisitions/${id}/approve-categorization`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify({ overrides }),
         });
 
@@ -484,14 +356,8 @@ export const requisitionService = {
     },
 
     async retriggerAI(id: string) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/retrigger-ai`, {
+        const response = await apiFetch(`/requisitions/${id}/retrigger-ai`, {
             method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-            },
         });
 
         if (!response.ok) {
@@ -503,21 +369,56 @@ export const requisitionService = {
     },
 
     async postToQuickBooks(id: string, data: { payment_account_id: string, payment_account_name: string }) {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-
-        const response = await fetch(`${API_URL}/requisitions/${id}/post-quickbooks`, {
+        const response = await apiFetch(`/requisitions/${id}/post-quickbooks`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-            },
             body: JSON.stringify(data),
         });
 
         if (!response.ok) {
             const err = await response.json().catch(() => ({}));
             throw new Error(err.error || 'Failed to post to QuickBooks');
+        }
+
+        return response.json();
+    },
+
+    async scanReceipts(id: string, imageUrls: string[]) {
+        const response = await apiFetch(`/requisitions/${id}/scan-receipts`, {
+            method: 'POST',
+            body: JSON.stringify({ imageUrls }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            const errorMessage = err.details ? `${err.error}\nDetails: ${err.details}` : (err.error || 'Failed to scan receipts');
+            throw new Error(errorMessage);
+        }
+
+        return response.json();
+    },
+
+    async acknowledgeReceipt(id: string, signature?: string) {
+        const response = await apiFetch(`/requisitions/${id}/acknowledge`, {
+            method: 'POST',
+            body: JSON.stringify({ signature }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to acknowledge receipt');
+        }
+
+        return response.json();
+    },
+
+    async deleteReceipt(requisitionId: string, receiptId: string) {
+        const response = await apiFetch(`/requisitions/${requisitionId}/receipts/${receiptId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to delete receipt');
         }
 
         return response.json();

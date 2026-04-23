@@ -7,12 +7,15 @@ export const OrganizationController = {
             const organization_id = (req as any).user?.organization_id;
 
             if (!organization_id) {
-                return res.status(400).json({ error: 'User does not belong to an organization' });
+                return res.status(404).json({ 
+                    error: 'Organization not found', 
+                    message: 'Your user account is not associated with any organization. Please contact an administrator or link your account to an organization.' 
+                });
             }
 
             const { data, error } = await supabase
                 .from('organizations')
-                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key')
+                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode')
                 .eq('id', organization_id)
                 .single();
 
@@ -36,7 +39,7 @@ export const OrganizationController = {
             }
 
             // Extract allowed fields
-            const { name, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key } = req.body;
+            const { name, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode } = req.body;
 
             // Optional: Check if user is an ADMIN. 
             // Depending on requirements, we might restrict org updates to admins.
@@ -60,6 +63,7 @@ export const OrganizationController = {
             if (lenco_subaccount_id !== undefined) updateData.lenco_subaccount_id = lenco_subaccount_id;
             if (lenco_public_key !== undefined) updateData.lenco_public_key = lenco_public_key;
             if (lenco_secret_key !== undefined) updateData.lenco_secret_key = lenco_secret_key;
+            if (payment_test_mode !== undefined) updateData.payment_test_mode = payment_test_mode;
 
             updateData.updated_at = new Date().toISOString();
 
@@ -67,7 +71,7 @@ export const OrganizationController = {
                 .from('organizations')
                 .update(updateData)
                 .eq('id', organization_id)
-                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key')
+                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode')
                 .single();
 
             if (error) {

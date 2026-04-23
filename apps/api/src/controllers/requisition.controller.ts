@@ -58,7 +58,11 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             loan_amount,
             repayment_period,
             interest_rate,
-            monthly_deduction
+            monthly_deduction,
+            payment_method,
+            recipient_account,
+            recipient_bank_code,
+            recipient_name
         } = req.body;
         const requestor_id = (req as any).user.id;
         const organization_id = (req as any).user.organization_id;
@@ -83,34 +87,56 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         if (activeReq) {
             return res.status(400).json({ 
                 error: 'Accountability Block: Multiple requisitions not allowed.',
-                message: `You have an outstanding requisition (#${activeReq.id.slice(0, 8)}) with status "${activeReq.status}". Please submit any pending change or complete the existing cycle before requesting more funds.`
+                message: `You have an outstanding requisition (#${activeReq.id.slice(0, 8)}) with status "${activeReq.status}". Please submit any pending change or complete the existing cycle before requesting more funds.`,
+                activeRequisitionId: activeReq.id
             });
         }
 
         // 1. Insert Requisition
+        const insertData: any = {
+            requestor_id,
+            organization_id,
+            description,
+            estimated_total,
+            status: 'DRAFT',
+            interest_rate,
+            monthly_deduction,
+            department: department || null // Ensure empty strings are handled as null
+        };
+
+        // Feature detection: Check if payment columns exist in the database schema
+        // This prevents 500 errors if the migration hasn't been applied yet.
+        const { error: schemaError } = await supabase
+            .from('requisitions')
+            .select('payment_method')
+            .limit(1);
+
+        if (!schemaError) {
+            // Columns exist, add them to the insert
+            insertData.payment_method = payment_method;
+            insertData.recipient_account = recipient_account;
+            insertData.recipient_bank_code = recipient_bank_code;
+            insertData.recipient_name = recipient_name;
+        } else if (schemaError.code !== 'PGRST204') {
+            // Log other errors, but PGRST204 is 'Column not found' which we handle
+            console.error('[Schema Check] Unexpected error:', schemaError);
+        }
+
         const { data: requisition, error: reqError } = await supabase
             .from('requisitions')
-            .insert({
-                requestor_id,
-                organization_id,
-                description,
-                estimated_total,
-                status: 'DRAFT',
-                department,
-                type,
-                staff_name,
-                employee_id,
-                loan_amount,
-                repayment_period,
-                interest_rate,
-                monthly_deduction
-            })
+            .insert(insertData)
             .select()
             .single();
 
         if (reqError) {
-            console.error('Error creating requisition:', reqError);
-            return res.status(500).json({ error: 'Failed to create requisition header', details: reqError.message });
+            console.error('[Create Requisition] Supabase Error:', JSON.stringify(reqError, null, 2));
+            console.error('[Create Requisition] Payload Attempted:', JSON.stringify(insertData, null, 2));
+            return res.status(500).json({ 
+                error: 'Failed to create requisition header', 
+                details: reqError.message,
+                hint: reqError.hint,
+                code: reqError.code
+            });
         }
 
         // 2. Insert Line Items
@@ -221,7 +247,7 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
         // Fetch requisition with line items and account details
         const { data, error } = await supabase
             .from('requisitions')
-            .select('*, organization:organizations(id, name, lenco_subaccount_id, lenco_public_key), line_items(*, accounts(code, name)), disbursements(*, cashier:users!disbursements_cashier_id_fkey(name))')
+            .select('*, organization:organizations(id, name, lenco_subaccount_id, lenco_public_key, payment_test_mode), line_items(*, accounts(code, name)), disbursements(*, cashier:users!disbursements_cashier_id_fkey(name)), receipts(*)')
             .eq('id', id)
             .single();
 
@@ -238,6 +264,7 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
         const responseData = {
             ...data,
             items: data.line_items,
+            receipts: data.receipts || [],
             disbursements: data.disbursements?.map((d: any) => ({
                 ...d,
                 amount: d.total_prepared,
@@ -401,21 +428,42 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
         if (error) throw error;
         if (!data) return res.status(404).json({ error: 'Requisition not found' });
 
-        // Trigger system message
-        await RequisitionMessageService.createMessage({
-            requisitionId: id,
-            userId: (req as any).user.id,
-            content: status === 'AUTHORISED' ? 'How would you like to disburse these funds?' : 
-                     status === 'DISBURSED' ? 'Transaction needs to be expensed' : 
-                     `Status updated to ${status}`,
-            type: 'SYSTEM',
-            metadata: { 
-                status,
-                stage: status === 'AUTHORISED' ? 'DISBURSAL' : 
-                       status === 'DISBURSED' ? 'EXPENSE_TRACKING' : 
-                       undefined
+        // Determine if we need a system message and its stage
+        const stageToCreate = status === 'AUTHORISED' ? 'DISBURSAL' : 
+                              status === 'DISBURSED' ? 'EXPENSE_TRACKING' : 
+                              undefined;
+
+        // Idempotency Check: Prevent duplicate system messages if this stage was already logged
+        let shouldCreateMessage = true;
+        if (stageToCreate) {
+            const { data: existingMsg } = await supabase
+                .from('requisition_messages')
+                .select('id')
+                .eq('requisition_id', id)
+                .contains('metadata', { stage: stageToCreate })
+                .limit(1)
+                .maybeSingle();
+            
+            if (existingMsg) {
+                shouldCreateMessage = false;
             }
-        });
+        }
+
+        if (shouldCreateMessage) {
+            // Trigger system message
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: (req as any).user.id,
+                content: status === 'AUTHORISED' ? 'How would you like to disburse these funds?' : 
+                         status === 'DISBURSED' ? 'Transaction needs to be expensed' : 
+                         `Status updated to ${status}`,
+                type: 'SYSTEM',
+                metadata: { 
+                    status,
+                    stage: stageToCreate
+                }
+            });
+        }
 
         // Trigger AI learning if authorized
         if (status === 'AUTHORISED') {
@@ -463,7 +511,10 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         }
 
         if (requisition.requestor_id !== (req as any).user.id) {
-            return res.status(403).json({ error: 'Unauthorized' });
+            return res.status(403).json({ 
+                error: 'Unauthorized',
+                message: 'Only the original requestor of this requisition is authorized to enter final expense details and upload receipts.'
+            });
         }
 
         // Allow updating expenses if status is DISBURSED, EXPENSED or RECEIVED
@@ -564,13 +615,34 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         }
 
         res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
-
+        
         // 5. Trigger AI Review & Categorization stage automatically
         const organizationId = (req as any).user.organization_id;
         const userId = (req as any).user.id;
         
-        // If there's no change or if we want to trigger it anyway to show the categories
-        // The UI will handle the change submission cards if needed, but AI can start categorizing now.
+        // Calculate change for the summary message
+        const change = (estimatedTotal || 0) - actualTotal;
+        const changeText = change > 0 
+            ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.` 
+            : ' No change to submit.';
+
+        // Create a summary message to record the event in the chat
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId,
+            content: `Expenses tracked: Total Actual K${actualTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.${changeText}`,
+            type: 'SYSTEM',
+            metadata: { 
+                stage: 'EXPENSE_SUMMARY',
+                actualTotal,
+                changeAmount: change > 0 ? change : 0
+            }
+        });
+
+        // Add a deliberate delay so the user sees the summary/status change before AI kicks in
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        // Trigger AI Review & Categorization
         await triggerAIReview(id, organizationId, userId).catch(err => 
             console.error('[AI Review] Auto-trigger failed:', err)
         );
@@ -616,8 +688,18 @@ export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
 
         // Perform analysis synchronously for Vercel reliability
         try {
-            const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
-            const ocrData = await ocrService.analyzeReceipt(urlData.publicUrl);
+            const storagePath = item.receipt_url.startsWith('receipts/') 
+                ? item.receipt_url.substring(9) 
+                : item.receipt_url;
+
+            const { data: fileData, error: downloadError } = await supabase.storage
+                .from('receipts')
+                .download(storagePath);
+
+            if (downloadError) throw downloadError;
+
+            const buffer = Buffer.from(await fileData.arrayBuffer());
+            const ocrData = await ocrService.analyzeReceipt(undefined, buffer);
 
             await supabase.from('line_items').update({
                 receipt_ocr_data: ocrData,
@@ -1002,24 +1084,54 @@ async function triggerAIReview(requisitionId: string, organizationId: string, us
             .update({ status: 'CATEGORIZING', updated_at: new Date().toISOString() })
             .eq('id', requisitionId);
 
-        // 2. Create Initial "AI Thinking" Message immediately to provide visual feedback
-        const { data: initialMsg } = await RequisitionMessageService.createMessage({
-            requisitionId,
-            userId,
-            content: 'AI is categorizing your transaction. Please wait...',
-            type: 'SYSTEM',
-            metadata: { stage: 'AI_REVIEW', isThinking: true }
-        });
+        // 2. Find or create a single AI_REVIEW message — NEVER create a second one.
+        //    Use order + limit to safely get the most recent one, avoiding .single() errors.
+        const { data: existingMsgRows } = await supabase
+            .from('requisition_messages')
+            .select('id')
+            .eq('requisition_id', requisitionId)
+            .contains('metadata', { stage: 'AI_REVIEW' })
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        // 2. Fetch Line Items
+        const existingMsg = existingMsgRows?.[0] || null;
+
+        let aiMessageId: string;
+
+        if (existingMsg) {
+            // Update the existing message to "thinking" state
+            await RequisitionMessageService.updateMessage(existingMsg.id, {
+                content: 'AI is re-categorizing your transaction. Please wait...',
+                metadata: { stage: 'AI_REVIEW', isThinking: true }
+            });
+            aiMessageId = existingMsg.id;
+        } else {
+            // First-time: create the message
+            const newMsg = await RequisitionMessageService.createMessage({
+                requisitionId,
+                userId,
+                content: 'AI is categorizing your transaction. Please wait...',
+                type: 'SYSTEM',
+                metadata: { stage: 'AI_REVIEW', isThinking: true }
+            });
+            aiMessageId = newMsg.id;
+        }
+
+        // 3. Fetch Line Items
         const { data: lineItems } = await supabase
             .from('line_items')
             .select('*')
             .eq('requisition_id', requisitionId);
 
-        if (!lineItems || lineItems.length === 0) return;
+        if (!lineItems || lineItems.length === 0) {
+            await RequisitionMessageService.updateMessage(aiMessageId, {
+                content: 'No line items found to categorize.',
+                metadata: { stage: 'AI_REVIEW', isThinking: false }
+            });
+            return;
+        }
 
-        // 3. Get Chart of Accounts for Grounding
+        // 4. Get Chart of Accounts for Grounding
         const { data: accounts, error: accountsError } = await supabase
             .from('accounts')
             .select('*')
@@ -1028,24 +1140,21 @@ async function triggerAIReview(requisitionId: string, organizationId: string, us
 
         if (accountsError || !accounts || accounts.length === 0) {
             console.warn(`[AI Review] No active accounts found for organization ${organizationId}. Skipping AI categorization.`);
-            
-            await RequisitionMessageService.createMessage({
-                requisitionId,
-                userId,
+            await RequisitionMessageService.updateMessage(aiMessageId, {
                 content: 'AI categorization is currently disabled because your Chart of Accounts is not set up. Please import or create accounts to enable this feature.',
-                type: 'SYSTEM',
-                metadata: { stage: 'AI_REVIEW_DISABLED' }
+                metadata: { stage: 'AI_REVIEW_DISABLED', isThinking: false }
             });
             return;
         }
 
-        // 4. Get Suggestions
+        // 5. Get Suggestions
         const suggestions = await aiService.suggestBatch(accounts || [], lineItems.map(li => ({
             description: li.description,
-            amount: li.actual_amount || li.estimated_amount
+            amount: li.actual_amount || li.estimated_amount,
+            receipt_data: li.receipt_ocr_data
         })));
 
-        // 5. Update Line Items & Prepare metadata
+        // 6. Update Line Items & Prepare metadata
         const itemsMetadata = [];
         for (let i = 0; i < lineItems.length; i++) {
             const li = lineItems[i];
@@ -1080,37 +1189,38 @@ async function triggerAIReview(requisitionId: string, organizationId: string, us
             });
         }
 
-        // 6. Send/Update System Message
-        const { data: existingMsg } = await supabase
-            .from('requisition_messages')
-            .select('id')
-            .eq('requisition_id', requisitionId)
-            .contains('metadata', { stage: 'AI_REVIEW' })
-            .limit(1)
-            .single();
+        // 7. Always update the SAME message — clear isThinking and set final results
+        await RequisitionMessageService.updateMessage(aiMessageId, {
+            content: 'AI has categorized your transaction. Please review and approve.',
+            metadata: { 
+                stage: 'AI_REVIEW',
+                isThinking: false,
+                items: itemsMetadata
+            }
+        });
 
-        const messageContent = 'AI has categorized your transaction. Please review and approve.';
-        const messageMetadata = { 
-            stage: 'AI_REVIEW',
-            items: itemsMetadata
-        };
-
-        if (existingMsg) {
-            await RequisitionMessageService.updateMessage(existingMsg.id, {
-                content: messageContent,
-                metadata: messageMetadata
-            });
-        } else {
-            await RequisitionMessageService.createMessage({
-                requisitionId,
-                userId,
-                content: messageContent,
-                type: 'SYSTEM',
-                metadata: messageMetadata
-            });
-        }
+        console.log(`[AI Review] Completed for Req ${requisitionId}. Message ${aiMessageId} updated.`);
     } catch (err) {
         console.error('[AI Review Error]', err);
+        // Attempt to find and clear any stuck thinking state on failure
+        try {
+            const { data: stuckMsgs } = await supabase
+                .from('requisition_messages')
+                .select('id')
+                .eq('requisition_id', requisitionId)
+                .contains('metadata', { stage: 'AI_REVIEW', isThinking: true })
+                .order('created_at', { ascending: false })
+                .limit(1);
+            
+            if (stuckMsgs?.[0]) {
+                await RequisitionMessageService.updateMessage(stuckMsgs[0].id, {
+                    content: 'AI categorization encountered an error. Please click Reload to try again.',
+                    metadata: { stage: 'AI_REVIEW', isThinking: false, hasError: true }
+                });
+            }
+        } catch (cleanupErr) {
+            console.error('[AI Review] Failed to clear stuck thinking state:', cleanupErr);
+        }
     }
 }
 
@@ -1185,6 +1295,7 @@ export const approveCategorization = async (req: AuthRequest, res: Response): Pr
                 requisitionId: id,
                 userId: user_id,
                 content: 'Post this transaction to QuickBooks?',
+                type: 'SYSTEM',
                 metadata: { stage: 'QUICKBOOKS_POSTING' }
             });
         } else {
@@ -1257,4 +1368,255 @@ export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise
         res.status(500).json({ error: error.message });
     }
 };
+
+/**
+ * AI Receipt Scanning & Allocation
+ */
+export const scanReceipts = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const { imageUrls } = req.body; // Array of storage paths or URLs
+        const userId = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
+
+        if (!imageUrls || !Array.isArray(imageUrls) || imageUrls.length === 0) {
+            return res.status(400).json({ error: 'No receipt images provided' });
+        }
+
+        console.log(`[Scan Receipts] Processing ${imageUrls.length} receipts for Req ${id}`);
+
+        // 1. Fetch current line items for matching
+        const { data: lineItems } = await supabase
+            .from('line_items')
+            .select('*')
+            .eq('requisition_id', id);
+
+        if (!lineItems || lineItems.length === 0) {
+            return res.status(400).json({ error: 'No line items found for this requisition' });
+        }
+
+        const allExtractedItems: any[] = [];
+        const processedReceipts = [];
+        const processingErrors: string[] = [];
+
+        // 2. Process each receipt
+        for (const imageUrl of imageUrls) {
+            try {
+                // Strip "receipts/" prefix if present for storage calls
+                const storagePath = imageUrl.startsWith('receipts/') 
+                    ? imageUrl.substring(9) 
+                    : imageUrl;
+
+                console.log(`[Scan Receipts] Downloading from storage: ${storagePath}`);
+
+                // 2. Download directly from storage to avoid public URL issues
+                const { data: fileData, error: downloadError } = await supabase.storage
+                    .from('receipts')
+                    .download(storagePath);
+
+                if (downloadError) {
+                    throw new Error(`Failed to download receipt from storage: ${downloadError.message}`);
+                }
+
+                // Convert to Buffer
+                const buffer = Buffer.from(await fileData.arrayBuffer());
+
+                // OCR Analysis
+                const ocrData = await ocrService.analyzeReceipt(undefined, buffer);
+                
+                if (ocrData.error) {
+                    throw new Error(ocrData.error);
+                }
+
+                // If AI found the total but no line items (common for simple receipts like toll/fuel),
+                // synthesize a line item to ensure matching and UI rendering works correctly.
+                if ((!ocrData.line_items || ocrData.line_items.length === 0) && ocrData.total_amount) {
+                    console.log(`[Scan Receipts] Synthesizing line item for simple receipt: ${ocrData.vendor}`);
+                    ocrData.line_items = [{
+                        description: `Charge from ${ocrData.vendor || 'Vendor'}`,
+                        quantity: 1,
+                        unit_price: ocrData.total_amount,
+                        total: ocrData.total_amount
+                    }];
+                }
+
+                // Check if receipt already exists for this requisition and file_url
+                const { data: existingReceipt } = await supabase
+                    .from('receipts')
+                    .select('id')
+                    .eq('requisition_id', id)
+                    .eq('file_url', imageUrl)
+                    .maybeSingle();
+
+                let savedReceipt;
+                if (existingReceipt) {
+                    // Update existing
+                    const { data: updated, error: updateError } = await supabase
+                        .from('receipts')
+                        .update({
+                            ocr_data: ocrData,
+                            ocr_text: ocrData.raw_text || ''
+                        })
+                        .eq('id', existingReceipt.id)
+                        .select()
+                        .single();
+                        
+                    if (updateError) throw new Error(`Update receipt failed: ${updateError.message}`);
+                    savedReceipt = updated;
+                } else {
+                    // Insert new
+                    const { data: inserted, error: insertError } = await supabase
+                        .from('receipts')
+                        .insert({
+                            requisition_id: id,
+                            file_url: imageUrl,
+                            ocr_data: ocrData,
+                            ocr_text: ocrData.raw_text || '',
+                            uploaded_by: userId
+                        })
+                        .select()
+                        .single();
+                        
+                    if (insertError) throw new Error(`Insert receipt failed: ${insertError.message}`);
+                    savedReceipt = inserted;
+                }
+
+                processedReceipts.push(savedReceipt);
+
+                // Prepare items for matching - tag them with their source receipt ID
+                if (ocrData.line_items) {
+                    const enrichedItems = ocrData.line_items.map((li: any) => ({
+                        ...li,
+                        source_receipt_id: savedReceipt.id,
+                        source_receipt_vendor: ocrData.vendor || 'Unknown Vendor',
+                        source_receipt_total: ocrData.total_amount
+                    }));
+                    allExtractedItems.push(...enrichedItems);
+                }
+            } catch (err: any) {
+                console.error(`[Scan Receipts] Individual receipt processing failed: ${imageUrl}`, err.message);
+                processingErrors.push(`${imageUrl}: ${err.message}`);
+            }
+        }
+
+        if (allExtractedItems.length === 0) {
+            console.log('[Scan Receipts] No line items extracted.');
+            
+            // If we had errors and no success at all, return error
+            if (processingErrors.length > 0 && processedReceipts.length === 0) {
+                return res.status(400).json({ 
+                    error: 'AI could not process any receipts.', 
+                    details: processingErrors.join('; ') 
+                });
+            }
+
+            return res.status(200).json({ 
+                success: true,
+                message: 'Receipts processed, but AI could not extract specific line items.',
+                receipts: processedReceipts,
+                matches: []
+            });
+        }
+
+        // 3. Match extracted items to requested line items
+        console.log(`[Scan Receipts] Matching ${allExtractedItems.length} extracted items with ${lineItems.length} requisition items...`);
+        
+        // Include both estimated and actual amounts for better matching context
+        const requestedItemsContext = lineItems.map(i => ({
+            id: i.id,
+            description: i.description,
+            amount: i.estimated_amount,
+            current_actual_amount: i.actual_amount
+        }));
+
+        let matchResult;
+        try {
+            matchResult = await ocrService.matchExtractedItems(requestedItemsContext, allExtractedItems);
+        } catch (matchErr: any) {
+            console.error('[Scan Receipts] AI Matching failed:', matchErr.message);
+            // Fallback: return success with processed receipts but no matches
+            return res.status(200).json({
+                success: true,
+                message: `Receipts processed, but AI matching failed: ${matchErr.message}`,
+                receipts: processedReceipts,
+                matches: [],
+                errors: processingErrors
+            });
+        }
+
+        if (matchResult && matchResult.matches) {
+            // 4. Update database with findings
+            const updatePromises = matchResult.matches.map((match: any) => {
+                return supabase
+                    .from('line_items')
+                    .update({
+                        ai_extracted_amount: match.extracted_amount,
+                        receipt_ocr_data: match, // Store the match details
+                        receipt_ocr_status: 'DONE',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', match.requested_item_id);
+            });
+
+            await Promise.all(updatePromises);
+        }
+
+        res.json({
+            message: 'Receipts processed and items allocated successfully',
+            receipts: processedReceipts,
+            matches: matchResult?.matches || [],
+            unmatched_extracted: matchResult?.unmatched_extracted || [],
+            unmatched_requested_ids: matchResult?.unmatched_requested_ids || []
+        });
+
+    } catch (error: any) {
+        console.error('[Scan Receipts] Critical error:', error);
+        res.status(500).json({ error: 'AI Receipt Scanning failed', details: error.message });
+    }
+};
+
+export const deleteReceipt = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id, receiptId } = req.params;
+
+        // 1. Fetch receipt to get file_url
+        const { data: receipt, error: fetchError } = await supabase
+            .from('receipts')
+            .select('file_url')
+            .eq('id', receiptId)
+            .single();
+
+        if (fetchError || !receipt) {
+            return res.status(404).json({ error: 'Receipt not found' });
+        }
+
+        // 2. Delete from Storage
+        const storagePath = receipt.file_url.startsWith('receipts/') 
+            ? receipt.file_url.substring(9) 
+            : receipt.file_url;
+
+        const { error: storageError } = await supabase.storage
+            .from('receipts')
+            .remove([storagePath]);
+
+        if (storageError) {
+            console.error('[Delete Receipt] Storage removal failed:', storageError);
+        }
+
+        // 3. Delete from Database
+        const { error: dbError } = await supabase
+            .from('receipts')
+            .delete()
+            .eq('id', receiptId);
+
+        if (dbError) throw dbError;
+
+        res.json({ message: 'Receipt deleted successfully' });
+    } catch (error: any) {
+        console.error('[Delete Receipt] Error:', error);
+        res.status(500).json({ error: 'Failed to delete receipt', details: error.message });
+    }
+};
+
+
 

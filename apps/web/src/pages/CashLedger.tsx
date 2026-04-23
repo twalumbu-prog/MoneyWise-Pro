@@ -440,7 +440,202 @@ const CashLedger: React.FC = () => {
     }
 
     return (
-        <Layout>
+        <Layout noPadding={true}>
+            {/* ============ MOBILE LAYOUT ============ */}
+            <div className="md:hidden flex flex-col min-h-screen bg-white pt-6">
+
+
+
+                {/* Mobile Wallet Cards - Horizontal Swipeable */}
+                <div className="flex overflow-x-auto no-scrollbar gap-4 pb-6 px-6 scroll-px-6" style={{ scrollSnapType: 'x mandatory' }}>
+                    {[
+                        { id: 'MONEYWISE_WALLET', name: 'MoneyWise Wallet', icon: Wallet },
+                        { id: 'CASH', name: 'Cash Account', icon: Coins },
+                        { id: 'AIRTEL_MONEY', name: 'Airtel Money', icon: Smartphone },
+                        { id: 'BANK', name: 'Bank Account', icon: Building2 },
+                    ].map((acc) => {
+                        const isActive = selectedAccountType === acc.id;
+                        return (
+                            <button
+                                key={acc.id}
+                                onClick={() => setSelectedAccountType(acc.id as any)}
+                                style={{ scrollSnapAlign: 'start', minWidth: '65vw', maxWidth: '65vw' }}
+                                className={`flex flex-col p-4 rounded-xl border-2 text-left transition-all duration-300 flex-shrink-0 ${
+                                    isActive
+                                        ? 'bg-white border-[#006AFF]'
+                                        : 'bg-gray-50 border-transparent'
+                                }`}
+                            >
+                                {/* Card Icon + Name */}
+                                <div className="flex items-center mb-2">
+                                    <Wallet size={12} className={isActive ? 'text-[#006AFF]' : 'text-gray-400'} strokeWidth={3} />
+                                    <span className={`ml-2 text-[10px] font-bold uppercase tracking-widest ${
+                                        isActive ? 'text-[#006AFF]' : 'text-gray-400'
+                                    }`}>{acc.name}</span>
+                                </div>
+
+                                {/* Balance */}
+                                <div className={`text-xl font-black tracking-tight mb-3 ${
+                                    isActive ? 'text-brand-navy' : 'text-gray-400'
+                                }`}>
+                                    {isActive ? formatCurrency(balance) : formatCurrency(0)}
+                                </div>
+
+                                {/* Deposit Button - Only on active card for admins */}
+                                {isActive && !isRequestor && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
+                                        className="w-full flex items-center justify-center py-2.5 rounded-full border border-gray-200 text-[12px] font-bold text-brand-navy bg-white transition-all active:bg-gray-50"
+                                    >
+                                        <PlusCircle size={14} className="mr-2" strokeWidth={2.5} />
+                                        Deposit Funds
+                                    </button>
+                                )}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                {/* Mobile Toolbar: Search, Filter, Date */}
+                <div className="px-6 pb-4 flex items-center gap-3 border-b border-gray-50">
+                    <div className="relative flex-1">
+                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" strokeWidth={2.5} />
+                        <input
+                            type="text"
+                            placeholder="Search transactions..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl text-[13px] font-medium text-brand-navy placeholder:text-gray-400 focus:outline-none"
+                        />
+                    </div>
+                    <button
+                        onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                        className={`p-2.5 rounded-2xl border transition-colors ${
+                            isFilterMenuOpen ? 'bg-[#F0F7FF] border-[#006AFF]/20 text-[#006AFF]' : 'bg-gray-50 border-gray-100 text-gray-400'
+                        }`}
+                    >
+                        <Filter size={17} strokeWidth={2.5} />
+                    </button>
+                    <button
+                        onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
+                        className="p-2.5 rounded-2xl border bg-gray-50 border-gray-100 text-gray-400"
+                    >
+                        <ArrowDownUp size={17} strokeWidth={2.5} />
+                    </button>
+                </div>
+
+                {/* Mobile Filter Menu */}
+                {isFilterMenuOpen && (
+                    <div className="mx-6 mb-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
+                        <div className="flex flex-col">
+                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5">Department</span>
+                            <select
+                                value={filterDepartment}
+                                onChange={(e) => setFilterDepartment(e.target.value)}
+                                className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                            >
+                                <option value="ALL">All Departments</option>
+                                {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
+                            </select>
+                        </div>
+                        <button
+                            onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setSearchQuery(''); }}
+                            className="text-[10px] font-black uppercase tracking-widest text-[#006AFF] text-left"
+                        >
+                            Reset Filters
+                        </button>
+                    </div>
+                )}
+
+                {/* Mobile Transaction List (Grouped by Month) */}
+                <div className="flex-1 bg-white">
+                    {loading && (
+                        <div className="flex flex-col items-center justify-center py-24">
+                            <div className="w-10 h-10 border-4 border-[#006AFF]/10 border-t-[#006AFF] rounded-full animate-spin" />
+                            <p className="mt-4 text-[11px] font-black uppercase tracking-[0.2em] text-gray-400 animate-pulse">Syncing Ledger</p>
+                        </div>
+                    )}
+
+                    {!loading && groupedEntries.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-24">
+                            <div className="p-5 bg-gray-50 rounded-full mb-4">
+                                <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
+                            </div>
+                            <p className="text-gray-900 font-bold">No transactions found</p>
+                            <p className="text-sm text-gray-400 mt-1">Try adjusting your date range or filters.</p>
+                        </div>
+                    )}
+
+                    {!loading && groupedEntries.map((group) => (
+                        <div key={group.month}>
+                            {/* Month Group Header */}
+                            <div className="px-6 py-3 bg-gray-50 border-y border-gray-100">
+                                <span className="text-[11px] font-bold text-gray-500">{group.month}</span>
+                            </div>
+
+                            {/* Transaction Rows */}
+                            <div className="divide-y divide-gray-50">
+                                {group.entries.map((entry) => {
+                                    const isOutflow = entry.credit > 0;
+                                    const amount = isOutflow ? entry.credit : entry.debit;
+                                    const refNum = entry.reference_number || entry.requisitions?.reference_number;
+                                    const description = entry.requisitions?.description || entry.description;
+                                    const date = new Date(entry.date);
+                                    const dayNum = date.getDate().toString().padStart(2, '0');
+                                    const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
+
+                                    return (
+                                        <div
+                                            key={entry.id}
+                                            className="px-6 py-5 flex items-start justify-between active:bg-gray-50 transition-colors"
+                                            onClick={() => entry.requisition_id && toggleRow(entry.id)}
+                                        >
+                                            {/* Left: Date Column */}
+                                            <div className="flex flex-col items-center mr-4 pt-0.5" style={{ minWidth: '32px' }}>
+                                                <span className="text-[15px] font-black text-brand-navy leading-none">{dayNum}</span>
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">{month}</span>
+                                            </div>
+
+                                            {/* Middle: Description + Ref */}
+                                            <div className="flex-1 mr-4">
+                                                <p className="text-[14px] font-semibold text-brand-navy leading-tight line-clamp-1">
+                                                    {description}
+                                                </p>
+                                                {refNum && (
+                                                    <p className="text-[11px] font-normal text-gray-400 mt-0.5 uppercase tracking-tight">
+                                                        {refNum}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Right: Amount + Closing Balance */}
+                                            <div className="flex flex-col items-end">
+                                                <span className={`text-[14px] font-semibold leading-tight ${
+                                                    isOutflow ? 'text-rose-600' : 'text-emerald-600'
+                                                }`}>
+                                                    {isOutflow ? '-' : '+'}{formatCurrency(amount)}
+                                                </span>
+                                                <span className="text-[11px] font-normal text-gray-400 mt-0.5">
+                                                    {formatCurrency(entry.balance_after)}
+                                                </span>
+                                            </div>
+
+                                            <ChevronRight 
+                                                size={14} 
+                                                className={`ml-2 mt-1 flex-shrink-0 transition-opacity ${entry.requisition_id ? 'text-gray-300' : 'text-gray-200 opacity-50'}`} 
+                                                strokeWidth={2.5} 
+                                            />
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* ============ DESKTOP LAYOUT ============ */}
+            <div className="hidden md:block">
             <div className="space-y-8 pb-4">
                 {/* Account Selection Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -603,27 +798,6 @@ const CashLedger: React.FC = () => {
                     </div>
                 )}
 
-                {/* Date Selection and Filter Modals */}
-                <CloseBalanceModal
-                    isOpen={isCloseModalOpen}
-                    onClose={() => setIsCloseModalOpen(false)}
-                    onSuccess={() => {
-                        const nextDay = new Date(endDate);
-                        nextDay.setDate(nextDay.getDate() + 1);
-                        setEndDate(nextDay.toISOString().split('T')[0]);
-                        loadData();
-                    }}
-                    currentSystemBalance={balance}
-                    accountType={selectedAccountType}
-                />
-
-                <CashInflowModal
-                    isOpen={isInflowModalOpen}
-                    onClose={() => setIsInflowModalOpen(false)}
-                    onSuccess={loadData}
-                    initialInflowType={selectedAccountType === 'MONEYWISE_WALLET' ? 'WALLET' : 'CASH'}
-                    isReadOnlyType={selectedAccountType === 'MONEYWISE_WALLET'}
-                />
 
                 <div className="shadow-sm border border-gray-100 rounded-[32px] overflow-x-auto bg-white mt-8">
                     <table className="w-full text-left">
@@ -748,6 +922,7 @@ const CashLedger: React.FC = () => {
                         </tbody>
                     </table>
                 </div>
+                </div>
 
             {/* Classification Results Modal */}
             {isResultsModalOpen && (
@@ -794,6 +969,27 @@ const CashLedger: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* Shared Modals (both layouts) */}
+            <CloseBalanceModal
+                isOpen={isCloseModalOpen}
+                onClose={() => setIsCloseModalOpen(false)}
+                onSuccess={() => {
+                    const nextDay = new Date(endDate);
+                    nextDay.setDate(nextDay.getDate() + 1);
+                    setEndDate(nextDay.toISOString().split('T')[0]);
+                    loadData();
+                }}
+                currentSystemBalance={balance}
+                accountType={selectedAccountType}
+            />
+            <CashInflowModal
+                isOpen={isInflowModalOpen}
+                onClose={() => setIsInflowModalOpen(false)}
+                onSuccess={loadData}
+                initialInflowType={selectedAccountType === 'MONEYWISE_WALLET' ? 'WALLET' : 'CASH'}
+                isReadOnlyType={selectedAccountType === 'MONEYWISE_WALLET'}
+            />
         </Layout>
     );
 };

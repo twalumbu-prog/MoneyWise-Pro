@@ -59,7 +59,8 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS address TEXT,
             ADD COLUMN IF NOT EXISTS tax_id VARCHAR(100),
             ADD COLUMN IF NOT EXISTS website VARCHAR(255),
-            ADD COLUMN IF NOT EXISTS lenco_subaccount_id VARCHAR(255);
+            ADD COLUMN IF NOT EXISTS lenco_subaccount_id VARCHAR(255),
+            ADD COLUMN IF NOT EXISTS payment_test_mode BOOLEAN DEFAULT FALSE;
         `);
 
         await migrationPool.query(`
@@ -170,6 +171,14 @@ const runMigration = async () => {
                 UNIQUE(organization_id, qb_account_id, period_type, start_date)
             );
         `);
+        // Add payment_info column to users for storing bank/mobile money account details
+        console.log('[Migration] Checking for payment_info column on users...');
+        await migrationPool.query(`
+            ALTER TABLE public.users
+            ADD COLUMN IF NOT EXISTS payment_info JSONB DEFAULT NULL;
+        `);
+        console.log('[Migration] payment_info column ready.');
+
         console.log('[Migration] Schema update successful.');
 
         // Add QB classification columns to line_items
@@ -177,7 +186,8 @@ const runMigration = async () => {
         await migrationPool.query(`
             ALTER TABLE public.line_items
             ADD COLUMN IF NOT EXISTS qb_account_id VARCHAR(100),
-            ADD COLUMN IF NOT EXISTS qb_account_name TEXT;
+            ADD COLUMN IF NOT EXISTS qb_account_name TEXT,
+            ADD COLUMN IF NOT EXISTS ai_extracted_amount NUMERIC;
         `);
         console.log('[Migration] line_items QB columns ready.');
 

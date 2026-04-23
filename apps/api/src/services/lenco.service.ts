@@ -308,21 +308,13 @@ export class LencoService {
      * @param type 'MOBILE_MONEY' or 'BANK'
      */
     static calculatePayoutFee(amount: number, type: 'MOBILE_MONEY' | 'BANK' | string): number {
-        const isMoMo = type === 'MOBILE_MONEY' || type === 'AIRTEL' || type === 'MTN' || type === 'ZAMTEL';
-        
-        if (isMoMo) {
-            // Updated: Minimum fee K8.5 for all MoMo transactions up to K1000
-            if (amount <= 1000) return 8.50;
-            if (amount <= 20000) return 15.00;
-            if (amount <= 50000) return 25.00;
-            return 35.00;
-        } else {
-            // Bank transfers
-            if (amount <= 100) return 12.00;
-            if (amount <= 1000) return 15.00;
-            if (amount <= 20000) return 25.00;
-            if (amount <= 50000) return 30.00;
-            return 35.00;
-        }
+        // Updated tiered pricing based on Lenco V2 actuals for Zambia
+        if (amount <= 150) return 8.50;
+        if (amount <= 300) return 10.00;
+        if (amount <= 501) return 11.00;
+        if (amount <= 1000) return 12.00;
+        if (amount <= 3000) return 15.00;
+        if (amount <= 5000) return 18.00;
+        return 20.00;
     }
 }

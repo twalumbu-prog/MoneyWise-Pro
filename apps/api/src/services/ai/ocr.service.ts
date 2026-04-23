@@ -56,10 +56,44 @@ Return a JSON object with the following fields (use null for fields not found):
   "confidence": 0.95
 }
 
-Be accurate with numbers. For VAT (Value Added Tax), look for entries like VAT, GST, Tax, or percentages near total amounts.`;
+Be accurate with numbers. For VAT (Value Added Tax), look for entries like VAT, GST, Tax, or percentages near total amounts.
+
+IMPORTANT: Even if a receipt is extremely simple and lacks a formal table of items (e.g., a toll gate receipt or a single-item retail receipt), you MUST identify the primary item or service being charged for and include it in the 'line_items' array. Use the most descriptive text available on the receipt for the description (e.g. 'Toll Fee' rather than just 'Total').`;
+
+const ITEM_MATCHING_PROMPT = `You are a financial reconciliation expert. Your task is to match line items extracted from a receipt to the original requested items in a requisition.
+
+Requested Items (from our records):
+{{requested_items}}
+
+Extracted Items (found on the uploaded receipts):
+{{extracted_items}}
+
+### MATCHING RULES:
+1. **Semantic Context is King**: Rely heavily on the 'description' AND the 'source_receipt_vendor' (if available). For example, if the vendor is "Mount Meru Petroleum" and the receipt item is "Low Sulphur Die sel", it is OBVIOUSLY a match for a requested item named "fuel".
+2. **Amounts are just Estimates**: The "amount" in requested items is an ESTIMATE and will often differ from the receipt's actual amount. Do NOT rely strictly on amounts aligning. Use them as secondary clues.
+3. **Handle Terminology**: "total" in extracted items corresponds to the actual spent amount.
+4. **Multiple Receipts**: If multiple receipts were uploaded, the "Extracted Items" list contains items from all of them. Use the vendor name to differentiate them.
+5. **Confidence**: If the semantic context (vendor + description) points strongly to a requested item, match it with high confidence (>0.8) even if the amounts differ significantly.
+
+Return ONLY a JSON object:
+{
+  "matches": [
+    {
+      "requested_item_id": "ID of the requested item",
+      "extracted_description": "Description found on receipt",
+      "extracted_amount": 0.00, // The numerical total for this item from the receipt
+      "source_receipt_id": "The exact ID of the receipt this item came from (as provided in extracted_items)",
+      "confidence": 0.0-1.0,
+      "reasoning": "Brief explanation"
+    }
+  ],
+  "unmatched_extracted": ["Descriptions of receipt items that didn't match anything"],
+  "unmatched_requested_ids": ["IDs of requested items that have no match"]
+}
+`;
 
 export const ocrService = {
-    async analyzeReceipt(imageUrl: string): Promise<ReceiptOcrData> {
+    async analyzeReceipt(imageUrl?: string, imageData?: Buffer | Uint8Array): Promise<ReceiptOcrData> {
         const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
         if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
@@ -68,14 +102,21 @@ export const ocrService = {
         }
 
         try {
-            // Determine if this is a storage path or full URL
-            const fullUrl = imageUrl.startsWith('http') ? imageUrl : imageUrl;
+            let base64Data: string;
 
-            // Updated model to gemini-2.5-flash which is available for this API key
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+            if (imageData) {
+                base64Data = Buffer.from(imageData).toString('base64');
+                console.log(`[OCR Service] Using provided image data, size: ${Math.round(base64Data.length / 1024)} KB`);
+            } else if (imageUrl) {
+                console.log(`[OCR Service] Fetching image from URL: ${imageUrl.split('?')[0]}`);
+                base64Data = await this.fetchImageAsBase64(imageUrl);
+                console.log(`[OCR Service] Fetched Base64 from URL, size: ${Math.round(base64Data.length / 1024)} KB`);
+            } else {
+                throw new Error('Either imageUrl or imageData must be provided');
+            }
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
             
-            console.log(`[OCR Service] Starting analysis for image: ${fullUrl.split('?')[0]}`);
-
             const payload = {
                 contents: [{
                     parts: [
@@ -83,7 +124,7 @@ export const ocrService = {
                         {
                             inline_data: {
                                 mime_type: 'image/jpeg',
-                                data: await this.fetchImageAsBase64(fullUrl)
+                                data: base64Data
                             }
                         }
                     ]
@@ -96,7 +137,7 @@ export const ocrService = {
             };
 
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for Gemini
+            const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout for Gemini
 
             const response = await fetch(url, {
                 method: 'POST',
@@ -146,6 +187,39 @@ export const ocrService = {
         }
     },
 
+    async matchExtractedItems(requestedItems: any[], extractedItems: any[]): Promise<any> {
+        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+        if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') return null;
+
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+            
+            const prompt = ITEM_MATCHING_PROMPT
+                .replace('{{requested_items}}', JSON.stringify(requestedItems, null, 2))
+                .replace('{{extracted_items}}', JSON.stringify(extractedItems, null, 2));
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
+                })
+            });
+
+            if (!response.ok) throw new Error(`Gemini API Match Error: ${response.status}`);
+            
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (!text) return null;
+
+            return JSON.parse(text.replace(/```json\n?|\n?```/g, '').trim());
+        } catch (error: any) {
+            console.error('[OCR Service] Matching failed:', error.message);
+            return null;
+        }
+    },
+
     async fetchImageAsBase64(url: string): Promise<string> {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout for image fetch
@@ -157,10 +231,7 @@ export const ocrService = {
             
             clearTimeout(timeoutId);
             const buffer = await response.arrayBuffer();
-            // Use Buffer.from for efficiency in Node.js environments like Vercel
             const base64 = Buffer.from(buffer).toString('base64');
-            
-            console.log(`[OCR] Successfully converted image to base64 (${Math.round(base64.length / 1024)} KB)`);
             return base64;
         } catch (error: any) {
             console.error('[OCR] fetchImageAsBase64 failed:', error.message);
@@ -168,3 +239,4 @@ export const ocrService = {
         }
     }
 };
+

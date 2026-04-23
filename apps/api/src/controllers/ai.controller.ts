@@ -3,7 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { intelligenceTools } from '../services/ai/intelligence.tools';
 import { intelligenceToolSchemas } from '../services/ai/intelligence.tools.schema';
 
-const GEMINI_MODEL = 'gemini-2.5-flash';
+const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 
 export const assistantChat = async (req: AuthRequest, res: Response) => {
     try {

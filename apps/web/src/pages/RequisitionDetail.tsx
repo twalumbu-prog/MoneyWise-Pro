@@ -137,7 +137,7 @@ export const RequisitionDetail: React.FC = () => {
         const totalDisbursed = (requisition as any).disbursements?.[0]?.total_prepared || 0;
         let actualTotal = 0;
         const isWallet = (requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET';
-        const withdrawalFee = isWallet ? 8.5 : 0;
+        const withdrawalFee = isWallet ? lencoService.calculatePayoutFee(totalDisbursed, 'MONEYWISE_WALLET') : 0;
         
         if (isLoanOrAdvance) {
             actualTotal = Number(requisition.estimated_total || 0);
@@ -766,7 +766,7 @@ export const RequisitionDetail: React.FC = () => {
                                     <div className="flex justify-between items-center pt-3 border-t border-gray-100">
                                         <span className="text-sm font-bold text-gray-700">Calculated Change:</span>
                                         <span className="text-lg font-bold text-brand-green">
-                                            K{Math.max(0, (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - ((requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET' ? 8.5 : 0)) - (
+                                            K{Math.max(0, (Number((requisition as any).disbursements?.[0]?.total_prepared || 0) - ((requisition as any).disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET' ? lencoService.calculatePayoutFee(Number((requisition as any).disbursements?.[0]?.total_prepared || 0), 'MONEYWISE_WALLET') : 0)) - (
                                                 isLoanOrAdvance 
                                                     ? Number(requisition.estimated_total || 0) 
                                                     : expenseItems

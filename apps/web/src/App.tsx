@@ -74,7 +74,7 @@ const HomeRedirect = () => {
         return <Navigate to="/requisitions" replace />;
     }
 
-    return <Dashboard />;
+    return <RequisitionList />;
 };
 
 function App() {

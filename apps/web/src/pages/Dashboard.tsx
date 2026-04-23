@@ -1,8 +1,10 @@
 import React from 'react';
 import { Layout } from '../components/Layout';
+import { useNavigate } from 'react-router-dom';
 import { FileText, Clock, CheckCircle, AlertCircle } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
+    const navigate = useNavigate();
     return (
         <Layout>
             <div className="space-y-6">
@@ -89,7 +91,16 @@ export const Dashboard: React.FC = () => {
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                     <h3 className="text-lg font-bold text-brand-navy mb-4">Quick Actions</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <button className="flex items-center justify-center px-4 py-3 border border-transparent text-sm font-bold rounded-xl text-white bg-brand-navy hover:bg-brand-green transition-all shadow-lg shadow-brand-navy/10 transform hover:-translate-y-0.5">
+                        <button 
+                            onClick={() => {
+                                if (window.innerWidth < 768) {
+                                    navigate('/requisitions?new=true');
+                                } else {
+                                    navigate('/requisitions/new');
+                                }
+                            }}
+                            className="flex items-center justify-center px-4 py-3 border border-transparent text-sm font-bold rounded-xl text-white bg-brand-navy hover:bg-brand-green transition-all shadow-lg shadow-brand-navy/10 transform hover:-translate-y-0.5"
+                        >
                             New Requisition
                         </button>
                         <button className="flex items-center justify-center px-4 py-3 border border-gray-200 text-sm font-bold rounded-xl text-gray-600 bg-white hover:bg-gray-50 hover:border-gray-300 transition-all">

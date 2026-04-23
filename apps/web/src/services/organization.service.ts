@@ -15,6 +15,7 @@ export interface Organization {
     lenco_subaccount_id?: string;
     lenco_public_key?: string;
     lenco_secret_key?: string;
+    payment_test_mode?: boolean;
 }
 
 export const organizationService = {

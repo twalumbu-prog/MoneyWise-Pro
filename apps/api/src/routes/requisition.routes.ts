@@ -15,7 +15,9 @@ import {
     sendRequisitionMessage,
     approveCategorization,
     retriggerAICategorization,
-    postToQuickBooks
+    postToQuickBooks,
+    scanReceipts,
+    deleteReceipt
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -46,6 +48,7 @@ router.get('/:id/verify-disbursement', verifyDisbursementStatus);
 
 // Expense Tracking & Change Flow
 router.put('/:id/expenses', updateRequisitionExpenses);
+router.post('/:id/scan-receipts', scanReceipts);
 router.post('/:id/items/:itemId/analyze-receipt', analyzeReceiptItem);
 router.post('/:id/submit-change', submitChange);
 router.post('/:id/confirm-change', confirmChange);
@@ -53,6 +56,7 @@ router.post('/:id/post-voucher', postVoucher);
 router.post('/:id/approve-categorization', approveCategorization);
 router.post('/:id/retrigger-ai', retriggerAICategorization);
 router.post('/:id/post-quickbooks', postToQuickBooks);
+router.delete('/:id/receipts/:receiptId', deleteReceipt);
 
 // Message routes
 router.get('/:id/messages', getRequisitionMessages);

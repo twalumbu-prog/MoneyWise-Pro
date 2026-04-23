@@ -186,26 +186,35 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
     const handleAction = async (action: string) => {
         if (action === 'APPROVE') {
             try {
-                // 1. Update status on backend first (this satisfies the UI change requirement)
+                // 1. Send the user's message to the backend FIRST to ensure it gets an older database timestamp
+                // We do NOT use handleSendMessage here because we want to defer the UI rendering.
+                const msgPromise = requisitionService.sendMessage(requisition.id, 'Approved');
+                
+                // Give the DB a tiny head start to guarantee timestamp chronology
+                await new Promise(r => setTimeout(r, 150));
+                
+                // 2. Update status on backend (this creates the DISBURSAL system message)
                 await requisitionService.updateStatus(requisition.id, 'AUTHORISED');
                 
-                // 2. Notify parent to refresh the status UI (Authorized badge)
+                // 3. Notify parent to visually transform the card to "Approved" state
                 onStatusChange?.();
                 
-                // 3. Small delay to let the UI update sink in
-                await new Promise(r => setTimeout(r, 400));
+                // DELIBERATE UI PAUSE: Give the user time to clearly read the "Requisition Approved... This request was authorized" 
+                // feedback on the card before we pop the chat message onto the screen.
+                await new Promise(r => setTimeout(r, 1500));
                 
-                // 4. Send user message (shows now on right)
-                await handleSendMessage('Approved');
+                // 4. Await the message and NOW inject it into the UI chat feed
+                const newMessage = await msgPromise;
+                setMessages(prev => {
+                    if (prev.some(m => m.id === newMessage.id)) return prev;
+                    return [...prev, newMessage];
+                });
                 
                 // 5. Start typing indicator immediately to show system is "thinking"
                 setIsTyping(true);
                 scrollToBottom();
                 
-                // 6. Short gap after user message appears before next system message
-                await new Promise(r => setTimeout(r, 800));
-                
-                // 7. Force a message reload (triggers typing for system instructions)
+                // 6. Force a message reload (fetches the DISBURSAL message)
                 await loadMessages(false);
             } catch (err) {
                 console.error('Approval failed:', err);
@@ -213,17 +222,30 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
             }
         } else if (action === 'REJECT') {
             try {
+                // 1. Send message to backend first for chronological integrity
+                const msgPromise = requisitionService.sendMessage(requisition.id, 'Rejected');
+                await new Promise(r => setTimeout(r, 150));
+                
+                // 2. Update backend status
                 await requisitionService.updateStatus(requisition.id, 'REJECTED');
+                
+                // 3. Notify parent to transform UI
                 onStatusChange?.();
-                await new Promise(r => setTimeout(r, 400));
-                await handleSendMessage('Rejected');
+                
+                // DELIBERATE UI PAUSE: Give the user time to clearly read the "Requisition Rejected" 
+                // feedback on the card before we pop the chat message onto the screen.
+                await new Promise(r => setTimeout(r, 1500));
+                
+                // 4. Inject message into UI chat feed
+                const newMessage = await msgPromise;
+                setMessages(prev => {
+                    if (prev.some(m => m.id === newMessage.id)) return prev;
+                    return [...prev, newMessage];
+                });
                 
                 // Start typing indicator immediately
                 setIsTyping(true);
                 scrollToBottom();
-                
-                // Gap after user message
-                await new Promise(r => setTimeout(r, 800));
                 
                 await loadMessages(false);
             } catch (err) {

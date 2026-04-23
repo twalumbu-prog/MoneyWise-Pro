@@ -45,10 +45,16 @@ export const RequisitionCreate: React.FC = () => {
 
 
     React.useEffect(() => {
+        // Redirect mobile users to the new wizard-based flow on the Inbox page
+        if (window.innerWidth < 768) {
+            navigate('/requisitions?new=true', { replace: true });
+            return;
+        }
+        
         if (user?.id) {
             checkActiveRequisition();
         }
-    }, [user?.id]);
+    }, [user?.id, navigate]);
 
     const checkActiveRequisition = async () => {
         try {

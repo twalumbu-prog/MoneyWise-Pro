@@ -18,8 +18,18 @@ Rules:
 - If the item is ambiguous, choose the best fit from the PROVIDED list but lower the confidence score.
 `;
 
-export const buildCategorizationPrompt = (accounts: any[], description: string, amount: number) => {
+export const buildCategorizationPrompt = (accounts: any[], description: string, amount: number, receiptData?: any) => {
     const accountsList = accounts.map(a => `- [${a.code}] ${a.name}: ${a.description || ''}`).join('\n');
+
+    let receiptContext = '';
+    if (receiptData) {
+        receiptContext = `
+Additional Context from Receipt:
+- Vendor: ${receiptData.source_receipt_vendor || receiptData.vendor || 'Unknown'}
+- Extracted Description: "${receiptData.extracted_description || receiptData.description || ''}"
+- AI Matching Reasoning: ${receiptData.reasoning || ''}
+`;
+    }
 
     return `
 Available Accounts:
@@ -28,6 +38,7 @@ ${accountsList}
 Transaction to Categorize:
 Description: "${description}"
 Amount: ${amount}
+${receiptContext}
 
 Remember to return ONLY JSON.
 `;

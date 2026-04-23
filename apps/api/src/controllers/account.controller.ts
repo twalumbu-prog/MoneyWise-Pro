@@ -279,6 +279,7 @@ export const importAccounts = async (req: any, res: any): Promise<any> => {
                 code: code,
                 name: qbAcc.Name,
                 type: localType,
+                subtype: qbAcc.AccountType, // Save original QB type for better fallback
                 description: qbAcc.Description || `Imported from QuickBooks (${qbAcc.AccountType})`,
                 is_active: qbAcc.Active !== false,
                 qb_account_id: qbAcc.Id,

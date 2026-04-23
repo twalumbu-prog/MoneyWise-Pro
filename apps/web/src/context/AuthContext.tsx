@@ -52,6 +52,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const response = await fetch(`${apiUrl}/users/notifications`, {
                 headers: { 'Authorization': `Bearer ${session.access_token}` }
             });
+
+            if (response.status === 401) {
+                console.warn('Session expired (401). Signing out...');
+                await signOut();
+                return;
+            }
+
             if (response.ok) {
                 const data = await response.json();
                 setNotificationCounts(data);

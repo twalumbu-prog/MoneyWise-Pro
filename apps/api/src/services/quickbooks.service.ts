@@ -101,9 +101,9 @@ export class QuickBooksService {
     }
 
     static async getValidToken(organizationId: string) {
-        if (!organizationId) throw new Error('Organization ID required for QB token');
+        if (!organizationId) throw new Error('Organization ID required for QuickBooks token retrieval');
 
-        console.log(`[QB Token] Fetching integration for org: ${organizationId}`);
+        console.log(`[QuickBooks Token] Attempting to fetch integration for organization: ${organizationId}`);
 
         const { data: qb, error } = await supabase
             .from('integrations')
@@ -112,37 +112,47 @@ export class QuickBooksService {
             .eq('organization_id', organizationId)
             .single();
 
-        if (error || !qb) {
-            console.error('[QB Token] Integration not found:', error?.message);
-            throw new Error('QuickBooks not integrated for this organization. Go to Settings → Integrations to connect.');
+        if (error) {
+            console.error('[QuickBooks Token] Database lookup failed:', error.message);
+            if (error.code === 'PGRST116') {
+                throw new Error('QuickBooks is not connected. Please go to Settings → Integrations to link your account.');
+            }
+            throw new Error(`Database error fetching QuickBooks integration: ${error.message}`);
+        }
+
+        if (!qb) {
+            console.error('[QuickBooks Token] No integration record found');
+            throw new Error('QuickBooks integration not found. Please connect in Settings.');
         }
 
         // Check if access token exists
         if (!qb.access_token) {
-            throw new Error('QuickBooks access token is missing. Please reconnect QuickBooks in Settings → Integrations.');
+            console.error('[QuickBooks Token] Access token missing from database record');
+            throw new Error('QuickBooks access token is missing. Please reconnect in Settings.');
         }
 
         const now = new Date();
         const expiresAt = new Date(qb.token_expires_at);
 
-        console.log(`[QB Token] Token expires at: ${expiresAt.toISOString()}, now: ${now.toISOString()}`);
+        console.log(`[QuickBooks Token] Checking validity. Expires: ${expiresAt.toISOString()}, Now: ${now.toISOString()}`);
 
         if (now < expiresAt) {
-            console.log('[QB Token] Access token is still valid, decrypting...');
+            console.log('[QuickBooks Token] Current access token is valid. Decrypting...');
             try {
                 const decryptedToken = decrypt(qb.access_token);
                 return { accessToken: decryptedToken, realmId: qb.realm_id };
             } catch (decryptError: any) {
-                console.error('[QB Token] Failed to decrypt access token:', decryptError.message);
-                throw new Error(`Failed to decrypt QB access token: ${decryptError.message}. The encryption key may have changed. Reconnect QuickBooks.`);
+                console.error('[QuickBooks Token] Decryption failed! The encryption key (QB_TOKEN_ENCRYPTION_KEY) may have changed or is missing:', decryptError.message);
+                throw new Error(`Failed to decrypt QuickBooks token. This usually happens if the server configuration changed. Please reconnect QuickBooks.`);
             }
         }
 
         // Token expired — try refresh
-        console.log('[QB Token] Access token expired, refreshing...');
+        console.log('[QuickBooks Token] Access token expired. Attempting refresh using refresh token...');
 
         if (!qb.refresh_token) {
-            throw new Error('QuickBooks refresh token is missing. Please reconnect QuickBooks in Settings → Integrations.');
+            console.error('[QuickBooks Token] Refresh token missing from database record');
+            throw new Error('QuickBooks session expired and no refresh token was found. Please reconnect.');
         }
 
         // Check if refresh token has also expired
@@ -201,25 +211,54 @@ export class QuickBooksService {
     }
 
     static async fetchAccounts(organizationId: string) {
-        const { apiBase } = this.getEnv();
-        const { accessToken, realmId } = await this.getValidToken(organizationId);
-        const query = encodeURIComponent("select * from Account MAXRESULTS 1000");
-        const url = `${apiBase}/${realmId}/query?query=${query}&minorversion=70`;
+        try {
+            const { apiBase } = this.getEnv();
+            const { accessToken, realmId } = await this.getValidToken(organizationId);
+            const query = encodeURIComponent("select * from Account MAXRESULTS 1000");
+            const url = `${apiBase}/${realmId}/query?query=${query}&minorversion=70`;
 
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Accept': 'application/json'
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Accept': 'application/json'
+                }
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                console.error('[QB Fetch Accounts API Error]', JSON.stringify(data));
+                throw new Error(`QB API Error: ${JSON.stringify(data)}`);
             }
-        });
 
-        const data = await response.json();
-        if (!response.ok) {
-            console.error('[QB Fetch Accounts Error]', JSON.stringify(data));
-            throw new Error(`QB Fetch Accounts Failed: ${JSON.stringify(data)}`);
+            return data.QueryResponse.Account || [];
+        } catch (error: any) {
+            console.warn(`[QB Fetch Accounts] Live fetch failed, falling back to database: ${error.message}`);
+            
+            // Fallback: Fetch from local accounts table
+            const { data: localAccounts, error: dbError } = await supabase
+                .from('accounts')
+                .select('qb_account_id, name, type, subtype')
+                .eq('organization_id', organizationId)
+                .not('qb_account_id', 'is', null);
+
+            if (dbError) {
+                console.error('[QB Fallback Error] Database query failed:', dbError);
+                throw new Error('Failed to fetch accounts from both QuickBooks and local database.');
+            }
+
+            if (!localAccounts || localAccounts.length === 0) {
+                console.warn('[QB Fallback] No mapped accounts found in database.');
+                return [];
+            }
+
+            // Transform to QuickBooks format for the frontend
+            return localAccounts.map(acc => ({
+                Id: acc.qb_account_id,
+                Name: acc.name,
+                AccountType: acc.subtype || (acc.type === 'ASSET' ? 'Bank' : acc.type === 'LIABILITY' ? 'CreditCard' : 'Expense'),
+                Active: true
+            }));
         }
-
-        return data.QueryResponse.Account || [];
     }
 
     static async createExpense(
@@ -281,9 +320,82 @@ export class QuickBooksService {
                 throw new Error(`Total expense amount is ${totalAmount}. QuickBooks requires a positive amount.`);
             }
 
-            // Use provided payment account or default to "35" if absolutely not provided (as fallback)
-            const sourceAccountId = paymentAccountId || "35";
-            const sourceAccountName = paymentAccountName || "Petty Cash";
+            // Step 4: Resolve Source Account (Credit Side)
+            let sourceAccountId = paymentAccountId;
+            let sourceAccountName = paymentAccountName;
+
+            const method = requisition.payment_method || (requisition.disbursements && requisition.disbursements[0]?.method) || 'UNKNOWN';
+
+            // 4a. If not provided, try to find in existing mappings
+            if (!sourceAccountId) {
+                const { data: qbIntegration } = await supabase
+                    .from('integrations')
+                    .select('config')
+                    .eq('provider', 'QUICKBOOKS')
+                    .eq('organization_id', organizationId)
+                    .single();
+
+                const mappings = qbIntegration?.config?.mappings || {};
+                if (mappings[method]) {
+                    sourceAccountId = mappings[method].id;
+                    sourceAccountName = mappings[method].name;
+                    console.log(`[QB Purchase] Found saved mapping for ${method}: ${sourceAccountName}`);
+                }
+            }
+
+            // 4b. If still not found, try "Wallet" auto-detection for wallet transactions
+            if (!sourceAccountId) {
+                if (method === 'WALLET' || method === 'MONEYWISE_WALLET') {
+                    console.log('[QB Purchase] Wallet transaction detected, searching for Wallet account in QuickBooks');
+                    try {
+                        const qbAccounts = await this.fetchAccounts(organizationId);
+                        const walletAcc = qbAccounts.find((a: any) => 
+                            a.Name.toLowerCase().includes('wallet') || 
+                            a.Name.toLowerCase().includes('moneywise')
+                        );
+                        if (walletAcc) {
+                            sourceAccountId = walletAcc.Id;
+                            sourceAccountName = walletAcc.Name;
+                            console.log(`[QB Purchase] Found Wallet account: ${sourceAccountName} (${sourceAccountId})`);
+                        }
+                    } catch (fetchErr) {
+                        console.error('[QB Purchase] Failed to fetch accounts for wallet auto-detection:', fetchErr);
+                    }
+                }
+            }
+
+            // 4c. If we have a source account now (especially if it was manually provided), save it to mappings
+            if (sourceAccountId && paymentAccountId) {
+                console.log(`[QB Purchase] Saving/Updating mapping for ${method} -> ${sourceAccountId}`);
+                const { data: currentQB } = await supabase
+                    .from('integrations')
+                    .select('config')
+                    .eq('provider', 'QUICKBOOKS')
+                    .eq('organization_id', organizationId)
+                    .single();
+
+                const newConfig = {
+                    ...(currentQB?.config || {}),
+                    mappings: {
+                        ...(currentQB?.config?.mappings || {}),
+                        [method]: {
+                            id: sourceAccountId,
+                            name: sourceAccountName
+                        }
+                    }
+                };
+
+                await supabase
+                    .from('integrations')
+                    .update({ config: newConfig })
+                    .eq('provider', 'QUICKBOOKS')
+                    .eq('organization_id', organizationId);
+            }
+
+            // Final fallback if still not found
+            if (!sourceAccountId || sourceAccountId === 'BANK-123') {
+                throw new Error(`Please select a payment account in QuickBooks for this ${method} transaction.`);
+            }
 
             const purchase = {
                 AccountRef: {
