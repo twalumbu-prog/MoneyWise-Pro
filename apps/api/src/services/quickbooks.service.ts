@@ -273,7 +273,7 @@ export class QuickBooksService {
 
             const { data: requisition, error: reqError } = await supabase
                 .from('requisitions')
-                .select('*, line_items(*), disbursements(*)')
+                .select('*, line_items(*), disbursements(*), cashbook_entries(*)')
                 .eq('id', requisitionId)
                 .single();
 
@@ -397,13 +397,21 @@ export class QuickBooksService {
                 throw new Error(`Please select a payment account in QuickBooks for this ${method} transaction.`);
             }
 
+            // Resolve transaction date: Use Cash Ledger date if available, otherwise first disbursement date, fallback to now
+            const cashEntry = requisition.cashbook_entries?.find((e: any) => e.entry_type === 'DISBURSEMENT');
+            const disbursementDate = cashEntry?.date 
+                || (requisition.disbursements && requisition.disbursements[0]?.issued_at)
+                || new Date().toISOString();
+            
+            const txnDate = new Date(disbursementDate).toISOString().split('T')[0];
+
             const purchase = {
                 AccountRef: {
                     value: sourceAccountId,
                     name: sourceAccountName
                 },
                 PaymentType: "Cash",
-                TxnDate: new Date().toISOString().split('T')[0],
+                TxnDate: txnDate,
                 Line: expenseLines,
                 PrivateNote: `MoneyWise Requisition: ${requisition.reference_number || requisition.id}`
             };
