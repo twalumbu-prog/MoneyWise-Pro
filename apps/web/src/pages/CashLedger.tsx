@@ -32,7 +32,6 @@ import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
 import { useAuth } from '../context/AuthContext';
-import { integrationService } from '../services/integration.service';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
 
