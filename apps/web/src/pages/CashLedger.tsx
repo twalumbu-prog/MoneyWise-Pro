@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { Layout } from '../components/Layout';
@@ -18,6 +18,7 @@ import {
     Wallet,
     Building2,
     ChevronRight,
+    ChevronDown,
     Loader2,
     AlertCircle,
     Info,
@@ -37,6 +38,93 @@ import { useAuth } from '../context/AuthContext';
 import { integrationService } from '../services/integration.service';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
+
+
+const SearchableAccountSelect: React.FC<{
+    value: string;
+    options: any[];
+    onChange: (value: string) => void;
+    placeholder?: string;
+}> = ({ value, options, onChange, placeholder = "Select account..." }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState("");
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    const selectedOption = options.find(opt => opt.id === value);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setIsOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
+
+    const filteredOptions = options.filter(opt => 
+        (opt.name || "").toLowerCase().includes(search.toLowerCase()) || 
+        (opt.code || "").toLowerCase().includes(search.toLowerCase())
+    );
+
+    return (
+        <div className="relative w-full max-w-[280px]" ref={dropdownRef}>
+            <div 
+                onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+                className={`flex items-center justify-between px-3 py-2 bg-gray-50/50 border rounded-xl cursor-pointer transition-all text-xs font-medium
+                    ${isOpen ? 'border-blue-400 ring-4 ring-blue-50 bg-white' : 'border-gray-100 hover:border-blue-200'}`}
+            >
+                <span className={`truncate mr-2 ${selectedOption ? 'text-gray-900 font-bold' : 'text-gray-400'}`}>
+                    {selectedOption ? `${selectedOption.code} · ${selectedOption.name}` : placeholder}
+                </span>
+                <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+            </div>
+
+            {isOpen && (
+                <div 
+                    className="absolute z-[100] w-full mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ minWidth: '300px' }}
+                >
+                    <div className="p-2 border-b border-gray-50">
+                        <div className="relative">
+                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                            <input
+                                autoFocus
+                                type="text"
+                                placeholder="Search accounts..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="w-full pl-9 pr-3 py-2 bg-gray-50 border-none rounded-xl text-xs focus:ring-0 placeholder:text-gray-400 font-medium"
+                            />
+                        </div>
+                    </div>
+                    <div className="max-h-[240px] overflow-y-auto p-1 custom-scrollbar">
+                        {filteredOptions.length > 0 ? (
+                            filteredOptions.map((opt) => (
+                                <button
+                                    key={opt.id}
+                                    onClick={() => {
+                                        onChange(opt.id);
+                                        setIsOpen(false);
+                                        setSearch("");
+                                    }}
+                                    className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors flex flex-col gap-0.5
+                                        ${value === opt.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                                >
+                                    <span className="font-bold">{opt.name}</span>
+                                    <span className="text-[10px] opacity-60 tracking-wider uppercase font-black">{opt.code}</span>
+                                </button>
+                            ))
+                        ) : (
+                            <div className="p-4 text-center text-gray-400 text-xs">No accounts found</div>
+                        )}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
 
 const CashLedger: React.FC = () => {
     const navigate = useNavigate();
@@ -252,20 +340,26 @@ const CashLedger: React.FC = () => {
         const status = entry.requisitions.status;
         const config = getStatusConfig(status);
 
-        const getStatusIcon = (iconType: string) => {
+        const getStatusIcon = (iconType: string, color: string) => {
+            const colorClass = color === 'blue' ? 'text-[#006AFF]' : 
+                               color === 'emerald' ? 'text-emerald-500' :
+                               color === 'amber' ? 'text-amber-500' :
+                               color === 'red' ? 'text-red-500' :
+                               color === 'purple' ? 'text-purple-500' : 'text-gray-400';
+
             switch (iconType) {
-                case 'clock': return <Clock size={12} className="text-blue-500" />;
-                case 'check-circle': return <CheckCircle2 size={12} className="text-[#006AFF]" />;
-                case 'check': return <Check size={12} className="text-emerald-500" />;
-                case 'alert': return <AlertCircle size={12} className="text-red-500" />;
-                case 'rotate': return <RotateCcw size={12} className="text-gray-400" />;
-                default: return <Clock size={12} className="text-gray-400" />;
+                case 'clock': return <Clock size={12} className={colorClass} />;
+                case 'check-circle': return <CheckCircle2 size={12} className={colorClass} />;
+                case 'check': return <Check size={12} className={colorClass} />;
+                case 'alert': return <AlertCircle size={12} className={colorClass} />;
+                case 'rotate': return <RotateCcw size={12} className={colorClass} />;
+                default: return <Clock size={12} className={colorClass} />;
             }
         };
 
         return (
             <div className="flex items-center bg-white pl-2 pr-3 py-1 rounded-full border border-gray-100 shadow-sm transition-all hover:border-gray-200 hover:shadow-md w-fit">
-                {getStatusIcon(config.iconType)}
+                {getStatusIcon(config.iconType, config.color)}
                 <span className="text-[10px] font-black text-brand-navy uppercase tracking-[0.15em] ml-1.5">
                     {config.label}
                 </span>
@@ -360,11 +454,13 @@ const CashLedger: React.FC = () => {
                         <div className="flex flex-col items-end">
                             <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
                             <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                req.status === 'ACCOUNTED' || req.status === 'COMPLETED'
+                                req.status === 'ACCOUNTED'
                                     ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                                    : req.status === 'COMPLETED' || req.status === 'CATEGORIZED'
+                                    ? 'bg-blue-50 text-blue-600 border border-blue-100'
                                     : 'bg-amber-50 text-amber-600 border border-amber-100'
                             }`}>
-                                {req.status}
+                                {req.status === 'CATEGORIZED' ? 'COMPLETED' : req.status}
                             </span>
                         </div>
                     </div>
@@ -407,21 +503,12 @@ const CashLedger: React.FC = () => {
                                         </div>
                                     </td>
                                     <td className="py-4">
-                                        <div className="relative group">
-                                            <select 
-                                                value={item.account_id || ''} 
-                                                onChange={(e) => handleAccountChange(item.id, e.target.value, req.id)}
-                                                className="accounting-select bg-gray-50/50 border-gray-100 hover:border-blue-200"
-                                                onClick={(e) => e.stopPropagation()}
-                                            >
-                                                <option value="">Uncategorized</option>
-                                                {accounts.map(acc => (
-                                                    <option key={acc.id} value={acc.id}>
-                                                        {acc.code} · {acc.name}
-                                                    </option>
-                                                ))}
-                                            </select>
-                                        </div>
+                                        <SearchableAccountSelect 
+                                            value={item.account_id || ''} 
+                                            options={accounts} 
+                                            onChange={(val) => handleAccountChange(item.id, val, req.id)}
+                                            placeholder="Categorize expense..."
+                                        />
                                     </td>
                                     <td className="text-center text-gray-600 font-medium">{item.quantity || '-'}</td>
                                     <td className="text-right text-gray-600 font-bold">{formatCurrency(item.estimated_amount || item.unit_price * item.quantity)}</td>
@@ -473,18 +560,15 @@ const CashLedger: React.FC = () => {
                                 </td>
                                 <td className="py-4">
                                     {Math.abs(discrepancy) > 0.01 ? (
-                                        <select 
-                                            className="accounting-select border-rose-200 bg-white"
-                                            onClick={(e) => e.stopPropagation()}
-                                            defaultValue=""
-                                        >
-                                            <option value="">Adjustment Account...</option>
-                                            {accounts.filter(a => a.type === 'EXPENSE' || a.type === 'INCOME').map(acc => (
-                                                <option key={acc.id} value={acc.id}>
-                                                    {acc.code} · {acc.name}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        <SearchableAccountSelect 
+                                            value="" 
+                                            options={accounts.filter(a => a.type === 'EXPENSE' || a.type === 'INCOME')} 
+                                            onChange={(val) => {
+                                                // Handle adjustment account selection here if needed
+                                                console.log('Selected adjustment account:', val);
+                                            }}
+                                            placeholder="Adjustment Account..."
+                                        />
                                     ) : (
                                         <span className="text-gray-400 text-[10px] italic">No adjustment needed</span>
                                     )}
@@ -519,7 +603,7 @@ const CashLedger: React.FC = () => {
     }
 
     return (
-        <Layout noPadding={true}>
+        <Layout noPadding={false}>
             {/* ============ MOBILE LAYOUT ============ */}
             <div className="md:hidden flex flex-col min-h-screen bg-white pt-6">
 

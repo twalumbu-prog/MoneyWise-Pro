@@ -84,7 +84,7 @@ export const REQUISITION_STATUS_CONFIG: Record<string, {
     'RECEIVED': { label: 'Received', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'check-circle' },
     'CATEGORIZED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
     'COMPLETED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
-    'ACCOUNTED': { label: 'Accounted', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' }
+    'ACCOUNTED': { label: 'Accounted', color: 'emerald', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' }
 };
 
 export const getStatusConfig = (status: string) => {
