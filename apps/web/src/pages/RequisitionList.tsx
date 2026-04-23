@@ -40,7 +40,7 @@ const TABS = [
 
 export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
-    const [searchParams] = useSearchParams();
+    const [searchParams, setSearchParams] = useSearchParams();
     const { userRole } = useAuth();
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [loading, setLoading] = useState(true);
@@ -58,6 +58,13 @@ export const RequisitionList: React.FC = () => {
     useEffect(() => {
         if (searchParams.get('new') === 'true') {
             setIsRequisitionWizardOpen(true);
+        }
+
+        const id = searchParams.get('id');
+        if (id) {
+            requisitionService.getById(id)
+                .then(setSelectedRequisition)
+                .catch(err => console.error('Failed to load requisition from URL:', err));
         }
     }, [searchParams]);
 
@@ -395,7 +402,14 @@ export const RequisitionList: React.FC = () => {
             <RequisitionModal 
                 requisition={selectedRequisition} 
                 isOpen={!!selectedRequisition} 
-                onClose={() => setSelectedRequisition(null)}
+                onClose={() => {
+                    setSelectedRequisition(null);
+                    if (searchParams.has('id')) {
+                        const newParams = new URLSearchParams(searchParams);
+                        newParams.delete('id');
+                        setSearchParams(newParams, { replace: true });
+                    }
+                }}
                 onStatusChange={handleStatusChange}
             />
 

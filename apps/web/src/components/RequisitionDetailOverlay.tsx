@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { X, CheckCircle2, AlertCircle, FileText, User, Building2, Calendar, Banknote, History } from 'lucide-react';
 import { requisitionService, Requisition } from '../services/requisition.service';
+import { useNavigate } from 'react-router-dom';
 
 interface RequisitionDetailOverlayProps {
     requisitionId: string | null;
@@ -8,6 +9,7 @@ interface RequisitionDetailOverlayProps {
 }
 
 export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> = ({ requisitionId, onClose }) => {
+    const navigate = useNavigate();
     const [requisition, setRequisition] = useState<Requisition | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -163,7 +165,7 @@ export const RequisitionDetailOverlay: React.FC<RequisitionDetailOverlayProps> =
                     <div className="p-8 border-t border-gray-100 bg-gray-50/30 flex items-center space-x-4">
                         <button 
                             className="flex-1 bg-white border border-gray-200 text-brand-navy py-4 rounded-xl font-black text-sm hover:bg-gray-50 transition-all shadow-sm flex items-center justify-center space-x-2"
-                            onClick={() => (window as any).location.href = `/requisitions/${requisition.id}`}
+                            onClick={() => navigate(`/requisitions?id=${requisition.id}`)}
                         >
                             <History size={18} />
                             <span>View Timeline</span>

@@ -168,7 +168,7 @@ export const Approvals: React.FC = () => {
                                                         </>
                                                     )}
                                                     <button
-                                                        onClick={() => navigate(`/requisitions/${req.id}`)}
+                                                        onClick={() => navigate(`/requisitions?id=${req.id}`)}
                                                         className="text-gray-400 hover:text-brand-navy p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                                                     >
                                                         <Eye className="h-5 w-5" />
@@ -186,7 +186,7 @@ export const Approvals: React.FC = () => {
                             {requisitions.map((req) => (
                                 <div
                                     key={req.id}
-                                    onClick={() => navigate(`/requisitions/${req.id}`)}
+                                    onClick={() => navigate(`/requisitions?id=${req.id}`)}
                                     className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 active:bg-gray-50 transition-colors"
                                 >
                                     <div className="flex justify-between items-start mb-3">

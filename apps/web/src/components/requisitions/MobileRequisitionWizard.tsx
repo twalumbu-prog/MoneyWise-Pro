@@ -299,7 +299,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 {activeRequisitionId && (
                                     <button
                                         onClick={() => {
-                                            navigate(`/requisitions/${activeRequisitionId}`);
+                                            navigate(`/requisitions?id=${activeRequisitionId}`);
                                             onClose();
                                         }}
                                         className="w-full h-12 bg-red-600 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-all"

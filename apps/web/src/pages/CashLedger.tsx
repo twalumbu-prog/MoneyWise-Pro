@@ -314,7 +314,7 @@ const CashLedger: React.FC = () => {
                     <button 
                         onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`/requisitions/${req.id}`);
+                            navigate(`/requisitions?id=${req.id}`);
                         }}
                         className="flex items-center px-4 py-2.5 bg-[#006AFF] hover:bg-[#004BB5] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm shadow-blue-100 uppercase tracking-widest"
                     >
