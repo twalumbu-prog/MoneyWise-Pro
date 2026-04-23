@@ -42,6 +42,171 @@ export class RequisitionMessageService {
         };
     }
 
+
+
+    static async repairLifecycleMessages(requisitionId: string) {
+        console.log(`[RequisitionMessageService] Repairing lifecycle for ${requisitionId}...`);
+        
+        // 1. Fetch requisition with full lifecycle data
+        const { data: req, error: reqError } = await supabase
+            .from('requisitions')
+            .select(`
+                *,
+                line_items(*, accounts(code, name)),
+                disbursements(*),
+                receipts(*)
+            `)
+            .eq('id', requisitionId)
+            .single();
+
+        if (reqError || !req) {
+            console.error('[RequisitionMessageService] Repair failed: Requisition not found', requisitionId);
+            return;
+        }
+
+        // 2. Fetch existing messages to find gaps
+        const { data: messages } = await supabase
+            .from('requisition_messages')
+            .select('id, metadata')
+            .eq('requisition_id', requisitionId);
+
+        const existingStages = new Set(messages?.map(m => m.metadata?.stage).filter(Boolean) || []);
+        const userId = req.requestor_id;
+
+        // 3. Sequential Backfill
+        
+        // Stage 1: APPROVAL
+        if (!existingStages.has('APPROVAL')) {
+            await this.createMessage({
+                requisitionId,
+                userId,
+                content: 'Requisition submitted for approval',
+                type: 'SYSTEM',
+                metadata: { stage: 'APPROVAL' }
+            });
+        }
+
+        // Stage 2: DISBURSAL (If AUTHORISED or further)
+        if (['AUTHORISED', 'DISBURSED', 'RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+            if (!existingStages.has('DISBURSAL')) {
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: 'How would you like to disburse these funds?',
+                    type: 'SYSTEM',
+                    metadata: { stage: 'DISBURSAL' }
+                });
+            }
+        }
+
+        // Stage 3: DISBURSAL_SUCCESS (If DISBURSED or further AND disbursement exists)
+        if (['DISBURSED', 'RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+            if (!existingStages.has('DISBURSAL_SUCCESS') && req.disbursements?.length > 0) {
+                const disb = req.disbursements[0];
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: 'Money successfully sent',
+                    type: 'SYSTEM',
+                    metadata: { 
+                        stage: 'DISBURSAL_SUCCESS', 
+                        disbursement_id: disb.id,
+                        isSummary: true 
+                    }
+                });
+            }
+        }
+
+        // Stage 4: EXPENSE_TRACKING (If DISBURSED or further)
+        if (['DISBURSED', 'RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+            if (!existingStages.has('EXPENSE_TRACKING')) {
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: 'Transaction needs to be expensed',
+                    type: 'SYSTEM',
+                    metadata: { stage: 'EXPENSE_TRACKING' }
+                });
+            }
+        }
+
+        // Stage 5: EXPENSE_SUMMARY & AI_REVIEW (If RECEIVED or further)
+        if (['RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+            const actualTotal = req.actual_total || req.line_items?.reduce((sum: number, i: any) => sum + (i.actual_amount || 0), 0) || 0;
+            const change = req.estimated_total - actualTotal;
+
+            if (!existingStages.has('EXPENSE_SUMMARY')) {
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: `Expenses tracked: Total Actual K${actualTotal.toLocaleString()}.`,
+                    type: 'SYSTEM',
+                    metadata: { 
+                        stage: 'EXPENSE_SUMMARY',
+                        actualTotal,
+                        changeAmount: change > 0 ? change : 0
+                    }
+                });
+            }
+
+            if (!existingStages.has('AI_REVIEW')) {
+                // Synthesize items for AI review card
+                const aiItems = req.line_items?.map((item: any) => ({
+                    id: item.id,
+                    description: item.description,
+                    amount: item.actual_amount || item.unit_price,
+                    category_code: item.account_id ? item.accounts?.code : null,
+                    category_name: item.account_id ? item.accounts?.name : null,
+                    confidence: 1.0,
+                    logic: 'Recovered from database'
+                }));
+
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: 'AI has categorized your transaction.',
+                    type: 'SYSTEM',
+                    metadata: { 
+                        stage: 'AI_REVIEW',
+                        items: aiItems,
+                        isThinking: false
+                    }
+                });
+            }
+        }
+
+        // Stage 6: QUICKBOOKS_POSTING (If COMPLETED or ACCOUNTED)
+        if (['COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+            if (!existingStages.has('QUICKBOOKS_POSTING')) {
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: 'Ready to post to QuickBooks',
+                    type: 'SYSTEM',
+                    metadata: { stage: 'QUICKBOOKS_POSTING' }
+                });
+            }
+        }
+
+        // Stage 7: POSTED_SUCCESS (If ACCOUNTED)
+        if (req.status === 'ACCOUNTED') {
+            if (!existingStages.has('POSTED_SUCCESS')) {
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: 'Successfully posted to QuickBooks',
+                    type: 'SYSTEM',
+                    metadata: { 
+                        stage: 'POSTED_SUCCESS', 
+                        qbExpenseId: req.qb_expense_id 
+                    }
+                });
+            }
+        }
+
+        console.log(`[RequisitionMessageService] Repair completed for ${requisitionId}`);
+    }
+
     static async getMessages(requisitionId: string) {
         const { data, error } = await supabase
             .from('requisition_messages')
@@ -55,7 +220,25 @@ export class RequisitionMessageService {
 
         if (error) throw error;
 
-        // Lazy Initialization: If no messages exist, create the initial system message
+        // Lazy Initialization / Repair: 
+        // If no messages exist OR if the requisition is far along but missing modern stages
+        const hasModernStages = data?.some(m => m.metadata?.stage && m.metadata.stage !== 'APPROVAL');
+        
+        if (!data || data.length === 0 || (!hasModernStages && data.length < 5)) {
+            // Check if it's an old one that needs repair
+            const { data: req } = await supabase
+                .from('requisitions')
+                .select('status')
+                .eq('id', requisitionId)
+                .single();
+            
+            if (req && req.status !== 'DRAFT' && req.status !== 'PENDING_APPROVAL') {
+                await this.repairLifecycleMessages(requisitionId);
+                // Re-fetch after repair
+                return this.getMessages(requisitionId);
+            }
+        }
+
         if (!data || data.length === 0) {
             console.log(`[RequisitionMessageService] No messages found for ${requisitionId}. Initializing...`);
             
