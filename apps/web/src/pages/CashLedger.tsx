@@ -413,7 +413,7 @@ const CashLedger: React.FC = () => {
                             View Full Details
                         </button>
                         
-                        {(req.status === 'ACCOUNTED' || req.status === 'EXPENSED') && req.qb_sync_status !== 'SUCCESS' && (
+                        {(req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED' || req.status === 'EXPENSED') && req.qb_sync_status !== 'SUCCESS' && (
                             <button 
                                 onClick={(e) => {
                                     e.stopPropagation();
