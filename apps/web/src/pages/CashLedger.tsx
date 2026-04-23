@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { Layout } from '../components/Layout';
 import {
-    User,
     Receipt,
     Calendar,
     Lock,
@@ -22,14 +21,12 @@ import {
     Loader2,
     AlertCircle,
     Info,
-    CheckCircle,
     CheckCircle2,
     Clock,
     RotateCcw,
     Check,
     RefreshCw,
-    AlertTriangle,
-    MessageSquare
+    AlertTriangle
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -192,14 +189,6 @@ const CashLedger: React.FC = () => {
         }));
     };
 
-    const handleRetrySync = async (requisitionId: string) => {
-        try {
-            await integrationService.retrySync(requisitionId);
-            await loadData();
-        } catch (error: any) {
-            alert('Failed to retry sync: ' + error.message);
-        }
-    };
 
     const handleBulkClassify = async () => {
         if (unclassifiedCount === 0) {
