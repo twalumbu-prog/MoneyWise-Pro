@@ -35,7 +35,8 @@ import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
 import { useAuth } from '../context/AuthContext';
 import { integrationService } from '../services/integration.service';
-import { getStatusConfig } from '../services/requisition.service';
+import { getStatusConfig, requisitionService } from '../services/requisition.service';
+import { accountService, Account } from '../services/account.service';
 
 const CashLedger: React.FC = () => {
     const navigate = useNavigate();
@@ -55,6 +56,7 @@ const CashLedger: React.FC = () => {
     const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
 
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
+    const [accounts, setAccounts] = useState<Account[]>([]);
 
     // Search, Sort, and Filter State
     const [searchQuery, setSearchQuery] = useState('');
@@ -67,7 +69,17 @@ const CashLedger: React.FC = () => {
 
     useEffect(() => {
         loadData();
+        loadAccounts();
     }, [startDate, endDate, selectedAccountType]);
+
+    const loadAccounts = async () => {
+        try {
+            const data = await accountService.getAll();
+            setAccounts(data);
+        } catch (error) {
+            console.error('Failed to load accounts:', error);
+        }
+    };
 
     const loadData = async () => {
         try {
@@ -261,6 +273,30 @@ const CashLedger: React.FC = () => {
         );
     };
 
+    const handlePostToQB = async (requisitionId: string) => {
+        try {
+            // Default to a sensible payment account if needed, or ask user
+            // For now, let's just trigger the post with common defaults
+            await requisitionService.postToQuickBooks(requisitionId, {
+                payment_account_id: 'CASH_ACCOUNT_ID', // This should ideally be configurable
+                payment_account_name: 'Cash on hand'
+            });
+            alert('Posted to QuickBooks successfully!');
+            loadData();
+        } catch (error: any) {
+            alert('Failed to post to QuickBooks: ' + error.message);
+        }
+    };
+
+    const handleAccountChange = async (lineItemId: string, accountId: string, requisitionId: string) => {
+        try {
+            await requisitionService.approveCategorization(requisitionId, [{ id: lineItemId, account_id: accountId }]);
+            loadData();
+        } catch (error: any) {
+            alert('Failed to update account: ' + error.message);
+        }
+    };
+
     const renderBreakdown = (entry: CashbookEntry) => {
         if (!entry.requisitions) return null;
 
@@ -276,168 +312,195 @@ const CashLedger: React.FC = () => {
         const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
 
         // Total Variance = Budget - (Spent + Returned)
-        // This captures lost money (positive) or extra money (negative)
         const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
+        const expectedChange = totalPrepared - actualExpenditure;
 
         return (
-            <div className="details-content">
-                {/* Meta details Header */}
-                <div className="flex flex-wrap items-center justify-between gap-8 mb-6 pb-6 border-b border-gray-100/50">
-                    <div className="flex flex-wrap items-center gap-8">
-                        <div>
-                            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Processed For / Requestor</div>
-                            <div className="flex items-center text-sm font-bold text-gray-900">
-                                <div className="p-1.5 bg-brand-pink/5 rounded-lg mr-2.5">
-                                    <User size={14} className="text-brand-pink" />
-                                </div>
-                                {req.requestor?.name || 'System Ledger Entry'}
-                            </div>
-                        </div>
+            <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
+                {/* Header Actions */}
+                <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-100">
+                    <div className="flex flex-wrap items-center gap-4">
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                navigate(`/requisitions?id=${req.id}`);
+                            }}
+                            className="flex items-center px-5 py-2.5 bg-brand-navy hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
+                        >
+                            <Info size={14} className="mr-2" />
+                            View Full Details
+                        </button>
                         
-                        {req.qb_sync_status && (
-                            <div>
-                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">QuickBooks Ledger Sync</div>
-                                <div className={`text-[11px] font-black uppercase flex items-center ${
-                                    req.qb_sync_status === 'SUCCESS' ? 'text-[#006AFF]' : 
-                                    req.qb_sync_status === 'FAILED' ? 'text-rose-600' : 'text-gray-400'
-                                }`}>
-                                    <div className={`w-2 h-2 rounded-full mr-2.5 ${
-                                        req.qb_sync_status === 'SUCCESS' ? 'bg-[#006AFF] shadow-[0_0_8px_rgba(0,106,255,0.4)]' : 
-                                        req.qb_sync_status === 'FAILED' ? 'bg-rose-500' : 'bg-gray-400'
-                                    }`} />
-                                    {req.qb_sync_status}
-                                </div>
+                        {(req.status === 'ACCOUNTED' || req.status === 'EXPENSED') && req.qb_sync_status !== 'SUCCESS' && (
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePostToQB(req.id);
+                                }}
+                                className="flex items-center px-5 py-2.5 bg-[#006AFF] hover:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
+                            >
+                                <RefreshCw size={14} className="mr-2" />
+                                Post to QuickBooks
+                            </button>
+                        )}
+
+                        {req.qb_sync_status === 'SUCCESS' && (
+                            <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-emerald-100/50">
+                                <CheckCircle2 size={14} className="mr-2" />
+                                Posted to QuickBooks
                             </div>
                         )}
                     </div>
 
-                    <button 
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/requisitions?id=${req.id}`);
-                        }}
-                        className="flex items-center px-4 py-2.5 bg-[#006AFF] hover:bg-[#004BB5] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm shadow-blue-100 uppercase tracking-widest"
-                    >
-                        <MessageSquare size={14} className="mr-2" strokeWidth={2.5} />
-                        Requisition Chat
-                    </button>
+                    <div className="flex items-center gap-6">
+                        <div className="flex flex-col items-end">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Reference</span>
+                            <span className="text-[13px] font-bold text-brand-navy">{req.reference_number || 'N/A'}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
+                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                                req.status === 'ACCOUNTED' || req.status === 'COMPLETED'
+                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                                    : 'bg-amber-50 text-amber-600 border border-amber-100'
+                            }`}>
+                                {req.status}
+                            </span>
+                        </div>
+                    </div>
                 </div>
 
-                <div className="spending-breakdown">
-                    <div className="breakdown-section">
-                        <h4><Receipt className="inline h-3 w-3 mr-1" /> Spending Breakdown</h4>
-                        <table className="line-items-mini">
-                            <tbody>
-                                {items.map((item, idx) => (
-                                    <tr key={idx}>
-                                        <td className="text-gray-600">
-                                            <div>{item.description}</div>
-                                            {item.accounts ? (
-                                                <div className="mt-1 flex items-center">
-                                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${
-                                                        req.status === 'ACCOUNTED' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-gray-100 text-gray-600 border-gray-200'
-                                                    }`}>
-                                                        {item.accounts.code}
-                                                    </span>
-                                                    <span className="ml-1.5 text-[10px] text-gray-400 truncate max-w-[150px]">
-                                                        {item.accounts.name}
-                                                    </span>
-                                                </div>
-                                            ) : (
-                                                <div className="mt-1 flex items-center text-[#006AFF] text-[10px] font-medium animate-pulse">
-                                                    <AlertTriangle className="h-3 w-3 mr-1" />
-                                                    Unclassified
-                                                </div>
-                                            )}
-                                        </td>
-                                        <td className="text-right font-semibold align-top pt-3">
-                                            {formatCurrency(item.actual_amount || item.estimated_amount)}
-                                        </td>
-                                    </tr>
-                                ))}
-                                {Math.abs(discrepancy) > 0.01 && (
-                                    <tr className="bg-red-50/50">
-                                        <td className="text-red-700 font-medium py-3 pl-2 border-l-2 border-red-200">
-                                            <div>Unreconciled Variance</div>
-                                            <div className="text-[10px] opacity-75 mt-0.5">Missing cash not returned</div>
-                                        </td>
-                                        <td className="text-right font-bold text-red-600 align-top pt-3 pr-2">
-                                            {formatCurrency(discrepancy)}
-                                        </td>
-                                    </tr>
-                                )}
-                                {items.length === 0 && (
-                                    <tr><td colSpan={2} className="text-gray-400 italic">No line items recorded</td></tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div >
-
-                    <div className="breakdown-section">
-                        <h4><Info className="inline h-3 w-3 mr-1" /> Transaction Reconciliation</h4>
-                        <div className="summary-grid">
-                            <div className="summary-card">
-                                <span className="label">Original Disbursed</span>
-                                <span className="value text-brand-navy font-black">{formatCurrency(totalPrepared)}</span>
-                            </div>
-                            <div className="summary-card">
-                                <span className="label">Actual Spending</span>
-                                <span className="value expenditure">{formatCurrency(actualExpenditure)}</span>
-                            </div>
-                            <div className="summary-card">
-                                <span className="label">Change Received</span>
-                                <span className="value change">{formatCurrency(confirmedChange)}</span>
-                            </div>
-                        </div>
-
-                        {Math.abs(discrepancy) > 0.01 && (
-                            <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-700 flex items-start">
-                                <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <div className="font-bold uppercase tracking-wider mb-1">Unreconciled Variance: {formatCurrency(discrepancy)}</div>
-                                    <p className="opacity-80">The sum of expenditures and returned change does not match the original disbursement. The ledger balance has been adjusted to account for this missing amount.</p>
-                                </div>
-                            </div>
-                        )}
-                        {Math.abs(discrepancy) <= 0.01 && (
-                            <div className="mt-4 p-3 bg-green-50 border border-green-100 rounded-lg text-xs text-green-700 flex items-center">
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                <span>Transaction fully reconciled. All funds accounted for.</span>
-                            </div>
-                        )}
-
-                        {req.status === 'COMPLETED' && (
-                            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                                <div className="flex items-center">
-                                    <div className={`p-1.5 rounded-lg mr-3 ${req.qb_sync_status === 'SUCCESS' ? 'bg-green-100 text-green-600' : req.qb_sync_status === 'FAILED' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
-                                        }`}>
-                                        <RefreshCw size={14} className={req.qb_sync_status === 'PENDING' ? 'animate-spin' : ''} />
+                {/* Main Breakdown Table */}
+                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)]">
+                    <table className="breakdown-table-modern">
+                        <thead>
+                            <tr>
+                                <th className="text-left w-[30%]">Description</th>
+                                <th className="text-left w-[30%]">Accounting Treatment</th>
+                                <th className="text-center w-[10%]">Qty</th>
+                                <th className="text-right w-[15%]">Expected Total</th>
+                                <th className="text-right w-[15%]">Actual Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {/* Disbursement Row */}
+                            <tr className="summary-row cash-distributed bg-slate-50/50">
+                                <td className="font-bold flex items-center">
+                                    <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center mr-3">
+                                        <Coins size={12} className="text-slate-600" />
                                     </div>
-                                    <div>
-                                        <div className="text-[10px] font-black uppercase tracking-widest text-gray-400">QuickBooks Sync</div>
-                                        <div className="text-xs font-bold text-gray-700">
-                                            {req.qb_sync_status === 'SUCCESS' ? 'Synced successfully' :
-                                                req.qb_sync_status === 'FAILED' ? 'Sync failed' :
-                                                    'Not synced yet'}
+                                    Actual Cash Disbursed
+                                </td>
+                                <td className="text-gray-400 text-[10px] italic">Capital Outflow</td>
+                                <td className="text-center">-</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right font-black text-brand-navy text-[14px]">{formatCurrency(totalPrepared)}</td>
+                            </tr>
+                            
+                            {/* Itemized Expenses */}
+                            {items.map((item: any, idx: number) => (
+                                <tr key={item.id || idx} className="hover:bg-gray-50/50 transition-colors">
+                                    <td className="pl-6 py-4">
+                                        <div className="flex flex-col">
+                                            <span className="text-[13px] font-semibold text-gray-800">{item.description}</span>
+                                            <span className="text-[10px] text-gray-400">Line Item #{idx + 1}</span>
                                         </div>
+                                    </td>
+                                    <td className="py-4">
+                                        <div className="relative group">
+                                            <select 
+                                                value={item.account_id || ''} 
+                                                onChange={(e) => handleAccountChange(item.id, e.target.value, req.id)}
+                                                className="accounting-select bg-gray-50/50 border-gray-100 hover:border-blue-200"
+                                                onClick={(e) => e.stopPropagation()}
+                                            >
+                                                <option value="">Uncategorized</option>
+                                                {accounts.map(acc => (
+                                                    <option key={acc.id} value={acc.id}>
+                                                        {acc.code} · {acc.name}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    </td>
+                                    <td className="text-center text-gray-600 font-medium">{item.quantity || '-'}</td>
+                                    <td className="text-right text-gray-600 font-bold">{formatCurrency(item.estimated_amount || item.unit_price * item.quantity)}</td>
+                                    <td className="text-right text-brand-navy font-bold">{item.actual_amount ? formatCurrency(item.actual_amount) : <span className="text-gray-300">-</span>}</td>
+                                </tr>
+                            ))}
+
+                            {/* Total Expenditure Row */}
+                            <tr className="summary-row expenditure-row border-t border-gray-100 bg-slate-50/30">
+                                <td className="font-bold flex items-center pl-4 py-4">
+                                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center mr-3">
+                                        <Receipt size={12} className="text-slate-500" />
                                     </div>
-                                </div>
-                                {req.qb_sync_status === 'FAILED' && (
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleRetrySync(req.id);
-                                        }}
-                                        className="px-3 py-1 bg-brand-navy text-white text-[10px] font-bold rounded-lg hover:bg-brand-green transition-colors"
-                                    >
-                                        Retry Sync
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-                </div >
-            </div >
+                                    Total Actual Expenditure
+                                </td>
+                                <td className="text-gray-400 text-[10px] italic">Sum of Line Items</td>
+                                <td className="text-center">-</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right font-black text-gray-900 text-[14px]">{formatCurrency(actualExpenditure)}</td>
+                            </tr>
+
+                            {/* Change Rows */}
+                            <tr className="summary-row border-t border-gray-50">
+                                <td className="text-gray-500 font-medium pl-6">Expected Change</td>
+                                <td className="text-gray-400 text-[10px] italic">Disbursed - Spent</td>
+                                <td className="text-center">-</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right font-bold text-gray-500">{formatCurrency(expectedChange)}</td>
+                            </tr>
+
+                            <tr className="summary-row">
+                                <td className="text-gray-800 font-bold flex items-center pl-6">
+                                    <Check size={14} className="text-emerald-500 mr-2" />
+                                    Actual Change Returned
+                                </td>
+                                <td className="text-gray-400 text-[10px] italic">Confirmed by Accountant</td>
+                                <td className="text-center">-</td>
+                                <td className="text-right">-</td>
+                                <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
+                            </tr>
+
+                            {/* Discrepancy Row */}
+                            <tr className={`summary-row border-t-2 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50/50' : 'bg-gray-50/30'}`}>
+                                <td className="font-black flex items-center pl-4 py-4">
+                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-3 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-100' : 'bg-gray-100'}`}>
+                                        <AlertTriangle size={12} className={Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'} />
+                                    </div>
+                                    Cash Discrepancy
+                                </td>
+                                <td className="py-4">
+                                    {Math.abs(discrepancy) > 0.01 ? (
+                                        <select 
+                                            className="accounting-select border-rose-200 bg-white"
+                                            onClick={(e) => e.stopPropagation()}
+                                            defaultValue=""
+                                        >
+                                            <option value="">Adjustment Account...</option>
+                                            {accounts.filter(a => a.type === 'EXPENSE' || a.type === 'INCOME').map(acc => (
+                                                <option key={acc.id} value={acc.id}>
+                                                    {acc.code} · {acc.name}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    ) : (
+                                        <span className="text-gray-400 text-[10px] italic">No adjustment needed</span>
+                                    )}
+                                </td>
+                                <td className="text-center">-</td>
+                                <td className="text-right">-</td>
+                                <td className={`text-right font-black text-[15px] ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'}`}>
+                                    {formatCurrency(discrepancy)}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
         );
     };
 

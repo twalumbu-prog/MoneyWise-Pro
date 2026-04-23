@@ -223,6 +223,84 @@
     background: #f1f5f9 !important;
 }
 
+/* Modern Breakdown Table Redesign */
+.details-content.redesign {
+    padding: 1.5rem;
+    background: #ffffff;
+}
+
+.breakdown-table-modern {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.85rem;
+}
+
+.breakdown-table-modern th {
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 1rem;
+    font-size: 0.7rem;
+    border-bottom: 2px solid #f1f5f9;
+}
+
+.breakdown-table-modern td {
+    padding: 0.875rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+}
+
+.breakdown-table-modern tr:hover td {
+    background: #fbfcfd;
+}
+
+.breakdown-table-modern .summary-row {
+    background: #fcfdfe;
+}
+
+.breakdown-table-modern .cash-distributed {
+    background: #f1f5f9;
+}
+
+.breakdown-table-modern .expenditure-row {
+    border-top: 2px solid #e2e8f0;
+}
+
+.breakdown-table-modern .discrepancy-row {
+    background: #fff1f2;
+}
+
+.accounting-select {
+    width: 100%;
+    max-width: 280px;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    font-size: 0.75rem;
+    color: #1e293b;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.accounting-select:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
+}
+
+.accounting-select:focus {
+    outline: none;
+    border-color: #006AFF;
+    box-shadow: 0 0 0 3px rgba(0, 106, 255, 0.1);
+}
+
+.breakdown-table-modern .text-brand-navy { color: #1a2333; }
+.breakdown-table-modern .text-emerald-600 { color: #059669; }
+.breakdown-table-modern .text-rose-600 { color: #e11d48; }
+
 /* Reconciliation Page Styles */
 .reconciliation-grid {
     display: grid;
