@@ -501,8 +501,6 @@ const CashLedger: React.FC = () => {
             </div>
         );
     };
-        );
-    };
 
     if (loading && entries.length === 0) {
         return (
