@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { Layout } from '../components/Layout';
 import {
@@ -26,7 +27,8 @@ import {
     RotateCcw,
     Check,
     RefreshCw,
-    AlertTriangle
+    AlertTriangle,
+    MessageSquare
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -36,6 +38,7 @@ import { integrationService } from '../services/integration.service';
 import { getStatusConfig } from '../services/requisition.service';
 
 const CashLedger: React.FC = () => {
+    const navigate = useNavigate();
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
     const [balance, setBalance] = useState<number>(0);
     const [loading, setLoading] = useState(true);
@@ -279,32 +282,45 @@ const CashLedger: React.FC = () => {
         return (
             <div className="details-content">
                 {/* Meta details Header */}
-                <div className="flex flex-wrap items-center gap-8 mb-6 pb-6 border-b border-gray-100/50">
-                    <div>
-                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Processed For / Requestor</div>
-                        <div className="flex items-center text-sm font-bold text-gray-900">
-                            <div className="p-1.5 bg-brand-pink/5 rounded-lg mr-2.5">
-                                <User size={14} className="text-brand-pink" />
-                            </div>
-                            {req.requestor?.name || 'System Ledger Entry'}
-                        </div>
-                    </div>
-                    
-                    {req.qb_sync_status && (
+                <div className="flex flex-wrap items-center justify-between gap-8 mb-6 pb-6 border-b border-gray-100/50">
+                    <div className="flex flex-wrap items-center gap-8">
                         <div>
-                            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">QuickBooks Ledger Sync</div>
-                            <div className={`text-[11px] font-black uppercase flex items-center ${
-                                req.qb_sync_status === 'SUCCESS' ? 'text-emerald-600' : 
-                                req.qb_sync_status === 'FAILED' ? 'text-rose-600' : 'text-gray-400'
-                            }`}>
-                                <div className={`w-2 h-2 rounded-full mr-2.5 ${
-                                    req.qb_sync_status === 'SUCCESS' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 
-                                    req.qb_sync_status === 'FAILED' ? 'bg-rose-500' : 'bg-gray-400'
-                                }`} />
-                                {req.qb_sync_status}
+                            <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">Processed For / Requestor</div>
+                            <div className="flex items-center text-sm font-bold text-gray-900">
+                                <div className="p-1.5 bg-brand-pink/5 rounded-lg mr-2.5">
+                                    <User size={14} className="text-brand-pink" />
+                                </div>
+                                {req.requestor?.name || 'System Ledger Entry'}
                             </div>
                         </div>
-                    )}
+                        
+                        {req.qb_sync_status && (
+                            <div>
+                                <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">QuickBooks Ledger Sync</div>
+                                <div className={`text-[11px] font-black uppercase flex items-center ${
+                                    req.qb_sync_status === 'SUCCESS' ? 'text-[#006AFF]' : 
+                                    req.qb_sync_status === 'FAILED' ? 'text-rose-600' : 'text-gray-400'
+                                }`}>
+                                    <div className={`w-2 h-2 rounded-full mr-2.5 ${
+                                        req.qb_sync_status === 'SUCCESS' ? 'bg-[#006AFF] shadow-[0_0_8px_rgba(0,106,255,0.4)]' : 
+                                        req.qb_sync_status === 'FAILED' ? 'bg-rose-500' : 'bg-gray-400'
+                                    }`} />
+                                    {req.qb_sync_status}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <button 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/requisitions/${req.id}`);
+                        }}
+                        className="flex items-center px-4 py-2.5 bg-[#006AFF] hover:bg-[#004BB5] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm shadow-blue-100 uppercase tracking-widest"
+                    >
+                        <MessageSquare size={14} className="mr-2" strokeWidth={2.5} />
+                        Requisition Chat
+                    </button>
                 </div>
 
                 <div className="spending-breakdown">
@@ -318,7 +334,9 @@ const CashLedger: React.FC = () => {
                                             <div>{item.description}</div>
                                             {item.accounts ? (
                                                 <div className="mt-1 flex items-center">
-                                                    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-600 border border-gray-200">
+                                                    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${
+                                                        req.status === 'ACCOUNTED' ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-gray-100 text-gray-600 border-gray-200'
+                                                    }`}>
                                                         {item.accounts.code}
                                                     </span>
                                                     <span className="ml-1.5 text-[10px] text-gray-400 truncate max-w-[150px]">
@@ -326,7 +344,7 @@ const CashLedger: React.FC = () => {
                                                     </span>
                                                 </div>
                                             ) : (
-                                                <div className="mt-1 flex items-center text-amber-600 text-[10px] font-medium animate-pulse">
+                                                <div className="mt-1 flex items-center text-[#006AFF] text-[10px] font-medium animate-pulse">
                                                     <AlertTriangle className="h-3 w-3 mr-1" />
                                                     Unclassified
                                                 </div>

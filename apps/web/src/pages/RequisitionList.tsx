@@ -307,7 +307,7 @@ export const RequisitionList: React.FC = () => {
                                         const config = getStatusConfig(status);
                                         switch (config.iconType) {
                                             case 'clock': return <Clock size={14} className="text-blue-500" />;
-                                            case 'check-circle': return <CheckCircle2 size={14} className="text-amber-500" />;
+                                            case 'check-circle': return <CheckCircle2 size={14} className="text-[#006AFF]" />;
                                             case 'check': return <Check size={14} className="text-emerald-500" />;
                                             case 'alert': return <AlertCircle size={14} className="text-red-500" />;
                                             case 'rotate': return <RotateCcw size={14} className="text-gray-400" />;

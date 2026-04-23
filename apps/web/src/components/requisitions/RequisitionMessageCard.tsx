@@ -1867,7 +1867,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
                         <div className="px-8 py-8">
                             <div className="flex items-center space-x-3 mb-6">
-                                <div className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-orange-600">
+                                <div className="w-8 h-8 rounded-full bg-blue-50/50 flex items-center justify-center text-[#006AFF]">
                                     <Building2 size={16} />
                                 </div>
                                 <div className="flex-1 flex items-center justify-between">
