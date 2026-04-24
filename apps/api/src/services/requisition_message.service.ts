@@ -214,7 +214,7 @@ export class RequisitionMessageService {
         console.log(`[RequisitionMessageService] Repair completed for ${requisitionId}`);
     }
 
-    static async getMessages(requisitionId: string) {
+    static async getMessages(requisitionId: string): Promise<any> {
         const { data, error } = await supabase
             .from('requisition_messages')
             .select(`
