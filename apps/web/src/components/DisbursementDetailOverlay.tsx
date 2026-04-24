@@ -234,11 +234,11 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
                                                 <p className="text-[10px] text-gray-400 uppercase font-bold">Recipient Account</p>
-                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_account || 'N/A'}</p>
+                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_account ?? 'N/A'}</p>
                                             </div>
                                             <div className="bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
                                                 <p className="text-[10px] text-gray-400 uppercase font-bold">Bank / Provider</p>
-                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_bank_code === '01' ? 'Airtel Money' : disbursement.recipient_bank_code === '02' ? 'MTN Money' : (disbursement.recipient_bank_code || 'N/A')}</p>
+                                                <p className="text-sm font-black text-brand-navy">{disbursement.recipient_bank_code === '01' ? 'Airtel Money' : disbursement.recipient_bank_code === '02' ? 'MTN Money' : (disbursement.recipient_bank_code ?? 'N/A')}</p>
                                             </div>
                                             <div className="col-span-2 bg-brand-pink/5 p-4 rounded-xl border border-brand-pink/10">
                                                 <p className="text-[10px] text-gray-400 uppercase font-bold">Account Name</p>
@@ -307,7 +307,7 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
                                     {(requisition.line_items || requisition.requisition_line_items)?.map((item: any, idx: number) => (
                                         <div key={item.id || idx} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex justify-between items-center">
                                             <span className="text-gray-600 truncate mr-2">{item.description}</span>
-                                            <span className="font-bold text-brand-navy whitespace-nowrap">K{Number(item.total_cost || item.estimated_amount).toLocaleString()}</span>
+                                            <span className="font-bold text-brand-navy whitespace-nowrap">K{Number(item.total_cost ?? item.estimated_amount ?? 0).toLocaleString()}</span>
                                         </div>
                                     ))}
                                 </div>

@@ -194,12 +194,12 @@ export const ExpenseVarianceForm: React.FC<DocumentTemplateProps> = ({ requisiti
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                             {requisition.items?.map((item: any, idx: number) => {
-                                const diff = (item.estimated_amount || 0) - (item.actual_amount || 0);
+                                const diff = (item.estimated_amount ?? 0) - (item.actual_amount ?? 0);
                                 return (
                                     <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                                         <td className="px-5 py-4 text-[13px] text-gray-700">{item.description}</td>
-                                        <td className="px-5 py-4 text-[13px] text-gray-500 text-right">K{(item.estimated_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                        <td className="px-5 py-4 text-[13px] font-semibold text-gray-900 text-right">K{(item.actual_amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td className="px-5 py-4 text-[13px] text-gray-500 text-right">K{(item.estimated_amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td className="px-5 py-4 text-[13px] font-semibold text-gray-900 text-right">K{(item.actual_amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                         <td className={`px-5 py-4 text-[13px] font-semibold text-right ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                                             {diff >= 0 ? '+' : ''}K{diff.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                         </td>
