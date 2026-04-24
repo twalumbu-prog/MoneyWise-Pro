@@ -1929,7 +1929,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 <span className="text-[10px] font-medium text-gray-400 line-clamp-1">{item.description}</span>
                                             </div>
                                             <span className="text-[13px] font-black text-gray-900">
-                                                {new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW' }).format(item.actual_amount || item.estimated_amount)}
+                                                {new Intl.NumberFormat('en-ZM', { style: 'currency', currency: 'ZMW' }).format(item.actual_amount ?? item.estimated_amount ?? 0)}
                                             </span>
                                         </div>
                                     ))}

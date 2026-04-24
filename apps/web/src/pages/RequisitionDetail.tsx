@@ -374,7 +374,7 @@ export const RequisitionDetail: React.FC = () => {
             setProcessing(true);
             await requisitionService.updateExpenses(requisition.id, expenseItems.map((item: any) => ({
                 id: item.id,
-                actual_amount: item.actual_amount || item.estimated_amount,
+                actual_amount: item.actual_amount ?? item.estimated_amount,
                 receipt_url: item.receipt_url
             })));
             alert('Expenses saved successfully');
@@ -596,8 +596,8 @@ export const RequisitionDetail: React.FC = () => {
                                                                     </td>
                                                                 </>
                                                             ) : (
-                                                                <td className="px-4 py-2 text-sm text-gray-900 text-right">
-                                                                    K{item.actual_amount || '0.00'}
+                                                                 <td className="px-4 py-2 text-sm text-gray-900 text-right">
+                                                                    {(item.actual_amount !== null && item.actual_amount !== undefined) ? `K${Number(item.actual_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '-'}
                                                                 </td>
                                                             )}
                                                              </tr>
@@ -607,7 +607,7 @@ export const RequisitionDetail: React.FC = () => {
                                                                     itemId={item.id}
                                                                     ocrData={item.receipt_ocr_data}
                                                                     ocrStatus={item.receipt_ocr_status || 'NONE'}
-                                                                    expectedAmount={item.actual_amount || item.estimated_amount}
+                                                                    expectedAmount={item.actual_amount ?? item.estimated_amount}
                                                                     onReanalyze={handleAnalyzeReceipt}
                                                                     isReanalyzing={analyzingItemId === item.id}
                                                                 />

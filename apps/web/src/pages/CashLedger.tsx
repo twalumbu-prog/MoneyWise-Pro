@@ -387,8 +387,8 @@ const CashLedger: React.FC = () => {
         const disbursement = req.disbursements?.[0];
 
         const actualExpenditure = items.length > 0
-            ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0)
-            : Number(req.actual_total || 0);
+            ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
+            : Number(req.actual_total ?? 0);
 
         const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
         const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
@@ -500,7 +500,7 @@ const CashLedger: React.FC = () => {
                                     </td>
                                     <td className="text-center text-gray-600 font-medium">{item.quantity || '-'}</td>
                                     <td className="text-right text-gray-600 font-bold">{formatCurrency(item.estimated_amount || item.unit_price * item.quantity)}</td>
-                                    <td className="text-right text-brand-navy font-bold">{item.actual_amount ? formatCurrency(item.actual_amount) : <span className="text-gray-300">-</span>}</td>
+                                    <td className="text-right text-brand-navy font-bold">{(item.actual_amount !== null && item.actual_amount !== undefined) ? formatCurrency(item.actual_amount) : <span className="text-gray-300">-</span>}</td>
                                 </tr>
                             ))}
 
