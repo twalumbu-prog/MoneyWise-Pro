@@ -56,28 +56,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [isEditingCategorization, setIsEditingCategorization] = useState(false);
     const [isSubmittingChange, setIsSubmittingChange] = useState(false);
 
-    const [isAcknowledging, setIsAcknowledging] = useState(false);
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-
-    useEffect(() => {
-        supabase.auth.getSession().then(({ data }) => {
-            setCurrentUserId(data.session?.user?.id || null);
-        });
-    }, []);
-
-    const handleAcknowledge = async () => {
-        if (!requisitionData?.id) return;
-        try {
-            setIsAcknowledging(true);
-            await requisitionService.acknowledgeReceipt(requisitionData.id);
-            if (onAction) onAction('REFRESH');
-        } catch (err: any) {
-            console.error('Acknowledgement failed:', err);
-            window.alert(err.message || 'Failed to acknowledge receipt.');
-        } finally {
-            setIsAcknowledging(false);
-        }
-    };
     const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState<number | null>(null);
     const [accountSearch, setAccountSearch] = useState('');
     const [isAICategorizationExpanded, setIsAICategorizationExpanded] = useState(true);
