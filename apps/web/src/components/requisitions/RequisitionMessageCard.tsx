@@ -2323,7 +2323,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                  </>
                                              )}
                                          </button>
->
                                      </div>
                                  </div>
                              )}
