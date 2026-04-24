@@ -82,7 +82,7 @@ export class RequisitionMessageService {
                 userId,
                 content: 'Requisition submitted for approval',
                 type: 'SYSTEM',
-                metadata: { stage: 'APPROVAL' }
+                metadata: { stage: 'APPROVAL', isRepaired: true }
             });
         }
 
@@ -94,7 +94,7 @@ export class RequisitionMessageService {
                     userId,
                     content: 'How would you like to disburse these funds?',
                     type: 'SYSTEM',
-                    metadata: { stage: 'DISBURSAL' }
+                    metadata: { stage: 'DISBURSAL', isRepaired: true }
                 });
             }
         }
@@ -106,12 +106,16 @@ export class RequisitionMessageService {
                 await this.createMessage({
                     requisitionId,
                     userId,
-                    content: 'Money successfully sent',
+                    content: `Funds Disbursed: K${Number(disb.total_prepared).toLocaleString()}\nMethod: ${disb.payment_method}\nRef: ${disb.external_reference || 'N/A'}\nStatus: SUCCESS`,
                     type: 'SYSTEM',
                     metadata: { 
                         stage: 'DISBURSAL_SUCCESS', 
                         disbursement_id: disb.id,
-                        isSummary: true 
+                        isSummary: true,
+                        isRepaired: true,
+                        amount: disb.total_prepared,
+                        payment_method: disb.payment_method,
+                        external_reference: disb.external_reference
                     }
                 });
             }
@@ -125,7 +129,7 @@ export class RequisitionMessageService {
                     userId,
                     content: 'Transaction needs to be expensed',
                     type: 'SYSTEM',
-                    metadata: { stage: 'EXPENSE_TRACKING' }
+                    metadata: { stage: 'EXPENSE_TRACKING', isRepaired: true }
                 });
             }
         }
@@ -144,7 +148,8 @@ export class RequisitionMessageService {
                     metadata: { 
                         stage: 'EXPENSE_SUMMARY',
                         actualTotal,
-                        changeAmount: change > 0 ? change : 0
+                        changeAmount: change > 0 ? change : 0,
+                        isRepaired: true
                     }
                 });
             }
@@ -169,7 +174,8 @@ export class RequisitionMessageService {
                     metadata: { 
                         stage: 'AI_REVIEW',
                         items: aiItems,
-                        isThinking: false
+                        isThinking: false,
+                        isRepaired: true
                     }
                 });
             }
@@ -183,7 +189,7 @@ export class RequisitionMessageService {
                     userId,
                     content: 'Ready to post to QuickBooks',
                     type: 'SYSTEM',
-                    metadata: { stage: 'QUICKBOOKS_POSTING' }
+                    metadata: { stage: 'QUICKBOOKS_POSTING', isRepaired: true }
                 });
             }
         }
@@ -198,7 +204,8 @@ export class RequisitionMessageService {
                     type: 'SYSTEM',
                     metadata: { 
                         stage: 'POSTED_SUCCESS', 
-                        qbExpenseId: req.qb_expense_id 
+                        qbExpenseId: req.qb_expense_id,
+                        isRepaired: true
                     }
                 });
             }
@@ -228,11 +235,13 @@ export class RequisitionMessageService {
             // Check if it's an old one that needs repair
             const { data: req } = await supabase
                 .from('requisitions')
-                .select('status')
+                .select('status, updated_at')
                 .eq('id', requisitionId)
                 .single();
             
-            if (req && req.status !== 'DRAFT' && req.status !== 'PENDING_APPROVAL') {
+            const updatedRecently = req?.updated_at && (Date.now() - new Date(req.updated_at).getTime() < 5000);
+            
+            if (req && req.status !== 'DRAFT' && req.status !== 'PENDING_APPROVAL' && !updatedRecently) {
                 await this.repairLifecycleMessages(requisitionId);
                 // Re-fetch after repair
                 return this.getMessages(requisitionId);
@@ -266,7 +275,7 @@ export class RequisitionMessageService {
                         userId: req.requestor_id,
                         content,
                         type: 'SYSTEM',
-                        metadata: { stage }
+                        metadata: { stage, isRepaired: true }
                     });
                     return [initialMsg];
                 } catch (createErr) {

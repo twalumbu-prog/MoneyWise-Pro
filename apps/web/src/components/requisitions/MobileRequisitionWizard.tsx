@@ -80,6 +80,21 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
 
     useEffect(() => {
         if (isOpen) {
+            // Reset wizard state to fresh defaults
+            setStage(1);
+            setDescription('');
+            setDepartment('');
+            setUseMyAccount(true);
+            setMakeExpenseList(true);
+            setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
+            setPaymentMethod('mobile');
+            setBankId('');
+            setAccountNumber('');
+            setPhoneNumber('');
+            setResolvedName('');
+            setError(null);
+            setActiveRequisitionId(null);
+            
             fetchBanks();
             fetchPaymentInfo();
         }

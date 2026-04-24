@@ -114,7 +114,7 @@ export const RequisitionList: React.FC = () => {
         // Apply tab filter
         const config = getStatusConfig(req.status);
         if (activeTab === 'REVIEWED') {
-            if (!['AUTHORISED', 'REJECTED'].includes(req.status)) return false;
+            if (req.status !== 'AUTHORISED') return false;
         } else if (activeTab === 'PENDING_APPROVAL') {
             if (!['DRAFT', 'PENDING_APPROVAL'].includes(req.status)) return false;
         } else if (activeTab === 'COMPLETED') {
@@ -190,7 +190,7 @@ export const RequisitionList: React.FC = () => {
                         if (tabValue === 'ALL' || tabValue === 'COMPLETED') return 0;
                         return requisitions.filter(req => {
                             if (tabValue === 'PENDING_APPROVAL') return ['DRAFT', 'PENDING_APPROVAL'].includes(req.status);
-                            if (tabValue === 'REVIEWED') return ['AUTHORISED', 'REJECTED'].includes(req.status);
+                            if (tabValue === 'REVIEWED') return req.status === 'AUTHORISED';
                             const config = getStatusConfig(req.status);
                             return config.tab === tabValue && !config.isCompleted;
                         }).length;
@@ -226,18 +226,18 @@ export const RequisitionList: React.FC = () => {
 
                             {/* Mobile Navigation (Headers & Tabs) */}
                             <div className="md:hidden">
-                                {/* View Switcher Tabs - Grey Background */}
-                                <div className="bg-[#F8F9FA] px-6 py-7">
+                                {/* View Switcher - Restored in minimalist style */}
+                                <div className="px-6 pt-5 pb-3">
                                     <div className="flex items-center">
                                         <button 
                                             onClick={() => setViewMode('inbox')}
-                                            className={`mr-8 text-xl font-bold transition-all ${viewMode === 'inbox' ? 'text-brand-navy' : 'text-gray-300'}`}
+                                            className={`mr-8 text-lg font-bold transition-all ${viewMode === 'inbox' ? 'text-brand-navy' : 'text-gray-300'}`}
                                         >
                                             Requisition Inbox
                                         </button>
                                         <button 
                                             onClick={() => setViewMode('scheduled')}
-                                            className={`text-xl font-bold transition-all ${viewMode === 'scheduled' ? 'text-brand-navy' : 'text-gray-300'}`}
+                                            className={`text-lg font-bold transition-all ${viewMode === 'scheduled' ? 'text-brand-navy' : 'text-gray-300'}`}
                                         >
                                             Scheduled
                                         </button>
@@ -245,7 +245,7 @@ export const RequisitionList: React.FC = () => {
                                 </div>
 
                                 {/* Filter Sub-Tabs (Scrollable) - White Background */}
-                                <div className="bg-white py-4 border-b border-gray-50">
+                                <div className="bg-white py-4 border-b border-gray-50 mt-3">
                                     <div className="flex items-center space-x-2 px-6 overflow-x-auto no-scrollbar">
                                         {TABS.map((tab) => {
                                             const count = getTabCount(tab.value);
@@ -276,7 +276,7 @@ export const RequisitionList: React.FC = () => {
                     );
                 })()}
 
-                <div className="w-full bg-white">
+                <div className="w-full bg-white pt-6">
                     {loading && (
                         <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
                             <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>

@@ -59,7 +59,7 @@ export const RequisitionCreate: React.FC = () => {
     const checkActiveRequisition = async () => {
         try {
             const requisitions = await requisitionService.getAll();
-            const blockingStatuses = ['DISBURSED', 'RECEIVED'];
+            const blockingStatuses = ['DISBURSED', 'EXPENSED'];
             const blockingReqs = requisitions.filter((r: any) => {
                 return blockingStatuses.includes(r.status) && String(r.requestor_id) === String(user?.id);
             });

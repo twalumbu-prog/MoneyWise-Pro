@@ -17,7 +17,8 @@ import {
     retriggerAICategorization,
     postToQuickBooks,
     scanReceipts,
-    deleteReceipt
+    deleteReceipt,
+    deleteRequisitionMessage
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -61,6 +62,7 @@ router.delete('/:id/receipts/:receiptId', deleteReceipt);
 // Message routes
 router.get('/:id/messages', getRequisitionMessages);
 router.post('/:id/messages', sendRequisitionMessage);
+router.delete('/:id/messages/:messageId', deleteRequisitionMessage);
 
 // Standard routes
 router.post('/', createRequisition);

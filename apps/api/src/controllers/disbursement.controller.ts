@@ -13,7 +13,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         const { denominations, total_prepared, payment_method, transfer_proof_url, recipient_account, recipient_bank_code, recipient_account_name } = req.body;
         const cashier_id = (req as any).user.id;
         const organizationId = (req as any).user.organization_id;
-        const isDigital = payment_method === 'MONEYWISE_WALLET' || payment_method === 'MOBILE_MONEY';
+        const isDigital = payment_method !== 'CASH' && payment_method !== 'CASH_PICKUP' && payment_method !== 'OTHER';
 
         if (!organizationId) throw new Error("Missing organization context");
 
@@ -70,7 +70,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         const targetOrgId = requisition.organization_id;
         const stableRef = `REQ-${id.slice(0, 8)}-${estimatedTotal.toFixed(0)}`; // Unique enough but stable
 
-        if (payment_method === 'MONEYWISE_WALLET') {
+        if (isDigital) {
             const { data: org } = await supabase
                 .from('organizations')
                 .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
@@ -140,8 +140,8 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     // Poll for status if we just created it or if it was pending
                     let attempts = 0;
                     let currentStatus = payout.status;
-                    while (currentStatus === 'pending' && attempts < 3) {
-                        await new Promise(resolve => setTimeout(resolve, 2000));
+                    while (currentStatus === 'pending' && attempts < 5) {
+                        await new Promise(resolve => setTimeout(resolve, 3000));
                         statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
                         currentStatus = statusCheck?.status || 'pending';
                         attempts++;
@@ -253,11 +253,12 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 }
             });
 
-        // Consolidate into a single summary message
+        /* 
+        // Consolidate into a single summary message - REMOVED per user request
         await RequisitionMessageService.createMessage({
             requisitionId: id,
             userId: cashier_id,
-            content: `Funds Disbursed: K${totalDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nMethod: ${payment_method || 'CASH'}\nRef: ${lencoReference || 'N/A'}\nStatus: ${ (req as any).lencoStatus === 'pending' ? 'PENDING' : 'SUCCESS' }`,
+            content: `Funds Disbursed: K${totalDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nMethod: ${payment_method || 'CASH'}\nRef: ${lencoReference || 'N/A'}\nStatus: ${ (req as any).lencoStatus === 'failed' ? 'FAILED' : ((req as any).lencoStatus === 'pending' ? 'PENDING' : 'SUCCESS') }`,
             type: 'CHAT',
             metadata: { 
                 isSummary: true, 
@@ -266,35 +267,35 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 payment_method
             }
         });
+        */
 
         // Increase artificial delay to 1000ms to guarantee strict database chronological ordering 
         // between the CHAT summary and the SYSTEM expense tracking prompt
         await new Promise(resolve => setTimeout(resolve, 1000));
 
-        // For Wallet/Mobile disbursements, we trigger the EXPENSE_TRACKING prompt IMMEDIATELY.
-        // We no longer wait for manual "acknowledgement" since the funds are transferred digitally.
-        if (payment_method === 'MONEYWISE_WALLET' || payment_method === 'MOBILE_MONEY') {
-            // Idempotency Check: Ensure we don't generate duplicate EXPENSE_TRACKING messages
-            const { data: existingMsg } = await supabase
-                .from('requisition_messages')
-                .select('id')
-                .eq('requisition_id', id)
-                .contains('metadata', { stage: 'EXPENSE_TRACKING' })
-                .limit(1)
-                .maybeSingle();
+        // Trigger the EXPENSE_TRACKING prompt IMMEDIATELY after any disbursement.
+        // We no longer wait for manual "acknowledgement" since the transaction is confirmed.
+        
+        // Idempotency Check: Ensure we don't generate duplicate EXPENSE_TRACKING messages
+        const { data: existingMsg } = await supabase
+            .from('requisition_messages')
+            .select('id')
+            .eq('requisition_id', id)
+            .contains('metadata', { stage: 'EXPENSE_TRACKING' })
+            .limit(1)
+            .maybeSingle();
 
-            if (!existingMsg) {
-                await RequisitionMessageService.createMessage({
-                    requisitionId: id,
-                    userId: cashier_id,
-                    content: `Funds received. Please record your expenditure and upload receipts.`,
-                    type: 'SYSTEM',
-                    metadata: { stage: 'EXPENSE_TRACKING' }
-                });
-            }
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
+        if (!existingMsg) {
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: cashier_id,
+                content: `Funds received. Please record your expenditure and upload receipts.`,
+                type: 'SYSTEM',
+                metadata: { stage: 'EXPENSE_TRACKING' }
+            });
         }
+        
+        await new Promise(resolve => setTimeout(resolve, 100));
 
         res.json({
             message: (req as any).lencoStatus === 'pending' 

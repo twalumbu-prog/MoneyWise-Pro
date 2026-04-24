@@ -3,17 +3,20 @@ import { REQUISITION_STATUS_CONFIG } from '../../services/requisition.service';
 
 interface RequisitionProgressProps {
     currentStatus: string;
+    userRole?: string;
 }
 
-const RequisitionProgress: React.FC<RequisitionProgressProps> = ({ currentStatus }) => {
+const RequisitionProgress: React.FC<RequisitionProgressProps> = ({ currentStatus, userRole }) => {
     // Unique labels for the UI
+    const isPrivileged = userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'MANAGER';
+
     const uiSteps = [
         { label: 'Draft', statuses: ['DRAFT'] },
         { label: 'Approved', statuses: ['PENDING_APPROVAL', 'AUTHORISED'] },
         { label: 'Disbursed', statuses: ['DISBURSED'] },
         { label: 'Expensed', statuses: ['EXPENSED'] },
         { label: 'Returns', statuses: ['RECEIVED', 'CHANGE_SUBMITTED'] },
-        { label: 'Complete', statuses: Object.keys(REQUISITION_STATUS_CONFIG).filter(s => REQUISITION_STATUS_CONFIG[s].isCompleted) }
+        ...(isPrivileged ? [{ label: 'Complete', statuses: Object.keys(REQUISITION_STATUS_CONFIG).filter(s => REQUISITION_STATUS_CONFIG[s].isCompleted) }] : [])
     ];
 
     const getCurrentStepIndex = () => {
@@ -21,7 +24,7 @@ const RequisitionProgress: React.FC<RequisitionProgressProps> = ({ currentStatus
     };
 
     const currentIndex = getCurrentStepIndex();
-    const isTerminal = REQUISITION_STATUS_CONFIG[currentStatus]?.isCompleted || false;
+    const isTerminal = REQUISITION_STATUS_CONFIG[currentStatus]?.isCompleted || (!isPrivileged && (currentStatus === 'CHANGE_SUBMITTED' || currentStatus === 'RECEIVED'));
 
     return (
         <div className="w-full bg-white lg:bg-gray-50/50 border-b border-gray-100 flex-shrink-0">

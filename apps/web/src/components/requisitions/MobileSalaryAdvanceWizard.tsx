@@ -32,6 +32,12 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
         setError(null);
     };
 
+    React.useEffect(() => {
+        if (isOpen) {
+            reset();
+        }
+    }, [isOpen]);
+
     const handleClose = () => { reset(); onClose(); };
 
     const handleProceed = () => {

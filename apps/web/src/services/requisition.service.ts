@@ -81,7 +81,7 @@ export const REQUISITION_STATUS_CONFIG: Record<string, {
     'DISBURSED': { label: 'Disbursed', color: 'emerald', tab: 'DISBURSED', isCompleted: false, iconType: 'check' },
     'EXPENSED': { label: 'Expensed', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'clock' },
     'CHANGE_SUBMITTED': { label: 'Returned', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'check-circle' },
-    'RECEIVED': { label: 'Received', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'check-circle' },
+    'RECEIVED': { label: 'Funds Received', color: 'emerald', tab: 'DISBURSED', isCompleted: false, iconType: 'check-circle' },
     'CATEGORIZED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
     'COMPLETED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
     'ACCOUNTED': { label: 'Accounted', color: 'emerald', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' }
@@ -243,6 +243,18 @@ export const requisitionService = {
             const err = await response.json();
             const message = err.message || err.error || 'Failed to submit change';
             throw new Error(message);
+        }
+
+        return response.json();
+    },
+    deleteMessage: async (requisitionId: string, messageId: string) => {
+        const response = await apiFetch(`/requisitions/${requisitionId}/messages/${messageId}`, {
+            method: 'DELETE',
+        });
+
+        if (!response.ok) {
+            const err = await response.json();
+            throw new Error(err.error || 'Failed to delete message');
         }
 
         return response.json();

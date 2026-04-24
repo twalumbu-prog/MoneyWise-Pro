@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
 import { RequisitionMessage, requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
-import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles } from 'lucide-react';
+import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles, RotateCcw } from 'lucide-react';
 import { accountService, Account } from '../../services/account.service';
 import { integrationService } from '../../services/integration.service';
+import { useAuth } from '../../context/AuthContext';
 import heic2any from 'heic2any';
 
 interface RequisitionMessageCardProps {
@@ -30,6 +31,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const isPastDisbursal = !['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED'].includes(currentStatus);
     const isRejected = currentStatus === 'REJECTED';
 
+    const { userRole, user: currentUser } = useAuth();
     const [isExpanded, setIsExpanded] = useState(isInitial || window.innerWidth < 768);
     useEffect(() => {
         if (isInitial && window.innerWidth < 768) {
@@ -52,6 +54,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [editableItems, setEditableItems] = useState<any[]>([]);
     const [isEditingCategorization, setIsEditingCategorization] = useState(false);
+    const [isSubmittingChange, setIsSubmittingChange] = useState(false);
 
     const [isAcknowledging, setIsAcknowledging] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -100,10 +103,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [disburseStatusMsg, setDisburseStatusMsg] = useState<string | null>(null);
     
     const isSystem = message.message_type?.toUpperCase() === 'SYSTEM';
-    const isAIReview = isSystem && message.metadata?.stage === 'AI_REVIEW';
 
     useEffect(() => {
-        if (isAIReview) {
+        if (isSystem && message.metadata?.stage === 'AI_REVIEW') {
             const fetchAccounts = async () => {
                 try {
                     const data = await accountService.getAll();
@@ -118,12 +120,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             if (message.metadata?.items) {
                 setEditableItems(message.metadata.items.map((item: any) => ({
                     ...item,
-                    // If the item doesn't have a category_name but we have accounts, try to find it
                     category_name: item.category_name || accounts.find(a => a.code === item.category_code)?.name || 'Unknown Account'
                 })));
             }
         }
-    }, [isAIReview, message.metadata?.items]);
+    }, [message.metadata?.stage, message.metadata?.items]);
     
     const stage = message.metadata?.stage;
     const isQBPosting = stage === 'QUICKBOOKS_POSTING';
@@ -142,12 +143,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     
                     const method = requisitionData?.payment_method || (requisitionData?.disbursements && requisitionData.disbursements[0]?.method) || 'UNKNOWN';
                     
-                    // 1. Try saved mapping first
                     if (mappings[method]) {
-                        console.log(`[QB] Found saved mapping for ${method}:`, mappings[method]);
                         setPaymentAccountId(mappings[method].id);
                     } 
-                    // 2. Fallback to auto-detecting wallet
                     else if (method === 'WALLET' || method === 'MONEYWISE_WALLET') {
                         const walletAcc = accounts.find((a: any) => 
                             a.Name.toLowerCase().includes('wallet') || 
@@ -157,7 +155,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                             setPaymentAccountId(walletAcc.Id);
                         }
                     } 
-                    // 3. Last resort: first bank account
                     else if (accounts.length > 0) {
                         const bankAcc = accounts.find((a: any) => a.AccountType === 'Bank') || accounts[0];
                         if (bankAcc) setPaymentAccountId(bankAcc.Id);
@@ -171,8 +168,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
     }, [isQBPosting, requisitionData, qbAccounts.length, qbFetchError]);
 
-
-    // Re-sync names if accounts load after items
     useEffect(() => {
         if (accounts.length > 0 && editableItems.length > 0) {
             setEditableItems(prev => prev.map(item => {
@@ -185,7 +180,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
     }, [accounts]);
 
-    // Sync expenseItems when requisitionData.items changes (e.g. after AI scan refresh)
     useEffect(() => {
         if (expenseMode !== 'NONE' && requisitionData?.items) {
             setExpenseItems(prev => {
@@ -218,7 +212,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
     }, [requisitionData?.items, expenseMode]);
 
-    // Auto-detect mobile money operator when recipientValue changes
     useEffect(() => {
         if (paymentType === 'MOBILE_MONEY' && recipientValue) {
             const clean = recipientValue.replace(/[^0-9]/g, '');
@@ -229,13 +222,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             else if (normalized.startsWith('095') || normalized.startsWith('075')) operator = 'ZAMTEL';
             
             if (operator && recipientProvider !== operator) {
-                console.log('[Operator Detection] Auto-detected operator:', operator);
                 setRecipientProvider(operator);
             }
         }
     }, [recipientValue, paymentType, recipientProvider]);
 
-    // Auto-resolve name when recipientValue is a valid phone number
     useEffect(() => {
         if (paymentType === 'MOBILE_MONEY' && recipientValue && recipientProvider && !lookupName && !isLookingUp) {
             const clean = recipientValue.replace(/[^0-9]/g, '');
@@ -258,7 +249,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
     }, [recipientValue, paymentType, recipientProvider, lookupName, isLookingUp, requisitionData?.organization_id]);
 
-    // Auto-fill disbursal details from requisition data
     useEffect(() => {
         const stage = message.metadata?.stage;
         const content = message.content?.trim();
@@ -267,16 +257,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                            content === 'How would you like to disburse these funds?';
 
         if (requisitionData && isDisbursal) {
-            // 1. Pre-fill recipient number/account
             if (!recipientValue && requisitionData.recipient_account) {
-                console.log('[Disbursal Auto-fill] Setting recipientValue:', requisitionData.recipient_account);
                 setRecipientValue(requisitionData.recipient_account);
             }
             
-            // 2. Pre-fill provider and determine payment type
             if (!recipientProvider && requisitionData.recipient_bank_code) {
                 const provider = requisitionData.recipient_bank_code.toUpperCase();
-                console.log('[Disbursal Auto-fill] Setting recipientProvider:', provider);
                 setRecipientProvider(provider);
                 
                 if (['AIRTEL', 'MTN', 'ZAMTEL'].includes(provider)) {
@@ -286,19 +272,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 }
             }
             
-            // 3. Auto-select payment method if not set
             if (!activeMethod && requisitionData.payment_method) {
                 const method = requisitionData.payment_method === 'WALLET' ? 'MONEYWISE_WALLET' : requisitionData.payment_method;
-                console.log('[Disbursal Auto-fill] Setting activeMethod:', method);
                 setActiveMethod(method);
             } else if (!activeMethod && isDisbursal) {
-                // Default to Wallet for approved requisitions if not specified
                 setActiveMethod('MONEYWISE_WALLET');
             }
             
-            // 4. Pre-fill lookup name
             if (!lookupName && requisitionData.recipient_name) {
-                console.log('[Disbursal Auto-fill] Setting lookupName:', requisitionData.recipient_name);
                 setLookupName(requisitionData.recipient_name);
             }
         }
@@ -318,7 +299,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             await onAction(action);
         } catch (err: any) {
             console.error(`Action ${action} failed:`, err);
-            // Provide visual feedback for the user
             const errorMsg = err.message || 'An unexpected error occurred';
             if (errorMsg.toLowerCase().includes('unauthorized') || errorMsg.includes('403')) {
                 window.alert('Unauthorized: You do not have permission to perform this action.');
@@ -343,7 +323,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     quality: 0.8
                 });
                 
-                // heic2any can return an array if multiple images are in one HEIC
                 fileToProcess = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
                 finalFileName = file.name.replace(/\.(heic|heif)$/i, '.jpg');
             } catch (err) {
@@ -352,7 +331,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             }
         }
         
-        // Resize image to prevent AI payload size limits (Gemini has strict limits on base64 sizes)
         if (file.type.startsWith('image/') || finalFileName.endsWith('.jpg')) {
             try {
                 const resizedBlob = await new Promise<Blob>((resolve, reject) => {
@@ -425,10 +403,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 urls.push(fileName);
             }
 
-            // Call the AI Scan endpoint
             await requisitionService.scanReceipts(requisitionData.id, urls);
             
-            // Refresh to get results
             if (onAction) onAction('REFRESH');
             setExpenseMode('SCAN');
         } catch (err: any) {
@@ -489,10 +465,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 urls.push(fileName);
             }
 
-            // Call the AI Scan endpoint - this will update ai_extracted_amount in background
             await requisitionService.scanReceipts(requisitionData.id, urls);
             
-            // Refresh to get results in the UI (AI Found column)
             if (onAction) onAction('REFRESH');
         } catch (err: any) {
             console.error('Manual OCR Scanning failed:', err);
@@ -504,17 +478,15 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
     const getReceiptUrl = (fileUrl: string) => {
         if (!fileUrl) return '';
-        // If it starts with 'receipts/', strip it because .from('receipts') prepends it
         const path = fileUrl.startsWith('receipts/') ? fileUrl.substring(9) : fileUrl;
         return supabase.storage.from('receipts').getPublicUrl(path).data.publicUrl;
     };
 
-    const LENCO_MIN_TRANSFER = 5; // Lenco minimum transfer amount in ZMW
+    const LENCO_MIN_TRANSFER = 5;
 
     const handleDisburse = async () => {
         if (!requisitionData?.id || !activeMethod) return;
 
-        // Pre-validate minimum amount for Lenco wallet/mobile transfers
         const isLencoTransfer = activeMethod === 'MONEYWISE_WALLET' || activeMethod === 'MOBILE_MONEY';
         if (isLencoTransfer && Number(requisitionData.estimated_total) < LENCO_MIN_TRANSFER) {
             setDisburseError(`The disbursement amount (K${requisitionData.estimated_total}) is below the minimum transfer amount of K${LENCO_MIN_TRANSFER}. Please use a different payment method or raise a new requisition for at least K${LENCO_MIN_TRANSFER}.`);
@@ -525,18 +497,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         setDisburseError(null);
         setDisburseStatusMsg(null);
 
-        // Normalize phone: strip leading 260 country code if present
         const cleanPhone = recipientValue.replace(/[^0-9]/g, '');
         const normalizedPhone = cleanPhone.startsWith('260') ? '0' + cleanPhone.substring(3) : cleanPhone;
 
-        // Determine the bank/operator code the backend expects
-        // For mobile money: lowercase operator name (airtel, mtn, zamtel)
-        // For bank: keep as-is (bank ID string)
         const recipientBankCode = (() => {
             if (activeMethod === 'MONEYWISE_WALLET' || activeMethod === 'MOBILE_MONEY') {
-                return (recipientProvider || '').toLowerCase(); // 'airtel' | 'mtn' | 'zamtel'
+                return (recipientProvider || '').toLowerCase();
             }
-            return recipientProvider || undefined; // bank code for bank transfers
+            return recipientProvider || undefined;
         })();
 
         try {
@@ -550,7 +518,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 recipient_account_name: lookupName || undefined,
             });
 
-            // For MONEYWISE_WALLET, Lenco may return 'pending' — poll until resolved
             if (activeMethod === 'MONEYWISE_WALLET' && result.lencoStatus === 'pending') {
                 setDisburseStatusMsg('Transfer initiated — waiting for Lenco confirmation...');
 
@@ -566,16 +533,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     if (poll.status === 'failed') {
                         throw new Error(poll.error || poll.details?.reasonForFailure || 'Transfer was rejected. The requisition has been reset to Authorised. Please try again.');
                     }
-                    // still pending — keep polling
                 }
 
                 if (!resolved) {
-                    // Still pending after polling — not a failure, just slow
                     setDisburseStatusMsg('Transfer is still processing. It will complete shortly.');
                 }
             }
 
-            // Success
             setIsProcessing(false);
             setIsSuccess(true);
             setDisburseStatusMsg(null);
@@ -589,7 +553,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
     };
 
-    // Maps raw backend/Lenco error strings into structured, user-friendly messages
     const parseDisburseError = (raw: string): { title: string; body: string; canRetry: boolean; canChangeMethod: boolean } => {
         const msg = raw.toLowerCase();
 
@@ -650,7 +613,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             };
         }
         if (msg.includes('rejected') || msg.includes('failed') || msg.includes('failure')) {
-            // Strip common boilerplate from the raw message for cleaner display
             const cleanBody = raw
                 .replace(/disbursal error:\s*/i, '')
                 .replace(/the requisition has been reset to authorised\./i, '')
@@ -670,31 +632,29 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         };
     };
 
-
-
     if (isSystem) {
         const stage = message.metadata?.stage;
         const status = requisitionData?.status;
         const content = message.content?.trim();
         
-        // Handle Legacy content-based routing if stage is missing
         const isCreation = stage === 'APPROVAL' || content === 'Requisition created' || content === 'Requisition submitted for approval';
         const isDisbursal = stage === 'DISBURSAL' || stage === 'DISBURSAL_SUCCESS' || content === 'Status updated to AUTHORISED' || content === 'How would you like to disburse these funds?';
         const isExpenseTracking = stage === 'EXPENSE_TRACKING' || (content?.includes('needs to be expensed') && !stage);
-        const isAIReview = stage === 'AI_REVIEW';
-        const isQBPosting = stage === 'QUICKBOOKS_POSTING';
+        const isAIReview = message.metadata?.stage === 'AI_REVIEW';
+        const isQBPosting = message.metadata?.stage === 'QUICKBOOKS_POSTING';
+        const isPrivileged = userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'MANAGER';
         const isExpenseSummary = stage === 'EXPENSE_SUMMARY';
 
-        // 1. APPROVAL / INITIAL SUBMISSION
+        if (!isPrivileged && (isAIReview || isQBPosting)) {
+            return null;
+        }
+
         if (isCreation) {
-            // Show buttons if status is DRAFT or PENDING_APPROVAL and user has permissions
             const showActions = canAction && (status === 'DRAFT' || status === 'PENDING_APPROVAL');
 
             return (
                 <div className="flex flex-col mb-6 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
-                    {/* Unified Requisition Card */}
                     <div className="bg-white border border-gray-100 rounded-[20px] md:rounded-[16px] md:rounded-tl-none shadow-[0_4px_16px_-4px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300 w-full md:w-auto">
-                        {/* Header Row (Inside Card) */}
                         <div className="px-6 pt-4 pb-1.5 flex items-center space-x-2.5">
                             <div className="w-7 h-7 rounded-full bg-[#FFE3E3] flex items-center justify-center text-[#E56B6B] border border-red-50 shadow-sm">
                                 <User size={14} strokeWidth={2.5} />
@@ -704,7 +664,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                     {requisitionData?.requestor_name || 'System User'}
                                 </span>
                                 
-                                {/* Status Badge */}
                                 {isPastApproval && (
                                     <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full border ${
                                         isRejected 
@@ -727,7 +686,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                             </div>
                         </div>
 
-                        {/* Summary Row */}
                         <div 
                             className="px-6 pb-4 flex items-center justify-between cursor-pointer md:cursor-pointer group"
                             onClick={() => window.innerWidth >= 768 && setIsExpanded(!isExpanded)}
@@ -747,7 +705,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
                         {isExpanded && (
                             <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-400">
-                                {/* Details Table */}
                                 <div className="rounded-xl border border-gray-100 overflow-hidden mb-6">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
@@ -774,16 +731,15 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                     </table>
                                 </div>
 
-                                {/* Action Area */}
                                 {isPastApproval ? (
                                     <div className={`mt-4 py-3 px-5 rounded-[18px] flex items-center justify-between transition-all duration-500 ${
                                         isRejected ? 'bg-red-50/20 border border-red-50' : 'bg-emerald-50/20 border border-emerald-50'
                                     }`}>
                                         <div className="flex items-center space-x-2.5">
                                             <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                                                isRejected ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-500'
+                                                isRejected ? 'bg-red-50' : 'bg-emerald-50'
                                             }`}>
-                                                {isRejected ? <X size={14} /> : <Check size={14} />}
+                                                {isRejected ? <X size={14} className="text-red-500" /> : <Check size={14} className="text-emerald-500" />}
                                             </div>
                                             <div>
                                                 <p className="text-[12px] font-bold text-gray-900">
@@ -806,14 +762,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); handleActionClick('REJECT'); }}
                                                 disabled={!!activeAction}
-                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#F5F5F7] text-gray-700 text-[13px] md:text-[12px] font-bold md:font-medium rounded-full hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] border border-gray-100 h-11 md:h-9"
+                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 disabled:opacity-50 h-11"
                                             >
                                                 {activeAction === 'REJECT' ? <Loader2 size={16} className="animate-spin text-gray-400" /> : 'Decline'}
                                             </button>
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); handleActionClick('APPROVE'); }}
                                                 disabled={!!activeAction}
-                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] text-white text-[13px] md:text-[12px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] h-11 md:h-9 shadow-lg shadow-blue-500/20"
+                                                className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-11"
                                             >
                                                 {activeAction === 'APPROVE' ? <Loader2 size={16} className="animate-spin text-white" /> : 'Accept'}
                                             </button>
@@ -823,29 +779,49 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                             </div>
                         )}
                     </div>
-
-                    {/* Timestamp below card - black and medium weight */}
-                    <div className="mt-2.5 ml-1">
+                    <div className="mt-2.5 ml-1 flex items-center space-x-3">
                         <span className="text-[11px] font-medium text-gray-900 uppercase tracking-widest opacity-60">
                             {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
+                        {message.metadata?.isRepaired && (
+                            <div className="flex items-center space-x-2">
+                                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 text-[9px] font-bold uppercase tracking-wider">Automated Repair</span>
+                                {new Date().getTime() - new Date(message.created_at).getTime() < 24 * 60 * 60 * 1000 && (
+                                    <button 
+                                        onClick={async () => {
+                                            if (confirm('Are you sure you want to undo this automatic repair?')) {
+                                                try {
+                                                    await requisitionService.deleteMessage(message.requisition_id, message.id);
+                                                    if (onAction) onAction('REFRESH');
+                                                } catch (err: any) {
+                                                    alert(err.message);
+                                                }
+                                            }
+                                        }}
+                                        className="text-gray-300 hover:text-red-500 transition-colors p-1"
+                                        title="Undo Repair"
+                                    >
+                                        <RotateCcw size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
         }
 
-        // 2. DISBURSAL FLOW
         else if (isDisbursal) {
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden transition-all duration-300">
                         <div className="px-8 py-8">
                             <div className="flex items-center space-x-3 mb-4">
-                                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50">
-                                    <Smartphone size={16} strokeWidth={2.5} />
+                                <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                    <Smartphone size={14} strokeWidth={2.5} />
                                 </div>
                                 <div className="flex-1 flex items-center justify-between">
-                                    <span className="text-[14px] font-medium text-gray-900">Finance System</span>
+                                    <span className="text-[12px] font-semibold text-gray-900 tracking-tight">Finance System</span>
                                     {(isPastDisbursal || isSuccess || isRejected) && (
                                         <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full border border-gray-100 text-gray-500 bg-transparent">
                                             {isRejected ? <X size={10} strokeWidth={3} className="text-red-500" /> : <Check size={10} strokeWidth={3} className="text-emerald-500" />}
@@ -887,34 +863,68 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
                                     {isExpanded && (
                                         <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-400">
-                                            <div className="rounded-2xl border border-gray-100 overflow-hidden">
-                                                <table className="w-full text-left border-collapse">
-                                                    <thead>
-                                                        <tr className="bg-gray-50/80">
-                                                            <th className="px-6 py-4 text-[11px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100">Description</th>
-                                                            <th className="px-6 py-4 text-[11px] font-medium text-gray-400 uppercase tracking-widest text-right border-b border-gray-100">Total</th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody className="divide-y divide-gray-50">
-                                                        {requisitionData?.items?.map((item: any, idx: number) => (
-                                                            <tr key={idx} className="hover:bg-gray-50/30 transition-colors">
-                                                                <td className="px-6 py-4 text-[13px] font-normal text-gray-700">{item.description}</td>
-                                                                <td className="px-6 py-4 text-[13px] font-medium text-gray-900 text-right">K{item.unit_price?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                            {requisitionData?.disbursements?.[0] ? (
+                                                <div className="rounded-2xl border border-gray-100 overflow-hidden bg-gray-50/30">
+                                                    <table className="w-full text-left border-collapse">
+                                                        <tbody className="divide-y divide-gray-50">
+                                                            <tr className="hover:bg-white/50 transition-colors">
+                                                                <td className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Funds Disbursed</td>
+                                                                <td className="px-6 py-4 text-[13px] font-black text-gray-900 text-right">K{requisitionData.disbursements[0].total_prepared?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                                                             </tr>
-                                                        ))}
-                                                    </tbody>
-                                                </table>
-                                            </div>
+                                                            <tr className="hover:bg-white/50 transition-colors">
+                                                                <td className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Method</td>
+                                                                <td className="px-6 py-4 text-[13px] font-bold text-gray-700 text-right">{requisitionData.disbursements[0].payment_method || 'CASH'}</td>
+                                                            </tr>
+                                                            <tr className="hover:bg-white/50 transition-colors">
+                                                                <td className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Reference</td>
+                                                                <td className="px-6 py-4 text-[13px] font-mono font-bold text-[#006AFF] text-right">{requisitionData.disbursements[0].external_reference || 'N/A'}</td>
+                                                            </tr>
+                                                            {requisitionData.disbursements[0].recipient_account && (
+                                                                <tr className="hover:bg-white/50 transition-colors">
+                                                                    <td className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Recipient</td>
+                                                                    <td className="px-6 py-4 text-[13px] font-bold text-gray-700 text-right">
+                                                                        {requisitionData.disbursements[0].recipient_account_name ? `${requisitionData.disbursements[0].recipient_account_name} (${requisitionData.disbursements[0].recipient_account})` : requisitionData.disbursements[0].recipient_account}
+                                                                    </td>
+                                                                </tr>
+                                                            )}
+                                                            <tr className="hover:bg-white/50 transition-colors">
+                                                                <td className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</td>
+                                                                <td className="px-6 py-4 text-right">
+                                                                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest bg-emerald-100 text-emerald-600 border border-emerald-200">SUCCESS</span>
+                                                                </td>
+                                                            </tr>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            ) : (
+                                                <div className="rounded-2xl border border-gray-100 overflow-hidden bg-gray-50/30">
+                                                    <table className="w-full text-left border-collapse">
+                                                        <thead>
+                                                            <tr className="bg-gray-50/80">
+                                                                <th className="px-6 py-4 text-[10px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100">Description</th>
+                                                                <th className="px-6 py-4 text-[10px] font-medium text-gray-400 uppercase tracking-widest text-right border-b border-gray-100">Total</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody className="divide-y divide-gray-50">
+                                                            {requisitionData?.items?.map((item: any, idx: number) => (
+                                                                <tr key={idx} className="hover:bg-white/50 transition-colors">
+                                                                    <td className="px-6 py-4 text-[12px] font-normal text-gray-700">{item.description}</td>
+                                                                    <td className="px-6 py-4 text-[12px] font-medium text-gray-900 text-right">K{item.unit_price?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </>
                             ) : (
                                 <>
-                                    <h3 className="text-[17px] font-bold text-gray-900 leading-tight mb-8">
+                                    <h3 className="text-[14px] font-normal text-gray-900 leading-tight mb-8">
                                         {activeMethod ? 'Confirm Disbursal Details' : 'How would you like to disburse these funds?'}
                                     </h3>
 
-                                    {/* Test Mode Indicator */}
                                     {requisitionData?.organization?.payment_test_mode && (
                                         <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-100 flex items-start space-x-3 animate-pulse">
                                             <Beaker className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -956,7 +966,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <div className="space-y-6">
                                                 {!isProcessing ? (
                                                     <div className="flex flex-col space-y-6">
-                                                        {/* 1. Receive via - Selectable tabs, no header */}
                                                         <div className="flex p-1.5 bg-gray-100/80 rounded-full w-full">
                                                             <button 
                                                                 onClick={() => setPaymentType('MOBILE_MONEY')} 
@@ -972,16 +981,15 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             </button>
                                                         </div>
 
-                                                        {/* 2. Amount to disburse */}
                                                         <div className="flex flex-col space-y-2">
-                                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-4">Amount to disburse</label>
+                                                            <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">Amount to disburse</label>
                                                             <div className="relative group">
                                                                 <span className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">K</span>
                                                                 <input 
                                                                     type="text" 
                                                                     value={requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                                     readOnly
-                                                                    className="w-full h-16 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[18px] font-black text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                    className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
                                                                 />
                                                                 <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center space-x-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-100">
                                                                     <span className="text-[9px] font-black text-gray-400 uppercase">Fee:</span>
@@ -992,9 +1000,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             </div>
                                                         </div>
 
-                                                        {/* 3. Recipient Details */}
                                                         <div className="flex flex-col space-y-2">
-                                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em] ml-4">
+                                                            <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">
                                                                 {paymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Account Details'}
                                                             </label>
                                                             <div className="relative group">
@@ -1005,9 +1012,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     onChange={(e) => {
                                                                         const value = e.target.value;
                                                                         setRecipientValue(value);
-                                                                        setLookupName(null); // Reset name on change
+                                                                        setLookupName(null);
                                                                     }}
-                                                                    className="w-full h-16 px-8 bg-white border border-gray-100 rounded-full text-[16px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                    className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
                                                                 />
                                                                 <div className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center space-x-2">
                                                                     {isLookingUp ? (
@@ -1031,8 +1038,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             )}
                                                         </div>
 
-                                                        {/* Actions */}
-                                                        <div className="flex items-center space-x-4 pt-4">
+                                                        <div className="flex items-center space-x-3 pt-4">
                                                             <button 
                                                                 onClick={() => {
                                                                     setActiveMethod(null);
@@ -1040,17 +1046,17 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     setRecipientProvider(null);
                                                                     setRecipientValue('');
                                                                 }}
-                                                                className="h-16 px-10 bg-white border border-gray-100 text-gray-500 text-[14px] font-bold rounded-full hover:bg-gray-50 transition-all flex items-center justify-center shadow-sm"
+                                                                className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
                                                             >
                                                                 Back
                                                             </button>
                                                             <button 
                                                                 onClick={handleDisburse}
                                                                 disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider)}
-                                                                className="flex-1 h-16 bg-[#006AFF] text-white text-[16px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-xl shadow-blue-100/50 flex items-center justify-center space-x-3"
+                                                                className="flex-[2] h-11 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
                                                             >
                                                                 <span>Send Money</span>
-                                                                <ArrowRight size={22} />
+                                                                <ArrowRight size={18} />
                                                             </button>
                                                         </div>
                                                     </div>
@@ -1076,7 +1082,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     return (
                                                         <div className="mt-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                                                             <div className="p-5 bg-red-50 border border-red-100 rounded-[20px]">
-                                                                {/* Header */}
                                                                 <div className="flex items-start space-x-3 mb-3">
                                                                     <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0 mt-0.5">
                                                                         <X size={14} className="text-red-600" strokeWidth={3} />
@@ -1086,7 +1091,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         <p className="text-[12px] text-red-700 mt-1 leading-relaxed">{parsed.body}</p>
                                                                     </div>
                                                                 </div>
-                                                                {/* Actions */}
                                                                 <div className="flex items-center space-x-2 mt-4">
                                                                     {parsed.canRetry && (
                                                                         <button
@@ -1127,7 +1131,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                         </div>
                                                     );
                                                 })()}
-
                                             </div>
                                         </div>
                                     )}
@@ -1139,18 +1142,17 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             );
         }
 
-        // 3. EXPENSE TRACKING
         else if (stage === 'EXPENSE_TRACKING' || (!stage && isExpenseTracking)) {
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
                         <div className="px-8 py-8">
                              <div className="flex items-center space-x-3 mb-4">
-                                 <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50">
-                                     <FileText size={16} strokeWidth={2.5} />
+                                 <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                     <FileText size={14} strokeWidth={2.5} />
                                  </div>
                                  <div className="flex-1 flex items-center justify-between">
-                                     <span className="text-[14px] font-medium text-gray-900">Finance System</span>
+                                     <span className="text-[12px] font-semibold text-gray-900 tracking-tight">Finance System</span>
                                      {(requisitionData?.status === 'EXPENSED' || (Number(requisitionData?.actual_total) > 0)) && (
                                          <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full border border-gray-100 text-gray-500 bg-transparent">
                                              <Check size={10} strokeWidth={3} />
@@ -1163,7 +1165,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                  <div className="w-8 h-8 rounded-full bg-blue-50/50 flex items-center justify-center text-[#006AFF]">
                                      <FileText size={16} />
                                  </div>
-                                 <p className="text-[14px] font-semibold text-gray-900">
+                                 <p className="text-[14px] font-normal text-gray-900 leading-tight">
                                      {requisitionData?.status === 'EXPENSED' || (Number(requisitionData?.actual_total) > 0) ? 'Transaction expenditure recorded.' : 'This transaction needs to be expensed.'}
                                  </p>
                              </div>
@@ -1214,6 +1216,53 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     <div className="pt-3 mt-3 border-t border-gray-100 flex justify-between items-center">
                                                         <span className="text-[12px] font-normal md:font-black text-[#006AFF] uppercase tracking-widest">Change Balance</span>
                                                         <span className="text-[16px] font-normal md:font-black text-[#006AFF]">K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                    </div>
+                                                )}
+
+                                                {requisitionData?.status === 'EXPENSED' && requisitionData?.estimated_total > requisitionData?.actual_total && (
+                                                    <div className="mt-6 pt-6 border-t border-gray-100 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+                                                        <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-100">
+                                                            <div className="flex items-center space-x-3 mb-2">
+                                                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[#006AFF]">
+                                                                    <Wallet size={16} />
+                                                                </div>
+                                                                <span className="text-[13px] font-bold text-gray-900">Return Change to Wallet</span>
+                                                            </div>
+                                                            <p className="text-[11px] text-gray-500 leading-relaxed">
+                                                                Your expenses are less than the disbursed amount. Please return the remaining balance of 
+                                                                <strong className="text-[#006AFF] ml-1">K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> to your digital wallet to complete this requisition.
+                                                            </p>
+                                                        </div>
+
+                                                        <button
+                                                            onClick={async () => {
+                                                                try {
+                                                                    setIsSubmittingChange(true);
+                                                                    const changeAmount = requisitionData.estimated_total - requisitionData.actual_total;
+                                                                    await requisitionService.submitChange(
+                                                                        requisitionData.id,
+                                                                        {}, 
+                                                                        changeAmount,
+                                                                        'MONEYWISE_WALLET'
+                                                                    );
+                                                                    if (onAction) onAction('REFRESH');
+                                                                } catch (err: any) {
+                                                                    console.error('Failed to submit change:', err);
+                                                                    window.alert(`Error: ${err.message}`);
+                                                                } finally {
+                                                                    setIsSubmittingChange(false);
+                                                                }
+                                                            }}
+                                                            disabled={isSubmittingChange}
+                                                            className="w-full h-14 bg-[#006AFF] text-white text-[14px] font-bold rounded-full hover:bg-blue-600 shadow-xl shadow-blue-100/50 transition-all flex items-center justify-center space-x-2 group"
+                                                        >
+                                                            {isSubmittingChange ? <Loader2 size={20} className="animate-spin" /> : (
+                                                                <>
+                                                                    <span>Submit K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString()} to Wallet</span>
+                                                                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                                                </>
+                                                            )}
+                                                        </button>
                                                     </div>
                                                 )}
                                             </div>
@@ -1337,13 +1386,16 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             try {
                                                 setIsSavingExpenses(true);
                                                 
-                                                
-                                                
                                                 await requisitionService.updateExpenses(requisitionData.id, expenseItems.map((i: any) => ({
                                                     id: i.id,
                                                     actual_amount: i.actual_amount,
                                                     receipt_url: i.receipt_url
                                                 })));
+                                            
+                                                const totalActual = expenseItems.reduce((sum: number, item: any) => sum + (parseFloat(item.actual_amount) || 0), 0);
+                                                if (totalActual >= (requisitionData?.estimated_total || 0)) {
+                                                    await requisitionService.updateStatus(requisitionData.id, 'CHANGE_SUBMITTED');
+                                                }
 
                                                 if (onAction) onAction('REFRESH');
                                                 setExpenseMode('NONE');
@@ -1584,11 +1636,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-visible">
                         <div className="px-8 py-8">
                             <div className="flex items-center space-x-3 mb-6">
-                                <div className="w-8 h-8 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF]">
-                                    <Building2 size={16} />
+                                <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                    <Building2 size={14} />
                                 </div>
                                 <div className="flex-1 flex items-center justify-between">
-                                    <span className="text-[14px] font-medium text-gray-900 tracking-tight">AI Categorization Assistant</span>
+                                    <span className="text-[12px] font-semibold text-gray-900 tracking-tight">AI Categorization Assistant</span>
                                     <div className="flex items-center space-x-2">
                                         {!isCompleted && (
                                             <button 
@@ -1867,14 +1919,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
                         <div className="px-8 py-8">
                             <div className="flex items-center space-x-3 mb-6">
-                                <div className="w-8 h-8 rounded-full bg-blue-50/50 flex items-center justify-center text-[#006AFF]">
-                                    <Building2 size={16} />
-                                </div>
-                                <div className="flex-1 flex items-center justify-between">
-                                    <div className="flex flex-col">
-                                        <span className="text-[14px] font-bold text-gray-900 tracking-tight">QuickBooks Sync</span>
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">General Ledger Posting</span>
-                                    </div>
+                                 <div className="w-7 h-7 rounded-full bg-blue-50/50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                     <Building2 size={14} />
+                                 </div>
+                                 <div className="flex-1 flex items-center justify-between">
+                                     <div className="flex flex-col">
+                                         <span className="text-[12px] font-semibold text-gray-900 tracking-tight">QuickBooks Sync</span>
+                                         <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">General Ledger Posting</span>
+                                     </div>
                                     {isCompleted && (
                                         <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full border border-emerald-100 text-emerald-500 bg-emerald-50/10">
                                             <Check size={10} strokeWidth={3} />
@@ -2026,12 +2078,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             }
                                         }}
                                         disabled={isPostingQB || (!paymentAccountId && !isWallet)}
-                                        className="w-full h-16 bg-[#006AFF] text-white text-[16px] font-bold rounded-full hover:bg-blue-600 shadow-xl shadow-blue-100/50 transition-all flex items-center justify-center space-x-3 group"
+                                        className="w-full h-11 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-blue-600 shadow-lg shadow-blue-100/50 transition-all flex items-center justify-center space-x-2 group"
                                     >
-                                        {isPostingQB ? <Loader2 size={20} className="animate-spin" /> : (
+                                        {isPostingQB ? <Loader2 size={18} className="animate-spin" /> : (
                                             <>
                                                 <span>Post to QuickBooks</span>
-                                                <ArrowRight size={22} className="group-hover:translate-x-1 transition-transform" />
+                                                <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
                                             </>
                                         )}
                                     </button>
@@ -2086,72 +2138,100 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
 
         // 6. DISBURSAL SUMMARY (Success Message)
-        else if (content === 'Money successfully sent' || content?.startsWith('Funds Disbursed:')) {
+        else if (content?.startsWith('Funds Disbursed:')) {
             const meta = message.metadata || {};
+            // Parse details from content
+            const lines = content.split('\n');
+            const amountLine = lines.find(l => l.includes('Disbursed:')) || lines.find(l => l.includes('Amount:'));
+            const methodLine = lines.find(l => l.includes('Method:'));
+            const refLine = lines.find(l => l.includes('Ref:'));
+            const statusLine = lines.find(l => l.includes('Status:'));
+
+            const amount = amountLine?.split(':')[1]?.trim() || `K${Number(meta.amount || 0).toLocaleString()}`;
+            const method = methodLine?.split(':')[1]?.trim() || meta.payment_method || 'N/A';
+            const ref = refLine?.split(':')[1]?.trim() || meta.external_reference || 'N/A';
+            const status = statusLine?.split(':')[1]?.trim() || 'SUCCESS';
+
             return (
-                <div className="flex justify-end mb-8 w-full animate-in fade-in slide-in-from-right-4 duration-500">
-                    <div className="flex flex-col items-end max-w-sm">
-                        <div className="bg-[#006AFF] rounded-[24px] rounded-tr-none px-6 py-5 shadow-lg shadow-blue-100/50">
-                            <div className="flex items-center space-x-3 mb-1">
-                                <div className="w-5 h-5 rounded-full bg-blue-400/30 flex items-center justify-center">
-                                    <Check size={12} className="text-white" strokeWidth={4} />
+                <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
+                    <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
+                        <div className="px-8 py-6">
+                             <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center space-x-3">
+                                    <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
+                                        <CheckCircle size={18} strokeWidth={2.5} />
+                                    </div>
+                                    <span className="text-[14px] font-black text-gray-900 uppercase tracking-tight">Funds Disbursed</span>
                                 </div>
-                                <span className="text-[13px] font-extrabold text-white">Money successfully sent</span>
-                            </div>
-                            <button 
-                                onClick={() => setIsExpanded(!isExpanded)}
-                                className="flex items-center space-x-1.5 text-blue-100 hover:text-white transition-colors mt-2"
-                            >
-                                <span className="text-[10px] font-bold uppercase tracking-wider">{isExpanded ? 'Hide Details' : 'Show Details'}</span>
-                                <ChevronDown size={12} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                            </button>
-
-                            {isExpanded && (
-                                <div className="mt-4 pt-4 border-t border-blue-400/30 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Amount</span>
-                                        <span className="text-[14px] font-black text-white">K{Number(meta.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center space-x-4">
-                                        <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest whitespace-nowrap">Method</span>
-                                        <span className="text-[12px] font-bold text-white uppercase text-right">{meta.method?.replace('_', ' ')}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center space-x-4">
-                                        <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest whitespace-nowrap">Recipient</span>
-                                        <div className="flex flex-col items-end overflow-hidden">
-                                            <span className="text-[12px] font-bold text-white truncate w-full text-right">{meta.recipient}</span>
-                                            {meta.accountName && (
-                                                <span className="text-[10px] font-medium text-blue-100 opacity-80 text-right truncate w-full">{meta.accountName}</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    {meta.provider && (
-                                        <div className="flex justify-between items-center space-x-4">
-                                            <span className="text-[10px] font-bold text-blue-200 uppercase tracking-widest whitespace-nowrap">Provider</span>
-                                            <span className="text-[11px] font-black text-white uppercase text-right">{meta.provider}</span>
-                                        </div>
-                                    )}
+                                <div className="px-3 py-1 rounded-full bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase tracking-wider border border-emerald-100">
+                                    {status}
                                 </div>
-                            )}
+                             </div>
+                             
+                             <div className="bg-gray-50/50 rounded-2xl p-6 border border-gray-100/50">
+                                <div className="flex items-center justify-between">
+                                    <div className="space-y-0.5">
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Disbursed Amount</p>
+                                        <p className="text-[20px] font-black text-gray-900 tracking-tight">{amount}</p>
+                                    </div>
+                                    <button 
+                                        onClick={() => setIsExpanded(!isExpanded)}
+                                        className="h-10 px-4 bg-white border border-gray-100 rounded-full text-[11px] font-bold text-gray-600 hover:bg-gray-50 transition-all flex items-center space-x-2 shadow-sm"
+                                    >
+                                        <span>{isExpanded ? 'Hide Details' : 'Show Details'}</span>
+                                        <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                    </button>
+                                </div>
 
-                            {/* Acknowledge Receipt Button for Manual Payouts */}
-                            {requisitionData?.status === 'DISBURSED' && 
-                             currentUserId === requisitionData?.requestor_id && 
-                             meta.payment_method !== 'MONEYWISE_WALLET' && 
-                             meta.payment_method !== 'MOBILE_MONEY' && (
-                                <button 
-                                    onClick={handleAcknowledge}
-                                    disabled={isAcknowledging}
-                                    className="w-full mt-4 h-10 bg-white/10 hover:bg-white/20 text-white text-[12px] font-bold rounded-xl border border-white/20 transition-all flex items-center justify-center space-x-2"
-                                >
-                                    {isAcknowledging ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-                                    <span>{isAcknowledging ? 'Acknowledging...' : 'Acknowledge Receipt'}</span>
-                                </button>
-                            )}
+                                {isExpanded && (
+                                    <div className="mt-6 pt-6 border-t border-gray-200/50 space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Payment Method</span>
+                                            <span className="text-[12px] font-bold text-gray-900 uppercase">{method}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Reference</span>
+                                            <span className="text-[12px] font-mono font-bold text-gray-600">{ref}</span>
+                                        </div>
+                                        {meta.recipient && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recipient</span>
+                                                <span className="text-[12px] font-bold text-gray-900">{meta.recipient}</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                             </div>
                         </div>
-                        <span className="text-[10px] font-medium mt-2.5 mr-2 text-gray-900 opacity-60 uppercase tracking-widest">
+                    </div>
+
+                    <div className="mt-2.5 ml-1 flex items-center space-x-3">
+                        <span className="text-[11px] font-medium text-gray-900 uppercase tracking-widest opacity-60">
                             {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
+                        {message.metadata?.isRepaired && (
+                            <div className="flex items-center space-x-2">
+                                <span className="px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 text-[9px] font-bold uppercase tracking-wider">Automated Repair</span>
+                                {new Date().getTime() - new Date(message.created_at).getTime() < 24 * 60 * 60 * 1000 && (
+                                    <button 
+                                        onClick={async () => {
+                                            if (confirm('Are you sure you want to undo this automatic repair?')) {
+                                                try {
+                                                    await requisitionService.deleteMessage(message.requisition_id, message.id);
+                                                    if (onAction) onAction('REFRESH');
+                                                } catch (err: any) {
+                                                    alert(err.message);
+                                                }
+                                            }
+                                        }}
+                                        className="text-gray-300 hover:text-red-500 transition-colors p-1"
+                                        title="Undo Repair"
+                                    >
+                                        <RotateCcw size={12} />
+                                    </button>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -2159,6 +2239,16 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
         // 7. EXPENSE SUMMARY
         else if (isExpenseSummary) {
+             const totalActual = requisitionData?.items?.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0) || 0;
+             const totalDisbursed = requisitionData?.disbursements?.[0]?.total_prepared || 0;
+             const isWallet = requisitionData?.disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET';
+             const withdrawalFee = isWallet ? lencoService.calculatePayoutFee(totalDisbursed, 'MONEYWISE_WALLET') : 0;
+             const principalReceived = totalDisbursed - withdrawalFee;
+             const changeAmount = Math.max(0, principalReceived - totalActual);
+             const hasChange = changeAmount > 0.01; // Small threshold for floating point
+             const isRequestor = currentUser?.id === requisitionData?.requestor_id;
+             const showChangeActions = hasChange && isRequestor && requisitionData?.status === 'EXPENSED';
+
              return (
                  <div className="flex flex-col mb-4 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
@@ -2169,9 +2259,90 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                  </div>
                                  <span className="text-[14px] font-medium text-gray-900">Finance System</span>
                              </div>
-                             <p className="text-[12px] font-semibold text-gray-900 leading-relaxed">
+                             <p className="text-[12px] font-semibold text-gray-900 leading-relaxed mb-4">
                                  {message.content}
                              </p>
+
+                             {showChangeActions && (
+                                 <div className="mt-4 pt-4 border-t border-gray-50 space-y-3">
+                                     <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Submit Change (K{changeAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })})</p>
+                                     <div className="grid grid-cols-2 gap-3">
+                                         <button 
+                                             onClick={async () => {
+                                                 if (window.confirm(`Submit K${changeAmount.toFixed(2)} cash return?`)) {
+                                                     try {
+                                                         await requisitionService.submitChange(requisitionData.id, [], changeAmount);
+                                                         if (onAction) onAction('REFRESH');
+                                                     } catch (err: any) {
+                                                         alert(err.message);
+                                                     }
+                                                 }
+                                             }}
+                                             className="h-10 bg-gray-50 text-gray-900 text-[11px] font-bold rounded-xl hover:bg-gray-100 transition-all flex items-center justify-center gap-2 border border-gray-100"
+                                         >
+                                             <Coins size={14} className="text-amber-500" />
+                                             Return Cash
+                                         </button>
+                                         <button 
+                                             onClick={() => {
+                                                 // Porting logic from RequisitionDetail
+                                                 const LencoPay: any = (window as any).LencoPay;
+                                                 if (!LencoPay) {
+                                                     alert('Lenco Payment SDK is not currently loaded.');
+                                                     return;
+                                                 }
+
+                                                 const ref = `CHG-${Date.now()}-${requisitionData?.id}`;
+                                                 LencoPay.getPaid({
+                                                     key: requisitionData.organization?.lenco_public_key,
+                                                     amount: changeAmount.toFixed(2),
+                                                     currency: 'ZMW',
+                                                     reference: ref,
+                                                     accountId: requisitionData.organization?.lenco_subaccount_id,
+                                                     email: currentUser?.email || 'customer@example.com',
+                                                     name: currentUser?.user_metadata?.full_name || 'User',
+                                                     channels: ['card', 'mobile-money'],
+                                                     onSuccess: async (response: any) => {
+                                                         try {
+                                                             const transactionId = response.id || response.transactionId;
+                                                             // Verify and submit
+                                                             await lencoService.verifyStatus(ref, transactionId, requisitionData.organization_id);
+                                                             await requisitionService.submitChange(requisitionData.id, [], changeAmount, 'MONEYWISE_WALLET', ref);
+                                                             if (onAction) onAction('REFRESH');
+                                                             alert('Change deposited successfully!');
+                                                         } catch (err: any) {
+                                                             alert('Deposit recorded but verification failed: ' + err.message);
+                                                         }
+                                                     }
+                                                 });
+                                             }}
+                                             className="h-10 bg-brand-pink/5 text-brand-pink text-[11px] font-bold rounded-xl hover:bg-brand-pink/10 transition-all flex items-center justify-center gap-2 border border-brand-pink/10"
+                                         >
+                                             <Wallet size={14} />
+                                             Deposit to Wallet
+                                         </button>
+                                     </div>
+                                 </div>
+                             )}
+
+                             {!hasChange && isRequestor && requisitionData?.status === 'EXPENSED' && (
+                                 <div className="mt-4 pt-4 border-t border-gray-50">
+                                     <button 
+                                         onClick={async () => {
+                                             try {
+                                                 await requisitionService.updateStatus(requisitionData.id, 'CHANGE_SUBMITTED');
+                                                 if (onAction) onAction('REFRESH');
+                                             } catch (err: any) {
+                                                 alert(err.message);
+                                             }
+                                         }}
+                                         className="w-full h-10 bg-emerald-600 text-white text-[11px] font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-2"
+                                     >
+                                         <CheckCircle size={14} />
+                                         Finalize & Mark as Returned
+                                     </button>
+                                 </div>
+                             )}
                         </div>
                     </div>
                 </div>
@@ -2179,6 +2350,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
 
         // Status Update Badges
+        const advancedStatuses = ['CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
+        if (!isPrivileged && advancedStatuses.some(s => message.content?.includes(s))) {
+            return null;
+        }
+
         return (
             <div className="flex justify-center my-4 w-full animate-in fade-in zoom-in-95 duration-500">
                 <span className="px-4 py-1.5 bg-blue-50/50 text-blue-400 text-[9px] font-black uppercase tracking-[0.2em] rounded-full border border-blue-100/50">

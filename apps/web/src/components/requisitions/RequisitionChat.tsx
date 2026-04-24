@@ -18,7 +18,7 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
     const [pendingQueue, setPendingQueue] = useState<RequisitionMessage[]>([]);
     const isTypingRef = useRef(false);
     
-    const { user } = useAuth();
+    const { user, userRole } = useAuth();
     const scrollRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const lastMessageIdRef = useRef<string | null>(null);
@@ -91,6 +91,29 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
 
         processQueue();
     }, [pendingQueue, user?.id]);
+
+    // Auto-transition to Returned if no change identified
+    useEffect(() => {
+        const checkAutoTransition = async () => {
+            const hasNoChangeMessage = messages.some(m => 
+                (m.message_type === 'SYSTEM' || m.metadata?.stage === 'EXPENSE_SUMMARY') && 
+                m.content?.includes('No change to submit')
+            );
+
+            if (requisition.status === 'EXPENSED' && hasNoChangeMessage) {
+                try {
+                    await requisitionService.updateStatus(requisition.id, 'CHANGE_SUBMITTED');
+                    if (onStatusChange) onStatusChange();
+                } catch (err) {
+                    console.error('Failed to auto-transition status:', err);
+                }
+            }
+        };
+
+        if (messages.length > 0) {
+            checkAutoTransition();
+        }
+    }, [messages, requisition.status, requisition.id, onStatusChange]);
 
     const loadMessages = async (forceNoAnimation = false) => {
         if (isLoadingMessagesRef.current) return;
@@ -310,7 +333,14 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
                 )}
             </div>
 
-            <RequisitionInput onSend={handleSendMessage} disabled={requisition.status === 'COMPLETED'} />
+            <RequisitionInput 
+                onSend={handleSendMessage} 
+                disabled={
+                    requisition.status === 'COMPLETED' || 
+                    requisition.status === 'ACCOUNTED' || 
+                    (!(userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'MANAGER') && requisition.status === 'CHANGE_SUBMITTED')
+                } 
+            />
         </div>
     );
 };

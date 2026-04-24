@@ -34,6 +34,12 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
         setError(null);
     };
 
+    React.useEffect(() => {
+        if (isOpen) {
+            reset();
+        }
+    }, [isOpen]);
+
     const handleClose = () => { reset(); onClose(); };
 
     const handleProceed = () => {

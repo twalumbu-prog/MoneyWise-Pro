@@ -72,7 +72,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 0. Check for existing active requisitions (Accountability Safeguard)
-        const blockingStatuses = ['DISBURSED', 'RECEIVED'];
+        const blockingStatuses = ['DISBURSED', 'EXPENSED'];
         const { data: activeReq, error: activeError } = await supabase
             .from('requisitions')
             .select('id, status')
@@ -372,15 +372,31 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
         const { id } = req.params;
         const { status } = req.body;
 
+        const user_id = (req as any).user.id;
         const userRole = (req as any).user.role;
+        const org_id = (req as any).user.organization_id;
 
-        if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN' && userRole !== 'MANAGER') {
-            return res.status(403).json({ error: 'Unauthorized: Accountant, Admin or Manager access required' });
-        }
-
-        const allowedStatuses = ['AUTHORISED', 'REJECTED', 'DISBURSED', 'EXPENSED'];
+        const allowedStatuses = ['AUTHORISED', 'REJECTED', 'DISBURSED', 'EXPENSED', 'CHANGE_SUBMITTED'];
         if (!allowedStatuses.includes(status)) {
             return res.status(400).json({ error: 'Invalid status' });
+        }
+
+        // Permission check
+        if (userRole !== 'ACCOUNTANT' && userRole !== 'ADMIN' && userRole !== 'MANAGER') {
+            // Allow requestors to update to CHANGE_SUBMITTED if they own it
+            if (userRole === 'REQUESTOR' && status === 'CHANGE_SUBMITTED') {
+                const { data: requisition } = await supabase
+                    .from('requisitions')
+                    .select('requestor_id')
+                    .eq('id', id)
+                    .single();
+                
+                if (!requisition || requisition.requestor_id !== user_id) {
+                    return res.status(403).json({ error: 'Unauthorized: You can only update your own requisitions' });
+                }
+            } else {
+                return res.status(403).json({ error: 'Unauthorized: Accountant, Admin or Manager access required' });
+            }
         }
 
         // Generate Sequential Reference ONLY if status is AUTHORISED and it doesn't have one yet
@@ -422,6 +438,7 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
             .update(updateData)
             .eq('id', id)
             .eq('organization_id', (req as any).user.organization_id)
+            .neq('status', status)
             .select()
             .single();
 
@@ -1615,6 +1632,47 @@ export const deleteReceipt = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('[Delete Receipt] Error:', error);
         res.status(500).json({ error: 'Failed to delete receipt', details: error.message });
+    }
+};
+
+export const deleteRequisitionMessage = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id, messageId } = req.params;
+        const user_id = (req as any).user.id;
+
+        // Fetch message to check permissions
+        const { data: message, error: fetchError } = await supabase
+            .from('requisition_messages')
+            .select('*')
+            .eq('id', messageId)
+            .eq('requisition_id', id)
+            .single();
+
+        if (fetchError || !message) {
+            return res.status(404).json({ error: 'Message not found' });
+        }
+
+        // Allow deletion if:
+        // 1. It's the user's own message
+        // 2. It's a REPAIRED system message (Undo)
+        const isRepaired = message.metadata?.isRepaired;
+        const isOwner = message.user_id === user_id;
+
+        if (!isOwner && !isRepaired) {
+            return res.status(403).json({ error: 'Unauthorized to delete this message' });
+        }
+
+        const { error: deleteError } = await supabase
+            .from('requisition_messages')
+            .delete()
+            .eq('id', messageId);
+
+        if (deleteError) throw deleteError;
+
+        res.json({ message: 'Message deleted successfully' });
+    } catch (error: any) {
+        console.error('[Delete Message] Error:', error);
+        res.status(500).json({ error: 'Failed to delete message', details: error.message });
     }
 };
 

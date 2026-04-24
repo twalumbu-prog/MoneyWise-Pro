@@ -136,7 +136,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                 </div>
 
                 {/* Progress Tracking */}
-                <RequisitionProgress currentStatus={requisition.status} />
+                <RequisitionProgress currentStatus={requisition.status} userRole={userRole} />
 
                 {/* Tabs Switcher */}
                 <div className="bg-white px-6 md:px-8 py-4 border-b border-gray-100 flex-shrink-0">
