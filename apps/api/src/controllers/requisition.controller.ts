@@ -1167,7 +1167,7 @@ async function triggerAIReview(requisitionId: string, organizationId: string, us
         // 5. Get Suggestions
         const suggestions = await aiService.suggestBatch(accounts || [], lineItems.map(li => ({
             description: li.description,
-            amount: li.actual_amount || li.estimated_amount,
+            amount: li.actual_amount ?? li.estimated_amount ?? 0,
             receipt_data: li.receipt_ocr_data
         })));
 
@@ -1197,7 +1197,7 @@ async function triggerAIReview(requisitionId: string, organizationId: string, us
             itemsMetadata.push({
                 id: li.id,
                 description: li.description,
-                amount: li.actual_amount || li.estimated_amount,
+                amount: li.actual_amount ?? li.estimated_amount ?? 0,
                 category_code: suggestion.account_code,
                 category_name: matchedAccount?.name || suggestion.account_code,
                 reasoning: suggestion.reasoning,

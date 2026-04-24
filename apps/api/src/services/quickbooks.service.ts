@@ -294,7 +294,7 @@ export class QuickBooksService {
             console.log(`[QB Purchase] Step 3: Building purchase object with ${requisition.line_items.length} lines`);
 
             const expenseLines = requisition.line_items.map((item: any) => {
-                const amount = item.actual_amount || item.estimated_amount;
+                const amount = item.actual_amount ?? item.estimated_amount ?? 0;
                 const qbAccountId = item.qb_account_id;
 
                 if (!qbAccountId) {
