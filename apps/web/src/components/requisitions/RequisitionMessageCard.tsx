@@ -2249,17 +2249,27 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                              onClick={async () => {
                                                  if (window.confirm(`Submit K${changeAmount.toFixed(2)} cash return?`)) {
                                                      try {
+                                                         setIsSubmittingChange(true);
                                                          await requisitionService.submitChange(requisitionData.id, [], changeAmount);
                                                          if (onAction) onAction('REFRESH');
                                                      } catch (err: any) {
                                                          alert(err.message);
+                                                     } finally {
+                                                         setIsSubmittingChange(false);
                                                      }
                                                  }
                                              }}
-                                             className="h-10 bg-gray-50 text-gray-900 text-[11px] font-bold rounded-xl hover:bg-gray-100 transition-all flex items-center justify-center gap-2 border border-gray-100"
+                                             disabled={isSubmittingChange}
+                                             className="h-10 bg-gray-50 text-gray-900 text-[11px] font-bold rounded-xl hover:bg-gray-100 transition-all flex items-center justify-center gap-2 border border-gray-100 disabled:opacity-50"
                                          >
-                                             <Coins size={14} className="text-amber-500" />
-                                             Return Cash
+                                             {isSubmittingChange ? (
+                                                 <Loader2 size={14} className="animate-spin" />
+                                             ) : (
+                                                 <>
+                                                     <Coins size={14} className="text-amber-500" />
+                                                     Return Cash
+                                                 </>
+                                             )}
                                          </button>
                                          <button 
                                              onClick={() => {
@@ -2269,7 +2279,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                      alert('Lenco Payment SDK is not currently loaded.');
                                                      return;
                                                  }
-
+                                                 
                                                  const ref = `CHG-${Date.now()}-${requisitionData?.id}`;
                                                  LencoPay.getPaid({
                                                      key: requisitionData.organization?.lenco_public_key,
@@ -2282,6 +2292,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                      channels: ['card', 'mobile-money'],
                                                      onSuccess: async (response: any) => {
                                                          try {
+                                                             setIsSubmittingChange(true);
                                                              const transactionId = response.id || response.transactionId;
                                                              // Verify and submit
                                                              await lencoService.verifyStatus(ref, transactionId, requisitionData.organization_id);
@@ -2290,15 +2301,29 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                              alert('Change deposited successfully!');
                                                          } catch (err: any) {
                                                              alert('Deposit recorded but verification failed: ' + err.message);
+                                                         } finally {
+                                                             setIsSubmittingChange(false);
                                                          }
+                                                     },
+                                                     onClose: () => {
+                                                        // Just in case
+                                                        setIsSubmittingChange(false);
                                                      }
                                                  });
                                              }}
-                                             className="h-10 bg-brand-pink/5 text-brand-pink text-[11px] font-bold rounded-xl hover:bg-brand-pink/10 transition-all flex items-center justify-center gap-2 border border-brand-pink/10"
+                                             disabled={isSubmittingChange}
+                                             className="h-10 bg-brand-pink/5 text-brand-pink text-[11px] font-bold rounded-xl hover:bg-brand-pink/10 transition-all flex items-center justify-center gap-2 border border-brand-pink/10 disabled:opacity-50"
                                          >
-                                             <Wallet size={14} />
-                                             Deposit to Wallet
+                                             {isSubmittingChange ? (
+                                                 <Loader2 size={14} className="animate-spin" />
+                                             ) : (
+                                                 <>
+                                                     <Wallet size={14} />
+                                                     Deposit to Wallet
+                                                 </>
+                                             )}
                                          </button>
+>
                                      </div>
                                  </div>
                              )}

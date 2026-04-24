@@ -754,9 +754,9 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
         if (reqError || !requisition) return res.status(404).json({ error: 'Requisition not found' });
         if (requisition.requestor_id !== user_id) return res.status(403).json({ error: 'Only the requestor can submit change' });
 
-        // Allow if RECEIVED or CHANGE_SUBMITTED (for updates)
-        if (requisition.status !== 'RECEIVED' && requisition.status !== 'CHANGE_SUBMITTED') {
-            return res.status(400).json({ error: 'Requisition must be in RECEIVED status to submit change' });
+        // Allow if RECEIVED, EXPENSED, or CHANGE_SUBMITTED (for updates)
+        if (requisition.status !== 'RECEIVED' && requisition.status !== 'EXPENSED' && requisition.status !== 'CHANGE_SUBMITTED') {
+            return res.status(400).json({ error: 'Requisition must be in EXPENSED or RECEIVED status to submit change' });
         }
 
         // 2. Update Disbursement Table
