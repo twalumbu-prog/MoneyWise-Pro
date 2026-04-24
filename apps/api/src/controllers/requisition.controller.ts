@@ -825,7 +825,7 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 actualExpenditure = Number(fullReq.estimated_total || 0);
             } else {
                 // INCLUDE all line items (including withdrawal fees) for accounting discrepancy calculation
-                actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0);
+                actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0);
             }
 
             const confirmedChange = Number(change_amount || 0);
@@ -949,7 +949,7 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         if (isLoanOrAdvance) {
             actualExpenditure = Number(requisition.estimated_total || 0);
         } else {
-            actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount || 0), 0);
+            actualExpenditure = lineItems.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0);
         }
 
         const confirmedChange = Number(confirmed_change_amount || 0);
