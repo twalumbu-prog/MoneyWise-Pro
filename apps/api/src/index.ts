@@ -250,6 +250,23 @@ app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
 app.use('/lenco', lencoRoutes);
 
+// Log routes for debugging
+console.log('--- REGISTERED ROUTES ---');
+const routes: any[] = [];
+app._router.stack.forEach((middleware: any) => {
+    if (middleware.route) {
+        routes.push({ path: middleware.route.path, methods: Object.keys(middleware.route.methods) });
+    } else if (middleware.name === 'router') {
+        middleware.handle.stack.forEach((handler: any) => {
+            if (handler.route) {
+                const path = middleware.regexp.toString().replace('/^\\', '').replace('\\/?(?=\\/|$)/i', '') + handler.route.path;
+                routes.push({ path, methods: Object.keys(handler.route.methods) });
+            }
+        });
+    }
+});
+console.log(JSON.stringify(routes, null, 2));
+
 app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');
 });

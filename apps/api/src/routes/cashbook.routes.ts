@@ -24,6 +24,18 @@ router.get('/', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT',
 // Get current balance (All roles can view)
 router.get('/balance', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getCashBalance);
 
+// Diagnostic route to check if post-to-qb is registered
+router.get('/check-routes', (req, res) => {
+    res.json({
+        routes: router.stack
+            .filter(r => r.route)
+            .map(r => ({
+                path: r.route.path,
+                methods: Object.keys(r.route.methods)
+            }))
+    });
+});
+
 // Get summary for date range (All management roles)
 router.get('/summary', requireRole(['AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getCashbookSummary);
 
