@@ -27,11 +27,11 @@ router.get('/balance', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOU
 // Diagnostic route to check if post-to-qb is registered
 router.get('/check-routes', (req, res) => {
     res.json({
-        routes: router.stack
-            .filter(r => r.route)
-            .map(r => ({
+        routes: (router as any).stack
+            .filter((r: any) => r.route)
+            .map((r: any) => ({
                 path: r.route.path,
-                methods: Object.keys(r.route.methods)
+                methods: Object.keys(r.route.methods || {})
             }))
     });
 });

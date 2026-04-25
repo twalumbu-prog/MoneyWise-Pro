@@ -501,7 +501,7 @@ export class QuickBooksService {
         console.log(`[QB Deposit] Starting deposit creation for entry ${entryId}`);
         try {
             // 1. Resolve Auth
-            const { accessToken, realmId } = await this.getAccessToken(organizationId);
+            const { accessToken, realmId } = await this.getValidToken(organizationId);
 
             // 2. Fetch Cashbook Entry
             const { data: entry, error: entryError } = await supabase
@@ -599,7 +599,7 @@ export class QuickBooksService {
     static async createLedgerPurchase(organizationId: string, entryId: string, debitAccountId: string, userId: string) {
         console.log(`[QB Ledger Purchase] Starting purchase creation for entry ${entryId}`);
         try {
-            const { accessToken, realmId } = await this.getAccessToken(organizationId);
+            const { accessToken, realmId } = await this.getValidToken(organizationId);
 
             const { data: entry, error: entryError } = await supabase
                 .from('cashbook_entries')
