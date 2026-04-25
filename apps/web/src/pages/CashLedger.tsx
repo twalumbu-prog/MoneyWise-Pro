@@ -344,9 +344,9 @@ const CashLedger: React.FC = () => {
         if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">Opening</span>;
         let status = '';
         if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
-            status = entry.status || 'PENDING';
+            status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
         } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
-            status = entry.requisitions.status;
+            status = entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
         } else {
             return null;
         }
@@ -369,10 +369,22 @@ const CashLedger: React.FC = () => {
             }
         };
 
+        const bgClass = config.color === 'blue' ? 'bg-blue-50/50 border-blue-100' :
+                        config.color === 'emerald' ? 'bg-emerald-50/50 border-emerald-100' :
+                        config.color === 'amber' ? 'bg-amber-50/50 border-amber-100' :
+                        config.color === 'red' ? 'bg-red-50/50 border-red-100' :
+                        config.color === 'purple' ? 'bg-purple-50/50 border-purple-100' : 'bg-white border-gray-100';
+
+        const textClass = config.color === 'blue' ? 'text-[#006AFF]' :
+                          config.color === 'emerald' ? 'text-emerald-600' :
+                          config.color === 'amber' ? 'text-amber-600' :
+                          config.color === 'red' ? 'text-red-600' :
+                          config.color === 'purple' ? 'text-purple-600' : 'text-brand-navy';
+
         return (
-            <div className="flex items-center bg-white pl-2 pr-3 py-1 rounded-full border border-gray-100 shadow-sm transition-all hover:border-gray-200 hover:shadow-md w-fit">
+            <div className={`flex items-center pl-2 pr-3 py-1 rounded-full border shadow-sm transition-all hover:shadow-md w-fit ${bgClass}`}>
                 {getStatusIcon(config.iconType, config.color)}
-                <span className="text-[10px] font-black text-brand-navy uppercase tracking-[0.15em] ml-1.5">
+                <span className={`text-[10px] font-black uppercase tracking-[0.15em] ml-1.5 ${textClass}`}>
                     {config.label}
                 </span>
             </div>
