@@ -382,7 +382,7 @@ const CashLedger: React.FC = () => {
         }
     };
 
-    const handleAccountChange = async (lineItemId: string, accountId: string, requisitionId: string) => {
+    const handleAccountChange = async (lineItemId: string, accountId: string) => {
         try {
             await requisitionService.updateLineItemAccount(lineItemId, accountId);
             loadData();
@@ -573,7 +573,7 @@ const CashLedger: React.FC = () => {
                                             <SearchableAccountSelect 
                                                 value={item.account_id || ''} 
                                                 options={accounts} 
-                                                onChange={(val) => handleAccountChange(item.id, val, req.id)}
+                                                onChange={(val) => handleAccountChange(item.id, val)}
                                                 placeholder="Categorize expense..."
                                             />
                                         </td>
@@ -669,8 +669,6 @@ const CashLedger: React.FC = () => {
 
         // Case 2: Inflow or Adjustment (Non-Requisition)
         if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
-            const isSyncable = !!entry.account_id && entry.qb_sync_status !== 'SUCCESS';
-            const isSynced = entry.qb_sync_status === 'SUCCESS';
 
             return (
                 <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
