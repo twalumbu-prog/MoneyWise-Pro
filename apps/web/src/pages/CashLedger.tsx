@@ -1358,10 +1358,10 @@ const CashLedger: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="p-10 bg-slate-50/30">
+                        <div className="p-10 bg-slate-50/30 overflow-y-auto max-h-[50vh]">
                             <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
                                 <table className="w-full border-collapse">
-                                    <thead>
+                                    <thead className="sticky top-0 z-10 bg-slate-50">
                                         <tr className="bg-slate-50/50">
                                             <th className="text-left py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Account & Description</th>
                                             <th className="text-right py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] w-32">Debit</th>
@@ -1378,7 +1378,7 @@ const CashLedger: React.FC = () => {
                                                             <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === item.account_id)?.name || 'Uncategorized'}</div>
                                                             <div className="text-[11px] text-slate-400 font-medium">{item.description}</div>
                                                         </td>
-                                                        <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(item.actual_amount || item.estimated_amount).replace('K', '')}</td>
+                                                        <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(item.actual_amount ?? item.estimated_amount ?? 0).replace('K', '')}</td>
                                                         <td className="py-5 px-6 text-right text-slate-200">-</td>
                                                     </tr>
                                                 ))}
@@ -1394,39 +1394,64 @@ const CashLedger: React.FC = () => {
                                             </>
                                         ) : (
                                             <>
-                                                {/* Target Side */}
-                                                <tr>
-                                                    <td className="py-5 px-6">
-                                                        <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet</div>
-                                                        <div className="text-[11px] text-slate-400 font-medium">Inflow receipt</div>
-                                                    </td>
-                                                    <td className="py-5 px-6 text-right font-bold text-emerald-600">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
-                                                    <td className="py-5 px-6 text-right text-slate-200">-</td>
-                                                </tr>
-                                                {/* Income Side */}
-                                                <tr>
-                                                    <td className="py-5 px-6 pl-10">
-                                                        <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
-                                                        <div className="text-[11px] text-slate-400 font-medium">{postingReview.entry?.description}</div>
-                                                    </td>
-                                                    <td className="py-5 px-6 text-right text-slate-200">-</td>
-                                                    <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
-                                                </tr>
+                                                {/* Directional Logic: If it has a debit, it's an Inflow (Debit Wallet). 
+                                                    If it has a credit, it's a Charge/Expense (Credit Wallet). */}
+                                                {Number(postingReview.entry?.debit || 0) > 0 ? (
+                                                    <>
+                                                        {/* Regular Inflow: Debit Wallet, Credit Income Account */}
+                                                        <tr>
+                                                            <td className="py-5 px-6">
+                                                                <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet</div>
+                                                                <div className="text-[11px] text-slate-400 font-medium">Inflow receipt</div>
+                                                            </td>
+                                                            <td className="py-5 px-6 text-right font-bold text-emerald-600">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
+                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td className="py-5 px-6 pl-10">
+                                                                <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
+                                                                <div className="text-[11px] text-slate-400 font-medium">{postingReview.entry?.description}</div>
+                                                            </td>
+                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                            <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
+                                                        </tr>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {/* Transaction Charge: Debit Expense Account, Credit Wallet */}
+                                                        <tr>
+                                                            <td className="py-5 px-6">
+                                                                <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
+                                                                <div className="text-[11px] text-slate-400 font-medium">{postingReview.entry?.description}</div>
+                                                            </td>
+                                                            <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(postingReview.entry?.credit || 0).replace('K', '')}</td>
+                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <td className="py-5 px-6 pl-10">
+                                                                <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet</div>
+                                                                <div className="text-[11px] text-slate-400 font-medium">Service / Transaction Fee</div>
+                                                            </td>
+                                                            <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                            <td className="py-5 px-6 text-right font-bold text-rose-600">{formatCurrency(postingReview.entry?.credit || 0).replace('K', '')}</td>
+                                                        </tr>
+                                                    </>
+                                                )}
                                             </>
                                         )}
                                     </tbody>
-                                    <tfoot>
+                                    <tfoot className="sticky bottom-0 z-10">
                                         <tr className="bg-slate-900 text-white">
                                             <td className="py-6 px-6 font-black text-xs uppercase tracking-widest">Total Balance</td>
                                             <td className="py-6 px-6 text-right font-black text-sm">
                                                 {formatCurrency(postingReview.type === 'REQUISITION' 
-                                                    ? (postingReview.data.line_items || []).reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount), 0)
-                                                    : (postingReview.entry?.debit || 0)).replace('K', '')}
+                                                    ? (postingReview.data.line_items || []).reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
+                                                    : (Number(postingReview.entry?.debit || 0) > 0 ? postingReview.entry?.debit : postingReview.entry?.credit || 0)).replace('K', '')}
                                             </td>
                                             <td className="py-6 px-6 text-right font-black text-sm">
                                                 {formatCurrency(postingReview.type === 'REQUISITION' 
                                                     ? (postingReview.entry?.credit || 0)
-                                                    : (postingReview.entry?.debit || 0)).replace('K', '')}
+                                                    : (Number(postingReview.entry?.debit || 0) > 0 ? postingReview.entry?.debit : postingReview.entry?.credit || 0)).replace('K', '')}
                                             </td>
                                         </tr>
                                     </tfoot>
