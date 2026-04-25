@@ -362,11 +362,26 @@ export const postEntryToQuickBooks = async (req: any, res: any): Promise<any> =>
 
         if (!entry) return res.status(404).json({ error: 'Entry not found' });
 
+        // Resolve QuickBooks ID for the account (Frontend sends UUID)
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('qb_account_id')
+            .eq('id', accountId)
+            .single();
+
+        if (!account?.qb_account_id) {
+            console.error(`[Ledger] ❌ Account ${accountId} has no linked QuickBooks ID`);
+            return res.status(400).json({ 
+                success: false, 
+                error: 'The selected account is not linked to QuickBooks. Please map it first in Settings -> Chart of Accounts.' 
+            });
+        }
+
         let result;
         if (entry.entry_type === 'INFLOW') {
-            result = await QuickBooksService.createDeposit(organizationId, entryId, accountId, userId);
+            result = await QuickBooksService.createDeposit(organizationId, entryId, account.qb_account_id, userId);
         } else {
-            result = await QuickBooksService.createLedgerPurchase(organizationId, entryId, accountId, userId);
+            result = await QuickBooksService.createLedgerPurchase(organizationId, entryId, account.qb_account_id, userId);
         }
 
         if (result.success) {

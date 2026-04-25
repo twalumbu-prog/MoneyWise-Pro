@@ -273,7 +273,7 @@ export class QuickBooksService {
 
             const { data: requisition, error: reqError } = await supabase
                 .from('requisitions')
-                .select('*, line_items(*), disbursements(*), cashbook_entries(*)')
+                .select('*, line_items(*, accounts(qb_account_id, name)), disbursements(*), cashbook_entries(*)')
                 .eq('id', requisitionId)
                 .single();
 
@@ -295,10 +295,12 @@ export class QuickBooksService {
 
             const expenseLines = requisition.line_items.map((item: any) => {
                 const amount = item.actual_amount ?? item.estimated_amount ?? 0;
-                const qbAccountId = item.qb_account_id;
+                
+                // Fallback to joined account data if qb_account_id is missing on the line item
+                const qbAccountId = item.qb_account_id || item.accounts?.qb_account_id;
 
                 if (!qbAccountId) {
-                    console.warn(`[QB Purchase] Line item ${item.id} has no qb_account_id, using default "1"`);
+                    console.warn(`[QB Purchase] Line item ${item.id} has no qb_account_id`);
                 }
 
                 return {
@@ -307,8 +309,8 @@ export class QuickBooksService {
                     DetailType: "AccountBasedExpenseLineDetail",
                     AccountBasedExpenseLineDetail: {
                         AccountRef: {
-                            value: qbAccountId || "1",
-                            name: item.qb_account_name || item.description
+                            value: qbAccountId,
+                            name: item.accounts?.name || item.description
                         }
                     }
                 };
