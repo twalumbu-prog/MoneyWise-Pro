@@ -128,6 +128,16 @@ const CashLedger: React.FC = () => {
     const [balance, setBalance] = useState<number>(0);
     const [loading, setLoading] = useState(true);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+    const [postingReview, setPostingReview] = useState<{
+        type: 'INFLOW' | 'REQUISITION';
+        data: any;
+        entry?: CashbookEntry;
+    } | null>(null);
+    const [isPosting, setIsPosting] = useState(false);
+    const [postSuccess, setPostSuccess] = useState<{
+        qbId: string;
+        type: string;
+    } | null>(null);
     const [startDate, setStartDate] = useState(
         new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0]
     );
@@ -369,16 +379,28 @@ const CashLedger: React.FC = () => {
         );
     };
 
-    const handlePostToQB = async (requisitionId: string) => {
+    const handlePostToQB = async (req: Requisition, entry: CashbookEntry) => {
+        setPostingReview({
+            type: 'REQUISITION',
+            data: req,
+            entry
+        });
+    };
+
+    const confirmPostRequisition = async (req: any) => {
         try {
-            await requisitionService.postToQuickBooks(requisitionId, {
+            setIsPosting(true);
+            const result = await requisitionService.postToQuickBooks(req.id, {
                 payment_account_id: 'CASH_ACCOUNT_ID', 
                 payment_account_name: 'Cash on hand'
             });
-            alert('Posted to QuickBooks successfully!');
+            setPostSuccess({ qbId: result.qb_expense_id, type: 'Expense' });
+            setPostingReview(null);
             loadData();
         } catch (error: any) {
             alert('Failed to post to QuickBooks: ' + error.message);
+        } finally {
+            setIsPosting(false);
         }
     };
 
@@ -410,17 +432,29 @@ const CashLedger: React.FC = () => {
         }
     };
 
-    const handlePostLedgerToQB = async (entryId: string, accountId: string) => {
+    const handlePostLedgerToQB = async (entry: CashbookEntry) => {
+        setPostingReview({
+            type: 'INFLOW',
+            data: entry,
+            entry
+        });
+    };
+
+    const confirmPostLedger = async (entry: CashbookEntry) => {
         try {
-            const result = await cashbookService.postToQuickBooks(entryId, accountId);
+            setIsPosting(true);
+            const result = await cashbookService.postToQuickBooks(entry.id, entry.account_id!);
             if (result.success) {
-                alert('Posted to QuickBooks successfully!');
+                setPostSuccess({ qbId: result.qbId, type: entry.entry_type === 'INFLOW' ? 'Deposit' : 'Journal Entry' });
+                setPostingReview(null);
                 loadData();
             } else {
                 alert('Failed to post: ' + (result.error?.Message || result.error || 'Unknown error'));
             }
         } catch (error: any) {
             alert('Failed to post to QuickBooks: ' + error.message);
+        } finally {
+            setIsPosting(false);
         }
     };
 
@@ -496,7 +530,7 @@ const CashLedger: React.FC = () => {
                                 <button 
                                     onClick={(e) => {
                                         e.stopPropagation();
-                                        handlePostToQB(req.id);
+                                        handlePostToQB(req, entry);
                                     }}
                                     className="flex items-center px-5 py-2.5 bg-[#006AFF] hover:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
                                 >
@@ -682,7 +716,7 @@ const CashLedger: React.FC = () => {
                                             alert('Please select an accounting account first');
                                             return;
                                         }
-                                        handlePostLedgerToQB(entry.id, entry.account_id);
+                                        handlePostLedgerToQB(entry);
                                     }}
                                     disabled={!entry.account_id}
                                     className={`flex items-center px-5 py-2.5 rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest ${
@@ -1301,6 +1335,160 @@ const CashLedger: React.FC = () => {
                                 Done
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Review Posting Modal */}
+            {postingReview && (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
+                    <div className="bg-white rounded-[40px] shadow-2xl w-full max-w-2xl overflow-hidden border border-white/20 animate-in zoom-in-95 duration-300">
+                        <div className="p-10 border-b border-gray-50">
+                            <div className="flex justify-between items-start">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Review QuickBooks Posting</h3>
+                                    <p className="text-slate-500 text-sm font-medium">Verify the double-entry accounting treatment before syncing.</p>
+                                </div>
+                                <button
+                                    onClick={() => setPostingReview(null)}
+                                    className="p-3 hover:bg-slate-50 rounded-2xl text-slate-400 hover:text-slate-900 transition-all"
+                                >
+                                    <X size={24} strokeWidth={2.5} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="p-10 bg-slate-50/30">
+                            <div className="bg-white rounded-[32px] border border-slate-100 shadow-sm overflow-hidden">
+                                <table className="w-full border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50/50">
+                                            <th className="text-left py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Account & Description</th>
+                                            <th className="text-right py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] w-32">Debit</th>
+                                            <th className="text-right py-5 px-6 text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] w-32">Credit</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-50">
+                                        {postingReview.type === 'REQUISITION' ? (
+                                            <>
+                                                {/* Expense Side */}
+                                                {(postingReview.data.line_items || []).map((item: any, i: number) => (
+                                                    <tr key={i}>
+                                                        <td className="py-5 px-6">
+                                                            <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === item.account_id)?.name || 'Uncategorized'}</div>
+                                                            <div className="text-[11px] text-slate-400 font-medium">{item.description}</div>
+                                                        </td>
+                                                        <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(item.actual_amount || item.estimated_amount).replace('K', '')}</td>
+                                                        <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                    </tr>
+                                                ))}
+                                                {/* Payment Side */}
+                                                <tr>
+                                                    <td className="py-5 px-6 pl-10">
+                                                        <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet / Cash</div>
+                                                        <div className="text-[11px] text-slate-400 font-medium">Payment for {postingReview.data.reference_number}</div>
+                                                    </td>
+                                                    <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                    <td className="py-5 px-6 text-right font-bold text-rose-600">{formatCurrency(postingReview.entry?.credit || 0).replace('K', '')}</td>
+                                                </tr>
+                                            </>
+                                        ) : (
+                                            <>
+                                                {/* Target Side */}
+                                                <tr>
+                                                    <td className="py-5 px-6">
+                                                        <div className="font-bold text-slate-900 text-sm">MoneyWise Wallet</div>
+                                                        <div className="text-[11px] text-slate-400 font-medium">Inflow receipt</div>
+                                                    </td>
+                                                    <td className="py-5 px-6 text-right font-bold text-emerald-600">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
+                                                    <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                </tr>
+                                                {/* Income Side */}
+                                                <tr>
+                                                    <td className="py-5 px-6 pl-10">
+                                                        <div className="font-bold text-slate-900 text-sm">{accounts.find(a => a.id === postingReview.entry?.account_id)?.name || 'Uncategorized'}</div>
+                                                        <div className="text-[11px] text-slate-400 font-medium">{postingReview.entry?.description}</div>
+                                                    </td>
+                                                    <td className="py-5 px-6 text-right text-slate-200">-</td>
+                                                    <td className="py-5 px-6 text-right font-bold text-slate-900">{formatCurrency(postingReview.entry?.debit || 0).replace('K', '')}</td>
+                                                </tr>
+                                            </>
+                                        )}
+                                    </tbody>
+                                    <tfoot>
+                                        <tr className="bg-slate-900 text-white">
+                                            <td className="py-6 px-6 font-black text-xs uppercase tracking-widest">Total Balance</td>
+                                            <td className="py-6 px-6 text-right font-black text-sm">
+                                                {formatCurrency(postingReview.type === 'REQUISITION' 
+                                                    ? (postingReview.data.line_items || []).reduce((acc: number, item: any) => acc + Number(item.actual_amount || item.estimated_amount), 0)
+                                                    : (postingReview.entry?.debit || 0)).replace('K', '')}
+                                            </td>
+                                            <td className="py-6 px-6 text-right font-black text-sm">
+                                                {formatCurrency(postingReview.type === 'REQUISITION' 
+                                                    ? (postingReview.entry?.credit || 0)
+                                                    : (postingReview.entry?.debit || 0)).replace('K', '')}
+                                            </td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div className="p-10 flex justify-end gap-4 bg-white">
+                            <button
+                                onClick={() => setPostingReview(null)}
+                                className="px-8 py-4 rounded-2xl font-bold text-slate-500 hover:bg-slate-50 transition-all text-xs uppercase tracking-widest"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={() => postingReview.type === 'REQUISITION' ? confirmPostRequisition(postingReview.data) : confirmPostLedger(postingReview.entry!)}
+                                disabled={isPosting}
+                                className="bg-[#006AFF] hover:bg-[#0052CC] text-white px-10 py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-blue-200 flex items-center disabled:opacity-50 disabled:shadow-none"
+                            >
+                                {isPosting ? (
+                                    <>
+                                        <Loader2 className="animate-spin mr-3" size={18} />
+                                        Posting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Check className="mr-3" size={18} strokeWidth={3} />
+                                        Confirm & Post
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Post Success Overlay */}
+            {postSuccess && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-emerald-950/40 backdrop-blur-sm animate-in fade-in duration-500">
+                    <div className="bg-white rounded-[48px] shadow-2xl p-12 text-center max-w-md border border-emerald-100 animate-in zoom-in-95 duration-500">
+                        <div className="w-24 h-24 bg-emerald-500 rounded-[32px] flex items-center justify-center mx-auto mb-8 shadow-lg shadow-emerald-200">
+                            <Check size={48} className="text-white" strokeWidth={3} />
+                        </div>
+                        <h3 className="text-3xl font-black text-slate-900 mb-4 tracking-tight">Successfully Posted!</h3>
+                        <p className="text-slate-500 font-medium mb-10">
+                            The {postSuccess.type} has been successfully synchronized with QuickBooks Online.
+                        </p>
+                        <div className="bg-slate-50 rounded-3xl p-6 mb-10 flex items-center justify-between border border-slate-100">
+                            <div className="text-left">
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">QuickBooks ID</div>
+                                <div className="text-sm font-bold text-slate-900">{postSuccess.qbId}</div>
+                            </div>
+                            <div className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                Validated
+                            </div>
+                        </div>
+                        <button
+                            onClick={() => setPostSuccess(null)}
+                            className="w-full bg-slate-900 hover:bg-slate-800 text-white py-5 rounded-[24px] font-black text-xs uppercase tracking-[0.2em] transition-all shadow-xl shadow-slate-200"
+                        >
+                            Back to Ledger
+                        </button>
                     </div>
                 </div>
             )}

@@ -386,12 +386,6 @@ export const requisitionService = {
             method: 'POST',
             body: JSON.stringify(data),
         });
-
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({}));
-            throw new Error(err.error || 'Failed to post to QuickBooks');
-        }
-
         return response.json();
     },
 
