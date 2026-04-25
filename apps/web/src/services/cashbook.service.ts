@@ -11,7 +11,7 @@ export interface CashbookEntry {
     account_type: 'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET';
     requisition_id?: string;
     created_by?: string;
-    status?: 'PENDING' | 'COMPLETED';
+    status?: 'PENDING' | 'COMPLETED' | 'ACCOUNTED';
     reference_number?: string;
     account_id?: string;
     accounts?: { id: string; name: string; code: string };
