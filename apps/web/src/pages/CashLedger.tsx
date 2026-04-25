@@ -379,7 +379,7 @@ const CashLedger: React.FC = () => {
         );
     };
 
-    const handlePostToQB = async (req: Requisition, entry: CashbookEntry) => {
+    const handlePostToQB = async (req: any, entry: CashbookEntry) => {
         setPostingReview({
             type: 'REQUISITION',
             data: req,
@@ -1446,12 +1446,12 @@ const CashLedger: React.FC = () => {
                                             <td className="py-6 px-6 text-right font-black text-sm">
                                                 {formatCurrency(postingReview.type === 'REQUISITION' 
                                                     ? (postingReview.data.line_items || []).reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
-                                                    : (Number(postingReview.entry?.debit || 0) > 0 ? postingReview.entry?.debit : postingReview.entry?.credit || 0)).replace('K', '')}
+                                                    : (Number(postingReview.entry?.debit || 0) > 0 ? (postingReview.entry?.debit || 0) : (postingReview.entry?.credit || 0))).replace('K', '')}
                                             </td>
                                             <td className="py-6 px-6 text-right font-black text-sm">
                                                 {formatCurrency(postingReview.type === 'REQUISITION' 
                                                     ? (postingReview.entry?.credit || 0)
-                                                    : (Number(postingReview.entry?.debit || 0) > 0 ? postingReview.entry?.debit : postingReview.entry?.credit || 0)).replace('K', '')}
+                                                    : (Number(postingReview.entry?.debit || 0) > 0 ? (postingReview.entry?.debit || 0) : (postingReview.entry?.credit || 0))).replace('K', '')}
                                             </td>
                                         </tr>
                                     </tfoot>
