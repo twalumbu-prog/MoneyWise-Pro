@@ -578,13 +578,17 @@ export class QuickBooksService {
 
             console.log(`[QB Deposit] ✅ Created ID: ${result.Deposit?.Id}`);
 
-            await supabase.from('cashbook_entries').update({
+            const { error: updateError } = await supabase.from('cashbook_entries').update({
                 qb_deposit_id: result.Deposit.Id,
                 qb_sync_status: 'SUCCESS',
                 qb_sync_error: null,
                 qb_sync_at: new Date().toISOString(),
                 status: 'ACCOUNTED'
             }).eq('id', entryId);
+
+            if (updateError) {
+                console.error(`[QB Deposit] ❌ Database update failed:`, updateError);
+            }
 
             return { success: true, qbId: result.Deposit.Id };
 
@@ -676,13 +680,17 @@ export class QuickBooksService {
 
             console.log(`[QB Ledger Purchase] ✅ Created ID: ${result.Purchase?.Id}`);
 
-            await supabase.from('cashbook_entries').update({
-                qb_expense_id: result.Purchase.Id,
+            const { error: updateError } = await supabase.from('cashbook_entries').update({
+                qb_purchase_id: result.Purchase.Id, // Matches migration 20260425110000
                 qb_sync_status: 'SUCCESS',
                 qb_sync_error: null,
                 qb_sync_at: new Date().toISOString(),
                 status: 'ACCOUNTED'
             }).eq('id', entryId);
+
+            if (updateError) {
+                console.error(`[QB Ledger Purchase] ❌ Database update failed:`, updateError);
+            }
 
             return { success: true, qbId: result.Purchase.Id };
 

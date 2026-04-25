@@ -18,7 +18,7 @@ export interface CashbookEntry {
     qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
     qb_sync_error?: string;
     qb_sync_at?: string;
-    qb_expense_id?: string;
+    qb_purchase_id?: string;
     qb_deposit_id?: string;
     requisitions?: {
         id: string;
