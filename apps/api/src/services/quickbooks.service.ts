@@ -496,4 +496,200 @@ export class QuickBooksService {
             return { success: false, error: error.message };
         }
     }
+
+    static async createDeposit(organizationId: string, entryId: string, creditAccountId: string, userId: string) {
+        console.log(`[QB Deposit] Starting deposit creation for entry ${entryId}`);
+        try {
+            // 1. Resolve Auth
+            const { accessToken, realmId } = await this.getAccessToken(organizationId);
+
+            // 2. Fetch Cashbook Entry
+            const { data: entry, error: entryError } = await supabase
+                .from('cashbook_entries')
+                .select('*')
+                .eq('id', entryId)
+                .single();
+
+            if (entryError || !entry) throw new Error('Cashbook entry not found');
+
+            // 3. Resolve Target Account (MoneyWise Wallet)
+            let sourceAccountId = '';
+            let sourceAccountName = '';
+
+            const qbAccounts = await this.fetchAccounts(organizationId);
+            const walletAcc = qbAccounts.find((a: any) => 
+                a.Name.toLowerCase().includes('wallet') || 
+                a.Name.toLowerCase().includes('moneywise')
+            );
+
+            if (walletAcc) {
+                sourceAccountId = walletAcc.Id;
+                sourceAccountName = walletAcc.Name;
+            } else {
+                throw new Error('Could not find MoneyWise Wallet account in QuickBooks.');
+            }
+
+            // 4. Construct Deposit
+            const deposit = {
+                DepositToAccountRef: {
+                    value: sourceAccountId,
+                    name: sourceAccountName
+                },
+                TxnDate: new Date(entry.date).toISOString().split('T')[0],
+                Line: [
+                    {
+                        Description: entry.description,
+                        Amount: Number(entry.debit),
+                        DetailType: "DepositLineDetail",
+                        DepositLineDetail: {
+                            AccountRef: {
+                                value: creditAccountId
+                            }
+                        }
+                    }
+                ],
+                PrivateNote: `MoneyWise Inflow: ${entry.reference_number || entry.id}`
+            };
+
+            const { apiBase } = this.getEnv();
+            const response = await fetch(`${apiBase}/${realmId}/deposit?minorversion=70`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(deposit)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                console.error(`[QB Deposit] API Error:`, JSON.stringify(result));
+                await supabase.from('cashbook_entries').update({
+                    qb_sync_status: 'FAILED',
+                    qb_sync_error: JSON.stringify(result),
+                    qb_sync_at: new Date().toISOString()
+                }).eq('id', entryId);
+                return { success: false, error: result };
+            }
+
+            console.log(`[QB Deposit] ✅ Created ID: ${result.Deposit?.Id}`);
+
+            await supabase.from('cashbook_entries').update({
+                qb_deposit_id: result.Deposit.Id,
+                qb_sync_status: 'SUCCESS',
+                qb_sync_error: null,
+                qb_sync_at: new Date().toISOString()
+            }).eq('id', entryId);
+
+            return { success: true, qbId: result.Deposit.Id };
+
+        } catch (error: any) {
+            console.error('[QB Deposit] Exception:', error.message);
+            await supabase.from('cashbook_entries').update({
+                qb_sync_status: 'FAILED',
+                qb_sync_error: error.message,
+                qb_sync_at: new Date().toISOString()
+            }).eq('id', entryId);
+            return { success: false, error: error.message };
+        }
+    }
+
+    static async createLedgerPurchase(organizationId: string, entryId: string, debitAccountId: string, userId: string) {
+        console.log(`[QB Ledger Purchase] Starting purchase creation for entry ${entryId}`);
+        try {
+            const { accessToken, realmId } = await this.getAccessToken(organizationId);
+
+            const { data: entry, error: entryError } = await supabase
+                .from('cashbook_entries')
+                .select('*')
+                .eq('id', entryId)
+                .single();
+
+            if (entryError || !entry) throw new Error('Cashbook entry not found');
+
+            // Source Account is usually Wallet for Fees
+            let sourceAccountId = '';
+            let sourceAccountName = '';
+
+            const qbAccounts = await this.fetchAccounts(organizationId);
+            const walletAcc = qbAccounts.find((a: any) => 
+                a.Name.toLowerCase().includes('wallet') || 
+                a.Name.toLowerCase().includes('moneywise')
+            );
+
+            if (walletAcc) {
+                sourceAccountId = walletAcc.Id;
+                sourceAccountName = walletAcc.Name;
+            } else {
+                throw new Error('Could not find MoneyWise Wallet account in QuickBooks.');
+            }
+
+            const purchase = {
+                AccountRef: {
+                    value: sourceAccountId,
+                    name: sourceAccountName
+                },
+                PaymentType: "Cash",
+                TxnDate: new Date(entry.date).toISOString().split('T')[0],
+                Line: [
+                    {
+                        Description: entry.description,
+                        Amount: Number(entry.credit || entry.debit), // For adjustments, use whichever is non-zero
+                        DetailType: "AccountBasedExpenseLineDetail",
+                        AccountBasedExpenseLineDetail: {
+                            AccountRef: {
+                                value: debitAccountId
+                            }
+                        }
+                    }
+                ],
+                PrivateNote: `MoneyWise Adjustment/Fee: ${entry.reference_number || entry.id}`
+            };
+
+            const { apiBase } = this.getEnv();
+            const response = await fetch(`${apiBase}/${realmId}/purchase?minorversion=70`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(purchase)
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                console.error(`[QB Ledger Purchase] API Error:`, JSON.stringify(result));
+                await supabase.from('cashbook_entries').update({
+                    qb_sync_status: 'FAILED',
+                    qb_sync_error: JSON.stringify(result),
+                    qb_sync_at: new Date().toISOString()
+                }).eq('id', entryId);
+                return { success: false, error: result };
+            }
+
+            console.log(`[QB Ledger Purchase] ✅ Created ID: ${result.Purchase?.Id}`);
+
+            await supabase.from('cashbook_entries').update({
+                qb_expense_id: result.Purchase.Id,
+                qb_sync_status: 'SUCCESS',
+                qb_sync_error: null,
+                qb_sync_at: new Date().toISOString()
+            }).eq('id', entryId);
+
+            return { success: true, qbId: result.Purchase.Id };
+
+        } catch (error: any) {
+            console.error('[QB Ledger Purchase] Exception:', error.message);
+            await supabase.from('cashbook_entries').update({
+                qb_sync_status: 'FAILED',
+                qb_sync_error: error.message,
+                qb_sync_at: new Date().toISOString()
+            }).eq('id', entryId);
+            return { success: false, error: error.message };
+        }
+    }
 }

@@ -111,6 +111,7 @@ export const requireRole = (allowedRoles: string[]) => {
                 return;
             }
 
+            console.log(`[Auth] requireRole: Checking role for User ${req.user.id}...`);
             // Fetch user role from database
             const { data, error } = await supabase
                 .from('users')
@@ -119,15 +120,15 @@ export const requireRole = (allowedRoles: string[]) => {
                 .single();
 
             if (error || !data) {
-                console.error(`[Auth] requireRole: Error fetching user role for ${req.user.id}:`, error?.message || 'Not found');
+                console.error(`[Auth] requireRole: ❌ Error fetching user role for ${req.user.id}:`, error?.message || 'Not found');
                 return res.status(403).json({ error: 'User profile not found' });
             }
 
             const userRole = data.role;
-            console.log(`[Auth] requireRole: User ${req.user.id} has role ${userRole}. Allowed: ${allowedRoles.join(', ')}`);
+            console.log(`[Auth] requireRole: ✅ User ${req.user.id} has role ${userRole}. Allowed: ${allowedRoles.join(', ')}`);
 
             if (!allowedRoles.includes(userRole)) {
-                console.warn(`[Auth] Access denied for role: ${userRole}. Required: ${allowedRoles.join(', ')}`);
+                console.warn(`[Auth] requireRole: ⛔ Access denied for role: ${userRole}. Required: ${allowedRoles.join(', ')}`);
                 return res.status(403).json({ error: 'Permission denied', details: `Required one of: ${allowedRoles.join(', ')}` });
             }
 
@@ -135,7 +136,7 @@ export const requireRole = (allowedRoles: string[]) => {
             req.user.role = userRole;
             (next as any)();
         } catch (err: any) {
-            console.error('[Auth] Role verification error:', err);
+            console.error('[Auth] requireRole: ❌ Internal error:', err);
             return res.status(500).json({ error: 'Internal server error during role verification' });
         }
     };

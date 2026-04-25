@@ -435,6 +435,19 @@ export const requisitionService = {
         }
 
         return response.json();
+    },
+    async updateLineItemAccount(itemId: string, accountId: string) {
+        const response = await apiFetch(`/requisitions/items/${itemId}/account`, {
+            method: 'PATCH',
+            body: JSON.stringify({ accountId }),
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to update line item account');
+        }
+
+        return response.json();
     }
 };
 

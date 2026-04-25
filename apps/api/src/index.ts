@@ -151,7 +151,13 @@ const runMigration = async () => {
             ADD COLUMN IF NOT EXISTS payment_account_name TEXT;
 
             ALTER TABLE cashbook_entries 
-            ADD COLUMN IF NOT EXISTS voucher_id UUID REFERENCES vouchers(id);
+            ADD COLUMN IF NOT EXISTS voucher_id UUID REFERENCES vouchers(id),
+            ADD COLUMN IF NOT EXISTS account_id UUID REFERENCES accounts(id),
+            ADD COLUMN IF NOT EXISTS qb_sync_status VARCHAR(20) DEFAULT 'PENDING',
+            ADD COLUMN IF NOT EXISTS qb_sync_error TEXT,
+            ADD COLUMN IF NOT EXISTS qb_sync_at TIMESTAMP WITH TIME ZONE,
+            ADD COLUMN IF NOT EXISTS qb_expense_id VARCHAR(100),
+            ADD COLUMN IF NOT EXISTS qb_deposit_id VARCHAR(100);
         `);
         
         console.log('[Migration] Checking for "budgets" table...');

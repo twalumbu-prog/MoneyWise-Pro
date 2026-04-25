@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { Layout } from '../components/Layout';
 import {
@@ -34,6 +33,8 @@ import CashInflowModal from '../components/CashInflowModal';
 import { useAuth } from '../context/AuthContext';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
+import RequisitionModal from '../components/requisitions/RequisitionModal';
+import { Requisition } from '../services/requisition.service';
 
 
 const SearchableAccountSelect: React.FC<{
@@ -123,7 +124,6 @@ const SearchableAccountSelect: React.FC<{
 };
 
 const CashLedger: React.FC = () => {
-    const navigate = useNavigate();
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
     const [balance, setBalance] = useState<number>(0);
     const [loading, setLoading] = useState(true);
@@ -138,6 +138,8 @@ const CashLedger: React.FC = () => {
     const [isClassifying, setIsClassifying] = useState(false);
     const [classificationResults, setClassificationResults] = useState<any[]>([]);
     const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
+    const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
+    const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
 
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -166,8 +168,8 @@ const CashLedger: React.FC = () => {
     };
 
     const loadData = async () => {
+        setLoading(true);
         try {
-            setLoading(true);
             const [entriesData, balanceData] = await Promise.all([
                 cashbookService.getEntries({ startDate, endDate, accountType: selectedAccountType }),
                 cashbookService.getBalance(selectedAccountType)
@@ -218,12 +220,14 @@ const CashLedger: React.FC = () => {
 
     const countUnclassified = () => {
         let count = 0;
-        entries.forEach(entry => {
-            if (entry.requisitions?.status === 'COMPLETED' && entry.requisitions.line_items) {
-                const unclassifiedItems = entry.requisitions.line_items.filter((item: any) => !item.accounts);
-                if (unclassifiedItems.length > 0) count++;
-            }
-        });
+        if (Array.isArray(entries)) {
+            entries.forEach(entry => {
+                if (entry.requisitions?.status === 'COMPLETED' && entry.requisitions.line_items) {
+                    const unclassifiedItems = entry.requisitions.line_items.filter((item: any) => !item.accounts);
+                    if (unclassifiedItems.length > 0) count++;
+                }
+            });
+        }
         return count;
     };
 
@@ -232,28 +236,33 @@ const CashLedger: React.FC = () => {
     // Derived State for Filters
     const uniqueDepartments = React.useMemo(() => {
         const depts = new Set<string>();
-        entries.forEach(entry => {
-            if (entry.requisitions?.department) {
-                depts.add(entry.requisitions.department);
-            }
-        });
+        if (Array.isArray(entries)) {
+            entries.forEach(entry => {
+                if (entry.requisitions?.department) {
+                    depts.add(entry.requisitions.department);
+                }
+            });
+        }
         return Array.from(depts).sort();
     }, [entries]);
 
     const uniqueAccounts = React.useMemo(() => {
         const accs = new Set<string>();
-        entries.forEach(entry => {
-            entry.requisitions?.line_items?.forEach((item: any) => {
-                if (item.accounts?.name) {
-                    accs.add(item.accounts.name);
-                }
+        if (Array.isArray(entries)) {
+            entries.forEach(entry => {
+                entry.requisitions?.line_items?.forEach((item: any) => {
+                    if (item.accounts?.name) {
+                        accs.add(item.accounts.name);
+                    }
+                });
             });
-        });
+        }
         return Array.from(accs).sort();
     }, [entries]);
 
     // Processed Data (Search, Filter, Sort)
     const processedEntries = React.useMemo(() => {
+        if (!Array.isArray(entries)) return [];
         let result = [...entries];
 
         // 1. Dropdown Filters
@@ -323,9 +332,14 @@ const CashLedger: React.FC = () => {
     const getEntryStatus = (entry: CashbookEntry) => {
         if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200"><Lock size={10} className="mr-1" /> Closed</span>;
         if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">Opening</span>;
-        if (entry.entry_type !== 'DISBURSEMENT' || !entry.requisitions) return null;
-
-        const status = entry.requisitions.status;
+        let status = '';
+        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+            status = entry.status === 'PENDING' ? 'PENDING' : 'COMPLETED';
+        } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
+            status = entry.requisitions.status;
+        } else {
+            return null;
+        }
         const config = getStatusConfig(status);
 
         const getStatusIcon = (iconType: string, color: string) => {
@@ -357,10 +371,8 @@ const CashLedger: React.FC = () => {
 
     const handlePostToQB = async (requisitionId: string) => {
         try {
-            // Default to a sensible payment account if needed, or ask user
-            // For now, let's just trigger the post with common defaults
             await requisitionService.postToQuickBooks(requisitionId, {
-                payment_account_id: 'CASH_ACCOUNT_ID', // This should ideally be configurable
+                payment_account_id: 'CASH_ACCOUNT_ID', 
                 payment_account_name: 'Cash on hand'
             });
             alert('Posted to QuickBooks successfully!');
@@ -372,206 +384,380 @@ const CashLedger: React.FC = () => {
 
     const handleAccountChange = async (lineItemId: string, accountId: string, requisitionId: string) => {
         try {
-            await requisitionService.approveCategorization(requisitionId, [{ id: lineItemId, account_id: accountId }]);
+            await requisitionService.updateLineItemAccount(lineItemId, accountId);
             loadData();
         } catch (error: any) {
             alert('Failed to update account: ' + error.message);
         }
     };
 
+    const handleApproveCategorization = async (requisitionId: string) => {
+        try {
+            await requisitionService.approveCategorization(requisitionId);
+            alert('Categorization approved successfully!');
+            loadData();
+        } catch (error: any) {
+            alert('Failed to approve categorization: ' + error.message);
+        }
+    };
+
+    const handleLedgerAccountChange = async (entryId: string, accountId: string) => {
+        try {
+            await cashbookService.updateAccount(entryId, accountId);
+            loadData();
+        } catch (error: any) {
+            alert('Failed to update account: ' + error.message);
+        }
+    };
+
+    const handlePostLedgerToQB = async (entryId: string, accountId: string) => {
+        try {
+            const result = await cashbookService.postToQuickBooks(entryId, accountId);
+            if (result.success) {
+                alert('Posted to QuickBooks successfully!');
+                loadData();
+            } else {
+                alert('Failed to post: ' + (result.error?.Message || result.error || 'Unknown error'));
+            }
+        } catch (error: any) {
+            alert('Failed to post to QuickBooks: ' + error.message);
+        }
+    };
+
     const renderBreakdown = (entry: CashbookEntry) => {
-        if (!entry.requisitions) return null;
+        // Case 1: Requisition Breakdown (Expenses)
+        if (entry.requisition_id && entry.requisitions) {
+            const req = entry.requisitions;
+            const items = req.line_items || [];
+            const disbursement = req.disbursements?.[0];
 
-        const req = entry.requisitions;
-        const items = req.line_items || [];
-        const disbursement = req.disbursements?.[0];
+            const actualExpenditure = items.length > 0
+                ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
+                : Number(req.actual_total ?? 0);
 
-        const actualExpenditure = items.length > 0
-            ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
-            : Number(req.actual_total ?? 0);
+            const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
+            const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
 
-        const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
-        const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
+            const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
+            const expectedChange = totalPrepared - actualExpenditure;
 
-        // Total Variance = Budget - (Spent + Returned)
-        const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
-        const expectedChange = totalPrepared - actualExpenditure;
+            const handleViewDetails = (entry: any) => {
+                const requisitionId = entry.requisition_id || entry.requisitions?.id;
+                
+                if (!requisitionId) {
+                    console.warn('No requisition ID found for this entry');
+                    return;
+                }
 
-        return (
-            <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
-                {/* Header Actions */}
-                <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-100">
-                    <div className="flex flex-wrap items-center gap-4">
-                        <button 
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/requisitions?id=${req.id}`);
-                            }}
-                            className="flex items-center px-5 py-2.5 bg-brand-navy hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
-                        >
-                            <Info size={14} className="mr-2" />
-                            View Full Details
-                        </button>
-                        
-                        {(req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED' || req.status === 'EXPENSED') && req.qb_sync_status !== 'SUCCESS' && (
+                setSelectedRequisition({
+                    id: requisitionId,
+                    reference_number: entry.requisitions?.reference_number || 'N/A',
+                    description: entry.requisitions?.description || entry.description,
+                    status: entry.requisitions?.status || 'COMPLETED',
+                    total_amount: entry.requisitions?.actual_total || entry.debit || entry.credit || 0
+                } as any);
+                setIsRequisitionModalOpen(true);
+            };
+
+            return (
+                <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-100">
+                        <div className="flex flex-wrap items-center gap-4">
                             <button 
-                                onClick={(e) => {
+                                onClick={async (e) => {
                                     e.stopPropagation();
-                                    handlePostToQB(req.id);
+                                    handleViewDetails(entry);
                                 }}
-                                className="flex items-center px-5 py-2.5 bg-[#006AFF] hover:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
+                                className="flex items-center px-5 py-2.5 bg-brand-navy hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
                             >
-                                <RefreshCw size={14} className="mr-2" />
-                                Post to QuickBooks
+                                <Info size={14} className="mr-2" />
+                                View Full Details
                             </button>
-                        )}
+                            
+                            {(req.status === 'EXPENSED' || req.status === 'DISBURSED' || req.status === 'RECEIVED') && (
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        const allItemsHaveAccount = items.every((item: any) => !!item.account_id);
+                                        if (!allItemsHaveAccount) {
+                                            alert('Please categorize all line items before approving');
+                                            return;
+                                        }
+                                        handleApproveCategorization(req.id);
+                                    }}
+                                    className="flex items-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
+                                >
+                                    <CheckCircle2 size={14} className="mr-2" />
+                                    Approve Categorization
+                                </button>
+                            )}
+                            
+                            {(req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED') && req.qb_sync_status !== 'SUCCESS' && (
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePostToQB(req.id);
+                                    }}
+                                    className="flex items-center px-5 py-2.5 bg-[#006AFF] hover:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
+                                >
+                                    <RefreshCw size={14} className="mr-2" />
+                                    Post to QuickBooks
+                                </button>
+                            )}
 
-                        {req.qb_sync_status === 'SUCCESS' && (
-                            <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-emerald-100/50">
-                                <CheckCircle2 size={14} className="mr-2" />
-                                Posted to QuickBooks
+                            {req.qb_sync_status === 'SUCCESS' && (
+                                <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-emerald-100/50">
+                                    <CheckCircle2 size={14} className="mr-2" />
+                                    Posted to QuickBooks
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-6">
+                            <div className="flex flex-col items-end">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Reference</span>
+                                <span className="text-[13px] font-bold text-brand-navy">{req.reference_number || 'N/A'}</span>
                             </div>
-                        )}
+                            <div className="flex flex-col items-end">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
+                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                                    req.status === 'ACCOUNTED'
+                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                                        : req.status === 'COMPLETED' || req.status === 'CATEGORIZED'
+                                        ? 'bg-blue-50 text-blue-600 border border-blue-100'
+                                        : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                }`}>
+                                    {req.status === 'CATEGORIZED' ? 'COMPLETED' : req.status}
+                                </span>
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="flex items-center gap-6">
-                        <div className="flex flex-col items-end">
-                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Reference</span>
-                            <span className="text-[13px] font-bold text-brand-navy">{req.reference_number || 'N/A'}</span>
-                        </div>
-                        <div className="flex flex-col items-end">
-                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
-                            <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                req.status === 'ACCOUNTED'
-                                    ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
-                                    : req.status === 'COMPLETED' || req.status === 'CATEGORIZED'
-                                    ? 'bg-blue-50 text-blue-600 border border-blue-100'
-                                    : 'bg-amber-50 text-amber-600 border border-amber-100'
-                            }`}>
-                                {req.status === 'CATEGORIZED' ? 'COMPLETED' : req.status}
-                            </span>
-                        </div>
+                    {/* Main Breakdown Table */}
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)]">
+                        <table className="breakdown-table-modern table-fixed">
+                            <thead>
+                                <tr>
+                                    <th className="text-left w-[30%]">Description</th>
+                                    <th className="text-left w-[30%]">Accounting Treatment</th>
+                                    <th className="text-center w-[10%]">Qty</th>
+                                    <th className="text-right w-[15%]">Expected Total</th>
+                                    <th className="text-right w-[15%]">Actual Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {/* Disbursement Row */}
+                                <tr className="summary-row cash-distributed bg-slate-50/50">
+                                    <td className="font-bold flex items-center">
+                                        <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center mr-3">
+                                            <Coins size={12} className="text-slate-600" />
+                                        </div>
+                                        Actual Cash Disbursed
+                                    </td>
+                                    <td className="text-gray-400 text-[10px] italic">Capital Outflow</td>
+                                    <td className="text-center">-</td>
+                                    <td className="text-right">-</td>
+                                    <td className="text-right font-black text-brand-navy text-[14px]">{formatCurrency(totalPrepared)}</td>
+                                </tr>
+                                
+                                {/* Itemized Expenses */}
+                                {items.map((item: any, idx: number) => (
+                                    <tr key={item.id || idx} className="hover:bg-gray-50/50 transition-colors">
+                                        <td className="pl-6 py-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-[13px] font-semibold text-gray-800">{item.description}</span>
+                                                <span className="text-[10px] text-gray-400">Line Item #{idx + 1}</span>
+                                            </div>
+                                        </td>
+                                        <td className="py-4">
+                                            <SearchableAccountSelect 
+                                                value={item.account_id || ''} 
+                                                options={accounts} 
+                                                onChange={(val) => handleAccountChange(item.id, val, req.id)}
+                                                placeholder="Categorize expense..."
+                                            />
+                                        </td>
+                                        <td className="text-center text-gray-600 font-medium">{item.quantity || 1}</td>
+                                        <td className="text-right text-gray-400 text-[13px]">{formatCurrency(item.estimated_amount)}</td>
+                                        <td className="text-right font-black text-gray-900 text-[14px]">{formatCurrency(item.actual_amount ?? item.estimated_amount)}</td>
+                                    </tr>
+                                ))}
+
+                                {/* Excess Change Row (if any) */}
+                                {confirmedChange > 0 && (
+                                    <tr className="summary-row change-returned">
+                                        <td className="font-bold flex items-center">
+                                            <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center mr-3">
+                                                <RotateCcw size={12} className="text-emerald-600" />
+                                            </div>
+                                            Excess Cash Returned
+                                        </td>
+                                        <td className="text-emerald-600/60 text-[10px] italic">Capital Return</td>
+                                        <td className="text-center">-</td>
+                                        <td className="text-right">{formatCurrency(expectedChange)}</td>
+                                        <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
+                                    </tr>
+                                )}
+                                
+                                <tr className="summary-row expenditure-row border-t border-gray-100 bg-slate-50/30">
+                                    <td className="font-bold flex items-center pl-4 py-4">
+                                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center mr-3">
+                                            <Receipt size={12} className="text-slate-500" />
+                                        </div>
+                                        Total Actual Expenditure
+                                    </td>
+                                    <td className="text-gray-400 text-[10px] italic">Sum of Line Items</td>
+                                    <td className="text-center">-</td>
+                                    <td className="text-right">-</td>
+                                    <td className="text-right font-black text-gray-900 text-[14px]">{formatCurrency(actualExpenditure)}</td>
+                                </tr>
+
+                                {/* Change Rows */}
+                                <tr className="summary-row border-t border-gray-50">
+                                    <td className="text-gray-500 font-medium pl-6">Expected Change</td>
+                                    <td className="text-gray-400 text-[10px] italic">Disbursed - Spent</td>
+                                    <td className="text-center">-</td>
+                                    <td className="text-right">-</td>
+                                    <td className="text-right font-bold text-gray-500">{formatCurrency(expectedChange)}</td>
+                                </tr>
+
+                                <tr className="summary-row">
+                                    <td className="text-gray-800 font-bold flex items-center pl-6">
+                                        <Check size={14} className="text-emerald-500 mr-2" />
+                                        Actual Change Returned
+                                    </td>
+                                    <td className="text-gray-400 text-[10px] italic">Confirmed by Accountant</td>
+                                    <td className="text-center">-</td>
+                                    <td className="text-right">-</td>
+                                    <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
+                                </tr>
+
+                                {/* Variance Row */}
+                                <tr className={`summary-row border-t-2 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50/50' : 'bg-gray-50/30'}`}>
+                                    <td className="font-black flex items-center pl-4 py-4">
+                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-3 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-100' : 'bg-gray-100'}`}>
+                                            <AlertTriangle size={12} className={Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'} />
+                                        </div>
+                                        Cash Discrepancy
+                                    </td>
+                                    <td className="py-4">
+                                        {Math.abs(discrepancy) > 0.01 ? (
+                                            <SearchableAccountSelect 
+                                                value="" 
+                                                options={accounts.filter(a => a.type === 'EXPENSE' || a.type === 'INCOME')} 
+                                                onChange={(val) => {
+                                                    console.log('Selected adjustment account:', val);
+                                                }}
+                                                placeholder="Adjustment Account..."
+                                            />
+                                        ) : (
+                                            <span className="text-gray-400 text-[10px] italic">No adjustment needed</span>
+                                        )}
+                                    </td>
+                                    <td className="text-center">-</td>
+                                    <td className="text-right">-</td>
+                                    <td className={`text-right font-black text-[15px] ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'}`}>
+                                        {formatCurrency(discrepancy)}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+            );
+        }
 
-                {/* Main Breakdown Table */}
-                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)]">
-                    <table className="breakdown-table-modern">
-                        <thead>
-                            <tr>
-                                <th className="text-left w-[30%]">Description</th>
-                                <th className="text-left w-[30%]">Accounting Treatment</th>
-                                <th className="text-center w-[10%]">Qty</th>
-                                <th className="text-right w-[15%]">Expected Total</th>
-                                <th className="text-right w-[15%]">Actual Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {/* Disbursement Row */}
-                            <tr className="summary-row cash-distributed bg-slate-50/50">
-                                <td className="font-bold flex items-center">
-                                    <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center mr-3">
-                                        <Coins size={12} className="text-slate-600" />
-                                    </div>
-                                    Actual Cash Disbursed
-                                </td>
-                                <td className="text-gray-400 text-[10px] italic">Capital Outflow</td>
-                                <td className="text-center">-</td>
-                                <td className="text-right">-</td>
-                                <td className="text-right font-black text-brand-navy text-[14px]">{formatCurrency(totalPrepared)}</td>
-                            </tr>
-                            
-                            {/* Itemized Expenses */}
-                            {items.map((item: any, idx: number) => (
-                                <tr key={item.id || idx} className="hover:bg-gray-50/50 transition-colors">
+        // Case 2: Inflow or Adjustment (Non-Requisition)
+        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+            const isSyncable = !!entry.account_id && entry.qb_sync_status !== 'SUCCESS';
+            const isSynced = entry.qb_sync_status === 'SUCCESS';
+
+            return (
+                <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-100">
+                        <div className="flex flex-wrap items-center gap-4">
+                            {entry.qb_sync_status !== 'SUCCESS' ? (
+                                <button 
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!entry.account_id) {
+                                            alert('Please select an accounting account first');
+                                            return;
+                                        }
+                                        handlePostLedgerToQB(entry.id, entry.account_id);
+                                    }}
+                                    disabled={!entry.account_id}
+                                    className={`flex items-center px-5 py-2.5 rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest ${
+                                        entry.account_id 
+                                            ? 'bg-[#006AFF] hover:bg-[#0052CC] text-white' 
+                                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                    }`}
+                                >
+                                    <RefreshCw size={14} className="mr-2" />
+                                    Post to QuickBooks
+                                </button>
+                            ) : (
+                                <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-emerald-100/50">
+                                    <CheckCircle2 size={14} className="mr-2" />
+                                    Posted to QuickBooks
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex items-center gap-6">
+                            <div className="flex flex-col items-end">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Type</span>
+                                <span className="text-[13px] font-bold text-brand-navy">{entry.entry_type}</span>
+                            </div>
+                            <div className="flex flex-col items-end">
+                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
+                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
+                                    entry.qb_sync_status === 'SUCCESS' || entry.status === 'COMPLETED'
+                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
+                                        : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                }`}>
+                                    {entry.qb_sync_status === 'SUCCESS' ? 'COMPLETED' : entry.status || 'PENDING'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)]">
+                        <table className="breakdown-table-modern table-fixed">
+                            <thead>
+                                <tr>
+                                    <th className="text-left w-[40%]">Description</th>
+                                    <th className="text-left w-[40%]">Accounting Account</th>
+                                    <th className="text-right w-[20%]">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr className="hover:bg-gray-50/50 transition-colors">
                                     <td className="pl-6 py-4">
                                         <div className="flex flex-col">
-                                            <span className="text-[13px] font-semibold text-gray-800">{item.description}</span>
-                                            <span className="text-[10px] text-gray-400">Line Item #{idx + 1}</span>
+                                            <span className="text-[13px] font-semibold text-gray-800">{entry.description}</span>
                                         </div>
                                     </td>
                                     <td className="py-4">
                                         <SearchableAccountSelect 
-                                            value={item.account_id || ''} 
+                                            value={entry.account_id || ''} 
                                             options={accounts} 
-                                            onChange={(val) => handleAccountChange(item.id, val, req.id)}
-                                            placeholder="Categorize expense..."
+                                            onChange={(val) => handleLedgerAccountChange(entry.id, val)}
+                                            placeholder={entry.entry_type === 'INFLOW' ? "Select Credit Account..." : "Select Debit Account..."}
                                         />
                                     </td>
-                                    <td className="text-center text-gray-600 font-medium">{item.quantity || '-'}</td>
-                                    <td className="text-right text-gray-600 font-bold">{formatCurrency(item.estimated_amount || item.unit_price * item.quantity)}</td>
-                                    <td className="text-right text-brand-navy font-bold">{(item.actual_amount !== null && item.actual_amount !== undefined) ? formatCurrency(item.actual_amount) : <span className="text-gray-300">-</span>}</td>
+                                    <td className="text-right font-black text-gray-900 text-[14px] pr-6">
+                                        {formatCurrency(entry.debit || entry.credit)}
+                                    </td>
                                 </tr>
-                            ))}
-
-                            {/* Total Expenditure Row */}
-                            <tr className="summary-row expenditure-row border-t border-gray-100 bg-slate-50/30">
-                                <td className="font-bold flex items-center pl-4 py-4">
-                                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center mr-3">
-                                        <Receipt size={12} className="text-slate-500" />
-                                    </div>
-                                    Total Actual Expenditure
-                                </td>
-                                <td className="text-gray-400 text-[10px] italic">Sum of Line Items</td>
-                                <td className="text-center">-</td>
-                                <td className="text-right">-</td>
-                                <td className="text-right font-black text-gray-900 text-[14px]">{formatCurrency(actualExpenditure)}</td>
-                            </tr>
-
-                            {/* Change Rows */}
-                            <tr className="summary-row border-t border-gray-50">
-                                <td className="text-gray-500 font-medium pl-6">Expected Change</td>
-                                <td className="text-gray-400 text-[10px] italic">Disbursed - Spent</td>
-                                <td className="text-center">-</td>
-                                <td className="text-right">-</td>
-                                <td className="text-right font-bold text-gray-500">{formatCurrency(expectedChange)}</td>
-                            </tr>
-
-                            <tr className="summary-row">
-                                <td className="text-gray-800 font-bold flex items-center pl-6">
-                                    <Check size={14} className="text-emerald-500 mr-2" />
-                                    Actual Change Returned
-                                </td>
-                                <td className="text-gray-400 text-[10px] italic">Confirmed by Accountant</td>
-                                <td className="text-center">-</td>
-                                <td className="text-right">-</td>
-                                <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
-                            </tr>
-
-                            {/* Discrepancy Row */}
-                            <tr className={`summary-row border-t-2 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50/50' : 'bg-gray-50/30'}`}>
-                                <td className="font-black flex items-center pl-4 py-4">
-                                    <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-3 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-100' : 'bg-gray-100'}`}>
-                                        <AlertTriangle size={12} className={Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'} />
-                                    </div>
-                                    Cash Discrepancy
-                                </td>
-                                <td className="py-4">
-                                    {Math.abs(discrepancy) > 0.01 ? (
-                                        <SearchableAccountSelect 
-                                            value="" 
-                                            options={accounts.filter(a => a.type === 'EXPENSE' || a.type === 'INCOME')} 
-                                            onChange={(val) => {
-                                                // Handle adjustment account selection here if needed
-                                                console.log('Selected adjustment account:', val);
-                                            }}
-                                            placeholder="Adjustment Account..."
-                                        />
-                                    ) : (
-                                        <span className="text-gray-400 text-[10px] italic">No adjustment needed</span>
-                                    )}
-                                </td>
-                                <td className="text-center">-</td>
-                                <td className="text-right">-</td>
-                                <td className={`text-right font-black text-[15px] ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'}`}>
-                                    {formatCurrency(discrepancy)}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
-            </div>
-        );
+            );
+        }
+
+        return null;
     };
 
     if (loading && entries.length === 0) {
@@ -607,11 +793,11 @@ const CashLedger: React.FC = () => {
                     ].map((acc) => {
                         const isActive = selectedAccountType === acc.id;
                         return (
-                            <button
+                            <div
                                 key={acc.id}
                                 onClick={() => setSelectedAccountType(acc.id as any)}
                                 style={{ scrollSnapAlign: 'start', minWidth: '65vw', maxWidth: '65vw' }}
-                                className={`flex flex-col p-4 rounded-xl border-2 text-left transition-all duration-300 flex-shrink-0 ${
+                                className={`flex flex-col p-4 rounded-xl border-2 text-left transition-all duration-300 flex-shrink-0 cursor-pointer ${
                                     isActive
                                         ? 'bg-white border-[#006AFF]'
                                         : 'bg-gray-50 border-transparent'
@@ -642,7 +828,7 @@ const CashLedger: React.FC = () => {
                                         Deposit Funds
                                     </button>
                                 )}
-                            </button>
+                            </div>
                         );
                     })}
                 </div>
@@ -992,7 +1178,7 @@ const CashLedger: React.FC = () => {
                                                 <tr
                                                     className={`transition-all group cursor-pointer 
                                                         ${expandedRows[entry.id] ? 'bg-gray-50' : 'hover:bg-gray-50/50'}`}
-                                                    onClick={() => entry.requisition_id && toggleRow(entry.id)}
+                                                    onClick={() => toggleRow(entry.id)}
                                                 >
                                                     <td className="p-6">
                                                         <div className="text-sm font-bold text-gray-900">
@@ -1051,12 +1237,12 @@ const CashLedger: React.FC = () => {
                                                         </span>
                                                     </td>
                                                     <td className="p-6 w-12 text-center">
-                                                        {entry.requisition_id && (
+                                                        {(entry.requisition_id || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                             <ChevronRight size={16} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${expandedRows[entry.id] ? 'rotate-90' : ''}`} strokeWidth={2.5} />
                                                         )}
                                                     </td>
                                                 </tr>
-                                                {expandedRows[entry.id] && entry.requisition_id && (
+                                                 {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                     <tr className="bg-gray-50/80">
                                                         <td colSpan={8} className="p-0 border-b border-gray-100">
                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
@@ -1140,6 +1326,16 @@ const CashLedger: React.FC = () => {
                 onSuccess={loadData}
                 initialInflowType={selectedAccountType === 'MONEYWISE_WALLET' ? 'WALLET' : 'CASH'}
                 isReadOnlyType={selectedAccountType === 'MONEYWISE_WALLET'}
+            />
+
+            <RequisitionModal 
+                isOpen={isRequisitionModalOpen}
+                requisition={selectedRequisition}
+                onClose={() => {
+                    setIsRequisitionModalOpen(false);
+                    setSelectedRequisition(null);
+                }}
+                onStatusChange={loadData}
             />
         </Layout>
     );

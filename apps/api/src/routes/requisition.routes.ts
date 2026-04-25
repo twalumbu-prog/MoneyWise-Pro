@@ -18,7 +18,8 @@ import {
     postToQuickBooks,
     scanReceipts,
     deleteReceipt,
-    deleteRequisitionMessage
+    deleteRequisitionMessage,
+    updateLineItemAccount
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -58,6 +59,7 @@ router.post('/:id/approve-categorization', approveCategorization);
 router.post('/:id/retrigger-ai', retriggerAICategorization);
 router.post('/:id/post-quickbooks', postToQuickBooks);
 router.delete('/:id/receipts/:receiptId', deleteReceipt);
+router.patch('/items/:itemId/account', updateLineItemAccount);
 
 // Message routes
 router.get('/:id/messages', getRequisitionMessages);

@@ -13,6 +13,13 @@ export interface CashbookEntry {
     created_by?: string;
     status?: 'PENDING' | 'COMPLETED';
     reference_number?: string;
+    account_id?: string;
+    accounts?: { id: string; name: string; code: string };
+    qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+    qb_sync_error?: string;
+    qb_sync_at?: string;
+    qb_expense_id?: string;
+    qb_deposit_id?: string;
     requisitions?: {
         id: string;
         reference_number: string;
@@ -131,6 +138,22 @@ export const cashbookService = {
         const response = await apiFetch('/cashbook/classify-bulk', {
             method: 'POST',
             body: JSON.stringify({ requisitionIds }),
+        });
+        return response.json();
+    },
+
+    async postToQuickBooks(entryId: string, accountId: string) {
+        const response = await apiFetch('/cashbook/post-to-qb', {
+            method: 'POST',
+            body: JSON.stringify({ entryId, accountId }),
+        });
+        return response.json();
+    },
+
+    async updateAccount(entryId: string, accountId: string) {
+        const response = await apiFetch(`/cashbook/${entryId}/account`, {
+            method: 'PATCH',
+            body: JSON.stringify({ accountId }),
         });
         return response.json();
     }

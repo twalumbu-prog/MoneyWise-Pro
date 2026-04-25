@@ -3,7 +3,23 @@ import { supabase } from './supabase';
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 export async function apiFetch(path: string, options: RequestInit = {}) {
-    const { data: { session } } = await supabase.auth.getSession();
+    console.log(`[API Client] Fetching: ${path}`);
+    
+    // Add a timeout to getSession to prevent endless hanging if Supabase is unresponsive
+    const sessionPromise = supabase.auth.getSession();
+    const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Session fetch timeout')), 5000)
+    );
+
+    let session = null;
+    try {
+        const result: any = await Promise.race([sessionPromise, timeoutPromise]);
+        session = result.data?.session;
+    } catch (err) {
+        console.warn('[API Client] Session fetch failed or timed out:', err);
+        // Continue without session, let the backend handle auth failure
+    }
+    
     const token = session?.access_token;
 
     const headers = {
@@ -12,10 +28,12 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
         ...options.headers,
     };
 
+    console.log(`[API Client] Fetching: ${path}`);
     const response = await fetch(`${API_URL}${path.startsWith('/') ? path : `/${path}`}`, {
         ...options,
         headers,
     });
+    console.log(`[API Client] Response status: ${response.status} for ${path}`);
 
     if (response.status === 401) {
         // Token is invalid or expired. Force a sign out to clear state and redirect to login.

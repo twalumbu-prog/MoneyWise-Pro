@@ -14,6 +14,7 @@ export const getAccounts = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(400).json({ error: 'User not in organization' });
         }
 
+        console.log(`[Accounts] Fetching accounts for Org ${organization_id.slice(0, 8)}...`);
         const { data, error } = await supabase
             .from('accounts')
             .select('*')
@@ -21,10 +22,15 @@ export const getAccounts = async (req: AuthRequest, res: any): Promise<any> => {
             .eq('is_active', true)
             .order('code', { ascending: true });
 
-        if (error) throw error;
+        if (error) {
+            console.error('[Accounts] ❌ Error fetching accounts:', error);
+            throw error;
+        }
+
+        console.log(`[Accounts] ✅ Successfully fetched ${data?.length || 0} accounts.`);
         res.json(data);
     } catch (error: any) {
-        console.error('Error fetching accounts:', error);
+        console.error('[Accounts] ❌ Exception in getAccounts:', error);
         res.status(500).json({ error: 'Failed to fetch accounts', details: error.message });
     }
 };

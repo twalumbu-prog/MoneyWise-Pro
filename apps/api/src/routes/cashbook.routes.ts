@@ -8,7 +8,9 @@ import {
     returnExcessCash,
     logCashInflow,
     closeBook,
-    classifyBulk
+    classifyBulk,
+    postEntryToQuickBooks,
+    updateEntryAccount
 } from '../controllers/cashbook.controller';
 
 const router = Router();
@@ -39,5 +41,11 @@ router.post('/close', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), closeBook
 
 // Bulk classify transactions (Cashier, Accountant, Admin)
 router.post('/classify-bulk', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), classifyBulk);
+
+// Post to QuickBooks (Cashier, Accountant, Admin)
+router.post('/post-to-qb', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), postEntryToQuickBooks);
+
+// Update entry account (Cashier, Accountant, Admin)
+router.patch('/:entryId/account', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), updateEntryAccount);
 
 export default router;

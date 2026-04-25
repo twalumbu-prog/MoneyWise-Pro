@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { cashbookService } from '../services/cashbook.service';
 import { decisionRouter } from '../services/ai/decision.router';
 import { supabase } from '../lib/supabase';
+import { QuickBooksService } from '../services/quickbooks.service';
 
 /**
  * Get all cashbook entries with optional filters
@@ -336,5 +337,77 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('[Hybrid AI] Error in classifyBulk:', error);
         res.status(500).json({ error: 'AI processing failed', details: error.message });
+    }
+};
+
+/**
+ * Post a specific cashbook entry to QuickBooks
+ */
+export const postEntryToQuickBooks = async (req: any, res: any): Promise<any> => {
+    try {
+        const { entryId, accountId } = req.body;
+        const organizationId = (req as any).user.organization_id;
+        const userId = (req as any).user.id;
+
+        if (!entryId || !accountId) {
+            return res.status(400).json({ error: 'entryId and accountId are required' });
+        }
+
+        // Fetch entry to determine type
+        const { data: entry } = await supabase
+            .from('cashbook_entries')
+            .select('entry_type')
+            .eq('id', entryId)
+            .single();
+
+        if (!entry) return res.status(404).json({ error: 'Entry not found' });
+
+        let result;
+        if (entry.entry_type === 'INFLOW') {
+            result = await QuickBooksService.createDeposit(organizationId, entryId, accountId, userId);
+        } else {
+            result = await QuickBooksService.createLedgerPurchase(organizationId, entryId, accountId, userId);
+        }
+
+        if (result.success) {
+            res.json(result);
+        } else {
+            res.status(400).json(result);
+        }
+    } catch (error: any) {
+        console.error('Error posting to QuickBooks:', error);
+        res.status(500).json({ error: 'Failed to post to QuickBooks', details: error.message });
+    }
+};
+
+/**
+ * Update the account_id for a cashbook entry
+ */
+export const updateEntryAccount = async (req: any, res: any): Promise<any> => {
+    try {
+        const { entryId } = req.params;
+        const { accountId } = req.body;
+
+        if (!entryId || !accountId) {
+            return res.status(400).json({ error: 'entryId and accountId are required' });
+        }
+
+        console.log(`[Ledger] Updating account for Entry ${entryId} to ${accountId}...`);
+        const { data, error } = await supabase
+            .from('cashbook_entries')
+            .update({ account_id: accountId })
+            .eq('id', entryId)
+            .select();
+
+        if (error) {
+            console.error('[Ledger] ❌ Error updating entry account:', error);
+            throw error;
+        }
+
+        console.log(`[Ledger] ✅ Successfully updated entry account. Data:`, data);
+        res.json({ success: true, data: data?.[0] });
+    } catch (error: any) {
+        console.error('Error updating entry account:', error);
+        res.status(500).json({ error: 'Failed to update entry account', details: error.message });
     }
 };

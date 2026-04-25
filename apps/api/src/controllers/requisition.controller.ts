@@ -1387,6 +1387,32 @@ export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise
 };
 
 /**
+ * Update a single line item's account_id
+ */
+export const updateLineItemAccount = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const { itemId } = req.params;
+        const { accountId } = req.body;
+
+        if (!itemId || !accountId) {
+            return res.status(400).json({ error: 'itemId and accountId are required' });
+        }
+
+        const { error } = await supabase
+            .from('line_items')
+            .update({ account_id: accountId })
+            .eq('id', itemId);
+
+        if (error) throw error;
+
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Error updating line item account:', error);
+        res.status(500).json({ error: 'Failed to update line item account', details: error.message });
+    }
+};
+
+/**
  * AI Receipt Scanning & Allocation
  */
 export const scanReceipts = async (req: any, res: any): Promise<any> => {

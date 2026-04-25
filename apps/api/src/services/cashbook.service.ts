@@ -20,6 +20,12 @@ export interface CashbookEntry {
     account_type?: string;
     organization_id?: string;
     reference_number?: string;
+    account_id?: string;
+    qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
+    qb_sync_error?: string;
+    qb_sync_at?: string;
+    qb_expense_id?: string;
+    qb_deposit_id?: string;
 }
 
 export const cashbookService = {
@@ -320,13 +326,13 @@ export const cashbookService = {
     /**
      * Get cashbook entries with filters
      */
-    async getEntries(organizationId: string, filters?: {
+    async getEntries(organizationId: string, filters: {
         startDate?: string;
         endDate?: string;
         entryType?: string;
         accountType?: string;
         limit?: number;
-    }) {
+    } = {}): Promise<CashbookEntry[]> {
         let query = supabase
             .from('cashbook_entries')
             .select(`
@@ -367,7 +373,7 @@ export const cashbookService = {
 
         const { data, error } = await query;
         if (error) throw new Error(`Failed to fetch entries: ${error.message}`);
-        return data;
+        return data || [];
     },
 
     /**
