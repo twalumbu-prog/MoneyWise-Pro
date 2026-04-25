@@ -344,7 +344,7 @@ const CashLedger: React.FC = () => {
         if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">Opening</span>;
         let status = '';
         if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
-            status = entry.status === 'PENDING' ? 'PENDING' : 'COMPLETED';
+            status = entry.status || 'PENDING';
         } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
             status = entry.requisitions.status;
         } else {
@@ -744,11 +744,13 @@ const CashLedger: React.FC = () => {
                             <div className="flex flex-col items-end">
                                 <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                    entry.qb_sync_status === 'SUCCESS' || entry.status === 'COMPLETED'
+                                    entry.status === 'ACCOUNTED' || entry.qb_sync_status === 'SUCCESS'
                                         ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
-                                        : 'bg-amber-50 text-amber-600 border border-amber-100'
+                                        : entry.status === 'COMPLETED'
+                                            ? 'bg-blue-50 text-[#006AFF] border border-blue-100'
+                                            : 'bg-amber-50 text-amber-600 border border-amber-100'
                                 }`}>
-                                    {entry.qb_sync_status === 'SUCCESS' ? 'COMPLETED' : entry.status || 'PENDING'}
+                                    {entry.status === 'ACCOUNTED' || entry.qb_sync_status === 'SUCCESS' ? 'ACCOUNTED' : entry.status || 'PENDING'}
                                 </span>
                             </div>
                         </div>
