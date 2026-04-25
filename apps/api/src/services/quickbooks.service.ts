@@ -582,7 +582,8 @@ export class QuickBooksService {
                 qb_deposit_id: result.Deposit.Id,
                 qb_sync_status: 'SUCCESS',
                 qb_sync_error: null,
-                qb_sync_at: new Date().toISOString()
+                qb_sync_at: new Date().toISOString(),
+                status: 'ACCOUNTED'
             }).eq('id', entryId);
 
             return { success: true, qbId: result.Deposit.Id };
@@ -679,7 +680,8 @@ export class QuickBooksService {
                 qb_expense_id: result.Purchase.Id,
                 qb_sync_status: 'SUCCESS',
                 qb_sync_error: null,
-                qb_sync_at: new Date().toISOString()
+                qb_sync_at: new Date().toISOString(),
+                status: 'ACCOUNTED'
             }).eq('id', entryId);
 
             return { success: true, qbId: result.Purchase.Id };
