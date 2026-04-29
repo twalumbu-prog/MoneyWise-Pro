@@ -544,8 +544,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
         if (msg.includes('insufficient') || msg.includes('balance')) {
             return {
-                title: 'Insufficient Wallet Balance',
-                body: 'Your MoneyWise Wallet does not have enough funds to complete this transfer. Please top up your wallet and try again.',
+                title: 'Insufficient Funds in Lenco Account',
+                body: 'Your actual Lenco bank account does not have enough funds to complete this transfer. Even if your MoneyWise ledger shows a positive balance, real funds must be present in Lenco. Please deposit funds into your Lenco account and try again.',
                 canRetry: true,
                 canChangeMethod: true,
             };

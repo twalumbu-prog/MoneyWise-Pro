@@ -527,10 +527,14 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             return res.status(404).json({ error: 'Requisition not found' });
         }
 
-        if (requisition.requestor_id !== (req as any).user.id) {
+        const userId = (req as any).user.id;
+        const userRole = (req as any).user.role;
+        const isPrivileged = userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'MANAGER';
+
+        if (requisition.requestor_id !== userId && !isPrivileged) {
             return res.status(403).json({ 
                 error: 'Unauthorized',
-                message: 'Only the original requestor of this requisition is authorized to enter final expense details and upload receipts.'
+                message: 'Only the original requestor of this requisition or an administrator is authorized to enter final expense details and upload receipts.'
             });
         }
 
@@ -635,7 +639,6 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         
         // 5. Trigger AI Review & Categorization stage automatically
         const organizationId = (req as any).user.organization_id;
-        const userId = (req as any).user.id;
         
         // Calculate change for the summary message
         const change = (estimatedTotal || 0) - actualTotal;

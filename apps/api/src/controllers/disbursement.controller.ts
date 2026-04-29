@@ -96,24 +96,40 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     (req as any).lencoStatus = 'successful';
                     (req as any).lencoFee = 0;
                 } else {
-                    // IDEMPOTENCY CHECK: Check if this reference already exists on Lenco
-                    console.log(`[Lenco] Checking for existing transfer with reference: ${stableRef}`);
+                    // IDEMPOTENCY CHECK: Find a stable reference that hasn't failed yet
+                    console.log(`[Lenco] Resolving stable reference for: ${stableRef}`);
                     let statusCheck;
                     let payout;
+                    let resolvedRef = stableRef;
                     
-                    statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
-                    if (statusCheck) {
-                        console.log(`[Lenco] Found existing transfer: ${statusCheck.status}. Using existing reference.`);
+                    for (let i = 0; i < 10; i++) {
+                        resolvedRef = i === 0 ? stableRef : `${stableRef}-R${i}`;
+                        statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
+                        
+                        if (!statusCheck) {
+                            // Not found on Lenco, we can safely use this reference for a new transfer
+                            break;
+                        }
+                        if (statusCheck.status !== 'failed') {
+                            // Found an existing transfer that is pending or successful. We must reuse it.
+                            break;
+                        }
+                        // If status is failed, we continue the loop to try the next retry suffix
+                    }
+
+                    if (statusCheck && statusCheck.status !== 'failed') {
+                        console.log(`[Lenco] Found existing transfer: ${statusCheck.status}. Using existing reference: ${resolvedRef}`);
                         payout = statusCheck;
                     } else {
-                        // No existing transfer, create a new one
+                        // No existing transfer found (or all previous attempts failed), create a new one
+                        console.log(`[Lenco] Creating new transfer with reference: ${resolvedRef}`);
                         const mobileOps = ['mtn', 'airtel', 'zamtel'];
                         const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
 
                         if (isMobile) {
                             payout = await LencoService.createMobileMoneyPayout({
                                 amount: total_prepared,
-                                reference: stableRef,
+                                reference: resolvedRef,
                                 phone: recipient_account,
                                 operator: recipient_bank_code,
                                 narration: `Disbursement for Requisition #${id.slice(0, 8)}`
@@ -121,7 +137,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         } else {
                             payout = await LencoService.createBankPayout({
                                 amount: total_prepared,
-                                reference: stableRef,
+                                reference: resolvedRef,
                                 accountNumber: recipient_account,
                                 bankId: recipient_bank_code,
                                 narration: `Disbursement for Requisition #${id.slice(0, 8)}`
@@ -169,7 +185,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     .update({ status: 'AUTHORISED' })
                     .eq('id', id);
 
-                return res.status(500).json({ 
+                return res.status(400).json({ 
                     error: `Disbursal error: ${payoutError.message}. The requisition has been reset to AUTHORISED. Please try again or check the ledger for manual verification.`,
                     details: payoutError.message,
                     stableRef: stableRef
