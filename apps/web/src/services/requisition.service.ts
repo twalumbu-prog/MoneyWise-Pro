@@ -442,6 +442,19 @@ export const requisitionService = {
         }
 
         return response.json();
+    },
+
+    async revertToDraft(id: string) {
+        const response = await apiFetch(`/requisitions/${id}/revert-to-draft`, {
+            method: 'POST',
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.message || err.error || 'Failed to revert requisition to draft');
+        }
+
+        return response.json();
     }
 };
 

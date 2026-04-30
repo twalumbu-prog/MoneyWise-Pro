@@ -19,7 +19,8 @@ import {
     scanReceipts,
     deleteReceipt,
     deleteRequisitionMessage,
-    updateLineItemAccount
+    updateLineItemAccount,
+    revertToDraft
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -39,6 +40,7 @@ router.use(requireAuth);
 // Admin/Accountant routes
 router.get('/admin/all', getAllRequisitionsAdmin);
 router.patch('/:id/status', updateRequisitionStatus);
+router.post('/:id/revert-to-draft', revertToDraft);
 
 // Disbursement routes
 router.get('/disbursements/history', getDisbursementHistory);

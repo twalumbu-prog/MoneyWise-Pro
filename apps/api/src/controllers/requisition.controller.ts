@@ -143,7 +143,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         if (items && items.length > 0) {
             const lineItemsData = items.map((item: any) => ({
                 requisition_id: requisition.id,
-                description: item.description,
+                description: item.description || description || 'General Expense',
                 quantity: item.quantity,
                 unit_price: item.unit_price,
                 estimated_amount: item.estimated_amount,
@@ -538,9 +538,10 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             });
         }
 
-        // Allow updating expenses if status is DISBURSED, EXPENSED or RECEIVED
-        if (requisition.status !== 'RECEIVED' && requisition.status !== 'DISBURSED' && requisition.status !== 'EXPENSED') {
-            return res.status(400).json({ error: 'Requisition must be DISBURSED, EXPENSED or RECEIVED to track expenses' });
+        // Allow updating expenses if status is DISBURSED, EXPENSED, RECEIVED or CHANGE_SUBMITTED
+        const allowedStatuses = ['RECEIVED', 'DISBURSED', 'EXPENSED', 'CHANGE_SUBMITTED'];
+        if (!allowedStatuses.includes(requisition.status)) {
+            return res.status(400).json({ error: `Requisition must be in one of the following statuses to track expenses: ${allowedStatuses.join(', ')}` });
         }
 
         // 2. Update Line Items
@@ -892,6 +893,20 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 .eq('id', id);
 
             if (statusError) throw statusError;
+
+            // Create a message to record the change submission in the chat
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: user_id,
+                content: `Change of K${Number(change_amount).toLocaleString()} submitted via ${submission_method || 'CASH'}. Awaiting cashier confirmation.`,
+                type: 'SYSTEM',
+                metadata: { 
+                    stage: 'CHANGE_SUBMITTED', 
+                    changeAmount: change_amount,
+                    submissionMethod: submission_method || 'CASH',
+                    externalReference: change_external_reference
+                }
+            });
 
             res.json({ message: 'Change submitted successfully' });
 
@@ -1705,5 +1720,62 @@ export const deleteRequisitionMessage = async (req: any, res: any): Promise<any>
     }
 };
 
+export const revertToDraft = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const user_id = (req as any).user.id;
 
+        // 1. Fetch requisition with disbursements
+        const { data: requisition, error: fetchError } = await supabase
+            .from('requisitions')
+            .select('*, disbursements(id)')
+            .eq('id', id)
+            .single();
 
+        if (fetchError || !requisition) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+
+        // 2. Verify state: only AUTHORISED or REJECTED can be reverted
+        const reversibleStatuses = ['AUTHORISED', 'REJECTED'];
+        if (!reversibleStatuses.includes(requisition.status)) {
+            return res.status(400).json({ 
+                error: 'Invalid status for reversion', 
+                message: `Only requisitions with status ${reversibleStatuses.join(' or ')} can be reverted to draft.` 
+            });
+        }
+
+        // 3. Verify no disbursements have been made
+        if (requisition.disbursements && requisition.disbursements.length > 0) {
+            return res.status(400).json({ 
+                error: 'Cannot revert requisition', 
+                message: 'This requisition has already been processed for disbursement and cannot be reverted to draft.' 
+            });
+        }
+
+        // 4. Update status back to DRAFT
+        const { error: updateError } = await supabase
+            .from('requisitions')
+            .update({ 
+                status: 'DRAFT',
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', id);
+
+        if (updateError) throw updateError;
+
+        // 5. Log the event
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId: user_id,
+            content: 'Requisition reverted to DRAFT and is now editable again.',
+            type: 'SYSTEM',
+            metadata: { action: 'REVERT_TO_DRAFT' }
+        });
+
+        res.json({ message: 'Requisition reverted to draft successfully' });
+    } catch (error: any) {
+        console.error('Error reverting requisition to draft:', error);
+        res.status(500).json({ error: 'Failed to revert requisition to draft', details: error.message });
+    }
+};

@@ -87,7 +87,7 @@ export class RequisitionMessageService {
         }
 
         // Stage 2: DISBURSAL (If AUTHORISED or further)
-        if (['AUTHORISED', 'DISBURSED', 'RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+        if (['AUTHORISED', 'DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
             if (!existingStages.has('DISBURSAL')) {
                 await this.createMessage({
                     requisitionId,
@@ -100,7 +100,7 @@ export class RequisitionMessageService {
         }
 
         // Stage 3: DISBURSAL_SUCCESS (If DISBURSED or further AND disbursement exists)
-        if (['DISBURSED', 'RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+        if (['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
             if (!existingStages.has('DISBURSAL_SUCCESS') && req.disbursements?.length > 0) {
                 const disb = req.disbursements[0];
                 await this.createMessage({
@@ -122,8 +122,9 @@ export class RequisitionMessageService {
         }
 
         // Stage 4: EXPENSE_TRACKING (If DISBURSED or further)
-        if (['DISBURSED', 'RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
-            if (!existingStages.has('EXPENSE_TRACKING')) {
+        // Skip if already past this stage (has summary or change submitted) to avoid cluttering old records
+        if (['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+            if (!existingStages.has('EXPENSE_TRACKING') && !existingStages.has('EXPENSE_SUMMARY') && !existingStages.has('CHANGE_SUBMITTED')) {
                 await this.createMessage({
                     requisitionId,
                     userId,
@@ -135,7 +136,7 @@ export class RequisitionMessageService {
         }
 
         // Stage 5: EXPENSE_SUMMARY & AI_REVIEW (If RECEIVED or further)
-        if (['RECEIVED', 'EXPENSED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+        if (['RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
             const actualTotal = req.actual_total || req.line_items?.reduce((sum: number, i: any) => sum + (i.actual_amount || 0), 0) || 0;
             const change = req.estimated_total - actualTotal;
 
@@ -154,7 +155,21 @@ export class RequisitionMessageService {
                 });
             }
 
-            if (!existingStages.has('AI_REVIEW')) {
+            if (!existingStages.has('CHANGE_SUBMITTED') && req.status === 'CHANGE_SUBMITTED') {
+                await this.createMessage({
+                    requisitionId,
+                    userId,
+                    content: `Change of K${Number(req.actual_change_amount || 0).toLocaleString()} submitted. Awaiting cashier confirmation.`,
+                    type: 'SYSTEM',
+                    metadata: { 
+                        stage: 'CHANGE_SUBMITTED', 
+                        changeAmount: req.actual_change_amount || 0,
+                        isRepaired: true
+                    }
+                });
+            }
+
+            if (!existingStages.has('AI_REVIEW') && ['CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
                 // Synthesize items for AI review card
                 const aiItems = req.line_items?.map((item: any) => ({
                     id: item.id,
@@ -214,7 +229,12 @@ export class RequisitionMessageService {
         console.log(`[RequisitionMessageService] Repair completed for ${requisitionId}`);
     }
 
-    static async getMessages(requisitionId: string): Promise<any> {
+    static async getMessages(requisitionId: string, recursionLevel: number = 0): Promise<any> {
+        if (recursionLevel > 2) {
+            console.error(`[RequisitionMessageService] Max recursion level reached for ${requisitionId}. Returning existing data.`);
+            const { data } = await supabase.from('requisition_messages').select('*, user:users!user_id(name)').eq('requisition_id', requisitionId).order('created_at', { ascending: true });
+            return data?.map((m: any) => ({ ...m, user_name: m.user?.name || 'System' })) || [];
+        }
         const { data, error } = await supabase
             .from('requisition_messages')
             .select(`
@@ -243,8 +263,8 @@ export class RequisitionMessageService {
             
             if (req && req.status !== 'DRAFT' && req.status !== 'PENDING_APPROVAL' && !updatedRecently) {
                 await this.repairLifecycleMessages(requisitionId);
-                // Re-fetch after repair
-                return this.getMessages(requisitionId);
+                // Re-fetch after repair with incremented recursion level
+                return this.getMessages(requisitionId, recursionLevel + 1);
             }
         }
 

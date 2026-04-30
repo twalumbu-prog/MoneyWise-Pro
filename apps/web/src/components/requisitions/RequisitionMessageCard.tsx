@@ -672,6 +672,25 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                 {requisitionData?.description || 'Purchase Requisition'}
                             </h3>
                             <div className="flex items-center space-x-3">
+                                {(isRejected || currentStatus === 'AUTHORISED') && isPrivileged && !requisitionData?.disbursements?.length && (
+                                    <button 
+                                        onClick={async (e) => {
+                                            e.stopPropagation();
+                                            if (confirm('Reverting to draft will allow editing. Proceed?')) {
+                                                try {
+                                                    await requisitionService.revertToDraft(requisitionData.id);
+                                                    if (onAction) onAction('REFRESH');
+                                                } catch (err: any) {
+                                                    alert(err.message);
+                                                }
+                                            }
+                                        }}
+                                        className="p-1.5 text-gray-300 hover:text-[#006AFF] transition-colors"
+                                        title="Revert to Draft"
+                                    >
+                                        <RotateCcw size={16} />
+                                    </button>
+                                )}
                                 <span className="text-[15px] md:text-[16px] font-normal md:font-black text-gray-900 tracking-tight">
                                     K{requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
@@ -754,6 +773,28 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         </div>
                                     )
                                 )}
+
+                                {(isRejected || currentStatus === 'AUTHORISED') && isPrivileged && !requisitionData?.disbursements?.length && (
+                                    <div className="mt-4 flex items-center justify-end">
+                                        <button 
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (confirm('Reverting to draft will allow editing. Proceed?')) {
+                                                    try {
+                                                        await requisitionService.revertToDraft(requisitionData.id);
+                                                        if (onAction) onAction('REFRESH');
+                                                    } catch (err: any) {
+                                                        alert(err.message);
+                                                    }
+                                                }
+                                            }}
+                                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                        >
+                                            <RotateCcw size={12} />
+                                            <span>Revert to Draft</span>
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -830,13 +871,35 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             {isRejected ? 'This requisition was declined and will not be disbursed.' : 'Funds have been disbursed successfully.'}
                                         </p>
                                         
-                                        <button 
-                                            onClick={() => setIsExpanded(!isExpanded)}
-                                            className="flex items-center space-x-2 text-[11px] font-bold uppercase tracking-widest text-[#006AFF] hover:opacity-80 transition-opacity"
-                                        >
-                                            <span>{isExpanded ? 'Hide Details' : 'Show Details'}</span>
-                                            <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
-                                        </button>
+                                            <div className="flex items-center space-x-4">
+                                                <button 
+                                                    onClick={() => setIsExpanded(!isExpanded)}
+                                                    className="flex items-center space-x-2 text-[11px] font-bold uppercase tracking-widest text-[#006AFF] hover:opacity-80 transition-opacity"
+                                                >
+                                                    <span>{isExpanded ? 'Hide Details' : 'Show Details'}</span>
+                                                    <ChevronDown size={14} className={`transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                                                </button>
+
+                                                {isRejected && isPrivileged && (
+                                                    <button 
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            if (confirm('Reverting to draft will allow editing. Proceed?')) {
+                                                                try {
+                                                                    await requisitionService.revertToDraft(requisitionData.id);
+                                                                    if (onAction) onAction('REFRESH');
+                                                                } catch (err: any) {
+                                                                    alert(err.message);
+                                                                }
+                                                            }
+                                                        }}
+                                                        className="flex items-center space-x-1.5 text-[11px] font-bold uppercase tracking-widest text-gray-400 hover:text-[#006AFF] transition-colors"
+                                                    >
+                                                        <RotateCcw size={14} />
+                                                        <span>Revert to Draft</span>
+                                                    </button>
+                                                )}
+                                            </div>
                                     </div>
 
                                     {isExpanded && (
@@ -899,9 +962,31 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                 </>
                             ) : (
                                 <>
-                                    <h3 className="text-[14px] font-normal text-gray-900 leading-tight mb-8">
-                                        {activeMethod ? 'Confirm Disbursal Details' : 'How would you like to disburse these funds?'}
-                                    </h3>
+                                    <div className="flex items-center justify-between mb-8">
+                                        <h3 className="text-[14px] font-normal text-gray-900 leading-tight">
+                                            {activeMethod ? 'Confirm Disbursal Details' : 'How would you like to disburse these funds?'}
+                                        </h3>
+                                        
+                                        {isPrivileged && (
+                                            <button 
+                                                onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm('Reverting to draft will allow editing. Proceed?')) {
+                                                        try {
+                                                            await requisitionService.revertToDraft(requisitionData.id);
+                                                            if (onAction) onAction('REFRESH');
+                                                        } catch (err: any) {
+                                                            alert(err.message);
+                                                        }
+                                                    }
+                                                }}
+                                                className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                            >
+                                                <RotateCcw size={12} />
+                                                <span>Revert</span>
+                                            </button>
+                                        )}
+                                    </div>
 
                                     {requisitionData?.organization?.payment_test_mode && (
                                         <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-100 flex items-start space-x-3 animate-pulse">
@@ -1131,7 +1216,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                  </div>
                                  <div className="flex-1 flex items-center justify-between">
                                      <span className="text-[12px] font-semibold text-gray-900 tracking-tight">Finance System</span>
-                                     {(requisitionData?.status === 'EXPENSED' || (Number(requisitionData?.actual_total) > 0)) && (
+                                     {(['EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(requisitionData?.status) || (Number(requisitionData?.actual_total) > 0)) && (
                                          <div className="flex items-center space-x-1 px-2 py-0.5 rounded-full border border-gray-100 text-gray-500 bg-transparent">
                                              <Check size={10} strokeWidth={3} />
                                              <span className="text-[10px] font-bold uppercase tracking-wider">Expensed</span>
@@ -1144,11 +1229,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                      <FileText size={16} />
                                  </div>
                                  <p className="text-[14px] font-normal text-gray-900 leading-tight">
-                                     {requisitionData?.status === 'EXPENSED' || (Number(requisitionData?.actual_total) > 0) ? 'Transaction expenditure recorded.' : 'This transaction needs to be expensed.'}
+                                     {(['EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(requisitionData?.status) || (Number(requisitionData?.actual_total) > 0)) ? 'Transaction expenditure recorded.' : 'This transaction needs to be expensed.'}
                                  </p>
                              </div>
                             
-                            {requisitionData?.status === 'EXPENSED' || (Number(requisitionData?.actual_total) > 0) ? (
+                             {(['EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(requisitionData?.status) || (Number(requisitionData?.actual_total) > 0)) ? (
                                 <div className="space-y-4">
                                     <button 
                                         onClick={() => setIsExpenseExpanded(!isExpenseExpanded)}
