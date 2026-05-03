@@ -169,7 +169,7 @@ export class LencoService {
     /**
      * List transactions for an account
      */
-    static async getAccountTransactions(accountId: string, params: { from?: string; to?: string; type?: string; search?: string } = {}, secretKey?: string) {
+    static async getAccountTransactions(accountId: string, params: { from?: string; to?: string; type?: string; search?: string; page?: number } = {}, secretKey?: string) {
         try {
             const response = await axios.get(`${this.BASE_URL}/transactions`, {
                 headers: this.getHeaders(secretKey),

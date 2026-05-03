@@ -713,8 +713,8 @@ const CashLedger: React.FC = () => {
             );
         }
 
-        // Case 2: Inflow or Adjustment (Non-Requisition)
-        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+        // Case 2: Inflow, Adjustment, or Non-Requisition Disbursement
+        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || (entry.entry_type === 'DISBURSEMENT' && !entry.requisition_id)) {
 
             return (
                 <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
@@ -971,7 +971,7 @@ const CashLedger: React.FC = () => {
                                         <div
                                             key={entry.id}
                                             className="px-6 py-5 flex items-start justify-between active:bg-gray-50 transition-colors"
-                                            onClick={() => entry.requisition_id && toggleRow(entry.id)}
+                                            onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && toggleRow(entry.id)}
                                         >
                                             {/* Left: Date Column */}
                                             <div className="flex flex-col items-center mr-4 pt-0.5" style={{ minWidth: '32px' }}>
@@ -1005,7 +1005,7 @@ const CashLedger: React.FC = () => {
 
                                             <ChevronRight 
                                                 size={14} 
-                                                className={`ml-2 mt-1 flex-shrink-0 transition-opacity ${entry.requisition_id ? 'text-gray-300' : 'text-gray-200 opacity-50'}`} 
+                                                className={`ml-2 mt-1 flex-shrink-0 transition-opacity ${entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ? 'text-gray-300' : 'text-gray-200 opacity-50'}`} 
                                                 strokeWidth={2.5} 
                                             />
                                         </div>
@@ -1283,12 +1283,12 @@ const CashLedger: React.FC = () => {
                                                         </span>
                                                     </td>
                                                     <td className="p-6 w-12 text-center">
-                                                        {(entry.requisition_id || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
+                                                        {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                             <ChevronRight size={16} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${expandedRows[entry.id] ? 'rotate-90' : ''}`} strokeWidth={2.5} />
                                                         )}
                                                     </td>
                                                 </tr>
-                                                 {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
+                                                 {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                     <tr className="bg-gray-50/80">
                                                         <td colSpan={8} className="p-0 border-b border-gray-100">
                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">

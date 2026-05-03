@@ -69,6 +69,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         let lencoReference = null;
         const targetOrgId = requisition.organization_id;
         const stableRef = `REQ-${id.slice(0, 8)}-${estimatedTotal.toFixed(0)}`; // Unique enough but stable
+        let resolvedOrgKey: string | undefined; // Will be set inside isDigital block for deferred use
 
         if (isDigital) {
             const { data: org } = await supabase
@@ -90,6 +91,10 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             }
 
             try {
+                // Carry the org key forward for deferred finalization
+                resolvedOrgKey = org?.lenco_secret_key;
+                (req as any).orgLencoKey = resolvedOrgKey;
+
                 if (org?.payment_test_mode) {
                     console.log(`[Payment Test Mode] Bypassing Lenco for Requisition ${id}`);
                     lencoReference = `SIM-PAY-${id.slice(0, 8)}`;
@@ -153,12 +158,16 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         throw new Error(reason);
                     }
                     
-                    // Poll for status if we just created it or if it was pending
+                    // Poll for status if we just created it or if it was pending.
+                    // CRITICAL FIX: Use `resolvedRef` (not `stableRef`) — resolvedRef may have a retry
+                    // suffix (e.g. -R1, -R2) if earlier attempts had failed on Lenco's side.
+                    // Using stableRef here causes the poll to return nothing/stale data, so
+                    // currentStatus stays 'pending' and the ledger is never finalized.
                     let attempts = 0;
                     let currentStatus = payout.status;
                     while (currentStatus === 'pending' && attempts < 5) {
                         await new Promise(resolve => setTimeout(resolve, 3000));
-                        statusCheck = await LencoService.getTransferStatus(stableRef, org.lenco_secret_key);
+                        statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
                         currentStatus = statusCheck?.status || 'pending';
                         attempts++;
                     }
@@ -171,6 +180,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
                     (req as any).lencoStatus = currentStatus;
                     (req as any).lencoFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
+                    (req as any).resolvedRef = resolvedRef; // Carry forward for deferred finalization
                 }
 
             } catch (payoutError: any) {
@@ -249,6 +259,17 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             // Extract actual fee if returned by Lenco
             const actualFee = (req as any).lencoFee;
             await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
+        } else if ((req as any).lencoStatus === 'pending') {
+            // Transfer is still pending after initial polling (can happen with slow mobile money networks).
+            // Schedule a non-blocking background job that will keep polling and finalize the ledger
+            // once Lenco confirms success. The webhook is also a fallback, but this ensures we don't
+            // depend solely on Lenco delivering a webhook reliably.
+            const orgKey = (req as any).orgLencoKey;
+            const ref = (req as any).resolvedRef || (req as any).lencoRef;
+            if (ref && orgKey) {
+                console.log(`[Lenco] Transfer still pending for ${id}. Scheduling deferred ledger finalization...`);
+                scheduleDeferredLedgerFinalization(id, ref, orgKey);
+            }
         }
 
         // 5. Fee application is DEFERRED for Wallet transfers to avoid fake charges if it fails.
@@ -760,3 +781,67 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
         res.status(500).json({ error: 'Failed to verify status', details: error.message });
     }
 };
+
+/**
+ * Schedules a fire-and-forget background job that polls Lenco at increasing intervals
+ * and finalizes the cashbook entry once the transfer is confirmed successful.
+ *
+ * This is the safety net for transfers that are still 'pending' after the initial
+ * 5-poll synchronous window. It runs entirely in the background — the HTTP response
+ * has already been sent to the client before this job does any work.
+ *
+ * The job is idempotent: finalizeWalletDisbursementLedger guards against double-entry.
+ * It abandons automatically after 4 attempts (covering ~43 minutes total wait time).
+ */
+function scheduleDeferredLedgerFinalization(
+    requisitionId: string,
+    reference: string,
+    lencoSecretKey: string
+): void {
+    // Retry intervals in milliseconds: 30s, 2min, 10min, 30min
+    const RETRY_INTERVALS_MS = [30_000, 120_000, 600_000, 1_800_000];
+
+    const attemptFinalization = async (attemptIndex: number): Promise<void> => {
+        if (attemptIndex >= RETRY_INTERVALS_MS.length) {
+            console.warn(`[Deferred Finalization] Giving up for ${requisitionId} after ${RETRY_INTERVALS_MS.length} attempts. Manual review required.`);
+            return;
+        }
+
+        const delayMs = RETRY_INTERVALS_MS[attemptIndex];
+        console.log(`[Deferred Finalization] Scheduled attempt ${attemptIndex + 1}/${RETRY_INTERVALS_MS.length} for ${requisitionId} in ${delayMs / 1000}s...`);
+
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+
+        try {
+            console.log(`[Deferred Finalization] Polling Lenco for ref ${reference} (attempt ${attemptIndex + 1})...`);
+            const statusCheck = await LencoService.getTransferStatus(reference, lencoSecretKey);
+
+            if (statusCheck?.status === 'successful') {
+                console.log(`[Deferred Finalization] Transfer ${reference} confirmed successful. Finalizing ledger for ${requisitionId}...`);
+                const actualFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
+                await cashbookService.finalizeWalletDisbursementLedger(requisitionId, actualFee);
+                console.log(`[Deferred Finalization] ✅ Ledger finalized for ${requisitionId}.`);
+                return; // Done — no further retries needed
+            }
+
+            if (statusCheck?.status === 'failed') {
+                console.error(`[Deferred Finalization] Transfer ${reference} reported FAILED by Lenco. Requisition ${requisitionId} needs manual review.`);
+                return; // Don't retry a definitively failed transfer
+            }
+
+            // Still pending — schedule the next attempt
+            console.log(`[Deferred Finalization] Transfer ${reference} still pending. Will retry...`);
+            await attemptFinalization(attemptIndex + 1);
+
+        } catch (error: any) {
+            console.error(`[Deferred Finalization] Error on attempt ${attemptIndex + 1} for ${requisitionId}:`, error?.message);
+            // Retry on transient errors (network issues, etc.)
+            await attemptFinalization(attemptIndex + 1);
+        }
+    };
+
+    // Kick off the chain without awaiting — this is intentionally fire-and-forget
+    attemptFinalization(0).catch(err =>
+        console.error(`[Deferred Finalization] Unhandled error in finalization chain for ${requisitionId}:`, err)
+    );
+}

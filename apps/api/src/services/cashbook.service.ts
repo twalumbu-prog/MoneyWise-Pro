@@ -220,10 +220,12 @@ export const cashbookService = {
             return;
         }
 
-        // Determine fee: Use actualFee if provided, else calculate estimate, else fallback K8.5
-        const amount = Number(disbursement.total_prepared);
+        // Determine fee: Use actualFee if provided, else calculate estimate based on the NET amount.
+        // We use the requisition's estimated_total because it represents the amount the user 
+        // intended to transfer (the net amount) before fees were added.
+        const netAmount = Number(disbursement.requisitions?.estimated_total || 0);
         const feeToUse = actualFee !== undefined ? actualFee : 
-                        LencoService.calculatePayoutFee(amount, disbursement.payment_method || 'BANK');
+                        LencoService.calculatePayoutFee(netAmount, disbursement.payment_method || 'BANK');
 
         // 2. Prevent Double Entry
         const { data: existingLedger } = await supabase
