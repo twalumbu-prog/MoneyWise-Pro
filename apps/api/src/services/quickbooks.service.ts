@@ -327,8 +327,31 @@ export class QuickBooksService {
             let sourceAccountName = paymentAccountName;
 
             const method = requisition.payment_method || (requisition.disbursements && requisition.disbursements[0]?.method) || 'UNKNOWN';
+            const isWallet = method === 'WALLET' || method === 'MONEYWISE_WALLET';
 
-            // 4a. If not provided, try to find in existing mappings
+            // 4a. If it's a wallet transaction, STRICTLY prioritize the mapped account
+            if (isWallet) {
+                const { data: qbIntegration } = await supabase
+                    .from('integrations')
+                    .select('config')
+                    .eq('provider', 'QUICKBOOKS')
+                    .eq('organization_id', organizationId)
+                    .single();
+
+                const mappings = qbIntegration?.config?.mappings || {};
+                const walletMapping = mappings['WALLET'] || mappings['MONEYWISE_WALLET'];
+
+                if (walletMapping) {
+                    if (sourceAccountId && sourceAccountId !== walletMapping.id) {
+                        console.warn(`[QB Purchase] Overriding manually selected account ${sourceAccountId} with mapped wallet account ${walletMapping.id} for wallet transaction.`);
+                    }
+                    sourceAccountId = walletMapping.id;
+                    sourceAccountName = walletMapping.name;
+                    console.log(`[QB Purchase] Locked wallet transaction to: ${sourceAccountName}`);
+                }
+            }
+
+            // 4b. If not a wallet transaction (or no wallet mapping found) and not provided, try to find in existing mappings
             if (!sourceAccountId) {
                 const { data: qbIntegration } = await supabase
                     .from('integrations')

@@ -2040,25 +2040,31 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 role="button"
                                                 tabIndex={0}
                                                 onClick={() => {
+                                                    if (isWallet) return;
                                                     setIsQBCreditDropdownOpen(!isQBCreditDropdownOpen);
                                                     setQBCreditSearch('');
                                                 }}
-                                                className={`w-full h-14 px-6 bg-white border ${isQBCreditDropdownOpen ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} rounded-2xl flex items-center justify-between cursor-pointer transition-all shadow-sm group hover:border-gray-200`}
+                                                className={`w-full h-14 px-6 bg-white border ${isQBCreditDropdownOpen ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} rounded-2xl flex items-center justify-between ${isWallet ? 'cursor-default bg-gray-50/50' : 'cursor-pointer'} transition-all shadow-sm group hover:border-gray-200`}
                                             >
                                                 <div className="flex items-center space-x-3">
                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center ${selectedAccount ? 'bg-blue-50 text-blue-600' : 'bg-gray-50 text-gray-400'}`}>
-                                                        <Wallet size={16} />
+                                                        {isWallet ? <CheckCircle size={16} className="text-emerald-500" /> : <Wallet size={16} />}
                                                     </div>
                                                     <div className="flex flex-col">
                                                         <span className={`text-[13px] font-bold ${selectedAccount ? 'text-gray-900' : 'text-gray-400'}`}>
-                                                            {selectedAccount ? selectedAccount.Name : 'Search for a bank or wallet account...'}
+                                                            {selectedAccount ? selectedAccount.Name : (isWallet ? 'Searching for Wallet account...' : 'Search for a bank or wallet account...')}
                                                         </span>
-                                                        {selectedAccount && (
-                                                            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{selectedAccount.AccountType}</span>
-                                                        )}
+                                                        <div className="flex items-center space-x-2">
+                                                            {selectedAccount && (
+                                                                <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{selectedAccount.AccountType}</span>
+                                                            )}
+                                                            {isWallet && (
+                                                                <span className="text-[9px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 px-1.5 py-0.5 rounded">Locked to Wallet</span>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                                <ChevronDown size={16} className={`text-gray-400 transition-transform duration-300 ${isQBCreditDropdownOpen ? 'rotate-180' : ''}`} />
+                                                {!isWallet && <ChevronDown size={16} className={`text-gray-400 transition-transform duration-300 ${isQBCreditDropdownOpen ? 'rotate-180' : ''}`} />}
                                             </div>
 
                                             {isQBCreditDropdownOpen && (
