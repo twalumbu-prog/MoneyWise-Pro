@@ -887,6 +887,30 @@ export const RequisitionDetail: React.FC = () => {
                                         <CheckCircle className="h-4 w-4 mr-2" />
                                         Confirm & Finalize Ledger
                                     </button>
+                                    
+                                    {userRole === 'ADMIN' && (
+                                        <button
+                                            onClick={async () => {
+                                                if (confirm('FORCE COMPLETE: This will bypass standard verification and move the requisition to COMPLETED. Use only for repairing stuck transactions. Proceed?')) {
+                                                    try {
+                                                        setProcessing(true);
+                                                        // We'll call a special repair endpoint if it exists, or just update status via general update
+                                                        await requisitionService.updateStatus(requisition.id, 'COMPLETED');
+                                                        alert('Requisition force-completed successfully.');
+                                                        loadRequisition(requisition.id);
+                                                    } catch (err: any) {
+                                                        alert('Force complete failed: ' + err.message);
+                                                    } finally {
+                                                        setProcessing(false);
+                                                    }
+                                                }
+                                            }}
+                                            disabled={processing}
+                                            className="inline-flex items-center px-4 py-2 border border-red-200 text-xs font-bold rounded-xl text-red-600 bg-red-50 hover:bg-red-100 transition-all"
+                                        >
+                                            Force Complete (Repair)
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                         </div>

@@ -38,7 +38,7 @@ const formatStatusType = (entry: CashbookEntry) => {
 };
 
 export const exportToCSV = (entries: CashbookEntry[], filename: string) => {
-    const headers = ['Date', 'Description & Details', 'Status / Type', 'Debit', 'Credit', 'Balance'];
+    const headers = ['Date', 'Description & Details', 'Status / Type', 'Inflow', 'Outflow', 'Balance'];
 
     const rows = entries.map(entry => [
         formatDate(entry.date),
@@ -72,8 +72,8 @@ export const exportToExcel = (entries: CashbookEntry[], filename: string, period
         Date: formatDate(entry.date),
         'Description & Details': formatDescription(entry),
         'Status / Type': formatStatusType(entry),
-        Debit: entry.debit > 0 ? entry.debit : null,
-        Credit: entry.credit > 0 ? entry.credit : null,
+        Inflow: entry.debit > 0 ? entry.debit : null,
+        Outflow: entry.credit > 0 ? entry.credit : null,
         Balance: entry.balance_after
     }));
 
@@ -111,7 +111,7 @@ export const exportToPDF = (entries: CashbookEntry[], filename: string, period: 
     doc.text(`Period: ${period.start} to ${period.end}`, 14, 40);
     doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 46);
 
-    const tableColumn = ["Date", "Description & Details", "Status / Type", "Debit", "Credit", "Balance"];
+    const tableColumn = ["Date", "Description & Details", "Status / Type", "Inflow", "Outflow", "Balance"];
     const tableRows = entries.map(entry => [
         formatDate(entry.date),
         formatDescription(entry),

@@ -25,7 +25,8 @@ import {
     RotateCcw,
     Check,
     RefreshCw,
-    AlertTriangle
+    AlertTriangle,
+    Download
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -35,6 +36,8 @@ import { getStatusConfig, requisitionService } from '../services/requisition.ser
 import { accountService, Account } from '../services/account.service';
 import RequisitionModal from '../components/requisitions/RequisitionModal';
 import { Requisition } from '../services/requisition.service';
+import ExportLedgerModal from '../components/ExportLedgerModal';
+import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 
 
 const SearchableAccountSelect: React.FC<{
@@ -150,6 +153,7 @@ const CashLedger: React.FC = () => {
     const [isResultsModalOpen, setIsResultsModalOpen] = useState(false);
     const [selectedRequisition, setSelectedRequisition] = useState<Requisition | null>(null);
     const [isRequisitionModalOpen, setIsRequisitionModalOpen] = useState(false);
+    const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -190,6 +194,26 @@ const CashLedger: React.FC = () => {
             console.error('Failed to load cashbook data:', error);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleExport = async (format: 'csv' | 'xlsx' | 'pdf', exportStartDate: string, exportEndDate: string) => {
+        try {
+            const exportEntries = await cashbookService.getEntries({ startDate: exportStartDate, endDate: exportEndDate, accountType: selectedAccountType });
+            
+            const period = { start: exportStartDate, end: exportEndDate };
+            const filename = `Cash_Ledger_${selectedAccountType}_${exportStartDate}_to_${exportEndDate}`;
+
+            if (format === 'csv') {
+                exportToCSV(exportEntries, filename);
+            } else if (format === 'xlsx') {
+                exportToExcel(exportEntries, filename, period);
+            } else if (format === 'pdf') {
+                exportToPDF(exportEntries, filename, period);
+            }
+        } catch (error) {
+            console.error('Failed to export ledger:', error);
+            alert('Failed to generate export. Please try again.');
         }
     };
 
@@ -1088,6 +1112,14 @@ const CashLedger: React.FC = () => {
                             </button>
                         )}
 
+                        <button
+                            onClick={() => setIsExportModalOpen(true)}
+                            className="bg-white hover:bg-gray-50 text-gray-900 border border-gray-100 px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
+                        >
+                            <Download size={14} className="mr-2 text-gray-400" />
+                            Export Ledger
+                        </button>
+
                         {unclassifiedCount > 0 && (
                             <button
                                 onClick={handleBulkClassify}
@@ -1561,6 +1593,14 @@ const CashLedger: React.FC = () => {
                     setSelectedRequisition(null);
                 }}
                 onStatusChange={loadData}
+            />
+
+            <ExportLedgerModal
+                isOpen={isExportModalOpen}
+                onClose={() => setIsExportModalOpen(false)}
+                onExport={handleExport}
+                defaultStartDate={startDate}
+                defaultEndDate={endDate}
             />
         </Layout>
     );
