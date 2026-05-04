@@ -336,9 +336,8 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
             <RequisitionInput 
                 onSend={handleSendMessage} 
                 disabled={
-                    requisition.status === 'COMPLETED' || 
                     requisition.status === 'ACCOUNTED' || 
-                    (!(userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'MANAGER') && requisition.status === 'CHANGE_SUBMITTED')
+                    (!(userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'MANAGER') && (requisition.status === 'CHANGE_SUBMITTED' || requisition.status === 'COMPLETED' || requisition.status === 'CATEGORIZED'))
                 } 
             />
         </div>

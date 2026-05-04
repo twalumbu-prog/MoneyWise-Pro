@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 
 // Load environment variables from apps/api/.env
-dotenv.config({ path: path.resolve(__dirname, '../apps/api/.env') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -22,7 +22,7 @@ async function repairStuckRequisitions() {
     const { data: requisitions, error } = await supabase
         .from('requisitions')
         .select('*, disbursements(*), line_items(*)')
-        .in('status', ['CHANGE_SUBMITTED', 'COMPLETED']);
+        .in('status', ['CHANGE_SUBMITTED', 'COMPLETED', 'AUTHORIZED']);
 
     if (error) {
         console.error('Error fetching requisitions:', error);
@@ -93,19 +93,48 @@ async function repairStuckRequisitions() {
                 else console.log(`  [+] Voucher created: ${voucher.id}`);
             }
 
-            // Step C: Force move to COMPLETED
-            console.log('  [>] Moving status to COMPLETED...');
-            const { error: updateError } = await supabase
-                .from('requisitions')
-                .update({ 
-                    status: 'COMPLETED',
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', req.id);
+            // Step C: Ensure Principal Line Item exists for Loans/Advances
+            if (req.type === 'LOAN' || req.type === 'ADVANCE') {
+                const hasPrincipal = req.line_items?.some((li: any) => 
+                    li.description.toLowerCase().includes('principal') || 
+                    li.description.toLowerCase().includes('loan') || 
+                    li.description.toLowerCase().includes('advance')
+                );
+                
+                if (!hasPrincipal) {
+                    console.log('  [!] Missing principal line item. Adding...');
+                    const principalDesc = req.type === 'LOAN' ? 'Staff Loan Principal' : 'Salary Advance Principal';
+                    const { error: liError } = await supabase
+                        .from('line_items')
+                        .insert({
+                            requisition_id: req.id,
+                            description: principalDesc,
+                            quantity: 1,
+                            unit_price: req.estimated_total,
+                            estimated_amount: req.estimated_total,
+                            actual_amount: req.estimated_total
+                        });
+                    if (liError) console.error(`  [!] Warning: Failed to add principal line item: ${liError.message}`);
+                    else console.log('  [+] Principal line item added.');
+                }
+            }
 
-            if (updateError) throw updateError;
+            // Step D: Force move to COMPLETED if it's a Loan/Advance (since no change confirmation is needed)
+            // or if it was stuck in CHANGE_SUBMITTED
+            if (req.status !== 'COMPLETED') {
+                console.log(`  [>] Moving status from ${req.status} to COMPLETED...`);
+                const { error: updateError } = await supabase
+                    .from('requisitions')
+                    .update({ 
+                        status: 'COMPLETED',
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', req.id);
 
-            // Step D: Ensure AI Message exists (Fixes the "Missing Message Cards" issue)
+                if (updateError) throw updateError;
+            }
+
+            // Step E: Ensure AI Message exists (Fixes the "Missing Message Cards" issue)
             const { data: existingAIMsg } = await supabase
                 .from('requisition_messages')
                 .select('id')
@@ -115,8 +144,6 @@ async function repairStuckRequisitions() {
 
             if (!existingAIMsg) {
                 console.log('  [!] Missing AI Review message. Creating placeholder...');
-                // We create a system message that mimics the AI Review start state
-                // This will trigger the UI to show the categorization card
                 const { error: msgError } = await supabase
                     .from('requisition_messages')
                     .insert({
@@ -127,7 +154,7 @@ async function repairStuckRequisitions() {
                         metadata: { 
                             stage: 'AI_REVIEW', 
                             isThinking: true,
-                            isRepaired: true // Flag to distinguish
+                            isRepaired: true
                         }
                     });
 

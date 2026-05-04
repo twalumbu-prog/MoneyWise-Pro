@@ -140,26 +140,50 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 2. Insert Line Items
-        if (items && items.length > 0) {
-            const lineItemsData = items.map((item: any) => ({
-                requisition_id: requisition.id,
-                description: item.description || description || 'General Expense',
-                quantity: item.quantity,
-                unit_price: item.unit_price,
-                estimated_amount: item.estimated_amount,
-                account_id: item.account_id || null
-            }));
-
-            const { error: itemsError } = await supabase
-                .from('line_items')
-                .insert(lineItemsData);
-
-            if (itemsError) {
-                console.error('Error creating line items:', itemsError);
-                // Compensating Transaction: Delete the header if items fail
-                await supabase.from('requisitions').delete().eq('id', requisition.id);
-                return res.status(500).json({ error: 'Failed to create line items', details: itemsError.message });
+        let lineItemsToInsert = items || [];
+        
+        if (type === 'LOAN' || type === 'ADVANCE') {
+            const principalDesc = type === 'LOAN' ? 'Staff Loan Principal' : 'Salary Advance Principal';
+            const hasPrincipal = lineItemsToInsert.some(item => item.description.includes('Principal') || item.description.includes(type));
+            
+            if (!hasPrincipal) {
+                lineItemsToInsert = [
+                    {
+                        description: principalDesc,
+                        quantity: 1,
+                        unit_price: estimated_total,
+                        estimated_amount: estimated_total
+                    },
+                    ...lineItemsToInsert
+                ];
             }
+        } else if (lineItemsToInsert.length === 0) {
+            lineItemsToInsert = [{
+                description: description || 'General Expense',
+                quantity: 1,
+                unit_price: estimated_total,
+                estimated_amount: estimated_total
+            }];
+        }
+
+        const lineItemsData = lineItemsToInsert.map((item: any) => ({
+            requisition_id: requisition.id,
+            description: item.description || description || 'General Expense',
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            estimated_amount: item.estimated_amount,
+            account_id: item.account_id || null
+        }));
+
+        const { error: itemsError } = await supabase
+            .from('line_items')
+            .insert(lineItemsData);
+
+        if (itemsError) {
+            console.error('Error creating line items:', itemsError);
+            // Compensating Transaction: Delete the header if items fail
+            await supabase.from('requisitions').delete().eq('id', requisition.id);
+            return res.status(500).json({ error: 'Failed to create line items', details: itemsError.message });
         }
 
         res.status(201).json(requisition);
@@ -1157,7 +1181,7 @@ export const sendRequisitionMessage = async (req: any, res: any): Promise<any> =
 /**
  * Helper to trigger AI Categorization and send the Review message
  */
-async function triggerAIReview(requisitionId: string, organizationId: string, userId: string) {
+export async function triggerAIReview(requisitionId: string, organizationId: string, userId: string) {
     try {
         console.log(`[AI Review] Triggering for Req ${requisitionId}`);
         
@@ -1201,15 +1225,82 @@ async function triggerAIReview(requisitionId: string, organizationId: string, us
         }
 
         // 3. Fetch Line Items
-        const { data: lineItems } = await supabase
+        const { data: lineItemsRaw } = await supabase
             .from('line_items')
             .select('*')
             .eq('requisition_id', requisitionId);
 
-        if (!lineItems || lineItems.length === 0) {
+        let lineItems = lineItemsRaw || [];
+
+        // 3.5 RESILIENCE: Handle Loans/Advances missing principal (e.g. only fees present)
+        const { data: requisition } = await supabase
+            .from('requisitions')
+            .select('type, description, estimated_total, actual_total')
+            .eq('id', requisitionId)
+            .single();
+
+        if (requisition && (requisition.type === 'LOAN' || requisition.type === 'ADVANCE')) {
+            const principalDesc = requisition.type === 'LOAN' ? 'Staff Loan Principal' : 'Salary Advance Principal';
+            const hasPrincipal = lineItems.some(li => 
+                li.description.toLowerCase().includes('principal') || 
+                li.description.toLowerCase().includes('loan') || 
+                li.description.toLowerCase().includes('advance')
+            );
+
+            if (!hasPrincipal) {
+                console.log(`[AI Review] Principal missing for ${requisition.type} Req ${requisitionId}. Adding fallback.`);
+                
+                // Subtract existing fees from the total to get the principal
+                const feeTotal = lineItems
+                    .filter(li => li.description.toLowerCase().includes('fee'))
+                    .reduce((sum, li) => sum + (Number(li.actual_amount) || Number(li.estimated_amount) || 0), 0);
+                
+                const totalAmount = requisition.actual_total || requisition.estimated_total || 0;
+                const amount = Math.max(0, totalAmount - feeTotal);
+
+                const { data: newItem, error: insertError } = await supabase
+                    .from('line_items')
+                    .insert({
+                        requisition_id: requisitionId,
+                        description: principalDesc,
+                        quantity: 1,
+                        unit_price: amount,
+                        estimated_amount: amount,
+                        actual_amount: amount
+                    })
+                    .select()
+                    .single();
+                
+                if (!insertError && newItem) {
+                    lineItems = [newItem, ...lineItems];
+                }
+            }
+        } else if (lineItems.length === 0 && requisition) {
+            // General fallback for non-loans
+            console.log(`[AI Review] No line items found for Req ${requisitionId}. Attempting to use header description.`);
+            const amount = requisition.actual_total || requisition.estimated_total || 0;
+            const { data: newItem, error: insertError } = await supabase
+                .from('line_items')
+                .insert({
+                    requisition_id: requisitionId,
+                    description: requisition.description || 'General Expense',
+                    quantity: 1,
+                    unit_price: amount,
+                    estimated_amount: amount,
+                    actual_amount: amount
+                })
+                .select()
+                .single();
+            
+            if (!insertError && newItem) {
+                lineItems = [newItem];
+            }
+        }
+
+        if (lineItems.length === 0) {
             await RequisitionMessageService.updateMessage(aiMessageId, {
-                content: 'No line items found to categorize.',
-                metadata: { stage: 'AI_REVIEW', isThinking: false }
+                content: 'No line items found to categorize, and could not create a fallback. Please add line items manually.',
+                metadata: { stage: 'AI_REVIEW', isThinking: false, hasError: true }
             });
             return;
         }

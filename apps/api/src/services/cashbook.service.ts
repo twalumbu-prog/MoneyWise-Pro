@@ -255,27 +255,37 @@ export const cashbookService = {
             disbursement.payment_method
         );
 
-        // B. Add withdrawal fee line item
-        const chargesAccountId = await this.getOrCreateTransactionChargesAccount(disbursement.organization_id);
-        
-        await supabase.from('line_items').insert({
-            requisition_id: requisitionId,
-            description: `Withdrawal Fee (${disbursement.payment_method || 'Wallet'})`,
-            quantity: 1,
-            unit_price: feeToUse,
-            estimated_amount: feeToUse,
-            actual_amount: feeToUse,
-            account_id: chargesAccountId
-        });
+        // 2. Prevent Double Entry (Line Items)
+        const { data: existingFee } = await supabase
+            .from('line_items')
+            .select('id')
+            .eq('requisition_id', requisitionId)
+            .ilike('description', '%Withdrawal Fee%')
+            .maybeSingle();
 
-        // C. Update Requisition header to include the fee
-        const currentEstimated = Number(disbursement.requisitions?.estimated_total || 0);
-        const currentActual = disbursement.requisitions?.actual_total ? Number(disbursement.requisitions?.actual_total) : null;
-        
-        await supabase.from('requisitions').update({
-            estimated_total: currentEstimated + feeToUse,
-            actual_total: currentActual ? currentActual + feeToUse : null
-        }).eq('id', requisitionId);
+        if (!existingFee) {
+            // B. Add withdrawal fee line item
+            const chargesAccountId = await this.getOrCreateTransactionChargesAccount(disbursement.organization_id);
+            
+            await supabase.from('line_items').insert({
+                requisition_id: requisitionId,
+                description: `Withdrawal Fee (${disbursement.payment_method || 'Wallet'})`,
+                quantity: 1,
+                unit_price: feeToUse,
+                estimated_amount: feeToUse,
+                actual_amount: feeToUse,
+                account_id: chargesAccountId
+            });
+
+            // C. Update Requisition header to include the fee
+            const currentEstimated = Number(disbursement.requisitions?.estimated_total || 0);
+            const currentActual = disbursement.requisitions?.actual_total ? Number(disbursement.requisitions?.actual_total) : null;
+            
+            await supabase.from('requisitions').update({
+                estimated_total: currentEstimated + feeToUse,
+                actual_total: currentActual ? currentActual + feeToUse : null
+            }).eq('id', requisitionId);
+        }
 
         console.log(`[Ledger Finalization] Ledger finalized for ${requisitionId}.`);
     },
