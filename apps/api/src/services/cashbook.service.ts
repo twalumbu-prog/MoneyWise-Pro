@@ -243,7 +243,7 @@ export const cashbookService = {
         console.log(`[Ledger Finalization] Finalizing ledger for ${requisitionId} with fee ${feeToUse}...`);
         
         // A. Log Cashbook Entry
-        const totalDeduction = amount;
+        const totalDeduction = netAmount + feeToUse;
         const mainDescription = `${disbursement.payment_method} disbursed for Requisition #${requisitionId.slice(0, 8)}`;
         
         await this.logDisbursement(

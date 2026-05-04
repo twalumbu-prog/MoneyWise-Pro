@@ -144,7 +144,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         
         if (type === 'LOAN' || type === 'ADVANCE') {
             const principalDesc = type === 'LOAN' ? 'Staff Loan Principal' : 'Salary Advance Principal';
-            const hasPrincipal = lineItemsToInsert.some(item => item.description.includes('Principal') || item.description.includes(type));
+            const hasPrincipal = lineItemsToInsert.some((item: any) => item.description.includes('Principal') || item.description.includes(type));
             
             if (!hasPrincipal) {
                 lineItemsToInsert = [
