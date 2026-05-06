@@ -339,15 +339,37 @@ export class QuickBooksService {
                     .single();
 
                 const mappings = qbIntegration?.config?.mappings || {};
-                const walletMapping = mappings['WALLET'] || mappings['MONEYWISE_WALLET'];
+                let walletMapping = mappings['WALLET'] || mappings['MONEYWISE_WALLET'];
+
+                // Sanity check: If the mapping exists but doesn't look like a wallet account, ignore it and re-detect
+                if (walletMapping && 
+                    !walletMapping.name.toLowerCase().includes('wallet') && 
+                    !walletMapping.name.toLowerCase().includes('moneywise')) {
+                    console.warn(`[QB Purchase] Existing wallet mapping "${walletMapping.name}" looks incorrect. Re-detecting...`);
+                    walletMapping = null;
+                }
 
                 if (walletMapping) {
-                    if (sourceAccountId && sourceAccountId !== walletMapping.id) {
-                        console.warn(`[QB Purchase] Overriding manually selected account ${sourceAccountId} with mapped wallet account ${walletMapping.id} for wallet transaction.`);
-                    }
                     sourceAccountId = walletMapping.id;
                     sourceAccountName = walletMapping.name;
-                    console.log(`[QB Purchase] Locked wallet transaction to: ${sourceAccountName}`);
+                    console.log(`[QB Purchase] Locked wallet transaction to mapped account: ${sourceAccountName}`);
+                } else {
+                    // Fallback to auto-detection
+                    console.log('[QB Purchase] Wallet transaction detected but no valid mapping found, searching QuickBooks accounts...');
+                    try {
+                        const qbAccounts = await this.fetchAccounts(organizationId);
+                        const walletAcc = qbAccounts.find((a: any) => 
+                            a.Name.toLowerCase().includes('wallet') || 
+                            a.Name.toLowerCase().includes('moneywise')
+                        );
+                        if (walletAcc) {
+                            sourceAccountId = walletAcc.Id;
+                            sourceAccountName = walletAcc.Name;
+                            console.log(`[QB Purchase] Auto-detected Wallet account: ${sourceAccountName} (${sourceAccountId})`);
+                        }
+                    } catch (fetchErr) {
+                        console.error('[QB Purchase] Failed to fetch accounts for wallet auto-detection:', fetchErr);
+                    }
                 }
             }
 
@@ -365,27 +387,6 @@ export class QuickBooksService {
                     sourceAccountId = mappings[method].id;
                     sourceAccountName = mappings[method].name;
                     console.log(`[QB Purchase] Found saved mapping for ${method}: ${sourceAccountName}`);
-                }
-            }
-
-            // 4b. If still not found, try "Wallet" auto-detection for wallet transactions
-            if (!sourceAccountId) {
-                if (method === 'WALLET' || method === 'MONEYWISE_WALLET') {
-                    console.log('[QB Purchase] Wallet transaction detected, searching for Wallet account in QuickBooks');
-                    try {
-                        const qbAccounts = await this.fetchAccounts(organizationId);
-                        const walletAcc = qbAccounts.find((a: any) => 
-                            a.Name.toLowerCase().includes('wallet') || 
-                            a.Name.toLowerCase().includes('moneywise')
-                        );
-                        if (walletAcc) {
-                            sourceAccountId = walletAcc.Id;
-                            sourceAccountName = walletAcc.Name;
-                            console.log(`[QB Purchase] Found Wallet account: ${sourceAccountName} (${sourceAccountId})`);
-                        }
-                    } catch (fetchErr) {
-                        console.error('[QB Purchase] Failed to fetch accounts for wallet auto-detection:', fetchErr);
-                    }
                 }
             }
 
