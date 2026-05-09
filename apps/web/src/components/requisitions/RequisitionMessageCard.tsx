@@ -75,6 +75,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [recipientProvider, setRecipientProvider] = useState<string | null>(null);
     const [lookupName, setLookupName] = useState<string | null>(null);
     const [isLookingUp, setIsLookingUp] = useState(false);
+    const [banks, setBanks] = useState<any[]>([]);
+    const [isFetchingBanks, setIsFetchingBanks] = useState(false);
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
     const [disburseError, setDisburseError] = useState<string | null>(null);
@@ -224,8 +226,38 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 };
                 resolveName();
             }
+        } else if (paymentType === 'BANK' && recipientValue.length >= 5 && recipientProvider && !lookupName && !isLookingUp) {
+            const resolveName = async () => {
+                setIsLookingUp(true);
+                try {
+                    const res = await lencoService.resolveBankAccount(recipientValue, recipientProvider, requisitionData?.organization_id);
+                    setLookupName(res.accountName || res.account_name || res.name);
+                } catch (err) {
+                    setLookupName('Name not found');
+                } finally {
+                    setIsLookingUp(false);
+                }
+            };
+            resolveName();
         }
     }, [recipientValue, paymentType, recipientProvider, lookupName, isLookingUp, requisitionData?.organization_id]);
+
+    useEffect(() => {
+        if (paymentType === 'BANK' && banks.length === 0 && !isFetchingBanks) {
+            const fetchBanks = async () => {
+                setIsFetchingBanks(true);
+                try {
+                    const data = await lencoService.getBanks();
+                    setBanks(data);
+                } catch (err) {
+                    console.error('Failed to fetch banks:', err);
+                } finally {
+                    setIsFetchingBanks(false);
+                }
+            };
+            fetchBanks();
+        }
+    }, [paymentType, banks.length, isFetchingBanks]);
 
     useEffect(() => {
         const stage = message.metadata?.stage;
@@ -475,7 +507,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         setDisburseError(null);
         setDisburseStatusMsg(null);
 
-        const cleanPhone = recipientValue.replace(/[^0-9]/g, '');
+        const cleanPhone = paymentType === 'MOBILE_MONEY' ? recipientValue.replace(/[^0-9]/g, '') : '';
         const normalizedPhone = cleanPhone.startsWith('260') ? '0' + cleanPhone.substring(3) : cleanPhone;
 
         const recipientBankCode = (() => {
@@ -484,6 +516,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             }
             return recipientProvider || undefined;
         })();
+
+        if (paymentType === 'BANK' && !recipientProvider) {
+            setDisburseError('Please select a destination bank.');
+            setIsProcessing(false);
+            return;
+        }
 
         try {
             setDisburseStatusMsg('Initiating transfer...');
@@ -1062,12 +1100,33 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
                                                         <div className="flex flex-col space-y-2">
                                                             <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">
-                                                                {paymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Account Details'}
+                                                                {paymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Bank & Account Details'}
                                                             </label>
+
+                                                            {paymentType === 'BANK' && (
+                                                                <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                    <select 
+                                                                        value={recipientProvider || ''}
+                                                                        onChange={(e) => {
+                                                                            setRecipientProvider(e.target.value);
+                                                                            setLookupName(null);
+                                                                        }}
+                                                                        className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200 appearance-none cursor-pointer"
+                                                                    >
+                                                                        <option value="" disabled>{isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}</option>
+                                                                        {banks.map((bank) => (
+                                                                            <option key={bank.id} value={bank.id}>{bank.name}</option>
+                                                                        ))}
+                                                                    </select>
+                                                                    <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                                        <ChevronDown size={18} />
+                                                                    </div>
+                                                                </div>
+                                                            )}
                                                             <div className="relative group">
                                                                 <input 
                                                                     type="text" 
-                                                                    placeholder={paymentType === 'MOBILE_MONEY' ? '097...' : 'Enter account number...'}
+                                                                    placeholder={paymentType === 'MOBILE_MONEY' ? '097...' : 'Account Number (Zambia)'}
                                                                     value={recipientValue}
                                                                     onChange={(e) => {
                                                                         const value = e.target.value;
