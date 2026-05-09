@@ -938,23 +938,20 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     </table>
                                                 </div>
                                             ) : (
-                                                <div className="rounded-2xl border border-gray-100 overflow-hidden bg-gray-50/30">
-                                                    <table className="w-full text-left border-collapse">
-                                                        <thead>
-                                                            <tr className="bg-gray-50/80">
-                                                                <th className="px-6 py-4 text-[10px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100">Description</th>
-                                                                <th className="px-6 py-4 text-[10px] font-medium text-gray-400 uppercase tracking-widest text-right border-b border-gray-100">Total</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-gray-50">
-                                                            {requisitionData?.items?.map((item: any, idx: number) => (
-                                                                <tr key={idx} className="hover:bg-white/50 transition-colors">
-                                                                    <td className="px-6 py-4 text-[12px] font-normal text-gray-700">{item.description}</td>
-                                                                    <td className="px-6 py-4 text-[12px] font-medium text-gray-900 text-right">K{item.unit_price?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                                                </tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
+                                                <div className="py-12 px-6 border border-dashed border-gray-200 rounded-[24px] flex flex-col items-center justify-center text-center bg-gray-50/50">
+                                                    <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center mb-3">
+                                                        <Loader2 size={20} className="text-[#006AFF] animate-spin" />
+                                                    </div>
+                                                    <h5 className="text-[14px] font-bold text-gray-900 mb-1">Finalizing Transaction Details</h5>
+                                                    <p className="text-[12px] text-gray-500 max-w-[240px]">
+                                                        The transfer was successful. We are currently syncing the final transaction data with our ledger. This usually takes a few seconds.
+                                                    </p>
+                                                    <button 
+                                                        onClick={() => onAction?.('REFRESH')}
+                                                        className="mt-4 px-4 py-2 bg-white border border-gray-200 rounded-xl text-[11px] font-bold text-[#006AFF] hover:bg-gray-50 transition-colors shadow-sm"
+                                                    >
+                                                        Refresh Data
+                                                    </button>
                                                 </div>
                                             )}
                                         </div>

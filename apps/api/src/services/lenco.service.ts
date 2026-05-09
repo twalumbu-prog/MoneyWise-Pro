@@ -196,11 +196,23 @@ export class LencoService {
             return response.data.data;
         } catch (error: any) {
             const lencoError = error.response?.data;
-            if (error.response?.status === 404 || lencoError?.message === 'Transfer was not found' || lencoError?.errorCode === '11') {
-                return null; // Return null if not found, allowing pre-check to pass
+            const status = error.response?.status;
+            
+            // 1. Handle Not Found (Safe for idempotency check)
+            if (status === 404 || lencoError?.message === 'Transfer was not found' || lencoError?.errorCode === '11') {
+                return null;
             }
-            console.error('Lenco transfer status check failed:', lencoError || error.message);
-            throw new Error(lencoError?.message || 'Failed to check transfer status');
+
+            // 2. Handle Blocked/Forbidden (e.g. Cloudflare)
+            if (status === 403) {
+                console.error(`[Lenco] Request blocked (403). Possible Cloudflare challenge. Ref: ${reference}`);
+                throw new Error('Access to Lenco API was blocked by security filters. Please try again later.');
+            }
+
+            // 3. Handle other errors
+            console.error(`[Lenco] Status check failed for ${reference}:`, lencoError || error.message);
+            const errorMessage = typeof lencoError === 'string' ? lencoError : (lencoError?.message || error.message);
+            throw new Error(`Lenco API error: ${errorMessage}`);
         }
 
     }

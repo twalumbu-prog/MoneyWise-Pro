@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { LencoService } from './lenco.service';
+import { RequisitionMessageService } from './requisition_message.service';
 
 export interface CashbookEntry {
     id?: string;
@@ -252,7 +253,7 @@ export const cashbookService = {
             totalDeduction,
             disbursement.cashier_id,
             mainDescription,
-            disbursement.payment_method
+            'MONEYWISE_WALLET'
         );
 
         // 2. Prevent Double Entry (Line Items)
@@ -288,6 +289,11 @@ export const cashbookService = {
         }
 
         console.log(`[Ledger Finalization] Ledger finalized for ${requisitionId}.`);
+        
+        // D. Trigger message repair to show DISBURSAL_SUCCESS card
+        await RequisitionMessageService.repairLifecycleMessages(requisitionId).catch(err => 
+            console.error(`[Ledger Finalization] Failed to repair messages for ${requisitionId}:`, err)
+        );
     },
 
     /**

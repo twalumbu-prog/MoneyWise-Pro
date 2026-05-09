@@ -163,12 +163,15 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     // suffix (e.g. -R1, -R2) if earlier attempts had failed on Lenco's side.
                     // Using stableRef here causes the poll to return nothing/stale data, so
                     // currentStatus stays 'pending' and the ledger is never finalized.
+                    // Poll for status if we just created it or if it was not terminal.
                     let attempts = 0;
                     let currentStatus = payout.status;
-                    while (currentStatus === 'pending' && attempts < 5) {
+                    const terminalStatuses = ['successful', 'failed', 'reversed'];
+
+                    while (!terminalStatuses.includes(currentStatus) && attempts < 5) {
                         await new Promise(resolve => setTimeout(resolve, 3000));
                         statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
-                        currentStatus = statusCheck?.status || 'pending';
+                        currentStatus = statusCheck?.status || currentStatus;
                         attempts++;
                     }
 
@@ -259,15 +262,15 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             // Extract actual fee if returned by Lenco
             const actualFee = (req as any).lencoFee;
             await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
-        } else if ((req as any).lencoStatus === 'pending') {
-            // Transfer is still pending after initial polling (can happen with slow mobile money networks).
-            // Schedule a non-blocking background job that will keep polling and finalize the ledger
-            // once Lenco confirms success. The webhook is also a fallback, but this ensures we don't
-            // depend solely on Lenco delivering a webhook reliably.
+        } else {
+            // Transfer is not successful yet (could be pending, processing, etc.)
+            // Schedule background polling for any non-terminal status
             const orgKey = (req as any).orgLencoKey;
-            const ref = (req as any).resolvedRef || (req as any).lencoRef;
-            if (ref && orgKey) {
-                console.log(`[Lenco] Transfer still pending for ${id}. Scheduling deferred ledger finalization...`);
+            const ref = (req as any).resolvedRef || lencoReference;
+            const terminalStatuses = ['successful', 'failed', 'reversed'];
+            
+            if (ref && orgKey && !terminalStatuses.includes((req as any).lencoStatus)) {
+                console.log(`[Lenco] Transfer status is ${(req as any).lencoStatus} for ${id}. Scheduling background polling...`);
                 scheduleDeferredLedgerFinalization(id, ref, orgKey);
             }
         }
