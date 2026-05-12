@@ -42,19 +42,19 @@ export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions
     const displayRequisitions = requisitions;
 
     return (
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[500px]">
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[500px] relative z-0 isolate">
             {/* List View */}
 
             {/* List View */}
             <div className="flex-1 overflow-y-auto">
-                <table className="w-full text-left">
+                <table className="w-full text-left border-collapse">
                     <tbody className="divide-y divide-gray-50/50">
                         {displayRequisitions.map((req) => (
                             <tr 
                                 key={req.id} 
                                 onClick={() => onRowClick(req.id)}
-                                className={`group cursor-pointer hover:bg-[#F8FBFF] transition-all
-                                    ${req.has_unread_updates ? 'bg-white' : 'bg-gray-50/10'}`}
+                                className={`group cursor-pointer hover:bg-blue-50/30 transition-all
+                                    ${req.has_unread_updates ? 'bg-transparent' : 'bg-gray-50/30'}`}
                             >
                                 {/* UNREAD INDICATOR */}
                                 <td className="py-6 px-8 w-4">
