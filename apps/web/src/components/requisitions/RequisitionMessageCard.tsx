@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { RequisitionMessage, requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
@@ -259,6 +259,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
     }, [paymentType, banks.length, isFetchingBanks]);
 
+    const hasInitializedForm = useRef(false);
+
     useEffect(() => {
         const stage = message.metadata?.stage;
         const content = message.content?.trim();
@@ -266,7 +268,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                            content === 'Status updated to AUTHORISED' || 
                            content === 'How would you like to disburse these funds?';
 
-        if (requisitionData && isDisbursal) {
+        if (requisitionData && isDisbursal && !hasInitializedForm.current) {
+            hasInitializedForm.current = true;
+            
             if (!recipientValue && requisitionData.recipient_account) {
                 setRecipientValue(requisitionData.recipient_account);
             }
@@ -293,7 +297,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 setLookupName(requisitionData.recipient_name);
             }
         }
-    }, [requisitionData, message.metadata, message.content, activeMethod, recipientValue, recipientProvider, lookupName]);
+    }, [requisitionData, message.metadata, message.content]);
 
     const PAYMENT_METHODS = [
         { id: 'MONEYWISE_WALLET', name: 'MoneyWise Wallet', icon: Wallet },
