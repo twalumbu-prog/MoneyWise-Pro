@@ -1068,120 +1068,166 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <div className="space-y-6">
                                                 {!isProcessing ? (
                                                     <div className="flex flex-col space-y-6">
-                                                        <div className="flex p-1.5 bg-gray-100/80 rounded-full w-full">
-                                                            <button 
-                                                                onClick={() => setPaymentType('MOBILE_MONEY')} 
-                                                                className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'MOBILE_MONEY' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-500'}`}
-                                                            >
-                                                                MOBILE MONEY
-                                                            </button>
-                                                            <button 
-                                                                onClick={() => setPaymentType('BANK')} 
-                                                                className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'BANK' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-500'}`}
-                                                            >
-                                                                BANK TRANSFER
-                                                            </button>
-                                                        </div>
-
-                                                        <div className="flex flex-col space-y-2">
-                                                            <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">Amount to disburse</label>
-                                                            <div className="relative group">
-                                                                <span className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">K</span>
-                                                                <input 
-                                                                    type="text" 
-                                                                    value={requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                                    readOnly
-                                                                    className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
-                                                                />
-                                                                <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center space-x-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-100">
-                                                                    <span className="text-[9px] font-black text-gray-400 uppercase">Fee:</span>
-                                                                    <span className="text-[11px] font-black text-gray-500">
-                                                                        K{lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), activeMethod || paymentType).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                                    </span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-
-                                                        <div className="flex flex-col space-y-2">
-                                                            <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">
-                                                                {paymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Bank & Account Details'}
-                                                            </label>
-
-                                                            {paymentType === 'BANK' && (
-                                                                <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                    <select 
-                                                                        value={recipientProvider || ''}
-                                                                        onChange={(e) => {
-                                                                            setRecipientProvider(e.target.value);
-                                                                            setLookupName(null);
-                                                                        }}
-                                                                        className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200 appearance-none cursor-pointer"
-                                                                    >
-                                                                        <option value="" disabled>{isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}</option>
-                                                                        {banks.map((bank) => (
-                                                                            <option key={bank.id} value={bank.id}>{bank.name}</option>
-                                                                        ))}
-                                                                    </select>
-                                                                    <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                                                                        <ChevronDown size={18} />
+                                                        {activeMethod === 'CASH_PICKUP' ? (
+                                                            <>
+                                                                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-start space-x-3">
+                                                                    <Coins className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                                                    <div>
+                                                                        <p className="text-[13px] font-bold text-gray-900 leading-tight">Manual Disbursement</p>
+                                                                        <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">Record a manual cash payment or other external method. Funds will not be moved electronically through the system.</p>
                                                                     </div>
                                                                 </div>
-                                                            )}
-                                                            <div className="relative group">
-                                                                <input 
-                                                                    type="text" 
-                                                                    placeholder={paymentType === 'MOBILE_MONEY' ? '097...' : 'Account Number (Zambia)'}
-                                                                    value={recipientValue}
-                                                                    onChange={(e) => {
-                                                                        const value = e.target.value;
-                                                                        setRecipientValue(value);
-                                                                        setLookupName(null);
-                                                                    }}
-                                                                    className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
-                                                                />
-                                                                <div className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center space-x-2">
-                                                                    {isLookingUp ? (
-                                                                        <Loader2 size={18} className="text-[#006AFF] animate-spin" />
-                                                                    ) : recipientProvider && (
-                                                                        <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                                                                            recipientProvider === 'AIRTEL' ? 'bg-red-50 text-red-500 border border-red-100' : 
-                                                                            recipientProvider === 'MTN' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' : 
-                                                                            'bg-emerald-50 text-emerald-600 border border-emerald-100'
-                                                                        }`}>
-                                                                            {recipientProvider}
+                                                                <div className="flex flex-col space-y-2">
+                                                                    <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">Amount to record</label>
+                                                                    <div className="relative group">
+                                                                        <span className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">K</span>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                            readOnly
+                                                                            className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex items-center space-x-3 pt-4">
+                                                                    <button 
+                                                                        onClick={() => {
+                                                                            setActiveMethod(null);
+                                                                            setLookupName(null);
+                                                                            setRecipientProvider(null);
+                                                                            setRecipientValue('');
+                                                                        }}
+                                                                        className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
+                                                                    >
+                                                                        Back
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={handleDisburse}
+                                                                        className="flex-[2] h-11 bg-gray-900 text-white text-[13px] font-bold rounded-full hover:bg-black transition-all shadow-lg flex items-center justify-center space-x-2"
+                                                                    >
+                                                                        <span>Record Disbursement</span>
+                                                                        <Check size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <div className="flex p-1.5 bg-gray-100/80 rounded-full w-full">
+                                                                    <button 
+                                                                        onClick={() => setPaymentType('MOBILE_MONEY')} 
+                                                                        className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'MOBILE_MONEY' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-500'}`}
+                                                                    >
+                                                                        MOBILE MONEY
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => setPaymentType('BANK')} 
+                                                                        className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${paymentType === 'BANK' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-500'}`}
+                                                                    >
+                                                                        BANK TRANSFER
+                                                                    </button>
+                                                                </div>
+
+                                                                <div className="flex flex-col space-y-2">
+                                                                    <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">Amount to disburse</label>
+                                                                    <div className="relative group">
+                                                                        <span className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">K</span>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                            readOnly
+                                                                            className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                        />
+                                                                        <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center space-x-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-100">
+                                                                            <span className="text-[9px] font-black text-gray-400 uppercase">Fee:</span>
+                                                                            <span className="text-[11px] font-black text-gray-500">
+                                                                                K{lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), activeMethod || paymentType).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                            </span>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex flex-col space-y-2">
+                                                                    <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">
+                                                                        {paymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Bank & Account Details'}
+                                                                    </label>
+
+                                                                    {paymentType === 'BANK' && (
+                                                                        <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                            <select 
+                                                                                value={recipientProvider || ''}
+                                                                                onChange={(e) => {
+                                                                                    setRecipientProvider(e.target.value);
+                                                                                    setLookupName(null);
+                                                                                }}
+                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200 appearance-none cursor-pointer"
+                                                                            >
+                                                                                <option value="" disabled>{isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}</option>
+                                                                                {banks.map((bank) => (
+                                                                                    <option key={bank.id} value={bank.id}>{bank.name}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                            <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                                                <ChevronDown size={18} />
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+                                                                    <div className="relative group">
+                                                                        <input 
+                                                                            type="text" 
+                                                                            placeholder={paymentType === 'MOBILE_MONEY' ? '097...' : 'Account Number (Zambia)'}
+                                                                            value={recipientValue}
+                                                                            onChange={(e) => {
+                                                                                const value = e.target.value;
+                                                                                setRecipientValue(value);
+                                                                                setLookupName(null);
+                                                                            }}
+                                                                            className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
+                                                                        />
+                                                                        <div className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                                                                            {isLookingUp ? (
+                                                                                <Loader2 size={18} className="text-[#006AFF] animate-spin" />
+                                                                            ) : recipientProvider && (
+                                                                                <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                                                                    recipientProvider === 'AIRTEL' ? 'bg-red-50 text-red-500 border border-red-100' : 
+                                                                                    recipientProvider === 'MTN' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' : 
+                                                                                    'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                                                                }`}>
+                                                                                    {recipientProvider}
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                    {lookupName && (
+                                                                        <div className="flex items-center space-x-2 ml-5 animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                            <div className={`w-1.5 h-1.5 rounded-full ${lookupName === 'Name not found' ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
+                                                                            <span className={`text-[12px] font-black uppercase tracking-widest ${lookupName === 'Name not found' ? 'text-red-600' : 'text-emerald-600'}`}>{lookupName}</span>
                                                                         </div>
                                                                     )}
                                                                 </div>
-                                                            </div>
-                                                            {lookupName && (
-                                                                <div className="flex items-center space-x-2 ml-5 animate-in fade-in slide-in-from-left-2 duration-300">
-                                                                    <div className={`w-1.5 h-1.5 rounded-full ${lookupName === 'Name not found' ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
-                                                                    <span className={`text-[12px] font-black uppercase tracking-widest ${lookupName === 'Name not found' ? 'text-red-600' : 'text-emerald-600'}`}>{lookupName}</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
 
-                                                        <div className="flex items-center space-x-3 pt-4">
-                                                            <button 
-                                                                onClick={() => {
-                                                                    setActiveMethod(null);
-                                                                    setLookupName(null);
-                                                                    setRecipientProvider(null);
-                                                                    setRecipientValue('');
-                                                                }}
-                                                                className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
-                                                            >
-                                                                Back
-                                                            </button>
-                                                            <button 
-                                                                onClick={handleDisburse}
-                                                                disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider)}
-                                                                className="flex-[2] h-11 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
-                                                            >
-                                                                <span>Send Money</span>
-                                                                <ArrowRight size={18} />
-                                                            </button>
-                                                        </div>
+                                                                <div className="flex items-center space-x-3 pt-4">
+                                                                    <button 
+                                                                        onClick={() => {
+                                                                            setActiveMethod(null);
+                                                                            setLookupName(null);
+                                                                            setRecipientProvider(null);
+                                                                            setRecipientValue('');
+                                                                        }}
+                                                                        className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
+                                                                    >
+                                                                        Back
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={handleDisburse}
+                                                                        disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider)}
+                                                                        className="flex-[2] h-11 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
+                                                                    >
+                                                                        <span>Send Money</span>
+                                                                        <ArrowRight size={18} />
+                                                                    </button>
+                                                                </div>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <div className="flex flex-col items-center justify-center py-12 space-y-4 animate-in fade-in zoom-in-95 duration-500">
