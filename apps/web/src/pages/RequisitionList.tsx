@@ -276,7 +276,7 @@ export const RequisitionList: React.FC = () => {
                     );
                 })()}
 
-                <div className="w-full bg-white pt-6">
+                <div className="w-full pt-6">
                     {loading && (
                         <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
                             <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>
