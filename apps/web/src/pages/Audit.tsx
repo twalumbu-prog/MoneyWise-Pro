@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
-import { ShieldCheck, TrendingUp, AlertTriangle, Search, Calendar, ExternalLink } from 'lucide-react';
+import { ShieldCheck, TrendingUp, AlertTriangle, Search, ExternalLink } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { Link } from 'react-router-dom';
 
@@ -45,23 +45,6 @@ export const Audit: React.FC = () => {
     return (
         <Layout>
             <div className="space-y-8">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div>
-                        <h1 className="text-3xl font-black text-brand-navy">Audit & Compliance</h1>
-                        <p className="text-gray-500 font-medium">Monitoring transaction integrity and efficiency.</p>
-                    </div>
-                    <div className="flex items-center space-x-3 bg-white p-2 rounded-2xl shadow-sm border border-gray-100">
-                        <div className="p-2 bg-brand-navy/5 rounded-xl">
-                            <Calendar className="h-5 w-5 text-brand-navy" />
-                        </div>
-                        <div>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Reporting Period</p>
-                            <p className="text-sm font-black text-brand-navy">All Time</p>
-                        </div>
-                    </div>
-                </div>
-
                 {/* Summary Widgets */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div className="bg-brand-navy p-8 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl shadow-brand-navy/20">
