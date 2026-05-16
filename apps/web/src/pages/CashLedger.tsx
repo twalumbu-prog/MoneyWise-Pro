@@ -164,6 +164,7 @@ const CashLedger: React.FC = () => {
     const [sortBy, setSortBy] = useState<'DATE_DESC' | 'DATE_ASC' | 'AMOUNT_HIGH' | 'AMOUNT_LOW'>('DATE_DESC');
     const [filterDepartment, setFilterDepartment] = useState<string>('ALL');
     const [filterAccount, setFilterAccount] = useState<string>('ALL');
+    const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
     const { userRole } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
@@ -295,6 +296,22 @@ const CashLedger: React.FC = () => {
         return Array.from(accs).sort();
     }, [entries]);
 
+    const uniqueStatuses = React.useMemo(() => {
+        const stats = new Set<string>();
+        if (Array.isArray(entries)) {
+            entries.forEach(entry => {
+                let status = '';
+                if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+                    status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
+                } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
+                    status = entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
+                }
+                if (status) stats.add(status);
+            });
+        }
+        return Array.from(stats).sort();
+    }, [entries]);
+
     // Processed Data (Search, Filter, Sort)
     const processedEntries = React.useMemo(() => {
         if (!Array.isArray(entries)) return [];
@@ -309,6 +326,18 @@ const CashLedger: React.FC = () => {
             result = result.filter(entry => {
                 // Return true if any line item in this entry matches the account filter
                 return entry.requisitions?.line_items?.some((item: any) => item.accounts?.name === filterAccount);
+            });
+        }
+
+        if (filterStatus !== 'ALL') {
+            result = result.filter(entry => {
+                let status = '';
+                if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+                    status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
+                } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
+                    status = entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
+                }
+                return status === filterStatus;
             });
         }
 
@@ -343,7 +372,7 @@ const CashLedger: React.FC = () => {
 
         return result;
 
-    }, [entries, searchQuery, filterDepartment, filterAccount, sortBy]);
+    }, [entries, searchQuery, filterDepartment, filterAccount, filterStatus, sortBy]);
 
     const groupedEntries = React.useMemo(() => {
         const groups: { month: string, entries: CashbookEntry[] }[] = [];
@@ -917,8 +946,19 @@ const CashLedger: React.FC = () => {
                                 {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
                             </select>
                         </div>
+                        <div className="flex flex-col">
+                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5">Status</span>
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                            >
+                                <option value="ALL">All Statuses</option>
+                                {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
+                            </select>
+                        </div>
                         <button
-                            onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setSearchQuery(''); }}
+                            onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}
                             className="text-[10px] font-black uppercase tracking-widest text-[#006AFF] text-left"
                         >
                             Reset Filters
@@ -1120,7 +1160,7 @@ const CashLedger: React.FC = () => {
                             <div className="w-[1px] h-4 bg-gray-200 mx-1" />
                             <button 
                                 onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                                className={`p-2 transition-colors rounded-xl hover:bg-white hover:shadow-sm ${isFilterMenuOpen || filterDepartment !== 'ALL' || filterAccount !== 'ALL' ? 'text-[#006AFF]' : 'text-gray-400'}`}
+                                className={`p-2 transition-colors rounded-xl hover:bg-white hover:shadow-sm ${isFilterMenuOpen || filterDepartment !== 'ALL' || filterAccount !== 'ALL' || filterStatus !== 'ALL' ? 'text-[#006AFF]' : 'text-gray-400'}`}
                             >
                                 <Filter size={18} strokeWidth={2.5} />
                             </button>
@@ -1177,8 +1217,19 @@ const CashLedger: React.FC = () => {
                                 {uniqueAccounts.map(acc => <option key={acc} value={acc}>{acc}</option>)}
                             </select>
                         </div>
+                        <div className="flex flex-col">
+                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">Status</span>
+                            <select
+                                value={filterStatus}
+                                onChange={(e) => setFilterStatus(e.target.value)}
+                                className="bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none shadow-sm min-w-[150px]"
+                            >
+                                <option value="ALL">All Statuses</option>
+                                {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
+                            </select>
+                        </div>
                         <button 
-                            onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setSearchQuery(''); }}
+                            onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}
                             className="mt-auto px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#006AFF] hover:bg-[#006AFF]/5 rounded-xl transition-colors"
                         >
                             Reset
