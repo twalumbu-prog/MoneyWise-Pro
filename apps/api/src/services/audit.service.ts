@@ -12,7 +12,7 @@ export class AuditService {
      * Should be called when status becomes ACCOUNTED.
      */
     static async calculateAuditScore(requisitionId: string): Promise<any> {
-        console.log(`[AuditService] Calculating score for requisition ${requisitionId}...`);
+        console.log(`[AuditService] 🔍 Calculating score for requisition ${requisitionId}...`);
         
         try {
             // 1. Fetch requisition with all necessary data
@@ -51,6 +51,7 @@ export class AuditService {
                 } else {
                     timingScore = 0;   // Bad
                 }
+                console.log(`[AuditService] ⏱ Timing: ${Math.round(diffHours)}h -> Score: ${timingScore}`);
             }
 
             // --- CRITERIA 2: COMPLIANCE (33.3%) ---
@@ -59,25 +60,37 @@ export class AuditService {
             const receipts = requisition.receipts || [];
             const lineItems = requisition.line_items || [];
             
-            if (receipts.length === 0) {
-                complianceScore = 0; // Completely terrible
+            if (receipts.length === 0 && requisition.type === 'EXPENSE') {
+                complianceScore = 0; // Completely terrible for expenses
+                console.log(`[AuditService] 📄 Compliance: No receipts found for expense -> Score: 0`);
             } else {
-                // Check if items match. For now, we use a simple heuristic:
-                // If every line item has a receipt_ocr_status of 'DONE' or a manual receipt_url.
-                // AND whether the OCR data matches (if available).
-                // Actually, the user says: "if the receipts were uploaded, but the items did not match that's in the middle"
-                
-                const itemsWithReceipts = lineItems.filter((item: any) => item.receipt_url || item.receipt_ocr_status === 'DONE');
-                const allItemsHaveReceipts = itemsWithReceipts.length === lineItems.length;
-                
-                // Check for OCR matching failures
-                const matchFailures = lineItems.filter((item: any) => item.receipt_ocr_status === 'FAILED');
-                
-                if (allItemsHaveReceipts && matchFailures.length === 0) {
-                    complianceScore = 100; // Brilliant
-                } else if (receipts.length > 0) {
-                    complianceScore = 50;  // Average (in the middle)
+                // Filter out line items that don't need receipts (e.g., Principal for loans/advances)
+                const itemsNeedingReceipts = lineItems.filter((item: any) => {
+                    const desc = (item.description || '').toLowerCase();
+                    const isPrincipal = desc.includes('principal') || 
+                                      ((requisition.type === 'LOAN' || requisition.type === 'ADVANCE') && 
+                                       (desc.includes('loan') || desc.includes('advance')));
+                    return !isPrincipal;
+                });
+
+                if (itemsNeedingReceipts.length === 0) {
+                    complianceScore = 100; // No items need receipts (e.g. pure loan with no fees)
+                } else {
+                    const itemsWithReceipts = itemsNeedingReceipts.filter((item: any) => 
+                        item.receipt_url || item.receipt_ocr_status === 'DONE'
+                    );
+                    const allItemsHaveReceipts = itemsWithReceipts.length === itemsNeedingReceipts.length;
+                    
+                    // Check for OCR matching failures
+                    const matchFailures = itemsNeedingReceipts.filter((item: any) => item.receipt_ocr_status === 'FAILED');
+                    
+                    if (allItemsHaveReceipts && matchFailures.length === 0) {
+                        complianceScore = 100; // Brilliant
+                    } else if (receipts.length > 0) {
+                        complianceScore = 50;  // Average (some items missing or failed)
+                    }
                 }
+                console.log(`[AuditService] 📄 Compliance: ${itemsNeedingReceipts.length} items checked -> Score: ${complianceScore}`);
             }
 
             // --- CRITERIA 3: ACCURACY (33.3%) ---
@@ -87,13 +100,22 @@ export class AuditService {
             
             if (disbursements.length > 0) {
                 // Check if any disbursement has a non-zero discrepancy
-                const hasDiscrepancy = disbursements.some((d: any) => (d.discrepancy_amount || 0) !== 0);
+                const hasDiscrepancy = disbursements.some((d: any) => Math.abs(d.discrepancy_amount || 0) > 0.01);
                 if (hasDiscrepancy) {
                     accuracyScore = 0; // Automatically not ideal
                 } else {
                     accuracyScore = 100; // Ideal
                 }
+            } else if (requisition.type === 'EXPENSE') {
+                // If no disbursements (change returned) for an expense, check if actual matches estimated
+                const diff = Math.abs((requisition.actual_total || 0) - (requisition.estimated_total || 0));
+                if (diff > 0.01) {
+                    accuracyScore = 50; // Spent more or less but no change record? Suspicious.
+                } else {
+                    accuracyScore = 100; // Spent exactly the estimated amount.
+                }
             }
+            console.log(`[AuditService] ⚖️ Accuracy Score: ${accuracyScore}`);
 
             // --- FINAL CALCULATION ---
             const breakdown: AuditScoreBreakdown = {
