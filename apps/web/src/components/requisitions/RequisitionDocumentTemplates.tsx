@@ -55,15 +55,15 @@ export const PurchaseRequisitionForm: React.FC<DocumentTemplateProps> = ({ requi
                         <tr key={idx}>
                             <td className="px-5 py-4 text-sm font-medium text-gray-700">{item.description}</td>
                             <td className="px-5 py-4 text-sm font-medium text-gray-500 text-center">{item.quantity}</td>
-                            <td className="px-5 py-4 text-sm font-medium text-gray-900 text-right">K{item.unit_price?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                            <td className="px-5 py-4 text-sm font-bold text-gray-900 text-right">K{item.estimated_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                            <td className="px-5 py-4 text-sm font-medium text-gray-900 text-right">K{item.unit_price ? Number(item.unit_price).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
+                            <td className="px-5 py-4 text-sm font-bold text-gray-900 text-right">K{item.estimated_amount ? Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
                         </tr>
                     ))}
                 </tbody>
                 <tfoot>
                     <tr className="bg-[#006AFF]/5">
                         <td colSpan={3} className="px-5 py-5 text-[11px] font-bold text-[#006AFF] uppercase tracking-widest text-right">Grand Total</td>
-                        <td className="px-5 py-5 text-[18px] font-black text-[#006AFF] text-right">K{requisition.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        <td className="px-5 py-5 text-[18px] font-black text-[#006AFF] text-right">K{requisition.estimated_total ? Number(requisition.estimated_total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
                     </tr>
                 </tfoot>
             </table>
@@ -100,7 +100,7 @@ export const CashDisbursalProof: React.FC<DocumentTemplateProps> = ({ requisitio
                         <Check size={20} strokeWidth={3} />
                         <span className="text-sm font-black uppercase tracking-widest">Successful Transfer</span>
                     </div>
-                    <h1 className="text-3xl font-black text-gray-900 tracking-tight">K{disbursal.amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h1>
+                    <h1 className="text-3xl font-black text-gray-900 tracking-tight">K{disbursal.amount ? Number(disbursal.amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</h1>
                     <p className="text-xs font-bold text-gray-400 mt-1 uppercase tracking-widest">Transaction Ref: {disbursal.external_reference || 'REF-' + requisition.id.slice(0, 6).toUpperCase()}</p>
                 </div>
                 <div className="w-16 h-16 bg-[#10B981] rounded-2xl flex items-center justify-center text-white shadow-xl shadow-emerald-100">
@@ -198,8 +198,8 @@ export const ExpenseVarianceForm: React.FC<DocumentTemplateProps> = ({ requisiti
                                 return (
                                     <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                                         <td className="px-5 py-4 text-[13px] text-gray-700">{item.description}</td>
-                                        <td className="px-5 py-4 text-[13px] text-gray-500 text-right">K{(item.estimated_amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                        <td className="px-5 py-4 text-[13px] font-semibold text-gray-900 text-right">K{(item.actual_amount ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                        <td className="px-5 py-4 text-[13px] text-gray-500 text-right">K{item.estimated_amount ? Number(item.estimated_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
+                                        <td className="px-4 py-3 text-sm font-black text-gray-900 text-right">K{item.actual_amount ? Number(item.actual_amount).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
                                         <td className={`px-5 py-4 text-[13px] font-semibold text-right ${diff >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                                             {diff >= 0 ? '+' : ''}K{diff.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                         </td>
@@ -211,7 +211,7 @@ export const ExpenseVarianceForm: React.FC<DocumentTemplateProps> = ({ requisiti
                             <tr className="border-t border-gray-200 bg-gray-50">
                                 <td className="px-5 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-widest">Totals</td>
                                 <td className="px-5 py-4 text-[13px] font-bold text-gray-700 text-right">K{amountGiven.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td className="px-5 py-4 text-[13px] font-bold text-gray-900 text-right">K{actualSpent.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td className="px-4 py-4 text-lg font-black text-[#10B981] text-right">K{requisition.actual_total ? Number(requisition.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : '0.00'}</td>
                                 <td className={`px-5 py-4 text-[13px] font-bold text-right ${(amountGiven - actualSpent) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                                     {(amountGiven - actualSpent) >= 0 ? '+' : ''}K{(amountGiven - actualSpent).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </td>
@@ -281,7 +281,7 @@ export const AccountingTreatmentForm: React.FC<DocumentTemplateProps> = ({ requi
                             <td className="px-5 py-4 text-sm font-medium text-gray-900">{item.description}</td>
                             <td className="px-5 py-4 text-sm font-bold text-[#006AFF]">{item.accounts?.name || 'Administrative Expense'}</td>
                             <td className="px-5 py-4 text-[11px] font-black text-gray-500 text-center">{item.account_id || item.accounts?.code || '6000'}</td>
-                            <td className="px-5 py-4 text-sm font-black text-gray-900 text-right">K{item.actual_amount?.toLocaleString() || item.unit_price?.toLocaleString()}</td>
+                            <td className="px-5 py-4 text-sm font-black text-gray-900 text-right">K{item.actual_amount ? Number(item.actual_amount).toLocaleString() : (item.unit_price ? Number(item.unit_price).toLocaleString() : '0.00')}</td>
                         </tr>
                     ))}
                 </tbody>
@@ -358,11 +358,11 @@ export const QuickBooksSyncLog: React.FC<DocumentTemplateProps> = ({ requisition
                     </div>
                     <div className="flex justify-between text-sm font-medium">
                         <span className="text-gray-500">Total Credits</span>
-                        <span className="font-black text-gray-900">K{requisition.actual_total?.toLocaleString()}</span>
+                        <span className="font-black text-gray-900">K{requisition.actual_total ? Number(requisition.actual_total).toLocaleString() : '0.00'}</span>
                     </div>
                     <div className="flex justify-between text-sm font-medium">
                         <span className="text-gray-500">Total Debits</span>
-                        <span className="font-black text-gray-900">K{requisition.actual_total?.toLocaleString()}</span>
+                        <span className="font-black text-gray-900">K{requisition.actual_total ? Number(requisition.actual_total).toLocaleString() : '0.00'}</span>
                     </div>
                 </div>
             </div>

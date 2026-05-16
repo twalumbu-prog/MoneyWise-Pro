@@ -1083,7 +1083,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         <span className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">K</span>
                                                                         <input 
                                                                             type="text" 
-                                                                            value={requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                            value={requisitionData?.estimated_total ? Number(requisitionData.estimated_total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
                                                                             readOnly
                                                                             className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
                                                                         />
@@ -1133,7 +1133,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         <span className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">K</span>
                                                                         <input 
                                                                             type="text" 
-                                                                            value={requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                            value={requisitionData?.estimated_total ? Number(requisitionData.estimated_total).toLocaleString(undefined, { minimumFractionDigits: 2 }) : ''}
                                                                             readOnly
                                                                             className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200"
                                                                         />
