@@ -10,6 +10,7 @@ import { LencoService } from '../services/lenco.service';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { RequisitionMessageService } from '../services/requisition_message.service';
 import { aiService } from '../services/ai/ai.service';
+import { AuditService } from '../services/audit.service';
 
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     try {
@@ -1529,7 +1530,18 @@ export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise
 
         if (!qbResult.success) throw new Error(qbResult.error as string);
 
-        await supabase.from('requisitions').update({ status: 'ACCOUNTED' }).eq('id', id);
+        const now = new Date().toISOString();
+        await supabase.from('requisitions').update({ 
+            status: 'ACCOUNTED',
+            accounted_at: now
+        } as any).eq('id', id);
+
+        // Calculate and save Audit Score
+        try {
+            await AuditService.calculateAuditScore(id);
+        } catch (auditErr) {
+            console.error('[Audit] Score calculation failed post-QB:', auditErr);
+        }
 
         // Send Success message
         await RequisitionMessageService.createMessage({
@@ -1919,5 +1931,69 @@ export const revertToDraft = async (req: AuthRequest, res: Response): Promise<an
     } catch (error: any) {
         console.error('Error reverting requisition to draft:', error);
         res.status(500).json({ error: 'Failed to revert requisition to draft', details: error.message });
+    }
+};
+
+export const getAuditReport = async (req: any, res: any): Promise<any> => {
+    try {
+        const organizationId = req.user.organization_id;
+        const { startDate, endDate } = req.query;
+
+        let query = supabase
+            .from('requisitions')
+            .select(`
+                id,
+                reference_number,
+                description,
+                estimated_total,
+                status,
+                audit_score,
+                audit_score_breakdown,
+                created_at,
+                accounted_at,
+                requestor:users!requestor_id (name)
+            `)
+            .eq('organization_id', organizationId)
+            .not('audit_score', 'is', null)
+            .order('created_at', { ascending: false });
+
+        if (startDate) query = query.gte('created_at', startDate);
+        if (endDate) query = query.lte('created_at', endDate);
+
+        const { data, error } = await query;
+
+        if (error) throw error;
+
+        // Calculate summary metrics
+        const totalTransactions = data.length;
+        const averageScore = totalTransactions > 0 
+            ? data.reduce((acc, curr) => acc + Number(curr.audit_score || 0), 0) / totalTransactions 
+            : 0;
+
+        // Categorize transactions
+        const categorized = data.map(req => {
+            let rating: 'Bad' | 'Average' | 'Brilliant' = 'Average';
+            const score = Number(req.audit_score || 0);
+            
+            if (score >= 85) rating = 'Brilliant';
+            else if (score < 40) rating = 'Bad';
+            
+            return {
+                ...req,
+                rating,
+                requestor_name: (req.requestor as any)?.name
+            };
+        });
+
+        res.json({
+            summary: {
+                average_score: Math.round(averageScore),
+                total_audited: totalTransactions
+            },
+            transactions: categorized
+        });
+    } catch (error: any) {
+        console.error('[AuditReport] Error:', error);
+        res.status(500).json({ error: 'Failed to fetch audit report' });
     }
 };

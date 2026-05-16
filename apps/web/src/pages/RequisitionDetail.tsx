@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext';
 import { DenominationInput } from '../components/DenominationInput';
 import { ReceiptInsightsPanel } from '../components/ReceiptInsightsPanel';
 import { lencoService } from '../services/lenco.service';
+import { AuditScoreBreakdown } from '../components/AuditScoreBreakdown';
 
 
 export const RequisitionDetail: React.FC = () => {
@@ -51,6 +52,7 @@ export const RequisitionDetail: React.FC = () => {
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [isVerifyingWallet, setIsVerifyingWallet] = useState(false);
     const [walletVerificationStep, setWalletVerificationStep] = useState<'IDLE' | 'POLLING' | 'SUCCESS' | 'FAILED'>('IDLE');
+    const [activeTab, setActiveTab] = useState<'DETAILS' | 'AUDIT'>('DETAILS');
 
     useEffect(() => {
         if (id) {
@@ -485,8 +487,43 @@ export const RequisitionDetail: React.FC = () => {
                             )}
                         </div>
                     </div>
+
+                    <div className="border-b border-gray-200 bg-white px-4 sm:px-6">
+                        <nav className="-mb-px flex space-x-8" aria-label="Tabs">
+                            <button
+                                onClick={() => setActiveTab('DETAILS')}
+                                className={`${
+                                    activeTab === 'DETAILS'
+                                        ? 'border-brand-green text-brand-green'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                } whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-all`}
+                            >
+                                Details
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('AUDIT')}
+                                className={`${
+                                    activeTab === 'AUDIT'
+                                        ? 'border-brand-green text-brand-green'
+                                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                                } whitespace-nowrap py-4 px-1 border-b-2 font-bold text-sm transition-all flex items-center`}
+                            >
+                                Audit Score
+                                {requisition.audit_score !== undefined && requisition.audit_score !== null && (
+                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] ${
+                                        requisition.audit_score >= 85 ? 'bg-emerald-100 text-emerald-700' :
+                                        requisition.audit_score >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                    }`}>
+                                        {Math.round(requisition.audit_score)}%
+                                    </span>
+                                )}
+                            </button>
+                        </nav>
+                    </div>
+
                     <div className="border-t border-gray-200 px-4 py-5 sm:p-0">
-                        <dl className="sm:divide-y sm:divide-gray-200">
+                        {activeTab === 'DETAILS' ? (
+                            <dl className="sm:divide-y sm:divide-gray-200">
                             {/* ... Header fields ... */}
                             <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
                                 <dt className="text-sm font-medium text-gray-500">Description</dt>
@@ -934,8 +971,32 @@ export const RequisitionDetail: React.FC = () => {
                             </div>
                         </div>
                     )}
+                </dl>
+            ) : (
+                <div className="px-6 py-6">
+                    {requisition.audit_score !== undefined && requisition.audit_score !== null ? (
+                        <AuditScoreBreakdown 
+                            score={requisition.audit_score} 
+                            breakdown={requisition.audit_score_breakdown!}
+                            accountedAt={requisition.accounted_at}
+                            createdAt={requisition.created_at}
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center py-12 text-center">
+                            <div className="p-4 bg-gray-50 rounded-full mb-4">
+                                <AlertCircle className="h-8 w-8 text-gray-400" />
+                            </div>
+                            <h3 className="text-lg font-bold text-gray-900">Score Not Yet Calculated</h3>
+                            <p className="text-gray-500 max-w-xs mt-2">
+                                Audit scores are calculated automatically once the transaction is finalized and posted to QuickBooks.
+                            </p>
+                        </div>
+                    )}
                 </div>
-            </div>
+            )}
+        </div>
+    </div>
+</div>
         </Layout>
     );
 };

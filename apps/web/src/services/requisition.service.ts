@@ -58,6 +58,13 @@ export interface Requisition {
     recipient_name?: string;
     organization_id: string;
     disbursements?: any[];
+    audit_score?: number;
+    audit_score_breakdown?: {
+        timing: number;
+        compliance: number;
+        accuracy: number;
+    };
+    accounted_at?: string;
 
     organization?: {
         id: string;
@@ -454,6 +461,17 @@ export const requisitionService = {
             throw new Error(err.message || err.error || 'Failed to revert requisition to draft');
         }
 
+        return response.json();
+    },
+    async getAuditReport(startDate?: string, endDate?: string) {
+        let url = '/requisitions/reports/audit';
+        const params = new URLSearchParams();
+        if (startDate) params.append('startDate', startDate);
+        if (endDate) params.append('endDate', endDate);
+        if (params.toString()) url += `?${params.toString()}`;
+
+        const response = await apiFetch(url);
+        if (!response.ok) throw new Error('Failed to fetch audit report');
         return response.json();
     }
 };

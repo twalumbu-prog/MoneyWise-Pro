@@ -18,7 +18,7 @@ import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsOfService } from './pages/TermsOfService';
 import { Disconnect } from './pages/Disconnect';
 import { Join } from './pages/Join';
-import { ComingSoonPage } from './pages/ComingSoonPage';
+import { Audit } from './pages/Audit';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -187,7 +187,7 @@ function App() {
                         path="/audit"
                         element={
                             <ProtectedRoute>
-                                <ComingSoonPage featureName="Audit & Compliance" />
+                                <Audit />
                             </ProtectedRoute>
                         }
                     />

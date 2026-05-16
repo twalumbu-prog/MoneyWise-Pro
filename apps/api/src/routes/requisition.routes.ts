@@ -20,7 +20,8 @@ import {
     deleteReceipt,
     deleteRequisitionMessage,
     updateLineItemAccount,
-    revertToDraft
+    revertToDraft,
+    getAuditReport
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -41,6 +42,7 @@ router.use(requireAuth);
 router.get('/admin/all', getAllRequisitionsAdmin);
 router.patch('/:id/status', updateRequisitionStatus);
 router.post('/:id/revert-to-draft', revertToDraft);
+router.get('/reports/audit', getAuditReport);
 
 // Disbursement routes
 router.get('/disbursements/history', getDisbursementHistory);
