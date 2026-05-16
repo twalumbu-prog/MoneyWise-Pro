@@ -402,7 +402,7 @@ const CashLedger: React.FC = () => {
         return (
             <div className="flex items-center w-fit">
                 {getStatusIcon(config.iconType, config.color)}
-                <span className={`text-[10px] font-normal uppercase tracking-[0.15em] ml-1.5 ${textClass}`}>
+                <span className="text-[10px] font-normal uppercase tracking-[0.15em] ml-1.5 text-gray-900">
                     {config.label}
                 </span>
             </div>
