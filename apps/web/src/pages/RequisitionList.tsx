@@ -22,6 +22,7 @@ interface Requisition {
     requestor_name?: string;
     department?: string;
     type?: string;
+    has_unread_updates?: boolean;
 }
 
 // Determine completed statuses (for filtering active requisitions in Requestor view)
@@ -41,7 +42,7 @@ const TABS = [
 export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { userRole } = useAuth();
+    const { userRole, refreshNotifications } = useAuth();
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -330,6 +331,10 @@ export const RequisitionList: React.FC = () => {
                                                     try {
                                                         const fullReq = await requisitionService.getById(req.id);
                                                         setSelectedRequisition(fullReq);
+                                                        if (req.has_unread_updates) {
+                                                            setRequisitions(prev => prev.map(r => r.id === req.id ? { ...r, has_unread_updates: false } : r));
+                                                            requisitionService.markRead(req.id).then(() => refreshNotifications()).catch(console.error);
+                                                        }
                                                     } catch (err) {
                                                         console.error('Failed to fetch requisition details:', err);
                                                         setSelectedRequisition(req as any);
@@ -387,6 +392,11 @@ export const RequisitionList: React.FC = () => {
                                         try {
                                             const fullReq = await requisitionService.getById(id);
                                             setSelectedRequisition(fullReq);
+                                            const clickedReq = filteredRequisitions.find(r => r.id === id);
+                                            if (clickedReq?.has_unread_updates) {
+                                                setRequisitions(prev => prev.map(r => r.id === id ? { ...r, has_unread_updates: false } : r));
+                                                requisitionService.markRead(id).then(() => refreshNotifications()).catch(console.error);
+                                            }
                                         } catch (err) {
                                             console.error('Failed to fetch requisition details:', err);
                                         }
