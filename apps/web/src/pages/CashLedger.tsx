@@ -402,7 +402,7 @@ const CashLedger: React.FC = () => {
         return (
             <div className="flex items-center w-fit">
                 {getStatusIcon(config.iconType, config.color)}
-                <span className={`text-[10px] font-bold uppercase tracking-[0.15em] ml-1.5 ${textClass}`}>
+                <span className={`text-[10px] font-normal uppercase tracking-[0.15em] ml-1.5 ${textClass}`}>
                     {config.label}
                 </span>
             </div>
@@ -1263,12 +1263,12 @@ const CashLedger: React.FC = () => {
                                                                 {entry.requisitions?.description || entry.description}
                                                             </div>
                                                             <div className="flex items-center gap-3 mt-1">
+                                                                {getEntryStatus(entry)}
                                                                 {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
                                                                     <div className="text-[11px] font-normal text-gray-400 uppercase tracking-tight">
                                                                         #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
                                                                     </div>
                                                                 )}
-                                                                {getEntryStatus(entry)}
                                                             </div>
                                                         </div>
                                                     </td>
