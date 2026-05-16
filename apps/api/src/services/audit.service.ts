@@ -25,6 +25,7 @@ export class AuditService {
                     status,
                     estimated_total,
                     actual_total,
+                    type,
                     receipts (*),
                     line_items (*),
                     disbursements (*)
