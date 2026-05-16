@@ -27,7 +27,10 @@ export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
             return res.status(404).json({ error: 'Requisition not found' });
         }
 
-        if (requisition.requestor_id !== user_id) {
+        const userRole = (req as any).user.role;
+        const isPrivileged = ['ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER'].includes(userRole);
+
+        if (requisition.requestor_id !== user_id && !isPrivileged) {
             return res.status(403).json({ error: 'Unauthorized to mark this requisition as read' });
         }
 

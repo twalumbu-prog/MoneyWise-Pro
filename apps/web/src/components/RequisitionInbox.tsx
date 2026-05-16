@@ -97,10 +97,10 @@ export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions
                                 {/* AMOUNT & DATE */}
                                 <td className="py-6 px-6 text-right w-[160px]">
                                     <div className="flex flex-col space-y-1">
-                                        <div className={`text-[17px] tracking-tight ${req.has_unread_updates ? 'font-black text-brand-navy' : 'font-semibold text-brand-navy'}`}>
+                                        <div className={`text-[17px] tracking-tight ${req.has_unread_updates ? 'font-black text-brand-navy' : 'font-normal text-brand-navy'}`}>
                                             K{req.estimated_total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                         </div>
-                                        <div className={`text-[11px] text-gray-400 tracking-widest leading-none ${req.has_unread_updates ? 'font-bold' : 'font-medium'}`}>
+                                        <div className={`text-[11px] text-gray-400 tracking-widest leading-none ${req.has_unread_updates ? 'font-bold' : 'font-normal'}`}>
                                             {new Date(req.created_at).toLocaleDateString('en-GB')}
                                         </div>
                                     </div>
