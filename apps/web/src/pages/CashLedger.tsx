@@ -999,13 +999,13 @@ const CashLedger: React.FC = () => {
                                         >
                                             {/* Left: Date Column */}
                                             <div className="flex flex-col items-center mr-4 pt-0.5" style={{ minWidth: '32px' }}>
-                                                <span className="text-[15px] font-black text-brand-navy leading-none">{dayNum}</span>
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider mt-0.5">{month}</span>
+                                                <span className="text-[15px] font-normal text-brand-navy leading-none">{dayNum}</span>
+                                                <span className="text-[9px] font-normal text-gray-400 uppercase tracking-wider mt-0.5">{month}</span>
                                             </div>
 
                                             {/* Middle: Description + Ref */}
                                             <div className="flex-1 mr-4">
-                                                <p className="text-[14px] font-semibold text-brand-navy leading-tight line-clamp-1">
+                                                <p className="text-[14px] font-normal text-brand-navy leading-tight line-clamp-1">
                                                     {description}
                                                 </p>
                                                 {refNum && (
@@ -1017,7 +1017,7 @@ const CashLedger: React.FC = () => {
 
                                             {/* Right: Amount + Closing Balance */}
                                             <div className="flex flex-col items-end">
-                                                <span className={`text-[14px] font-semibold leading-tight ${
+                                                <span className={`text-[14px] font-normal leading-tight ${
                                                     isOutflow ? 'text-rose-600' : 'text-emerald-600'
                                                 }`}>
                                                     {isOutflow ? '-' : '+'}{formatCurrency(amount)}
@@ -1259,7 +1259,7 @@ const CashLedger: React.FC = () => {
                                                     onClick={() => toggleRow(entry.id)}
                                                 >
                                                     <td className="p-6">
-                                                        <div className="text-sm font-bold text-gray-900">
+                                                        <div className="text-sm font-normal text-gray-900">
                                                             {new Date(entry.date).getDate()}
                                                         </div>
                                                         <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-0.5">
@@ -1268,7 +1268,7 @@ const CashLedger: React.FC = () => {
                                                     </td>
                                                     <td className="p-6 max-w-[400px]">
                                                         <div className="flex flex-col">
-                                                            <div className="flex items-center gap-2 font-bold text-gray-900 overflow-hidden">
+                                                            <div className="flex items-center gap-2 font-normal text-gray-900 overflow-hidden">
                                                                 <div className="text-[14px] line-clamp-1 flex items-center overflow-hidden">
                                                                     {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
                                                                         <span className="px-2 py-0.5 rounded-md bg-blue-50/50 text-[#006AFF] font-medium text-[11px] mr-2 flex-shrink-0">
@@ -1284,7 +1284,7 @@ const CashLedger: React.FC = () => {
                                                         {getEntryStatus(entry)}
                                                     </td>
                                                     <td className="p-6 text-center">
-                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-normal uppercase tracking-wider ${
                                                             entry.entry_type === 'DISBURSEMENT' ? 'bg-transparent text-gray-400 border border-gray-200' :
                                                             entry.entry_type === 'RETURN' || entry.entry_type === 'INFLOW' ? 'bg-transparent text-gray-400 border border-gray-200' :
                                                             entry.entry_type === 'ADJUSTMENT' ? 'bg-purple-50 text-purple-600/70 border border-purple-100' :
@@ -1297,20 +1297,20 @@ const CashLedger: React.FC = () => {
                                                     </td>
                                                     <td className="p-6 text-right">
                                                         {entry.debit > 0 ? (
-                                                            <span className="text-[14px] font-black text-gray-900">
+                                                            <span className="text-[14px] font-normal text-gray-900">
                                                                 {formatCurrency(entry.debit).replace('K', '')}
                                                             </span>
                                                         ) : <span className="text-gray-200">-</span>}
                                                     </td>
                                                     <td className="p-6 text-right">
                                                         {entry.credit > 0 ? (
-                                                            <span className="text-[14px] font-black text-rose-600">
+                                                            <span className="text-[14px] font-normal text-rose-600">
                                                                 - {formatCurrency(entry.credit).replace('K', '')}
                                                             </span>
                                                         ) : <span className="text-gray-200">-</span>}
                                                     </td>
                                                     <td className="p-6 text-right">
-                                                        <span className="text-[14px] font-black text-gray-900">
+                                                        <span className="text-[14px] font-normal text-gray-900">
                                                             {formatCurrency(entry.balance_after).replace('K', '')}
                                                         </span>
                                                     </td>
