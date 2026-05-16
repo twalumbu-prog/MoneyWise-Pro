@@ -1017,9 +1017,7 @@ const CashLedger: React.FC = () => {
 
                                             {/* Right: Amount + Closing Balance */}
                                             <div className="flex flex-col items-end">
-                                                <span className={`text-[14px] font-normal leading-tight ${
-                                                    isOutflow ? 'text-rose-600' : 'text-emerald-600'
-                                                }`}>
+                                                <span className="text-[14px] font-normal text-gray-900 leading-tight">
                                                     {isOutflow ? '-' : '+'}{formatCurrency(amount)}
                                                 </span>
                                                 <span className="text-[11px] font-normal text-gray-400 mt-0.5">
@@ -1268,16 +1266,14 @@ const CashLedger: React.FC = () => {
                                                     </td>
                                                     <td className="p-6 max-w-[400px]">
                                                         <div className="flex flex-col">
-                                                            <div className="flex items-center gap-2 font-normal text-gray-900 overflow-hidden">
-                                                                <div className="text-[14px] line-clamp-1 flex items-center overflow-hidden">
-                                                                    {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
-                                                                        <span className="px-2 py-0.5 rounded-md bg-blue-50/50 text-[#006AFF] font-medium text-[11px] mr-2 flex-shrink-0">
-                                                                            #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
-                                                                        </span>
-                                                                    )}
-                                                                    <span className="truncate flex-1">{entry.requisitions?.description || entry.description}</span>
-                                                                </div>
+                                                            <div className="text-[14px] font-normal text-gray-900 line-clamp-1 leading-tight">
+                                                                {entry.requisitions?.description || entry.description}
                                                             </div>
+                                                            {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
+                                                                <div className="text-[11px] font-normal text-gray-400 mt-1 uppercase tracking-tight">
+                                                                    #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </td>
                                                     <td className="p-6">
@@ -1304,13 +1300,13 @@ const CashLedger: React.FC = () => {
                                                     </td>
                                                     <td className="p-6 text-right">
                                                         {entry.credit > 0 ? (
-                                                            <span className="text-[14px] font-normal text-rose-600">
+                                                            <span className="text-[14px] font-normal text-gray-900">
                                                                 - {formatCurrency(entry.credit).replace('K', '')}
                                                             </span>
                                                         ) : <span className="text-gray-200">-</span>}
                                                     </td>
                                                     <td className="p-6 text-right">
-                                                        <span className="text-[14px] font-normal text-gray-900">
+                                                        <span className="text-[14px] font-normal text-gray-400">
                                                             {formatCurrency(entry.balance_after).replace('K', '')}
                                                         </span>
                                                     </td>
