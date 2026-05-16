@@ -501,7 +501,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const handleDisburse = async () => {
         if (!requisitionData?.id || !activeMethod) return;
 
-        const isLencoTransfer = activeMethod === 'MONEYWISE_WALLET' || activeMethod === 'MOBILE_MONEY';
+        const isLencoTransfer = activeMethod === 'MONEYWISE_WALLET';
         if (isLencoTransfer && Number(requisitionData.estimated_total) < LENCO_MIN_TRANSFER) {
             setDisburseError(`The disbursement amount (K${requisitionData.estimated_total}) is below the minimum transfer amount of K${LENCO_MIN_TRANSFER}. Please use a different payment method or raise a new requisition for at least K${LENCO_MIN_TRANSFER}.`);
             return;
@@ -515,7 +515,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         const normalizedPhone = cleanPhone.startsWith('260') ? '0' + cleanPhone.substring(3) : cleanPhone;
 
         const recipientBankCode = (() => {
-            if (activeMethod === 'MONEYWISE_WALLET' || activeMethod === 'MOBILE_MONEY') {
+            if (activeMethod === 'MONEYWISE_WALLET') {
                 return (recipientProvider || '').toLowerCase();
             }
             return recipientProvider || undefined;
@@ -1068,13 +1068,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <div className="space-y-6">
                                                 {!isProcessing ? (
                                                     <div className="flex flex-col space-y-6">
-                                                        {activeMethod === 'CASH_PICKUP' ? (
+                                                        {activeMethod !== 'MONEYWISE_WALLET' ? (
                                                             <>
                                                                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-start space-x-3">
-                                                                    <Coins className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                                                    {activeMethod === 'BANK_TRANSFER' ? <Building2 className="text-gray-400 mt-0.5 flex-shrink-0" /> : activeMethod === 'MOBILE_MONEY' ? <Smartphone className="text-gray-400 mt-0.5 flex-shrink-0" /> : <Coins className="text-gray-400 mt-0.5 flex-shrink-0" />}
                                                                     <div>
-                                                                        <p className="text-[13px] font-bold text-gray-900 leading-tight">Manual Disbursement</p>
-                                                                        <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">Record a manual cash payment or other external method. Funds will not be moved electronically through the system.</p>
+                                                                        <p className="text-[13px] font-bold text-gray-900 leading-tight">Manual {PAYMENT_METHODS.find(m => m.id === activeMethod)?.name || 'Disbursement'}</p>
+                                                                        <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">Record a manual external payment. Funds will not be moved electronically through the system.</p>
                                                                     </div>
                                                                 </div>
                                                                 <div className="flex flex-col space-y-2">
