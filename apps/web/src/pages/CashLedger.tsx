@@ -40,92 +40,6 @@ import ExportLedgerModal from '../components/ExportLedgerModal';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 
 
-const SearchableAccountSelect: React.FC<{
-    value: string;
-    options: any[];
-    onChange: (value: string) => void;
-    placeholder?: string;
-}> = ({ value, options, onChange, placeholder = "Select account..." }) => {
-    const [isOpen, setIsOpen] = useState(false);
-    const [search, setSearch] = useState("");
-    const dropdownRef = useRef<HTMLDivElement>(null);
-
-    const selectedOption = options.find(opt => opt.id === value);
-
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-                setIsOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
-
-    const filteredOptions = options.filter(opt => 
-        (opt.name || "").toLowerCase().includes(search.toLowerCase()) || 
-        (opt.code || "").toLowerCase().includes(search.toLowerCase())
-    );
-
-    return (
-        <div className="relative w-full max-w-[280px]" ref={dropdownRef}>
-            <div 
-                onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-                className={`flex items-center justify-between px-3 py-2 bg-gray-50/50 border rounded-xl cursor-pointer transition-all text-xs font-medium
-                    ${isOpen ? 'border-blue-400 ring-4 ring-blue-50 bg-white' : 'border-gray-100 hover:border-blue-200'}`}
-            >
-                <span className={`truncate mr-2 ${selectedOption ? 'text-gray-900 font-bold' : 'text-gray-400'}`}>
-                    {selectedOption ? `${selectedOption.code} · ${selectedOption.name}` : placeholder}
-                </span>
-                <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-            </div>
-
-            {isOpen && (
-                <div 
-                    className="absolute z-[100] w-full mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ minWidth: '300px' }}
-                >
-                    <div className="p-2 border-b border-gray-50">
-                        <div className="relative">
-                            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                            <input
-                                autoFocus
-                                type="text"
-                                placeholder="Search accounts..."
-                                value={search}
-                                onChange={(e) => setSearch(e.target.value)}
-                                className="w-full pl-9 pr-3 py-2 bg-gray-50 border-none rounded-xl text-xs focus:ring-0 placeholder:text-gray-400 font-medium"
-                            />
-                        </div>
-                    </div>
-                    <div className="max-h-[240px] overflow-y-auto p-1 custom-scrollbar">
-                        {filteredOptions.length > 0 ? (
-                            filteredOptions.map((opt) => (
-                                <button
-                                    key={opt.id}
-                                    onClick={() => {
-                                        onChange(opt.id);
-                                        setIsOpen(false);
-                                        setSearch("");
-                                    }}
-                                    className={`w-full text-left px-3 py-2.5 rounded-xl text-xs transition-colors flex flex-col gap-0.5
-                                        ${value === opt.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
-                                >
-                                    <span className="font-bold">{opt.name}</span>
-                                    <span className="text-[10px] opacity-60 tracking-wider uppercase font-black">{opt.code}</span>
-                                </button>
-                            ))
-                        ) : (
-                            <div className="p-4 text-center text-gray-400 text-xs">No accounts found</div>
-                        )}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
-};
-
 const CashLedger: React.FC = () => {
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
     const [balance, setBalance] = useState<number>(0);
@@ -393,12 +307,6 @@ const CashLedger: React.FC = () => {
             }
         };
 
-        const textClass = config.color === 'blue' ? 'text-[#006AFF]' :
-                          config.color === 'emerald' ? 'text-emerald-600' :
-                          config.color === 'amber' ? 'text-amber-600' :
-                          config.color === 'red' ? 'text-red-600' :
-                          config.color === 'purple' ? 'text-purple-600' : 'text-brand-navy';
-
         return (
             <div className="flex items-center w-fit">
                 {getStatusIcon(config.iconType, config.color)}
@@ -434,14 +342,6 @@ const CashLedger: React.FC = () => {
         }
     };
 
-    const handleAccountChange = async (lineItemId: string, accountId: string) => {
-        try {
-            await requisitionService.updateLineItemAccount(lineItemId, accountId);
-            loadData();
-        } catch (error: any) {
-            alert('Failed to update account: ' + error.message);
-        }
-    };
 
     const handleApproveCategorization = async (requisitionId: string) => {
         try {
@@ -453,14 +353,6 @@ const CashLedger: React.FC = () => {
         }
     };
 
-    const handleLedgerAccountChange = async (entryId: string, accountId: string) => {
-        try {
-            await cashbookService.updateAccount(entryId, accountId);
-            loadData();
-        } catch (error: any) {
-            alert('Failed to update account: ' + error.message);
-        }
-    };
 
     const handlePostLedgerToQB = async (entry: CashbookEntry) => {
         setPostingReview({
