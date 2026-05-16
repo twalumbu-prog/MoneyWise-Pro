@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Layout } from '../components/Layout';
-import { ShieldCheck, TrendingUp, AlertTriangle, FileText, Search, Filter, Calendar, ExternalLink } from 'lucide-react';
+import { ShieldCheck, TrendingUp, AlertTriangle, Search, Calendar, ExternalLink } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { Link } from 'react-router-dom';
 
