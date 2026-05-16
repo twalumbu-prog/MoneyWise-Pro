@@ -21,7 +21,8 @@ import {
     deleteRequisitionMessage,
     updateLineItemAccount,
     revertToDraft,
-    getAuditReport
+    getAuditReport,
+    backfillAuditScores
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -43,6 +44,7 @@ router.get('/admin/all', getAllRequisitionsAdmin);
 router.patch('/:id/status', updateRequisitionStatus);
 router.post('/:id/revert-to-draft', revertToDraft);
 router.get('/reports/audit', getAuditReport);
+router.post('/maintenance/backfill-audit', backfillAuditScores);
 
 // Disbursement routes
 router.get('/disbursements/history', getDisbursementHistory);

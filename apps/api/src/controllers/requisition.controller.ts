@@ -1997,3 +1997,48 @@ export const getAuditReport = async (req: any, res: any): Promise<any> => {
         res.status(500).json({ error: 'Failed to fetch audit report' });
     }
 };
+
+export const backfillAuditScores = async (req: any, res: any): Promise<any> => {
+    try {
+        console.log('[Audit] Starting backfill of audit scores...');
+        
+        // 1. Find all ACCOUNTED requisitions that don't have a score yet
+        // (Or we can re-calculate all of them to be sure)
+        const { data: requisitions, error: fetchError } = await supabase
+            .from('requisitions')
+            .select('id')
+            .eq('status', 'ACCOUNTED')
+            .is('audit_score', null);
+
+        if (fetchError) throw fetchError;
+
+        if (!requisitions || requisitions.length === 0) {
+            return res.json({ message: 'No requisitions found needing backfill.' });
+        }
+
+        console.log(`[Audit] Found ${requisitions.length} requisitions to backfill.`);
+
+        let successCount = 0;
+        let failCount = 0;
+
+        for (const req of requisitions) {
+            try {
+                await AuditService.calculateAuditScore(req.id);
+                successCount++;
+            } catch (err) {
+                console.error(`[Audit] Backfill failed for ${req.id}:`, err);
+                failCount++;
+            }
+        }
+
+        res.json({
+            message: 'Backfill complete',
+            total: requisitions.length,
+            success: successCount,
+            failed: failCount
+        });
+    } catch (error: any) {
+        console.error('[AuditBackfill] Error:', error);
+        res.status(500).json({ error: 'Failed to backfill audit scores' });
+    }
+};
