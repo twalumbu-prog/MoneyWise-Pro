@@ -364,8 +364,8 @@ const CashLedger: React.FC = () => {
     };
 
     const getEntryStatus = (entry: CashbookEntry) => {
-        if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-200"><Lock size={10} className="mr-1" /> Closed</span>;
-        if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">Opening</span>;
+        if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-transparent text-slate-700 border border-slate-200"><Lock size={10} className="mr-1" /> Closed</span>;
+        if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-transparent text-indigo-700 border border-indigo-200">Opening</span>;
         let status = '';
         if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
             status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
@@ -393,11 +393,11 @@ const CashLedger: React.FC = () => {
             }
         };
 
-        const bgClass = config.color === 'blue' ? 'bg-blue-50/50 border-blue-100' :
-                        config.color === 'emerald' ? 'bg-emerald-50/50 border-emerald-100' :
-                        config.color === 'amber' ? 'bg-amber-50/50 border-amber-100' :
-                        config.color === 'red' ? 'bg-red-50/50 border-red-100' :
-                        config.color === 'purple' ? 'bg-purple-50/50 border-purple-100' : 'bg-white border-gray-100';
+        const bgClass = config.color === 'blue' ? 'bg-transparent border-blue-200' :
+                        config.color === 'emerald' ? 'bg-transparent border-emerald-200' :
+                        config.color === 'amber' ? 'bg-transparent border-amber-200' :
+                        config.color === 'red' ? 'bg-transparent border-red-200' :
+                        config.color === 'purple' ? 'bg-transparent border-purple-200' : 'bg-transparent border-gray-200';
 
         const textClass = config.color === 'blue' ? 'text-[#006AFF]' :
                           config.color === 'emerald' ? 'text-emerald-600' :
@@ -1283,8 +1283,8 @@ const CashLedger: React.FC = () => {
                                                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-normal uppercase tracking-wider ${
                                                             entry.entry_type === 'DISBURSEMENT' ? 'bg-transparent text-gray-400 border border-gray-200' :
                                                             entry.entry_type === 'RETURN' || entry.entry_type === 'INFLOW' ? 'bg-transparent text-gray-400 border border-gray-200' :
-                                                            entry.entry_type === 'ADJUSTMENT' ? 'bg-purple-50 text-purple-600/70 border border-purple-100' :
-                                                            'bg-gray-50 text-gray-400 border border-gray-100'
+                                                            entry.entry_type === 'ADJUSTMENT' ? 'bg-transparent text-purple-600/70 border border-purple-200' :
+                                                            'bg-transparent text-gray-400 border border-gray-200'
                                                         }`}>
                                                             {entry.entry_type === 'DISBURSEMENT' ? 'Expense' :
                                                              entry.entry_type === 'INFLOW' ? 'Inflow' : 
