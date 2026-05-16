@@ -1259,7 +1259,7 @@ const CashLedger: React.FC = () => {
                                                     </td>
                                                     <td className="p-6 max-w-[400px]">
                                                         <div className="flex flex-col">
-                                                            <div className="text-[14px] font-normal text-gray-900 line-clamp-1 leading-tight">
+                                                            <div className="text-[14px] font-medium text-gray-900 line-clamp-1 leading-tight">
                                                                 {entry.requisitions?.description || entry.description}
                                                             </div>
                                                             <div className="flex items-center gap-3 mt-1">
