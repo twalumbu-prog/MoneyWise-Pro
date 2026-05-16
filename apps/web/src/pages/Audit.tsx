@@ -170,7 +170,7 @@ export const Audit: React.FC = () => {
                                         <td className="px-8 py-6">
                                             <div className="flex justify-center">
                                                 <Link 
-                                                    to={`/requisitions/${t.id}`}
+                                                    to={`/requisitions?id=${t.id}`}
                                                     className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-gray-400 hover:text-brand-green"
                                                 >
                                                     <ExternalLink className="h-4 w-4" />

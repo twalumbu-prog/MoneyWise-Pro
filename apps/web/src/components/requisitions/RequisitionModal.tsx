@@ -4,6 +4,8 @@ import RequisitionChat from './RequisitionChat';
 import { Requisition } from '../../services/requisition.service';
 import { useAuth } from '../../context/AuthContext';
 import RequisitionAttachments from './RequisitionAttachments';
+import AuditScoreBreakdown from '../AuditScoreBreakdown';
+import { AlertCircle } from 'lucide-react';
 
 interface RequisitionModalProps {
     requisition: Requisition | null;
@@ -44,7 +46,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
     onClose,
     onStatusChange
 }) => {
-    const [activeTab, setActiveTab] = useState<'chat' | 'attachments'>('chat');
+    const [activeTab, setActiveTab] = useState<'chat' | 'attachments' | 'audit'>('chat');
     const [isExpanded, setIsExpanded] = useState(false);
     const { userRole } = useAuth();
 
@@ -163,6 +165,25 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                             Attachments
                             <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] transition-opacity ${activeTab === 'attachments' ? 'opacity-100' : 'opacity-0'}`} />
                         </button>
+                        <button
+                            onClick={() => setActiveTab('audit')}
+                            className={`flex-1 md:flex-none px-6 py-2.5 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all relative rounded-full md:rounded-none ${
+                                activeTab === 'audit'
+                                    ? 'bg-white md:bg-transparent text-gray-900 md:text-[#006AFF] shadow-sm md:shadow-none'
+                                    : 'text-gray-400 hover:text-gray-600'
+                            }`}
+                        >
+                            Audit Score
+                            {requisition.audit_score !== undefined && requisition.audit_score !== null && (
+                                <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black ${
+                                    requisition.audit_score >= 85 ? 'bg-emerald-100 text-emerald-700' :
+                                    requisition.audit_score >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
+                                }`}>
+                                    {Math.round(requisition.audit_score)}%
+                                </span>
+                            )}
+                            <div className={`hidden md:block absolute bottom-0 left-0 right-0 h-[2px] bg-[#006AFF] transition-opacity ${activeTab === 'audit' ? 'opacity-100' : 'opacity-0'}`} />
+                        </button>
                     </div>
                 </div>
 
@@ -174,8 +195,29 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                             canAction={canAction}
                             onStatusChange={onStatusChange}
                         />
-                    ) : (
+                    ) : activeTab === 'attachments' ? (
                         <RequisitionAttachments requisition={requisition} />
+                    ) : (
+                        <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-white">
+                            {requisition.audit_score !== undefined && requisition.audit_score !== null ? (
+                                <AuditScoreBreakdown 
+                                    score={requisition.audit_score} 
+                                    breakdown={requisition.audit_score_breakdown!}
+                                    accountedAt={requisition.accounted_at}
+                                    createdAt={requisition.created_at}
+                                />
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-24 text-center">
+                                    <div className="p-6 bg-gray-50 rounded-[2rem] mb-6">
+                                        <AlertCircle className="h-10 w-10 text-gray-300" />
+                                    </div>
+                                    <h3 className="text-xl font-black text-brand-navy">Score Not Yet Calculated</h3>
+                                    <p className="text-gray-500 max-w-xs mt-3 font-medium">
+                                        Audit scores are calculated automatically once the transaction is finalized and posted to QuickBooks.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
                     )}
                 </div>
             </div>

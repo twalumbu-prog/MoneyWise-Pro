@@ -7,7 +7,7 @@ import { RequisitionList } from './pages/RequisitionList';
 import { RequisitionCreate } from './pages/RequisitionCreate';
 import { Approvals } from './pages/Approvals';
 import { CashierDashboard } from './pages/CashierDashboard';
-import { RequisitionDetail } from './pages/RequisitionDetail';
+// RequisitionDetail removed
 import { Vouchers } from './pages/Vouchers';
 import { VoucherDetail } from './pages/VoucherDetail';
 import CashLedger from './pages/CashLedger';
@@ -124,14 +124,6 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <CashierDashboard />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/requisitions/:id"
-                        element={
-                            <ProtectedRoute>
-                                <RequisitionDetail />
                             </ProtectedRoute>
                         }
                     />
