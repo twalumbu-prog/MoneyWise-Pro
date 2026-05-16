@@ -364,8 +364,8 @@ const CashLedger: React.FC = () => {
     };
 
     const getEntryStatus = (entry: CashbookEntry) => {
-        if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-transparent text-slate-700 border border-slate-200"><Lock size={10} className="mr-1" /> Closed</span>;
-        if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider bg-transparent text-indigo-700 border border-indigo-200">Opening</span>;
+        if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-slate-700"><Lock size={10} className="mr-1" /> Closed</span>;
+        if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-indigo-700">Opening</span>;
         let status = '';
         if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
             status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
@@ -393,12 +393,6 @@ const CashLedger: React.FC = () => {
             }
         };
 
-        const bgClass = config.color === 'blue' ? 'bg-transparent border-blue-200' :
-                        config.color === 'emerald' ? 'bg-transparent border-emerald-200' :
-                        config.color === 'amber' ? 'bg-transparent border-amber-200' :
-                        config.color === 'red' ? 'bg-transparent border-red-200' :
-                        config.color === 'purple' ? 'bg-transparent border-purple-200' : 'bg-transparent border-gray-200';
-
         const textClass = config.color === 'blue' ? 'text-[#006AFF]' :
                           config.color === 'emerald' ? 'text-emerald-600' :
                           config.color === 'amber' ? 'text-amber-600' :
@@ -406,9 +400,9 @@ const CashLedger: React.FC = () => {
                           config.color === 'purple' ? 'text-purple-600' : 'text-brand-navy';
 
         return (
-            <div className={`flex items-center pl-2 pr-3 py-1 rounded-full border shadow-sm transition-all hover:shadow-md w-fit ${bgClass}`}>
+            <div className="flex items-center w-fit">
                 {getStatusIcon(config.iconType, config.color)}
-                <span className={`text-[10px] font-black uppercase tracking-[0.15em] ml-1.5 ${textClass}`}>
+                <span className={`text-[10px] font-bold uppercase tracking-[0.15em] ml-1.5 ${textClass}`}>
                     {config.label}
                 </span>
             </div>
@@ -1218,7 +1212,6 @@ const CashLedger: React.FC = () => {
                             <tr className="bg-white border-b border-gray-50">
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest">Date</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest max-w-[400px]">Txn Details</th>
-                                <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest">Status</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-center">Category</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Inflow</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Outflow</th>
@@ -1229,7 +1222,7 @@ const CashLedger: React.FC = () => {
                         <tbody className="divide-y divide-gray-50">
                             {groupedEntries.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="py-24 text-center">
+                                    <td colSpan={7} className="py-24 text-center">
                                         <div className="flex flex-col items-center justify-center">
                                             <div className="p-5 bg-gray-50 rounded-full mb-4">
                                                 <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
@@ -1243,7 +1236,7 @@ const CashLedger: React.FC = () => {
                                 groupedEntries.map((group) => (
                                     <React.Fragment key={group.month}>
                                         <tr className="bg-gray-50/50">
-                                            <td colSpan={8} className="px-6 py-3 border-y border-gray-100/50">
+                                            <td colSpan={7} className="px-6 py-3 border-y border-gray-100/50">
                                                 <span className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">
                                                     {group.month}
                                                 </span>
@@ -1269,15 +1262,15 @@ const CashLedger: React.FC = () => {
                                                             <div className="text-[14px] font-normal text-gray-900 line-clamp-1 leading-tight">
                                                                 {entry.requisitions?.description || entry.description}
                                                             </div>
-                                                            {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
-                                                                <div className="text-[11px] font-normal text-gray-400 mt-1 uppercase tracking-tight">
-                                                                    #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
-                                                                </div>
-                                                            )}
+                                                            <div className="flex items-center gap-3 mt-1">
+                                                                {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
+                                                                    <div className="text-[11px] font-normal text-gray-400 uppercase tracking-tight">
+                                                                        #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
+                                                                    </div>
+                                                                )}
+                                                                {getEntryStatus(entry)}
+                                                            </div>
                                                         </div>
-                                                    </td>
-                                                    <td className="p-6">
-                                                        {getEntryStatus(entry)}
                                                     </td>
                                                     <td className="p-6 text-center">
                                                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-normal uppercase tracking-wider ${
@@ -1318,7 +1311,7 @@ const CashLedger: React.FC = () => {
                                                 </tr>
                                                  {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                     <tr className="bg-gray-50/80">
-                                                        <td colSpan={8} className="p-0 border-b border-gray-100">
+                                                        <td colSpan={7} className="p-0 border-b border-gray-100">
                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                                 {renderBreakdown(entry)}
                                                             </div>
