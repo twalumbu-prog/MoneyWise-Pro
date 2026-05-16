@@ -364,8 +364,8 @@ const CashLedger: React.FC = () => {
     };
 
     const getEntryStatus = (entry: CashbookEntry) => {
-        if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-slate-700"><Lock size={10} className="mr-1" /> Closed</span>;
-        if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center text-[10px] font-bold uppercase tracking-wider text-indigo-700">Opening</span>;
+        if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center text-[10px] font-normal uppercase tracking-wider text-slate-700"><Lock size={10} className="mr-1" /> Closed</span>;
+        if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center text-[10px] font-normal uppercase tracking-wider text-indigo-700">Opening</span>;
         let status = '';
         if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
             status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
