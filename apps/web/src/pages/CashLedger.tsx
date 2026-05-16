@@ -997,16 +997,19 @@ const CashLedger: React.FC = () => {
                                                 <span className="text-[9px] font-normal text-gray-400 uppercase tracking-wider mt-0.5">{month}</span>
                                             </div>
 
-                                            {/* Middle: Description + Ref */}
+                                            {/* Middle: Description + Ref + Status */}
                                             <div className="flex-1 mr-4">
-                                                <p className="text-[14px] font-normal text-brand-navy leading-tight line-clamp-1">
+                                                <p className="text-[14px] font-medium text-brand-navy leading-tight line-clamp-1">
                                                     {description}
                                                 </p>
-                                                {refNum && (
-                                                    <p className="text-[11px] font-normal text-gray-400 mt-0.5 uppercase tracking-tight">
-                                                        {refNum}
-                                                    </p>
-                                                )}
+                                                <div className="flex items-center gap-3 mt-1">
+                                                    {getEntryStatus(entry)}
+                                                    {refNum && (
+                                                        <p className="text-[11px] font-normal text-gray-400 uppercase tracking-tight">
+                                                            {refNum}
+                                                        </p>
+                                                    )}
+                                                </div>
                                             </div>
 
                                             {/* Right: Amount + Closing Balance */}
