@@ -602,11 +602,10 @@ const CashLedger: React.FC = () => {
                         <table className="breakdown-table-modern table-fixed">
                             <thead>
                                 <tr>
-                                    <th className="text-left w-[30%]">Description</th>
-                                    <th className="text-left w-[30%]">Accounting Treatment</th>
+                                    <th className="text-left w-[50%]">Description</th>
                                     <th className="text-center w-[10%]">Qty</th>
-                                    <th className="text-right w-[15%]">Expected Total</th>
-                                    <th className="text-right w-[15%]">Actual Total</th>
+                                    <th className="text-right w-[20%]">Expected Total</th>
+                                    <th className="text-right w-[20%]">Actual Total</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -618,7 +617,6 @@ const CashLedger: React.FC = () => {
                                         </div>
                                         Actual Cash Disbursed
                                     </td>
-                                    <td className="text-gray-400 text-[10px] italic">Capital Outflow</td>
                                     <td className="text-center">-</td>
                                     <td className="text-right">-</td>
                                     <td className="text-right font-black text-brand-navy text-[14px]">{formatCurrency(totalPrepared)}</td>
@@ -632,14 +630,6 @@ const CashLedger: React.FC = () => {
                                                 <span className="text-[13px] font-semibold text-gray-800">{item.description}</span>
                                                 <span className="text-[10px] text-gray-400">Line Item #{idx + 1}</span>
                                             </div>
-                                        </td>
-                                        <td className="py-4">
-                                            <SearchableAccountSelect 
-                                                value={item.account_id || ''} 
-                                                options={accounts} 
-                                                onChange={(val) => handleAccountChange(item.id, val)}
-                                                placeholder="Categorize expense..."
-                                            />
                                         </td>
                                         <td className="text-center text-gray-600 font-medium">{item.quantity || 1}</td>
                                         <td className="text-right text-gray-400 text-[13px]">{formatCurrency(item.estimated_amount)}</td>
@@ -656,7 +646,6 @@ const CashLedger: React.FC = () => {
                                             </div>
                                             Excess Cash Returned
                                         </td>
-                                        <td className="text-emerald-600/60 text-[10px] italic">Capital Return</td>
                                         <td className="text-center">-</td>
                                         <td className="text-right">{formatCurrency(expectedChange)}</td>
                                         <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
@@ -670,7 +659,6 @@ const CashLedger: React.FC = () => {
                                         </div>
                                         Total Actual Expenditure
                                     </td>
-                                    <td className="text-gray-400 text-[10px] italic">Sum of Line Items</td>
                                     <td className="text-center">-</td>
                                     <td className="text-right">-</td>
                                     <td className="text-right font-black text-gray-900 text-[14px]">{formatCurrency(actualExpenditure)}</td>
@@ -679,7 +667,6 @@ const CashLedger: React.FC = () => {
                                 {/* Change Rows */}
                                 <tr className="summary-row border-t border-gray-50">
                                     <td className="text-gray-500 font-medium pl-6">Expected Change</td>
-                                    <td className="text-gray-400 text-[10px] italic">Disbursed - Spent</td>
                                     <td className="text-center">-</td>
                                     <td className="text-right">-</td>
                                     <td className="text-right font-bold text-gray-500">{formatCurrency(expectedChange)}</td>
@@ -690,7 +677,6 @@ const CashLedger: React.FC = () => {
                                         <Check size={14} className="text-emerald-500 mr-2" />
                                         Actual Change Returned
                                     </td>
-                                    <td className="text-gray-400 text-[10px] italic">Confirmed by Accountant</td>
                                     <td className="text-center">-</td>
                                     <td className="text-right">-</td>
                                     <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
@@ -703,20 +689,6 @@ const CashLedger: React.FC = () => {
                                             <AlertTriangle size={12} className={Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'} />
                                         </div>
                                         Cash Discrepancy
-                                    </td>
-                                    <td className="py-4">
-                                        {Math.abs(discrepancy) > 0.01 ? (
-                                            <SearchableAccountSelect 
-                                                value="" 
-                                                options={accounts.filter(a => a.type === 'EXPENSE' || a.type === 'INCOME')} 
-                                                onChange={(val) => {
-                                                    console.log('Selected adjustment account:', val);
-                                                }}
-                                                placeholder="Adjustment Account..."
-                                            />
-                                        ) : (
-                                            <span className="text-gray-400 text-[10px] italic">No adjustment needed</span>
-                                        )}
                                     </td>
                                     <td className="text-center">-</td>
                                     <td className="text-right">-</td>
@@ -790,9 +762,8 @@ const CashLedger: React.FC = () => {
                         <table className="breakdown-table-modern table-fixed">
                             <thead>
                                 <tr>
-                                    <th className="text-left w-[40%]">Description</th>
-                                    <th className="text-left w-[40%]">Accounting Account</th>
-                                    <th className="text-right w-[20%]">Amount</th>
+                                    <th className="text-left w-[70%]">Description</th>
+                                    <th className="text-right w-[30%]">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -801,14 +772,6 @@ const CashLedger: React.FC = () => {
                                         <div className="flex flex-col">
                                             <span className="text-[13px] font-semibold text-gray-800">{entry.description}</span>
                                         </div>
-                                    </td>
-                                    <td className="py-4">
-                                        <SearchableAccountSelect 
-                                            value={entry.account_id || ''} 
-                                            options={accounts} 
-                                            onChange={(val) => handleLedgerAccountChange(entry.id, val)}
-                                            placeholder={entry.entry_type === 'INFLOW' ? "Select Credit Account..." : "Select Debit Account..."}
-                                        />
                                     </td>
                                     <td className="text-right font-black text-gray-900 text-[14px] pr-6">
                                         {formatCurrency(entry.debit || entry.credit)}
