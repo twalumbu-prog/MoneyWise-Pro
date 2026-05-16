@@ -199,24 +199,13 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                         <RequisitionAttachments requisition={requisition} />
                     ) : (
                         <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-white">
-                            {requisition.audit_score !== undefined && requisition.audit_score !== null ? (
-                                <AuditScoreBreakdown 
-                                    score={requisition.audit_score} 
-                                    breakdown={requisition.audit_score_breakdown!}
-                                    accountedAt={requisition.accounted_at}
-                                    createdAt={requisition.created_at}
-                                />
-                            ) : (
-                                <div className="flex flex-col items-center justify-center py-24 text-center">
-                                    <div className="p-6 bg-gray-50 rounded-[2rem] mb-6">
-                                        <AlertCircle className="h-10 w-10 text-gray-300" />
-                                    </div>
-                                    <h3 className="text-xl font-black text-brand-navy">Score Not Yet Calculated</h3>
-                                    <p className="text-gray-500 max-w-xs mt-3 font-medium">
-                                        Audit scores are calculated automatically once the transaction is finalized and posted to QuickBooks.
-                                    </p>
-                                </div>
-                            )}
+                            <AuditScoreBreakdown 
+                                score={requisition.audit_score ?? undefined} 
+                                breakdown={requisition.audit_score_breakdown ?? undefined}
+                                accountedAt={requisition.accounted_at}
+                                createdAt={requisition.created_at}
+                                status={requisition.status}
+                            />
                         </div>
                     )}
                 </div>
