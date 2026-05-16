@@ -1066,7 +1066,7 @@ const CashLedger: React.FC = () => {
                 <div className="shadow-sm border border-gray-100 rounded-[32px] overflow-x-auto bg-white mt-8">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-white border-b border-gray-50">
+                            <tr className="bg-white">
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest">Date</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest max-w-[400px]">Txn Details</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Inflow</th>
@@ -1075,7 +1075,7 @@ const CashLedger: React.FC = () => {
                                 <th className="p-6 w-10"></th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="">
                             {groupedEntries.length === 0 ? (
                                 <tr>
                                     <td colSpan={6} className="py-24 text-center">
@@ -1092,7 +1092,7 @@ const CashLedger: React.FC = () => {
                                 groupedEntries.map((group) => (
                                     <React.Fragment key={group.month}>
                                         <tr className="bg-gray-50/50">
-                                            <td colSpan={6} className="px-6 py-3 border-y border-gray-100/50">
+                                            <td colSpan={6} className="px-6 py-3">
                                                 <span className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">
                                                     {group.month}
                                                 </span>
@@ -1155,7 +1155,7 @@ const CashLedger: React.FC = () => {
                                                 </tr>
                                                  {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                     <tr className="bg-gray-50/80">
-                                                        <td colSpan={6} className="p-0 border-b border-gray-100">
+                                                        <td colSpan={6} className="p-0">
                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                                 {renderBreakdown(entry)}
                                                             </div>
