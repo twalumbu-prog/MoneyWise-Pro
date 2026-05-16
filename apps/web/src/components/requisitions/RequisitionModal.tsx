@@ -5,7 +5,6 @@ import { Requisition } from '../../services/requisition.service';
 import { useAuth } from '../../context/AuthContext';
 import RequisitionAttachments from './RequisitionAttachments';
 import { AuditScoreBreakdown } from '../AuditScoreBreakdown';
-import { AlertCircle } from 'lucide-react';
 
 interface RequisitionModalProps {
     requisition: Requisition | null;
