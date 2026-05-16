@@ -1212,7 +1212,6 @@ const CashLedger: React.FC = () => {
                             <tr className="bg-white border-b border-gray-50">
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest">Date</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest max-w-[400px]">Txn Details</th>
-                                <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-center">Category</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Inflow</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Outflow</th>
                                 <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Balance</th>
@@ -1222,7 +1221,7 @@ const CashLedger: React.FC = () => {
                         <tbody className="divide-y divide-gray-50">
                             {groupedEntries.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="py-24 text-center">
+                                    <td colSpan={6} className="py-24 text-center">
                                         <div className="flex flex-col items-center justify-center">
                                             <div className="p-5 bg-gray-50 rounded-full mb-4">
                                                 <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
@@ -1236,7 +1235,7 @@ const CashLedger: React.FC = () => {
                                 groupedEntries.map((group) => (
                                     <React.Fragment key={group.month}>
                                         <tr className="bg-gray-50/50">
-                                            <td colSpan={7} className="px-6 py-3 border-y border-gray-100/50">
+                                            <td colSpan={6} className="px-6 py-3 border-y border-gray-100/50">
                                                 <span className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">
                                                     {group.month}
                                                 </span>
@@ -1272,18 +1271,6 @@ const CashLedger: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     </td>
-                                                    <td className="p-6 text-center">
-                                                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-normal uppercase tracking-wider ${
-                                                            entry.entry_type === 'DISBURSEMENT' ? 'bg-transparent text-gray-400 border border-gray-200' :
-                                                            entry.entry_type === 'RETURN' || entry.entry_type === 'INFLOW' ? 'bg-transparent text-gray-400 border border-gray-200' :
-                                                            entry.entry_type === 'ADJUSTMENT' ? 'bg-transparent text-purple-600/70 border border-purple-200' :
-                                                            'bg-transparent text-gray-400 border border-gray-200'
-                                                        }`}>
-                                                            {entry.entry_type === 'DISBURSEMENT' ? 'Expense' :
-                                                             entry.entry_type === 'INFLOW' ? 'Inflow' : 
-                                                             (entry.entry_type || 'Account').replace('_', ' ')}
-                                                        </span>
-                                                    </td>
                                                     <td className="p-6 text-right">
                                                         {entry.debit > 0 ? (
                                                             <span className="text-[14px] font-normal text-gray-900">
@@ -1311,7 +1298,7 @@ const CashLedger: React.FC = () => {
                                                 </tr>
                                                  {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                     <tr className="bg-gray-50/80">
-                                                        <td colSpan={7} className="p-0 border-b border-gray-100">
+                                                        <td colSpan={6} className="p-0 border-b border-gray-100">
                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                                 {renderBreakdown(entry)}
                                                             </div>
