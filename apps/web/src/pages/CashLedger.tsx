@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { Layout } from '../components/Layout';
 import {
@@ -16,7 +16,6 @@ import {
     Wallet,
     Building2,
     ChevronRight,
-    ChevronDown,
     Loader2,
     AlertCircle,
     Info,
