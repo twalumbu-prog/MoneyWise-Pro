@@ -851,30 +851,32 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
             }
 
             // A. Verify External Reference
-            if (!change_external_reference) {
+            if (!change_external_reference && !disbursement.change_external_reference) {
                 return res.status(400).json({ error: 'Missing external reference for wallet submission' });
             }
 
+            const activeRef = change_external_reference || disbursement.change_external_reference;
+
             // B. Ensure Entry exists in Cashbook (Process Lenco status if needed)
-            const isAlreadyConfirmed = Number(disbursement.confirmed_change_amount || 0) > 0 && disbursement.change_external_reference === change_external_reference;
+            const isAlreadyConfirmed = Number(disbursement.confirmed_change_amount || 0) > 0;
             
             if (!isAlreadyConfirmed) {
                 const { data: existingEntry } = await supabase
                     .from('cashbook_entries')
                     .select('id')
-                    .like('description', `%${change_external_reference}`)
+                    .like('description', `%${activeRef}`)
                     .maybeSingle();
 
                 if (!existingEntry) {
-                    console.log(`[SubmitChange] Ref ${change_external_reference} not in ledger. Checking Lenco...`);
+                    console.log(`[SubmitChange] Ref ${activeRef} not in ledger. Checking Lenco...`);
                     try {
-                        const lencoStatus = await LencoService.getCollectionStatus(change_external_reference);
+                        const lencoStatus = await LencoService.getCollectionStatus(activeRef);
                         if (lencoStatus && lencoStatus.status === 'successful') {
                             await handleCollectionSuccessful(lencoStatus, organizationId);
                         } else {
                             return res.status(400).json({ 
                                 error: 'Wallet deposit not found or still pending', 
-                                message: `We couldn't find a successful deposit for reference ${change_external_reference}. Please ensure the deposit is completed.`
+                                message: `We couldn't find a successful deposit for reference ${activeRef}. Please ensure the deposit is completed.`
                             });
                         }
                     } catch (lencoErr) {
@@ -883,7 +885,7 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                     }
                 }
             } else {
-                console.log(`[SubmitChange] Ref ${change_external_reference} is already confirmed in disbursements.`);
+                console.log(`[SubmitChange] Change is already confirmed in disbursements. Bypassing Lenco.`);
             }
 
             // C. Calculate Discrepancy (same logic as confirmChange)
@@ -1119,47 +1121,37 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         // Additional Verification for Wallet Submission
         if (submissionMethod === 'MONEYWISE_WALLET') {
             const ref = activeDisbursement.change_external_reference;
-            if (!ref) {
-                console.warn(`[ConfirmChange] Requisition ${id} has wallet submission method but no external reference.`);
-                // We proceed if the confirmed_change_amount is already set (e.g. via webhook), 
-                // but if it's 0 and ref is missing, it's an error.
-                if (confirmedChange > 0) {
-                     console.log(`[ConfirmChange] Procceding without ref as change is already confirmed.`);
-                } else {
-                     return res.status(400).json({ error: 'Missing external reference for wallet submission' });
-                }
+            if (!ref && confirmedChange === 0) {
+                 return res.status(400).json({ error: 'Missing external reference for wallet submission' });
             } else {
-                // Verify the transaction exists and is successful
-                const isAlreadyConfirmed = confirmedChange > 0 && activeDisbursement.change_external_reference === ref;
-                if (!isAlreadyConfirmed) {
-                    const { data: existingEntry } = await supabase
-                        .from('cashbook_entries')
-                        .select('id')
-                        .like('description', `%${ref}`)
-                        .maybeSingle();
+                 const isAlreadyConfirmed = confirmedChange > 0;
+                 if (!isAlreadyConfirmed && ref) {
+                     const { data: existingEntry } = await supabase
+                         .from('cashbook_entries')
+                         .select('id')
+                         .like('description', `%${ref}`)
+                         .maybeSingle();
 
-                    if (!existingEntry) {
-                        console.log(`[ConfirmChange] Ref ${ref} not found in ledger. Checking Lenco...`);
-                        try {
-                            const lencoStatus = await LencoService.getCollectionStatus(ref);
-                            if (lencoStatus && lencoStatus.status === 'successful') {
-                                await handleCollectionSuccessful(lencoStatus, organizationId);
-                            } else {
-                                return res.status(400).json({ 
-                                    error: 'Wallet deposit not found or still pending', 
-                                    message: `We couldn't find a successful deposit for reference ${ref}. Please ensure the requestor has completed the deposit.`
-                                });
-                            }
-                        } catch (lencoErr) {
-                            console.error('[ConfirmChange] Lenco verification failed:', lencoErr);
-                            // If Lenco is down, we might want to block or allow manual override. 
-                            // For now, block to ensure data integrity.
-                            return res.status(500).json({ error: 'Failed to verify wallet deposit with Lenco' });
-                        }
-                    }
-                } else {
-                    console.log(`[ConfirmChange] Ref ${ref} is already confirmed in disbursements.`);
-                }
+                     if (!existingEntry) {
+                         console.log(`[ConfirmChange] Ref ${ref} not found in ledger. Checking Lenco...`);
+                         try {
+                             const lencoStatus = await LencoService.getCollectionStatus(ref);
+                             if (lencoStatus && lencoStatus.status === 'successful') {
+                                 await handleCollectionSuccessful(lencoStatus, organizationId);
+                             } else {
+                                 return res.status(400).json({ 
+                                     error: 'Wallet deposit not found or still pending', 
+                                     message: `We couldn't find a successful deposit for reference ${ref}. Please ensure the requestor has completed the deposit.`
+                                 });
+                             }
+                         } catch (lencoErr) {
+                             console.error('[ConfirmChange] Lenco verification failed:', lencoErr);
+                             return res.status(500).json({ error: 'Failed to verify wallet deposit with Lenco' });
+                         }
+                     }
+                 } else {
+                     console.log(`[ConfirmChange] Change is already confirmed in disbursements. Bypassing Lenco.`);
+                 }
             }
         }
 
