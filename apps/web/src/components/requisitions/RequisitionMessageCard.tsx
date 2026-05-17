@@ -1496,8 +1496,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             </thead>
                                             <tbody className="divide-y divide-gray-50">
                                                 {expenseItems.map((item, idx) => {
+                                                    const receipt = requisitionData?.receipts?.find((r: any) => r.id === item.receipt_ocr_data?.source_receipt_id);
+                                                    const receiptTotal = receipt?.ocr_data?.total_amount;
+                                                    const actualAmt = parseFloat(item.actual_amount) || 0;
                                                     const hasDiscrepancy = item.ai_extracted_amount != null && 
-                                                        Math.abs((parseFloat(item.actual_amount) || 0) - item.ai_extracted_amount) > 0.01;
+                                                        Math.abs(actualAmt - item.ai_extracted_amount) > 0.01 &&
+                                                        (!receiptTotal || Math.abs(actualAmt - receiptTotal) > 0.01);
                                                     
                                                     return (
                                                         <tr key={item.id || idx}>

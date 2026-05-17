@@ -666,7 +666,7 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
 
         res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
         
-        // 5. Trigger AI Review & Categorization stage automatically
+        // 5. Trigger AI Review & Categorization stage automatically ONLY if no change to submit
         const organizationId = (req as any).user.organization_id;
         
         // Calculate change for the summary message
@@ -675,26 +675,51 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.` 
             : ' No change to submit.';
 
-        // Create a summary message to record the event in the chat
-        await RequisitionMessageService.createMessage({
-            requisitionId: id,
-            userId,
-            content: `Expenses tracked: Total Actual K${actualTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.${changeText}`,
-            type: 'SYSTEM',
-            metadata: { 
-                stage: 'EXPENSE_SUMMARY',
-                actualTotal,
-                changeAmount: change > 0 ? change : 0
-            }
-        });
+        // Check if a repaired/duplicate EXPENSE_SUMMARY message exists and remove/update it
+        const { data: existingSummaryRows } = await supabase
+            .from('requisition_messages')
+            .select('id')
+            .eq('requisition_id', id)
+            .contains('metadata', { stage: 'EXPENSE_SUMMARY' })
+            .order('created_at', { ascending: false })
+            .limit(1);
 
-        // Add a deliberate delay so the user sees the summary/status change before AI kicks in
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Trigger AI Review & Categorization
-        await triggerAIReview(id, organizationId, userId).catch(err => 
-            console.error('[AI Review] Auto-trigger failed:', err)
-        );
+        const existingSummary = existingSummaryRows?.[0] || null;
+
+        if (existingSummary) {
+            await RequisitionMessageService.updateMessage(existingSummary.id, {
+                content: `Expenses tracked: Total Actual K${actualTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.${changeText}`,
+                metadata: { 
+                    stage: 'EXPENSE_SUMMARY',
+                    actualTotal,
+                    changeAmount: change > 0 ? change : 0
+                }
+            });
+        } else {
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId,
+                content: `Expenses tracked: Total Actual K${actualTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.${changeText}`,
+                type: 'SYSTEM',
+                metadata: { 
+                    stage: 'EXPENSE_SUMMARY',
+                    actualTotal,
+                    changeAmount: change > 0 ? change : 0
+                }
+            });
+        }
+
+        if (change <= 0) {
+            // Add a deliberate delay so the user sees the summary/status change before AI kicks in
+            await new Promise(resolve => setTimeout(resolve, 1500));
+            
+            // Trigger AI Review & Categorization
+            await triggerAIReview(id, organizationId, userId).catch(err => 
+                console.error('[AI Review] Auto-trigger failed:', err)
+            );
+        } else {
+            console.log(`[updateRequisitionExpenses] Change is K${change}. Halting workflow at EXPENSED to allow user to submit change.`);
+        }
 
     } catch (error: any) {
         console.error('Error updating expenses:', error);
