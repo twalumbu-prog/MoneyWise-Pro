@@ -2418,12 +2418,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
         // 7. EXPENSE SUMMARY
         else if (isExpenseSummary) {
-             const totalActual = requisitionData?.items?.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0) || 0;
-             const totalDisbursed = requisitionData?.disbursements?.[0]?.total_prepared || 0;
-             const isWallet = requisitionData?.disbursements?.[0]?.payment_method === 'MONEYWISE_WALLET';
-             const withdrawalFee = isWallet ? lencoService.calculatePayoutFee(totalDisbursed, 'MONEYWISE_WALLET') : 0;
-             const principalReceived = totalDisbursed - withdrawalFee;
-             const changeAmount = Math.max(0, principalReceived - totalActual);
+             const totalActual = requisitionData?.items?.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0) || requisitionData?.actual_total || 0;
+             const totalDisbursed = requisitionData?.disbursements?.[0]?.total_prepared || requisitionData?.estimated_total || 0;
+             const changeAmount = Math.max(0, totalDisbursed - totalActual);
              const hasChange = changeAmount > 0.01; // Small threshold for floating point
              const isRequestor = currentUser?.id === requisitionData?.requestor_id;
              const showChangeActions = hasChange && isRequestor && requisitionData?.status === 'EXPENSED';
