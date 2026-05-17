@@ -1387,53 +1387,6 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                         <span className="text-[16px] font-normal md:font-black text-[#006AFF]">K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                                     </div>
                                                 )}
-
-                                                {requisitionData?.status === 'EXPENSED' && requisitionData?.estimated_total > requisitionData?.actual_total && (
-                                                    <div className="mt-6 pt-6 border-t border-gray-100 space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
-                                                        <div className="bg-blue-50/50 rounded-2xl p-4 border border-blue-100">
-                                                            <div className="flex items-center space-x-3 mb-2">
-                                                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-[#006AFF]">
-                                                                    <Wallet size={16} />
-                                                                </div>
-                                                                <span className="text-[13px] font-bold text-gray-900">Return Change to Wallet</span>
-                                                            </div>
-                                                            <p className="text-[11px] text-gray-500 leading-relaxed">
-                                                                Your expenses are less than the disbursed amount. Please return the remaining balance of 
-                                                                <strong className="text-[#006AFF] ml-1">K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> to your digital wallet to complete this requisition.
-                                                            </p>
-                                                        </div>
-
-                                                        <button
-                                                            onClick={async () => {
-                                                                try {
-                                                                    setIsSubmittingChange(true);
-                                                                    const changeAmount = requisitionData.estimated_total - requisitionData.actual_total;
-                                                                    await requisitionService.submitChange(
-                                                                        requisitionData.id,
-                                                                        {}, 
-                                                                        changeAmount,
-                                                                        'MONEYWISE_WALLET'
-                                                                    );
-                                                                    if (onAction) onAction('REFRESH');
-                                                                } catch (err: any) {
-                                                                    console.error('Failed to submit change:', err);
-                                                                    window.alert(`Error: ${err.message}`);
-                                                                } finally {
-                                                                    setIsSubmittingChange(false);
-                                                                }
-                                                            }}
-                                                            disabled={isSubmittingChange}
-                                                            className="w-full h-14 bg-[#006AFF] text-white text-[14px] font-bold rounded-full hover:bg-blue-600 shadow-xl shadow-blue-100/50 transition-all flex items-center justify-center space-x-2 group"
-                                                        >
-                                                            {isSubmittingChange ? <Loader2 size={20} className="animate-spin" /> : (
-                                                                <>
-                                                                    <span>Submit K{(requisitionData.estimated_total - requisitionData.actual_total).toLocaleString()} to Wallet</span>
-                                                                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                                                                </>
-                                                            )}
-                                                        </button>
-                                                    </div>
-                                                )}
                                             </div>
                                         </div>
                                     )}
