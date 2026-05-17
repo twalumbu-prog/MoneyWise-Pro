@@ -2377,6 +2377,10 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
              const hasChange = changeAmount > 0.01; // Small threshold for floating point
              const isRequestor = currentUser?.id === requisitionData?.requestor_id;
              const showChangeActions = hasChange && isRequestor && requisitionData?.status === 'EXPENSED';
+             
+             const disbursement = requisitionData?.disbursements?.[0];
+             const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
+             const isAlreadyConfirmed = confirmedChange > 0 && confirmedChange >= changeAmount;
 
              return (
                  <div className="flex flex-col mb-4 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
@@ -2392,7 +2396,41 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                  {message.content}
                              </p>
 
-                             {showChangeActions && (
+                             {showChangeActions && isAlreadyConfirmed && (
+                                 <div className="mt-4 pt-4 border-t border-gray-50 space-y-3 animate-in fade-in duration-500">
+                                     <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3 flex items-center justify-between">
+                                         <div className="flex items-center space-x-2 text-emerald-700 text-[12px] font-bold">
+                                             <CheckCircle size={16} />
+                                             <span>K{confirmedChange.toFixed(2)} Change Deposited & Confirmed</span>
+                                         </div>
+                                     </div>
+                                     <button
+                                         onClick={async () => {
+                                             try {
+                                                 setIsSubmittingChange(true);
+                                                 const changeExternalRef = disbursement?.change_external_reference || disbursement?.external_reference || `CHG-${Date.now()}-${requisitionData?.id}`;
+                                                 await requisitionService.submitChange(requisitionData.id, [], changeAmount, 'MONEYWISE_WALLET', changeExternalRef);
+                                                 if (onAction) onAction('REFRESH');
+                                             } catch (err: any) {
+                                                 alert(err.message);
+                                             } finally {
+                                                 setIsSubmittingChange(false);
+                                             }
+                                         }}
+                                         disabled={isSubmittingChange}
+                                         className="w-full h-10 bg-emerald-600 text-white text-[11px] font-bold rounded-xl hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20 disabled:opacity-50"
+                                     >
+                                         {isSubmittingChange ? <Loader2 size={14} className="animate-spin" /> : (
+                                             <>
+                                                 <Check size={14} />
+                                                 Verify & Finalize Requisition
+                                             </>
+                                         )}
+                                     </button>
+                                 </div>
+                             )}
+
+                             {showChangeActions && !isAlreadyConfirmed && (
                                  <div className="mt-4 pt-4 border-t border-gray-50 space-y-3">
                                      <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Submit Change (K{changeAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })})</p>
                                      <div className="grid grid-cols-2 gap-3">
