@@ -916,23 +916,62 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 })
                 .eq('id', disbursement.id);
 
-            // E. Generate Voucher
-            const voucherRef = `PV-${fullReq.reference_number || id.slice(0, 6)}`;
-            const { data: voucher, error: voucherError } = await supabase
-                .from('vouchers')
-                .insert({
-                    requisition_id: id,
-                    organization_id: organizationId,
-                    created_by: user_id,
-                    reference_number: voucherRef,
-                    total_credit: actualExpenditure,
-                    total_debit: actualExpenditure,
-                    status: 'DRAFT'
-                })
-                .select()
-                .single();
+            // E. Find or Generate Voucher
+            const baseVoucherRef = `PV-${fullReq.reference_number || id.slice(0, 6)}`;
+            let voucher: any = null;
 
-            if (voucherError) throw voucherError;
+            const { data: existingVoucher } = await supabase
+                .from('vouchers')
+                .select('*')
+                .eq('organization_id', organizationId)
+                .eq('requisition_id', id)
+                .maybeSingle();
+
+            if (existingVoucher) {
+                console.log(`[SubmitChange] Voucher for Req ${id} already exists (${existingVoucher.reference_number}). Updating totals.`);
+                const { data: updatedVoucher, error: updateErr } = await supabase
+                    .from('vouchers')
+                    .update({
+                        total_credit: actualExpenditure,
+                        total_debit: actualExpenditure,
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('id', existingVoucher.id)
+                    .select()
+                    .single();
+
+                if (updateErr) throw updateErr;
+                voucher = updatedVoucher;
+            } else {
+                let voucherRef = baseVoucherRef;
+                const { data: refCheck } = await supabase
+                    .from('vouchers')
+                    .select('id')
+                    .eq('organization_id', organizationId)
+                    .eq('reference_number', voucherRef)
+                    .maybeSingle();
+
+                if (refCheck) {
+                    voucherRef = `${voucherRef}-${Date.now().toString().slice(-4)}`;
+                }
+
+                const { data: newVoucher, error: voucherError } = await supabase
+                    .from('vouchers')
+                    .insert({
+                        requisition_id: id,
+                        organization_id: organizationId,
+                        created_by: user_id,
+                        reference_number: voucherRef,
+                        total_credit: actualExpenditure,
+                        total_debit: actualExpenditure,
+                        status: 'DRAFT'
+                    })
+                    .select()
+                    .single();
+
+                if (voucherError) throw voucherError;
+                voucher = newVoucher;
+            }
 
             // F. Finalize Ledger
             await cashbookService.finalizeDisbursement(
@@ -1080,37 +1119,64 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
             throw disbUpdateError;
         }
 
-        // 4. Create Voucher Record
-        let voucherRef = `PV-${requisition.reference_number || id.slice(0, 6)}`;
-        
-        // Double check for voucher reference collision
-        const { data: existingV } = await supabase
+        // 4. Find or Create Voucher Record
+        const baseVoucherRef = `PV-${requisition.reference_number || id.slice(0, 6)}`;
+        let voucher: any = null;
+
+        const { data: existingVoucher } = await supabase
             .from('vouchers')
-            .select('id')
-            .eq('reference_number', voucherRef)
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('requisition_id', id)
             .maybeSingle();
-            
-        if (existingV) {
-            voucherRef = `${voucherRef}-${Date.now().toString().slice(-4)}`;
-        }
 
-        const { data: voucher, error: voucherError } = await supabase
-            .from('vouchers')
-            .insert({
-                requisition_id: id,
-                organization_id: organizationId,
-                created_by: cashier_id,
-                reference_number: voucherRef,
-                total_credit: actualExpenditure,
-                total_debit: actualExpenditure,
-                status: 'DRAFT'
-            })
-            .select()
-            .single();
+        if (existingVoucher) {
+            console.log(`[ConfirmChange] Voucher for Req ${id} already exists (${existingVoucher.reference_number}). Updating totals.`);
+            const { data: updatedVoucher, error: updateErr } = await supabase
+                .from('vouchers')
+                .update({
+                    total_credit: actualExpenditure,
+                    total_debit: actualExpenditure,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existingVoucher.id)
+                .select()
+                .single();
 
-        if (voucherError) {
-            console.error('[ConfirmChange] Error creating voucher:', voucherError);
-            throw voucherError;
+            if (updateErr) throw updateErr;
+            voucher = updatedVoucher;
+        } else {
+            let voucherRef = baseVoucherRef;
+            const { data: refCheck } = await supabase
+                .from('vouchers')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('reference_number', voucherRef)
+                .maybeSingle();
+
+            if (refCheck) {
+                voucherRef = `${voucherRef}-${Date.now().toString().slice(-4)}`;
+            }
+
+            const { data: newVoucher, error: voucherError } = await supabase
+                .from('vouchers')
+                .insert({
+                    requisition_id: id,
+                    organization_id: organizationId,
+                    created_by: cashier_id,
+                    reference_number: voucherRef,
+                    total_credit: actualExpenditure,
+                    total_debit: actualExpenditure,
+                    status: 'DRAFT'
+                })
+                .select()
+                .single();
+
+            if (voucherError) {
+                console.error('[ConfirmChange] Error creating voucher:', voucherError);
+                throw voucherError;
+            }
+            voucher = newVoucher;
         }
 
         // 5. Finalize Ledger
