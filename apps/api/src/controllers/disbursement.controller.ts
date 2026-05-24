@@ -1028,33 +1028,81 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
                 });
             }
 
-            await supabase.from('requisitions').update({
-                estimated_total: Number(requisition.estimated_total) + feeToUse,
-                actual_total: Number(requisition.actual_total) + feeToUse
-            }).eq('id', id);
-        }
+        } // Close if (isDigital && feeToUse > 0)
+
+        // Always update estimated_total to reflect the new approved amount
+        await supabase.from('requisitions').update({
+            estimated_total: Number(requisition.estimated_total) + excess + feeToUse,
+            actual_total: Number(requisition.actual_total) + feeToUse
+        }).eq('id', id);
 
         const { data: reqUpdated } = await supabase.from('requisitions').select('actual_total').eq('id', id).single();
         const finalActualTotal = Number(reqUpdated?.actual_total || totalActual);
 
-        const { data: voucher } = await supabase.from('vouchers').select('id, reference_number').eq('requisition_id', id).single();
+        // Find or Generate Voucher
+        const baseVoucherRef = `PV-${requisition.reference_number || id.slice(0, 6)}`;
+        let voucher: any = null;
 
-        if (voucher) {
-            await supabase.from('vouchers').update({
-                total_credit: finalActualTotal,
-                total_debit: finalActualTotal
-            }).eq('id', voucher.id);
-            
-            await cashbookService.finalizeDisbursement(
-                organizationId,
-                id,
-                finalActualTotal,
-                voucher.id,
-                0,
-                voucher.reference_number,
-                payment_method
-            );
+        const { data: existingVoucher } = await supabase
+            .from('vouchers')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('requisition_id', id)
+            .maybeSingle();
+
+        if (existingVoucher) {
+            const { data: updatedVoucher, error: updateErr } = await supabase
+                .from('vouchers')
+                .update({
+                    total_credit: finalActualTotal,
+                    total_debit: finalActualTotal,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existingVoucher.id)
+                .select()
+                .single();
+            if (updateErr) throw updateErr;
+            voucher = updatedVoucher;
+        } else {
+            let voucherRef = baseVoucherRef;
+            const { data: refCheck } = await supabase
+                .from('vouchers')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('reference_number', voucherRef)
+                .maybeSingle();
+
+            if (refCheck) {
+                voucherRef = `${voucherRef}-${Date.now().toString().slice(-4)}`;
+            }
+
+            const { data: newVoucher, error: voucherError } = await supabase
+                .from('vouchers')
+                .insert({
+                    requisition_id: id,
+                    organization_id: organizationId,
+                    created_by: cashier_id,
+                    reference_number: voucherRef,
+                    total_credit: finalActualTotal,
+                    total_debit: finalActualTotal,
+                    status: 'DRAFT'
+                })
+                .select()
+                .single();
+
+            if (voucherError) throw voucherError;
+            voucher = newVoucher;
         }
+
+        await cashbookService.finalizeDisbursement(
+            organizationId,
+            id,
+            finalActualTotal,
+            voucher.id,
+            0,
+            voucher.reference_number,
+            payment_method
+        );
 
         await supabase.from('requisitions').update({ status: 'CHANGE_SUBMITTED' }).eq('id', id);
 
