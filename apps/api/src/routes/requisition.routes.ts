@@ -30,7 +30,8 @@ import {
     getDisbursementHistory, 
     updateDisbursement,
     analyzeDisbursementProof,
-    verifyDisbursementStatus
+    verifyDisbursementStatus,
+    disburseExcessRequisition
 } from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
 import { requireAuth } from '../middleware/auth';
@@ -49,6 +50,7 @@ router.post('/maintenance/backfill-audit', backfillAuditScores);
 // Disbursement routes
 router.get('/disbursements/history', getDisbursementHistory);
 router.post('/:id/disburse', disburseRequisition);
+router.post('/:id/disburse-excess', disburseExcessRequisition);
 router.post('/:id/acknowledge', acknowledgeReceipt);
 router.patch('/disbursements/:id', updateDisbursement);
 router.post('/disbursements/:id/analyze-proof', analyzeDisbursementProof);

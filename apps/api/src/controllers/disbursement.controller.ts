@@ -6,6 +6,7 @@ import { emailService } from '../services/email.service';
 import { ocrService } from '../services/ai/ocr.service';
 import { LencoService } from '../services/lenco.service';
 import { RequisitionMessageService } from '../services/requisition_message.service';
+import { triggerAIReview } from './requisition.controller';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -848,3 +849,231 @@ function scheduleDeferredLedgerFinalization(
         console.error(`[Deferred Finalization] Unhandled error in finalization chain for ${requisitionId}:`, err)
     );
 }
+
+export const disburseExcessRequisition = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const { payment_method, total_prepared, recipient_account, recipient_bank_code, recipient_account_name } = req.body;
+        const cashier_id = req.user.id;
+        const organizationId = req.user.organization_id;
+        const isDigital = payment_method !== 'CASH' && payment_method !== 'CASH_PICKUP' && payment_method !== 'OTHER';
+
+        if (!organizationId) throw new Error("Missing organization context");
+
+        const { data: requisition, error: reqError } = await supabase
+            .from('requisitions')
+            .select('*, disbursements(*)')
+            .eq('id', id)
+            .single();
+
+        if (reqError || !requisition) return res.status(404).json({ error: 'Requisition not found' });
+        
+        if (requisition.status !== 'EXPENSED') {
+            return res.status(400).json({ error: 'Requisition is not in EXPENSED status.' });
+        }
+
+        const disbursement = requisition.disbursements?.[0];
+        if (!disbursement) {
+            return res.status(400).json({ error: 'Original disbursement record not found.' });
+        }
+
+        const totalActual = Number(requisition.actual_total || 0);
+        const originalDisbursed = Number(disbursement.total_prepared || 0);
+        const excess = totalActual - originalDisbursed;
+
+        if (excess <= 0) {
+            return res.status(400).json({ error: 'No excess expenditure to disburse.' });
+        }
+
+        const payoutAmount = Number(total_prepared);
+        if (Math.abs(payoutAmount - excess) > 0.01) {
+            return res.status(400).json({ error: `Disbursement amount must equal the excess amount (K${excess}).` });
+        }
+
+        let lencoReference = null;
+        const stableRef = `EXC-${id.slice(0, 8)}-${excess.toFixed(0)}`;
+
+        if (isDigital) {
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
+                .eq('id', organizationId)
+                .single();
+
+            if (!org?.lenco_subaccount_id || !org?.lenco_secret_key) {
+                if (!org?.payment_test_mode) {
+                    throw new Error("Organization is not properly configured for MoneyWise Wallet");
+                }
+            }
+
+            if (!recipient_account || !recipient_bank_code) {
+                return res.status(400).json({ error: 'Recipient account and bank code are required for Wallet transfers' });
+            }
+
+            try {
+                if (org?.payment_test_mode) {
+                    console.log(`[Payment Test Mode] Bypassing Lenco for Excess ${id}`);
+                    lencoReference = `SIM-EXC-${id.slice(0, 8)}`;
+                    (req as any).lencoStatus = 'successful';
+                    (req as any).lencoFee = 0;
+                } else {
+                    let statusCheck;
+                    let payout;
+                    let resolvedRef = stableRef;
+                    
+                    for (let i = 0; i < 10; i++) {
+                        resolvedRef = i === 0 ? stableRef : `${stableRef}-R${i}`;
+                        statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
+                        
+                        if (!statusCheck) break;
+                        if (statusCheck.status !== 'failed') break;
+                    }
+
+                    if (statusCheck && statusCheck.status !== 'failed') {
+                        payout = statusCheck;
+                    } else {
+                        const mobileOps = ['mtn', 'airtel', 'zamtel'];
+                        const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
+
+                        if (isMobile) {
+                            payout = await LencoService.createMobileMoneyPayout({
+                                amount: payoutAmount,
+                                reference: resolvedRef,
+                                phone: recipient_account,
+                                operator: recipient_bank_code,
+                                narration: `Excess Disbursement for Req #${id.slice(0, 8)}`
+                            }, org.lenco_subaccount_id, org.lenco_secret_key);
+                        } else {
+                            payout = await LencoService.createBankPayout({
+                                amount: payoutAmount,
+                                reference: resolvedRef,
+                                accountNumber: recipient_account,
+                                bankId: recipient_bank_code,
+                                narration: `Excess Disbursement for Req #${id.slice(0, 8)}`
+                            }, org.lenco_subaccount_id, org.lenco_secret_key);
+                        }
+                    }
+                    
+                    lencoReference = payout.reference;
+
+                    if (payout.status === 'failed') {
+                        throw new Error(payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco');
+                    }
+                    
+                    let attempts = 0;
+                    let currentStatus = payout.status;
+                    const terminalStatuses = ['successful', 'failed', 'reversed'];
+
+                    while (!terminalStatuses.includes(currentStatus) && attempts < 5) {
+                        await new Promise(resolve => setTimeout(resolve, 3000));
+                        statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
+                        currentStatus = statusCheck?.status || currentStatus;
+                        attempts++;
+                    }
+
+                    if (currentStatus === 'failed') {
+                        throw new Error(statusCheck?.reasonForFailure || statusCheck?.message || payout.reasonForFailure || 'Lenco reported transfer failure');
+                    }
+
+                    (req as any).lencoStatus = currentStatus;
+                    (req as any).lencoFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
+                }
+            } catch (payoutError: any) {
+                console.error('[Lenco Excess Payout Failed]', payoutError);
+                return res.status(400).json({ 
+                    error: `Excess disbursal error: ${payoutError.message}. Please try again.`,
+                });
+            }
+        }
+
+        const feeToUse = isDigital ? ((req as any).lencoFee || LencoService.calculatePayoutFee(payoutAmount, payment_method)) : 0;
+        const totalExcessDeduction = payoutAmount + feeToUse;
+
+        const newExternalRef = disbursement.external_reference 
+            ? `${disbursement.external_reference} | EXC: ${lencoReference || payment_method}`
+            : (lencoReference || payment_method);
+
+        await supabase
+            .from('disbursements')
+            .update({
+                total_prepared: originalDisbursed + totalExcessDeduction,
+                external_reference: newExternalRef
+            })
+            .eq('id', disbursement.id);
+
+        if (isDigital && feeToUse > 0) {
+            const { data: existingFee } = await supabase
+                .from('line_items')
+                .select('id, estimated_amount, actual_amount, unit_price')
+                .eq('requisition_id', id)
+                .ilike('description', '%Withdrawal Fee%')
+                .maybeSingle();
+
+            if (existingFee) {
+                await supabase.from('line_items').update({
+                    unit_price: Number(existingFee.unit_price) + feeToUse,
+                    estimated_amount: Number(existingFee.estimated_amount) + feeToUse,
+                    actual_amount: Number(existingFee.actual_amount) + feeToUse
+                }).eq('id', existingFee.id);
+            } else {
+                const chargesAccountId = await cashbookService.getOrCreateTransactionChargesAccount(organizationId);
+                await supabase.from('line_items').insert({
+                    requisition_id: id,
+                    description: `Withdrawal Fee (Excess via ${payment_method})`,
+                    quantity: 1,
+                    unit_price: feeToUse,
+                    estimated_amount: feeToUse,
+                    actual_amount: feeToUse,
+                    account_id: chargesAccountId
+                });
+            }
+
+            await supabase.from('requisitions').update({
+                estimated_total: Number(requisition.estimated_total) + feeToUse,
+                actual_total: Number(requisition.actual_total) + feeToUse
+            }).eq('id', id);
+        }
+
+        const { data: reqUpdated } = await supabase.from('requisitions').select('actual_total').eq('id', id).single();
+        const finalActualTotal = Number(reqUpdated?.actual_total || totalActual);
+
+        const { data: voucher } = await supabase.from('vouchers').select('id, reference_number').eq('requisition_id', id).single();
+
+        if (voucher) {
+            await supabase.from('vouchers').update({
+                total_credit: finalActualTotal,
+                total_debit: finalActualTotal
+            }).eq('id', voucher.id);
+            
+            await cashbookService.finalizeDisbursement(
+                organizationId,
+                id,
+                finalActualTotal,
+                voucher.id,
+                0,
+                voucher.reference_number,
+                payment_method
+            );
+        }
+
+        await supabase.from('requisitions').update({ status: 'CHANGE_SUBMITTED' }).eq('id', id);
+
+        await RequisitionMessageService.createMessage({
+            requisitionId: id,
+            userId: cashier_id,
+            content: `Excess expenditure of K${payoutAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })} has been disbursed via ${payment_method}. The ledger has been updated.`,
+            type: 'SYSTEM',
+            metadata: { stage: 'CHANGE_SUBMITTED' }
+        });
+
+        await triggerAIReview(id, organizationId, cashier_id).catch(err => 
+            console.error('[AI Review] Auto-trigger failed after excess:', err)
+        );
+
+        res.json({ message: 'Excess disbursed and ledger updated successfully' });
+
+    } catch (error: any) {
+        console.error('Error in disburseExcessRequisition:', error);
+        res.status(500).json({ error: 'Failed to disburse excess', details: error.message });
+    }
+};

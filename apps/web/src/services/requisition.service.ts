@@ -126,6 +126,27 @@ export const requisitionService = {
         return data; // { message, disbursement_id, lencoStatus }
     },
 
+    async disburseExcess(id: string, payload: {
+        payment_method: string;
+        total_prepared: number;
+        recipient_account?: string;
+        recipient_bank_code?: string;
+        recipient_account_name?: string;
+    }) {
+        const response = await apiFetch(`/requisitions/${id}/disburse-excess`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Excess disbursement failed');
+        }
+
+        return data;
+    },
+
     async verifyDisbursement(id: string) {
         const response = await apiFetch(`/requisitions/${id}/verify-disbursement`);
         const data = await response.json();

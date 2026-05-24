@@ -671,9 +671,12 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         
         // Calculate change for the summary message
         const change = (estimatedTotal || 0) - actualTotal;
-        const changeText = change > 0 
-            ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.` 
-            : ' No change to submit.';
+        const isExcess = change < -0.01;
+        const changeText = isExcess
+            ? ` Excess expenditure to disburse: K${Math.abs(change).toLocaleString(undefined, { minimumFractionDigits: 2 })}.`
+            : change > 0 
+                ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.` 
+                : ' No change to submit.';
 
         // Check if a repaired/duplicate EXPENSE_SUMMARY message exists and remove/update it
         const { data: existingSummaryRows } = await supabase
@@ -686,14 +689,17 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
 
         const existingSummary = existingSummaryRows?.[0] || null;
 
+        const metadataPayload = {
+            stage: 'EXPENSE_SUMMARY',
+            actualTotal,
+            changeAmount: change > 0 ? change : 0,
+            ...(isExcess ? { excessAmount: Math.abs(change), requiresExcessDisbursement: true } : {})
+        };
+
         if (existingSummary) {
             await RequisitionMessageService.updateMessage(existingSummary.id, {
                 content: `Expenses tracked: Total Actual K${actualTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.${changeText}`,
-                metadata: { 
-                    stage: 'EXPENSE_SUMMARY',
-                    actualTotal,
-                    changeAmount: change > 0 ? change : 0
-                }
+                metadata: metadataPayload
             });
         } else {
             await RequisitionMessageService.createMessage({
@@ -701,24 +707,24 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
                 userId,
                 content: `Expenses tracked: Total Actual K${actualTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}.${changeText}`,
                 type: 'SYSTEM',
-                metadata: { 
-                    stage: 'EXPENSE_SUMMARY',
-                    actualTotal,
-                    changeAmount: change > 0 ? change : 0
-                }
+                metadata: metadataPayload
             });
         }
 
-        if (change <= 0) {
-            // Add a deliberate delay so the user sees the summary/status change before AI kicks in
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            
-            // Trigger AI Review & Categorization
-            await triggerAIReview(id, organizationId, userId).catch(err => 
-                console.error('[AI Review] Auto-trigger failed:', err)
-            );
+        if (change >= -0.01) {
+            if (change <= 0.01) {
+                // No change, no excess. Trigger AI Review immediately.
+                await new Promise(resolve => setTimeout(resolve, 1500));
+                
+                // Trigger AI Review & Categorization
+                await triggerAIReview(id, organizationId, userId).catch(err => 
+                    console.error('[AI Review] Auto-trigger failed:', err)
+                );
+            } else {
+                console.log(`[updateRequisitionExpenses] Change is K${change}. Halting workflow at EXPENSED to allow user to submit change.`);
+            }
         } else {
-            console.log(`[updateRequisitionExpenses] Change is K${change}. Halting workflow at EXPENSED to allow user to submit change.`);
+            console.log(`[updateRequisitionExpenses] Excess is K${Math.abs(change)}. Halting workflow at EXPENSED to allow user to disburse excess.`);
         }
 
     } catch (error: any) {

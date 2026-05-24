@@ -81,6 +81,16 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [isSuccess, setIsSuccess] = useState(false);
     const [disburseError, setDisburseError] = useState<string | null>(null);
     const [disburseStatusMsg, setDisburseStatusMsg] = useState<string | null>(null);
+
+    // Excess Disbursal State (separate from normal disbursal to avoid conflicts)
+    const [excessMethod, setExcessMethod] = useState<string | null>(null);
+    const [excessPaymentType, setExcessPaymentType] = useState<'MOBILE_MONEY' | 'BANK'>('MOBILE_MONEY');
+    const [excessRecipient, setExcessRecipient] = useState('');
+    const [excessProvider, setExcessProvider] = useState<string | null>(null);
+    const [excessLookupName, setExcessLookupName] = useState<string | null>(null);
+    const [isExcessLookingUp, setIsExcessLookingUp] = useState(false);
+    const [isExcessProcessing, setIsExcessProcessing] = useState(false);
+    const [excessError, setExcessError] = useState<string | null>(null);
     
     const isSystem = message.message_type?.toUpperCase() === 'SYSTEM';
 
@@ -243,7 +253,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     }, [recipientValue, paymentType, recipientProvider, lookupName, isLookingUp, requisitionData?.organization_id]);
 
     useEffect(() => {
-        if (paymentType === 'BANK' && banks.length === 0 && !isFetchingBanks) {
+        if ((paymentType === 'BANK' || excessPaymentType === 'BANK') && banks.length === 0 && !isFetchingBanks) {
             const fetchBanks = async () => {
                 setIsFetchingBanks(true);
                 try {
@@ -257,7 +267,57 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             };
             fetchBanks();
         }
-    }, [paymentType, banks.length, isFetchingBanks]);
+    }, [paymentType, excessPaymentType, banks.length, isFetchingBanks]);
+
+    // Excess disbursal: auto-detect mobile money operator from phone prefix
+    useEffect(() => {
+        if (excessPaymentType === 'MOBILE_MONEY' && excessRecipient) {
+            const clean = excessRecipient.replace(/[^0-9]/g, '');
+            const normalized = clean.startsWith('260') ? '0' + clean.substring(3) : clean;
+            let operator: string | null = null;
+            if (normalized.startsWith('097') || normalized.startsWith('077')) operator = 'AIRTEL';
+            else if (normalized.startsWith('096') || normalized.startsWith('076')) operator = 'MTN';
+            else if (normalized.startsWith('095') || normalized.startsWith('075')) operator = 'ZAMTEL';
+            if (operator && excessProvider !== operator) {
+                setExcessProvider(operator);
+            }
+        }
+    }, [excessRecipient, excessPaymentType, excessProvider]);
+
+    // Excess disbursal: name lookup for mobile money and bank account
+    useEffect(() => {
+        if (excessPaymentType === 'MOBILE_MONEY' && excessRecipient && excessProvider && !excessLookupName && !isExcessLookingUp) {
+            const clean = excessRecipient.replace(/[^0-9]/g, '');
+            const normalized = clean.startsWith('260') ? '0' + clean.substring(3) : clean;
+            if (normalized.length === 10) {
+                const resolveName = async () => {
+                    setIsExcessLookingUp(true);
+                    try {
+                        const res = await lencoService.resolveMobileMoney(normalized, excessProvider!, requisitionData?.organization_id);
+                        setExcessLookupName(res.accountName || res.account_name || res.name);
+                    } catch {
+                        setExcessLookupName('Name not found');
+                    } finally {
+                        setIsExcessLookingUp(false);
+                    }
+                };
+                resolveName();
+            }
+        } else if (excessPaymentType === 'BANK' && excessRecipient.length >= 5 && excessProvider && !excessLookupName && !isExcessLookingUp) {
+            const resolveName = async () => {
+                setIsExcessLookingUp(true);
+                try {
+                    const res = await lencoService.resolveBankAccount(excessRecipient, excessProvider!, requisitionData?.organization_id);
+                    setExcessLookupName(res.accountName || res.account_name || res.name);
+                } catch {
+                    setExcessLookupName('Name not found');
+                } finally {
+                    setIsExcessLookingUp(false);
+                }
+            };
+            resolveName();
+        }
+    }, [excessRecipient, excessPaymentType, excessProvider, excessLookupName, isExcessLookingUp, requisitionData?.organization_id]);
 
     const hasInitializedForm = useRef(false);
 
@@ -1519,7 +1579,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 })));
                                             
                                                 const totalActual = expenseItems.reduce((sum: number, item: any) => sum + (parseFloat(item.actual_amount) || 0), 0);
-                                                if (totalActual >= (requisitionData?.estimated_total || 0)) {
+                                                if (Math.abs(totalActual - (requisitionData?.estimated_total || 0)) < 0.01) {
                                                     await requisitionService.updateStatus(requisitionData.id, 'CHANGE_SUBMITTED');
                                                 }
 
@@ -2374,9 +2434,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
              const totalActual = requisitionData?.items?.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0) || requisitionData?.actual_total || 0;
              const totalDisbursed = requisitionData?.disbursements?.[0]?.total_prepared || requisitionData?.estimated_total || 0;
              const changeAmount = Math.max(0, totalDisbursed - totalActual);
+             const excessAmount = Math.max(0, totalActual - totalDisbursed);
              const hasChange = changeAmount > 0.01; // Small threshold for floating point
+             const hasExcess = excessAmount > 0.01;
              const isRequestor = currentUser?.id === requisitionData?.requestor_id;
              const showChangeActions = hasChange && isRequestor && requisitionData?.status === 'EXPENSED';
+             const showExcessActions = hasExcess && isPrivileged && requisitionData?.status === 'EXPENSED';
              
              const disbursement = requisitionData?.disbursements?.[0];
              const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
@@ -2516,7 +2579,199 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                  </div>
                              )}
 
-                             {!hasChange && isRequestor && requisitionData?.status === 'EXPENSED' && (
+                             {showExcessActions && (
+                                 <div className="mt-4 pt-4 border-t border-gray-50 space-y-4">
+                                     <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Disburse Excess (K{excessAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })})</p>
+                                     {!excessMethod ? (
+                                         <div className="grid grid-cols-2 gap-3">
+                                             {PAYMENT_METHODS.map((method) => (
+                                                 <button
+                                                     key={method.id}
+                                                     onClick={() => {
+                                                         setExcessMethod(method.id);
+                                                         setExcessPaymentType(method.id === 'BANK_TRANSFER' ? 'BANK' : 'MOBILE_MONEY');
+                                                     }}
+                                                     className={`h-12 px-4 text-[12px] font-bold rounded-full transition-all flex items-center justify-center ${
+                                                         method.id === 'MONEYWISE_WALLET'
+                                                             ? 'bg-orange-500 text-white shadow-lg shadow-orange-100/50'
+                                                             : 'bg-[#F5F5F7] text-gray-600 hover:bg-gray-200 border border-gray-100'
+                                                     }`}
+                                                 >
+                                                     {method.name}
+                                                 </button>
+                                             ))}
+                                         </div>
+                                     ) : (
+                                         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-400">
+                                             {/* Amount display */}
+                                             <div className="relative group">
+                                                 <span className="absolute left-7 top-1/2 -translate-y-1/2 text-gray-400 font-bold text-lg">K</span>
+                                                 <input
+                                                     type="text"
+                                                     value={excessAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                     readOnly
+                                                     className="w-full h-14 pl-14 pr-7 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none"
+                                                 />
+                                                 {excessMethod !== 'CASH_PICKUP' && (
+                                                     <div className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center space-x-1.5 px-3 py-1 bg-gray-50 rounded-full border border-gray-100">
+                                                         <span className="text-[9px] font-black text-gray-400 uppercase">Fee:</span>
+                                                         <span className="text-[11px] font-black text-gray-500">
+                                                             K{lencoService.calculatePayoutFee(excessAmount, excessMethod || excessPaymentType).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                         </span>
+                                                     </div>
+                                                 )}
+                                             </div>
+
+                                             {excessMethod === 'CASH_PICKUP' ? (
+                                                 <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-start space-x-3">
+                                                     <Coins className="text-gray-400 mt-0.5 flex-shrink-0" size={18} />
+                                                     <div>
+                                                         <p className="text-[13px] font-bold text-gray-900 leading-tight">Cash / Other Disbursement</p>
+                                                         <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">Record a manual cash payment. No electronic transfer will be made.</p>
+                                                     </div>
+                                                 </div>
+                                             ) : (
+                                                 <>
+                                                     {/* MoneyWise Wallet: toggle Mobile Money vs Bank */}
+                                                     {excessMethod === 'MONEYWISE_WALLET' && (
+                                                         <div className="flex p-1.5 bg-gray-100/80 rounded-full w-full">
+                                                             <button
+                                                                 onClick={() => { setExcessPaymentType('MOBILE_MONEY'); setExcessLookupName(null); setExcessProvider(null); setExcessRecipient(''); }}
+                                                                 className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${excessPaymentType === 'MOBILE_MONEY' ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500'}`}
+                                                             >
+                                                                 MOBILE MONEY
+                                                             </button>
+                                                             <button
+                                                                 onClick={() => { setExcessPaymentType('BANK'); setExcessLookupName(null); setExcessProvider(null); setExcessRecipient(''); }}
+                                                                 className={`flex-1 h-11 rounded-full text-[12px] font-black tracking-wider transition-all duration-300 ${excessPaymentType === 'BANK' ? 'bg-white text-orange-500 shadow-sm' : 'text-gray-500'}`}
+                                                             >
+                                                                 BANK TRANSFER
+                                                             </button>
+                                                         </div>
+                                                     )}
+
+                                                     {/* Recipient inputs */}
+                                                     <div className="flex flex-col space-y-2">
+                                                         <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">
+                                                             {excessPaymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Bank & Account Details'}
+                                                         </label>
+                                                         {excessPaymentType === 'BANK' && (
+                                                             <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                 <select
+                                                                     value={excessProvider || ''}
+                                                                     onChange={(e) => { setExcessProvider(e.target.value); setExcessLookupName(null); }}
+                                                                     className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-orange-200 transition-all shadow-sm appearance-none cursor-pointer"
+                                                                 >
+                                                                     <option value="" disabled>{isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}</option>
+                                                                     {banks.map((bank: any) => (
+                                                                         <option key={bank.id} value={bank.id}>{bank.name}</option>
+                                                                     ))}
+                                                                 </select>
+                                                                 <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                                     <ChevronDown size={18} />
+                                                                 </div>
+                                                             </div>
+                                                         )}
+                                                         <div className="relative group">
+                                                             <input
+                                                                 type="text"
+                                                                 placeholder={excessPaymentType === 'MOBILE_MONEY' ? '097...' : 'Account Number (Zambia)'}
+                                                                 value={excessRecipient}
+                                                                 onChange={(e) => { setExcessRecipient(e.target.value); setExcessLookupName(null); }}
+                                                                 className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-orange-200 transition-all shadow-sm"
+                                                             />
+                                                             <div className="absolute right-7 top-1/2 -translate-y-1/2 flex items-center space-x-2">
+                                                                 {isExcessLookingUp ? (
+                                                                     <Loader2 size={18} className="text-orange-500 animate-spin" />
+                                                                 ) : excessProvider && excessPaymentType === 'MOBILE_MONEY' && (
+                                                                     <div className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                                                         excessProvider === 'AIRTEL' ? 'bg-red-50 text-red-500 border border-red-100' :
+                                                                         excessProvider === 'MTN' ? 'bg-yellow-50 text-yellow-700 border border-yellow-100' :
+                                                                         'bg-emerald-50 text-emerald-600 border border-emerald-100'
+                                                                     }`}>
+                                                                         {excessProvider}
+                                                                     </div>
+                                                                 )}
+                                                             </div>
+                                                         </div>
+                                                         {excessLookupName && (
+                                                             <div className="flex items-center space-x-2 ml-5 animate-in fade-in slide-in-from-left-2 duration-300">
+                                                                 <div className={`w-1.5 h-1.5 rounded-full ${excessLookupName === 'Name not found' ? 'bg-red-500' : 'bg-emerald-500'}`}></div>
+                                                                 <span className={`text-[12px] font-black uppercase tracking-widest ${excessLookupName === 'Name not found' ? 'text-red-600' : 'text-emerald-600'}`}>{excessLookupName}</span>
+                                                             </div>
+                                                         )}
+                                                     </div>
+                                                 </>
+                                             )}
+
+                                             {excessError && (
+                                                 <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-[12px] text-red-700 font-medium">
+                                                     {excessError}
+                                                 </div>
+                                             )}
+
+                                             <div className="flex items-center space-x-3 pt-2">
+                                                 <button
+                                                     onClick={() => {
+                                                         setExcessMethod(null);
+                                                         setExcessLookupName(null);
+                                                         setExcessProvider(null);
+                                                         setExcessRecipient('');
+                                                         setExcessError(null);
+                                                     }}
+                                                     className="flex-1 h-11 px-6 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 transition-all flex items-center justify-center border border-gray-100"
+                                                 >
+                                                     Back
+                                                 </button>
+                                                 <button
+                                                     onClick={async () => {
+                                                         const isDigital = excessMethod !== 'CASH_PICKUP' && excessMethod !== 'OTHER';
+                                                         if (isDigital && (!excessRecipient || !excessProvider)) {
+                                                             setExcessError('Please enter recipient details before disbursing.');
+                                                             return;
+                                                         }
+                                                         if (isDigital && excessLookupName === 'Name not found') {
+                                                             setExcessError('Recipient name could not be verified. Please check account details.');
+                                                             return;
+                                                         }
+                                                         try {
+                                                             setIsExcessProcessing(true);
+                                                             setExcessError(null);
+                                                             await requisitionService.disburseExcess(requisitionData.id, {
+                                                                 payment_method: excessMethod!,
+                                                                 total_prepared: excessAmount,
+                                                                 ...(isDigital && {
+                                                                     recipient_account: excessRecipient,
+                                                                     recipient_bank_code: excessProvider || undefined,
+                                                                     recipient_account_name: excessLookupName || undefined,
+                                                                 }),
+                                                             });
+                                                             if (onAction) onAction('REFRESH');
+                                                         } catch (err: any) {
+                                                             setExcessError(err.message || 'Failed to disburse excess. Please try again.');
+                                                         } finally {
+                                                             setIsExcessProcessing(false);
+                                                         }
+                                                     }}
+                                                     disabled={isExcessProcessing || (excessMethod !== 'CASH_PICKUP' && (!excessRecipient || !excessProvider))}
+                                                     className="flex-[2] h-11 bg-orange-500 text-white text-[13px] font-bold rounded-full hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-orange-100/50 flex items-center justify-center space-x-2"
+                                                 >
+                                                     {isExcessProcessing ? (
+                                                         <Loader2 size={16} className="animate-spin" />
+                                                     ) : (
+                                                         <>
+                                                             <span>Disburse Excess</span>
+                                                             <ArrowRight size={16} />
+                                                         </>
+                                                     )}
+                                                 </button>
+                                             </div>
+                                         </div>
+                                     )}
+                                 </div>
+                             )}
+
+                             {!hasChange && !hasExcess && isRequestor && requisitionData?.status === 'EXPENSED' && (
                                  <div className="mt-4 pt-4 border-t border-gray-50">
                                      <button 
                                          onClick={async () => {
