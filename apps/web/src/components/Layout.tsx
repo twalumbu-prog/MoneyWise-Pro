@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Settings, LogOut, Menu, BarChart3, Navigation, User } from 'lucide-react';
+import { Settings, LogOut, Menu, TrendingUp, Navigation, User } from 'lucide-react';
 import { TopNavbar } from './TopNavbar';
 import { SubNavbar } from './SubNavbar';
 
@@ -155,7 +155,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                     { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
                     { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook' },
                     { path: '/intelligence', icon: AstroidIcon, label: 'BI', isActive: (p: string) => p === '/intelligence' },
-                    { path: '/reporting', icon: BarChart3, label: 'Reporting', isActive: (p: string) => p === '/reporting' },
+                    { path: '/reporting', icon: TrendingUp, label: 'Reporting', isActive: (p: string) => p === '/reporting' },
                     { path: '/menu', icon: Menu, label: 'Menu', isActive: (p: string) => ['/menu', '/settings', '/audit', '/approvals', '/disbursements'].some(prefix => p.startsWith(prefix)) || p.startsWith('/vouchers') }
                 ].map((tab, idx) => {
                     const TabIcon = tab.icon;
