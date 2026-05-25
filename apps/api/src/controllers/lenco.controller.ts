@@ -166,7 +166,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
     }
 
     try {
-        // 1. Check if the entry already exists in our database
+        // 1. Check if the entry already exists and is finalized in our database
         const { data: existingEntry, error: dbError } = await supabase
             .from('cashbook_entries')
             .select('id, status')
@@ -175,8 +175,8 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
 
         if (dbError) throw dbError;
 
-        if (existingEntry) {
-            console.log(`[Lenco Verify] Found in local DB: ${existingEntry.id}`);
+        if (existingEntry && existingEntry.status !== 'PENDING') {
+            console.log(`[Lenco Verify] Found in local DB and finalized: ${existingEntry.id}`);
             return res.json({ 
                 verified: true, 
                 source: 'database',

@@ -365,8 +365,8 @@ const CashLedger: React.FC = () => {
         if (searchQuery.trim() !== '') {
             const query = searchQuery.toLowerCase();
             result = result.filter(entry => {
-                const desc = entry.description?.toLowerCase() || '';
-                const reqDesc = entry.requisitions?.description?.toLowerCase() || '';
+                const desc = (entry.description?.split(' | Ref:')[0] || '').toLowerCase();
+                const reqDesc = (entry.requisitions?.description?.split(' | Ref:')[0] || '').toLowerCase();
                 const refNum = entry.requisitions?.reference_number?.toLowerCase() || '';
                 const requestor = entry.requisitions?.requestor?.name?.toLowerCase() || '';
                 return desc.includes(query) || reqDesc.includes(query) || refNum.includes(query) || requestor.includes(query);
@@ -1286,7 +1286,8 @@ const CashLedger: React.FC = () => {
                                     const isOutflow = entry.credit > 0;
                                     const amount = isOutflow ? entry.credit : entry.debit;
                                     const refNum = entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8);
-                                    const description = entry.requisitions?.description || entry.description;
+                                    const rawDescription = entry.requisitions?.description || entry.description;
+                                    const description = rawDescription ? rawDescription.split(' | Ref:')[0] : '';
 
                                     return (
                                         <React.Fragment key={entry.id}>

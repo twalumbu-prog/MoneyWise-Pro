@@ -218,6 +218,11 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 actualNarration = `Wallet Deposit - Ref: ${reference || 'N/A'}`;
             }
             
+            // Append reference for deduplication logic to work later
+            if (reference && !actualNarration.includes(reference)) {
+                actualNarration = `${actualNarration} | Ref: ${reference}`;
+            }
+            
             if (pendingEntry) {
                 // Delete the pending intent before recreating the finalized entry so we don't mess up balances
                 await supabase.from('cashbook_entries').delete().eq('id', pendingEntry.id);
