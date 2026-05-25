@@ -1045,8 +1045,9 @@ export const Reporting: React.FC = () => {
                         <h2 className="text-[34px] font-black leading-none">
                             K{mobileData.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </h2>
-                        <span className="text-[34px] font-black leading-none text-[#4D9FFF]">
-                            {mobileData.isIncrease ? '+' : '-'}{mobileData.pctVal}%
+                        <span className="text-[34px] font-black leading-none">
+                            <span className="text-[#4D9FFF]">{mobileData.isIncrease ? '+' : '-'}</span>
+                            <span className="text-white">{mobileData.pctVal}%</span>
                         </span>
                     </div>
                     
