@@ -14,24 +14,26 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'start_date and end_date are required' });
         }
 
-        // Determine which requisitions to include
-        // INCLUDE CATEGORIZED: User wants to see impact immediately after approval
-        const allowedStatuses = ['CATEGORIZED', 'COMPLETED'];
+        // Include all statuses where money has actually left the wallet
+        const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
 
-        // Get all line items for requisitions in the allowed statuses and date range
-        // Since we don't have a transaction date on line items, we'll use the requisition updated_at or created_at
-        // In a real accounting system, we'd use the voucher posted_date or disbursement date
-        let query = supabase
+        // Get all line items for requisitions in the allowed statuses
+        const query = supabase
             .from('line_items')
             .select(`
                 *,
-                requisition:requisitions!inner(id, status, created_at, updated_at, organization_id),
+                requisition:requisitions!inner(
+                    id, 
+                    status, 
+                    created_at, 
+                    updated_at, 
+                    organization_id,
+                    cashbook_entries(id, date, entry_type)
+                ),
                 accounts ( id, name, code )
             `)
             .eq('requisition.organization_id', organization_id)
-            .in('requisition.status', allowedStatuses)
-            .gte('requisition.updated_at', startDate)
-            .lte('requisition.updated_at', endDate);
+            .in('requisition.status', allowedStatuses);
 
         const { data: lineItems, error } = await query;
 
@@ -41,6 +43,30 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
         const expenditures = new Map<string, any>();
 
         for (const item of (lineItems || [])) {
+            const req = item.requisition;
+            if (!req) continue;
+
+            // Resolve the transaction date from the cashbook entries
+            // Priority: entry_type === 'DISBURSEMENT' -> first cashbook entry -> updated_at -> created_at
+            const cashbookEntries = req.cashbook_entries || [];
+            const disbursement = cashbookEntries.find((c: any) => c.entry_type === 'DISBURSEMENT');
+            
+            let itemDateStr = '';
+            if (disbursement) {
+                itemDateStr = disbursement.date;
+            } else if (cashbookEntries.length > 0) {
+                itemDateStr = cashbookEntries[0].date;
+            } else {
+                itemDateStr = req.updated_at || req.created_at;
+            }
+
+            const formattedDate = itemDateStr.split('T')[0];
+            
+            // Filter by date range
+            if (formattedDate < startDate || formattedDate > endDate) {
+                continue;
+            }
+
             // Priority: QB ID -> Local ID -> 'UNCATEGORIZED'
             const accountId = item.qb_account_id || item.account_id || 'UNCATEGORIZED';
             
@@ -80,8 +106,8 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'Organization context missing' });
         }
 
-        // Include both categorized and completed transactions
-        const allowedStatuses = ['CATEGORIZED', 'COMPLETED'];
+        // Include all statuses where money has actually left the wallet
+        const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
 
         // Identify if accountId is a UUID to avoid database casting errors
         const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
@@ -90,7 +116,17 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
             .from('line_items')
             .select(`
                 *,
-                requisition:requisitions!inner(id, reference_number, status, description, created_at, updated_at, requestor_id, requestor:users!requestor_id(name)),
+                requisition:requisitions!inner(
+                    id, 
+                    reference_number, 
+                    status, 
+                    description, 
+                    created_at, 
+                    updated_at, 
+                    requestor_id, 
+                    requestor:users!requestor_id(name),
+                    cashbook_entries(id, date, entry_type)
+                ),
                 accounts(id, name, code)
             `)
             .eq('requisition.organization_id', organization_id)
@@ -106,24 +142,45 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
             query = query.eq('qb_account_id', accountId);
         }
 
-        if (startDate) query = query.gte('requisition.updated_at', startDate);
-        if (endDate) query = query.lte('requisition.updated_at', endDate);
-
         const { data, error } = await query;
 
         if (error) throw error;
 
-        // Map data to make it caller friendly
-        const items = data.map((item: any) => ({
-            id: item.id,
-            description: item.description,
-            amount: Number(item.actual_amount || item.estimated_amount || 0),
-            date: item.requisition.updated_at,
-            requisition_id: item.requisition.id,
-            requisition_ref: item.requisition.reference_number,
-            requisition_desc: item.requisition.description,
-            requestor_name: item.requisition.requestor?.name || 'Unknown'
-        }));
+        // Filter in memory by date range and map data to make it caller friendly
+        const items = [];
+
+        for (const item of (data || [])) {
+            const req = item.requisition;
+            if (!req) continue;
+
+            const cashbookEntries = req.cashbook_entries || [];
+            const disbursement = cashbookEntries.find((c: any) => c.entry_type === 'DISBURSEMENT');
+            
+            let itemDateStr = '';
+            if (disbursement) {
+                itemDateStr = disbursement.date;
+            } else if (cashbookEntries.length > 0) {
+                itemDateStr = cashbookEntries[0].date;
+            } else {
+                itemDateStr = req.updated_at || req.created_at;
+            }
+
+            const formattedDate = itemDateStr.split('T')[0];
+
+            if (startDate && formattedDate < startDate) continue;
+            if (endDate && formattedDate > endDate) continue;
+
+            items.push({
+                id: item.id,
+                description: item.description,
+                amount: Number(item.actual_amount || item.estimated_amount || 0),
+                date: itemDateStr,
+                requisition_id: req.id,
+                requisition_ref: req.reference_number,
+                requisition_desc: req.description,
+                requestor_name: req.requestor?.name || 'Unknown'
+            });
+        }
 
         res.json(items);
     } catch (error: any) {
