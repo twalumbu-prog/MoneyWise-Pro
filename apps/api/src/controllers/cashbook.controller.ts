@@ -8,6 +8,24 @@ import { QuickBooksService } from '../services/quickbooks.service';
 /**
  * Get all cashbook entries with optional filters
  */
+/**
+ * Helper to sanitize cashbook entries by removing the reference suffix from the description.
+ * This ensures raw references used for backend deduplication are hidden from the UI.
+ */
+const sanitizeEntry = (entry: any) => {
+    if (!entry) return entry;
+    if (entry.description) {
+        entry.description = entry.description.split(' | Ref:')[0];
+    }
+    if (entry.requisitions && entry.requisitions.description) {
+        entry.requisitions.description = entry.requisitions.description.split(' | Ref:')[0];
+    }
+    return entry;
+};
+
+/**
+ * Get all cashbook entries with optional filters
+ */
 export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
     // ... existing entries logic ... (simplified for brevity, assume unchanged or just import updated)
     try {
@@ -26,7 +44,8 @@ export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
             limit: limit ? parseInt(limit as string) : undefined
         });
 
-        res.json(entries);
+        const sanitizedEntries = entries.map(sanitizeEntry);
+        res.json(sanitizedEntries);
     } catch (error: any) {
         console.error('Error fetching cashbook entries:', error);
         res.status(500).json({ error: 'Failed to fetch cashbook entries', details: error.message });
@@ -197,7 +216,7 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
             userId
         );
 
-        res.json(entry);
+        res.json(sanitizeEntry(entry));
     } catch (error: any) {
         console.error('Error logging cash inflow:', error);
         res.status(500).json({ error: 'Failed to log cash inflow', details: error.message });
@@ -457,7 +476,7 @@ export const updateEntryAccount = async (req: any, res: any): Promise<any> => {
         }
 
         console.log(`[Ledger] ✅ Successfully updated entry account. Data:`, data);
-        res.json({ success: true, data: data?.[0] });
+        res.json({ success: true, data: sanitizeEntry(data?.[0]) });
     } catch (error: any) {
         console.error('Error updating entry account:', error);
         res.status(500).json({ error: 'Failed to update entry account', details: error.message });
