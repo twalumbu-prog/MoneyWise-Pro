@@ -1352,9 +1352,9 @@ export const Reporting: React.FC = () => {
                                                 <div>
                                                     {groupData.totals.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {groupData.totals.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </div>
-                                                <div className="flex items-center gap-0.5 text-gray-400">
-                                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                                </div>
+                                                <span className="text-[#006AFF] font-black text-[11px]">
+                                                    {Math.round(progressPercent)}%
+                                                </span>
                                             </div>
                                         </div>
 
@@ -1488,9 +1488,9 @@ export const Reporting: React.FC = () => {
                                                 <div>
                                                     {row.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {row.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </div>
-                                                <div className="flex items-center gap-0.5 text-gray-400">
-                                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                                </div>
+                                                <span className="text-[#006AFF] font-black text-[11px]">
+                                                    {Math.round(progressPercent)}%
+                                                </span>
                                             </div>
                                         </div>
 
