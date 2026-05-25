@@ -608,17 +608,24 @@ const CashLedger: React.FC = () => {
           return null;
       };
 
+    const getResolvedStatus = (entry: CashbookEntry): string => {
+        if (entry.entry_type === 'CLOSING_BALANCE') return 'CLOSED';
+        if (entry.entry_type === 'OPENING_BALANCE') return 'OPENING';
+        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+            return entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
+        } else if (entry.requisitions) {
+            return entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
+        }
+        return entry.status || 'PENDING';
+    };
+
     const getEntryStatus = (entry: CashbookEntry) => {
         if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center text-[10px] font-normal uppercase tracking-wider text-slate-700"><Lock size={10} className="mr-1" /> Closed</span>;
         if (entry.entry_type === 'OPENING_BALANCE') return <span className="inline-flex items-center text-[10px] font-normal uppercase tracking-wider text-indigo-700">Opening</span>;
-        let status = '';
-        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
-            status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
-        } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
-            status = entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
-        } else {
-            return null;
-        }
+        
+        const status = getResolvedStatus(entry);
+        if (status === 'CLOSED' || status === 'OPENING') return null;
+        
         const config = getStatusConfig(status);
 
         const getStatusIcon = (iconType: string, color: string) => {
@@ -1276,8 +1283,8 @@ const CashLedger: React.FC = () => {
                     {!loading && groupedEntries.map((group) => (
                         <div key={group.month} className="mb-4">
                             {/* Month Group Header */}
-                            <div className="px-6 py-2">
-                                <span className="text-xs font-bold text-gray-400">{group.month}</span>
+                            <div className="pl-[44px] py-2">
+                                <span className="text-xs font-bold text-black">{group.month}</span>
                             </div>
 
                             {/* Transaction Rows in Card */}
@@ -1311,26 +1318,34 @@ const CashLedger: React.FC = () => {
                                                             />
                                                         )}
                                                     </div>
-                                                    {(entry.requisitions || refNum) && (
-                                                        <div className="flex items-center gap-1.5 mt-1.5">
-                                                            {entry.requisitions && (
-                                                                <div className="flex items-center gap-1">
-                                                                    {renderMobileStatusIcon(entry.requisitions.status)}
-                                                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                                                                        {getStatusConfig(entry.requisitions.status).label}
+                                                    {(() => {
+                                                        const status = getResolvedStatus(entry);
+                                                        const showStatus = status && status !== 'CLOSED' && status !== 'OPENING';
+                                                        if (!showStatus && !refNum) return null;
+                                                        return (
+                                                            <div className="flex items-center gap-1.5 mt-1.5">
+                                                                {showStatus && (() => {
+                                                                    const config = getStatusConfig(status);
+                                                                    return (
+                                                                        <div className="flex items-center bg-white px-2 py-0.5 rounded-full border border-gray-100 shadow-2xs w-fit">
+                                                                            {renderMobileStatusIcon(status)}
+                                                                            <span className="text-[9px] font-black text-brand-navy uppercase tracking-widest ml-1 leading-none">
+                                                                                {config.label}
+                                                                            </span>
+                                                                        </div>
+                                                                    );
+                                                                })()}
+                                                                {showStatus && refNum && (
+                                                                    <span className="text-[10px] text-gray-300 font-bold">•</span>
+                                                                )}
+                                                                {refNum && (
+                                                                    <span className="text-[11px] font-normal text-[#808080] tracking-tight uppercase">
+                                                                        {refNum}
                                                                     </span>
-                                                                </div>
-                                                            )}
-                                                            {entry.requisitions && refNum && (
-                                                                <span className="text-[10px] text-gray-300 font-bold">•</span>
-                                                            )}
-                                                            {refNum && (
-                                                                <span className="text-[11px] font-normal text-[#808080] tracking-tight uppercase">
-                                                                    {refNum}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    )}
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 {/* Right Side: Amount + Date */}
