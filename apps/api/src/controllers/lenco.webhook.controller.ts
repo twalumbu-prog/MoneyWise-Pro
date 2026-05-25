@@ -211,7 +211,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             let actualNarration = narration || description || meta?.purpose || metadata?.purpose;
             
             if (pendingEntry && pendingEntry.description && pendingEntry.description.includes('PENDING_INTENT:')) {
-                actualNarration = pendingEntry.description.replace('PENDING_INTENT: ', '').replace('PENDING_INTENT:', '').trim();
+                actualNarration = pendingEntry.description.replace('PENDING_INTENT: ', '').replace('PENDING_INTENT:', '').split(' | Ref:')[0].trim();
             }
 
             if (!actualNarration) {

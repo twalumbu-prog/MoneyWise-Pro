@@ -224,13 +224,12 @@ export const logWalletDepositIntent = async (req: any, res: any): Promise<any> =
             organization_id: organizationId,
             entry_type: 'INFLOW',
             account_type: 'MONEYWISE_WALLET',
-            description: `PENDING_INTENT: ${purpose}`,
+            description: `PENDING_INTENT: ${purpose} | Ref: ${reference}`,
             debit: amount || 0,
             credit: 0,
             balance_after: 0,
             date: new Date().toISOString().split('T')[0],
-            status: 'PENDING',
-            external_reference: reference
+            status: 'PENDING'
         });
 
         if (error) throw error;
