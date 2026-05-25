@@ -548,21 +548,6 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                 />
                             </div>
 
-                            <button
-                                type="button"
-                                onClick={handleVerifyAll}
-                                disabled={isVerifying || lineItems.length === 0}
-                                className="w-full py-3 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 transition-all active:scale-[0.98]"
-                            >
-                                {isVerifying ? (
-                                    <>
-                                        <Loader2 size={16} className="animate-spin" />
-                                        <span>Verifying Accounts...</span>
-                                    </>
-                                ) : (
-                                    <span>Verify Accounts</span>
-                                )}
-                            </button>
 
                             <div className="space-y-3">
                                 <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Employee List ({lineItems.length} items)</p>
@@ -797,14 +782,42 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
             </div>
 
             {stage < 3 && (
-                <div className="shrink-0 p-6 pb-8 flex justify-end">
-                    <button 
-                        onClick={stage === 1 ? handleProceedToPreview : handleProceedToSummary} 
-                        disabled={stage === 2 && (!lineItems.every(item => verificationResults[item.id]?.status === 'verified') || isVerifying)}
-                        className="w-14 h-14 bg-emerald-500 disabled:bg-gray-200 disabled:text-gray-400 rounded-full flex items-center justify-center text-white shadow-xl shadow-emerald-200 disabled:shadow-none active:scale-90 transition-all"
-                    >
-                        <ArrowRight size={24} />
-                    </button>
+                <div className="shrink-0 p-6 pb-8 flex items-center justify-between">
+                    {stage === 2 ? (
+                        <div className="flex w-full items-center justify-between gap-4">
+                            <button
+                                type="button"
+                                onClick={handleVerifyAll}
+                                disabled={isVerifying || lineItems.length === 0}
+                                className="flex-1 py-4 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 transition-all active:scale-[0.98]"
+                            >
+                                {isVerifying ? (
+                                    <>
+                                        <Loader2 size={16} className="animate-spin text-white mr-2" />
+                                        <span>Verifying...</span>
+                                    </>
+                                ) : (
+                                    <span>Verify Accounts</span>
+                                )}
+                            </button>
+                            <button 
+                                onClick={handleProceedToSummary} 
+                                disabled={!lineItems.every(item => verificationResults[item.id]?.status === 'verified') || isVerifying}
+                                className="w-14 h-14 bg-emerald-500 disabled:bg-gray-200 disabled:text-gray-400 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-xl shadow-emerald-200 disabled:shadow-none active:scale-90 transition-all"
+                            >
+                                <ArrowRight size={24} />
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="flex w-full justify-end">
+                            <button 
+                                onClick={handleProceedToPreview} 
+                                className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-xl shadow-emerald-200 active:scale-90 transition-all"
+                            >
+                                <ArrowRight size={24} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

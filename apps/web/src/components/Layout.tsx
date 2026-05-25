@@ -88,7 +88,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
 
             {/* Mobile Header */}
             <div className="md:hidden sticky top-0 z-20">
-                <div className="bg-[#F5FAFF] px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80">
+                <div className={`${backgroundColor} px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80`}>
                     <h1 className="text-[28px] font-black text-brand-navy tracking-tight">
                         {getPageTitle()}
                     </h1>

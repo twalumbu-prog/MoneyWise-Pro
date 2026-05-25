@@ -26,7 +26,8 @@ import {
     Check,
     RefreshCw,
     AlertTriangle,
-    Download
+    Download,
+    Flag
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -142,10 +143,8 @@ const CashLedger: React.FC = () => {
         qbId: string;
         type: string;
     } | null>(null);
-    const [startDate, setStartDate] = useState(
-        new Date(new Date().setDate(new Date().getDate() - 7)).toISOString().split('T')[0]
-    );
-    const [endDate, setEndDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
     const [selectedAccountType, setSelectedAccountType] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET'>('MONEYWISE_WALLET');
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
     const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
@@ -158,6 +157,7 @@ const CashLedger: React.FC = () => {
 
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
     const [accounts, setAccounts] = useState<Account[]>([]);
+    const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
     // Search, Sort, and Filter State
     const [searchQuery, setSearchQuery] = useState('');
@@ -392,6 +392,201 @@ const CashLedger: React.FC = () => {
     const formatCurrency = (amount: number) => {
         return `K${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
+
+    const formatDateSlash = (dateString: string) => {
+        try {
+            const date = new Date(dateString);
+            const day = date.getDate().toString().padStart(2, '0');
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const year = date.getFullYear();
+            return `${day}/${month}/${year}`;
+        } catch (e) {
+            return '';
+        }
+    };
+
+    const getMobileFlagColor = (entry: CashbookEntry) => {
+        const isUnclassified = !entry.account_id && entry.entry_type === 'DISBURSEMENT';
+        const isLowAudit = entry.requisitions?.audit_score !== undefined && entry.requisitions.audit_score < 70;
+        const isRejected = entry.requisitions?.status === 'REJECTED';
+        
+        if (isUnclassified || isLowAudit || isRejected) {
+            return 'text-red-500 fill-red-500/10';
+        }
+        return 'text-[#006AFF] fill-[#006AFF]/10';
+    };
+
+    const renderMobileBreakdown = (entry: CashbookEntry) => {
+        if (entry.requisition_id && entry.requisitions) {
+            const req = entry.requisitions;
+            const items = req.line_items || [];
+            const disbursement = req.disbursements?.[0];
+
+            const actualExpenditure = items.length > 0
+                ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
+                : Number(req.actual_total ?? 0);
+
+            const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
+            const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
+            const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
+
+            return (
+                <div className="flex flex-col gap-5 text-left">
+                    {/* Action Buttons */}
+                    <div className="flex flex-wrap gap-2.5">
+                        <button 
+                            onClick={async (e) => {
+                                e.stopPropagation();
+                                setSelectedRequisition({
+                                    id: req.id,
+                                    reference_number: req.reference_number || 'N/A',
+                                    description: req.description || entry.description,
+                                    status: req.status || 'COMPLETED',
+                                    total_amount: req.actual_total || entry.debit || entry.credit || 0
+                                } as any);
+                                setIsRequisitionModalOpen(true);
+                            }}
+                            className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-slate-900 active:bg-slate-800 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                        >
+                            <Info size={12} className="mr-1.5" />
+                            Details
+                        </button>
+                        
+                        {(req.status === 'EXPENSED' || req.status === 'DISBURSED' || req.status === 'RECEIVED') && (
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    const allItemsHaveAccount = items.every((item: any) => !!item.account_id);
+                                    if (!allItemsHaveAccount) {
+                                        alert('Please categorize all line items before approving');
+                                        return;
+                                    }
+                                    handleApproveCategorization(req.id);
+                                }}
+                                className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                            >
+                                <CheckCircle2 size={12} className="mr-1.5" />
+                                Approve
+                            </button>
+                        )}
+                        
+                        {(req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED') && req.qb_sync_status !== 'SUCCESS' && (
+                            <button 
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePostToQB(req, entry);
+                                }}
+                                className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-[#006AFF] active:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                            >
+                                <RefreshCw size={12} className="mr-1.5" />
+                                QuickBooks
+                            </button>
+                        )}
+
+                        {req.qb_sync_status === 'SUCCESS' && (
+                            <div className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[11px] font-bold uppercase tracking-wider">
+                                <CheckCircle2 size={12} className="mr-1.5" />
+                                Synced
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Summary Metrics */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-2xs">
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Disbursed</span>
+                            <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(totalPrepared)}</span>
+                        </div>
+                        <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-2xs">
+                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Expenditure</span>
+                            <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(actualExpenditure)}</span>
+                        </div>
+                        {confirmedChange > 0 && (
+                            <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-2xs">
+                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Change Returned</span>
+                                <span className="text-sm font-extrabold text-emerald-600 block mt-0.5">{formatCurrency(confirmedChange)}</span>
+                            </div>
+                        )}
+                        <div className={`border rounded-xl p-3 shadow-2xs ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50/50 border-rose-100 text-rose-600' : 'bg-white border-gray-100 text-slate-800'}`}>
+                            <span className="text-[9px] font-bold uppercase tracking-wider opacity-60">Discrepancy</span>
+                            <span className="text-sm font-extrabold block mt-0.5">{formatCurrency(discrepancy)}</span>
+                        </div>
+                    </div>
+
+                    {/* Categorization Section */}
+                    {items.length > 0 && (
+                        <div className="flex flex-col gap-3">
+                            <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Categorization</span>
+                            <div className="flex flex-col gap-2 bg-white border border-gray-100 rounded-2xl p-3.5">
+                                {items.map((item: any, idx: number) => (
+                                    <div key={item.id || idx} className="flex flex-col gap-2 pb-3 border-b border-gray-50 last:border-b-0">
+                                        <div className="flex justify-between items-start">
+                                            <span className="text-xs font-semibold text-slate-700">{item.description}</span>
+                                            <span className="text-xs font-bold text-slate-800">{formatCurrency(item.actual_amount ?? item.estimated_amount)}</span>
+                                        </div>
+                                        <div className="w-full">
+                                            <SearchableAccountSelect 
+                                                value={item.account_id || ''} 
+                                                options={accounts} 
+                                                onChange={(val) => handleAccountChange(item.id, val)}
+                                                placeholder="Select category..."
+                                              />
+                                          </div>
+                                      </div>
+                                  ))}
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              );
+          }
+
+          if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || (entry.entry_type === 'DISBURSEMENT' && !entry.requisition_id)) {
+              return (
+                  <div className="flex flex-col gap-4 text-left">
+                      <div className="flex flex-col gap-1.5">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Accounting Account</span>
+                          <div className="w-full bg-white rounded-xl">
+                              <SearchableAccountSelect 
+                                  value={entry.account_id || ''} 
+                                  options={accounts} 
+                                  onChange={(val) => handleLedgerAccountChange(entry.id, val)}
+                                  placeholder="Select category..."
+                              />
+                          </div>
+                      </div>
+                      {entry.qb_sync_status !== 'SUCCESS' ? (
+                          <button 
+                              onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (!entry.account_id) {
+                                      alert('Please select an accounting account first');
+                                      return;
+                                  }
+                                  handlePostLedgerToQB(entry);
+                              }}
+                              disabled={!entry.account_id}
+                              className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center ${
+                                  entry.account_id 
+                                      ? 'bg-[#006AFF] text-white active:bg-blue-700' 
+                                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                              }`}
+                          >
+                              <RefreshCw size={12} className="mr-1.5" />
+                              Post to QuickBooks
+                          </button>
+                      ) : (
+                          <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center">
+                              <CheckCircle2 size={12} className="mr-1.5" />
+                              Posted to QuickBooks
+                          </div>
+                      )}
+                  </div>
+              );
+          }
+
+          return null;
+      };
 
     const getEntryStatus = (entry: CashbookEntry) => {
         if (entry.entry_type === 'CLOSING_BALANCE') return <span className="inline-flex items-center text-[10px] font-normal uppercase tracking-wider text-slate-700"><Lock size={10} className="mr-1" /> Closed</span>;
@@ -848,11 +1043,9 @@ const CashLedger: React.FC = () => {
     }
 
     return (
-        <Layout noPadding={false}>
+        <Layout noPadding={true} backgroundColor="bg-white">
             {/* ============ MOBILE LAYOUT ============ */}
-            <div className="md:hidden flex flex-col min-h-screen bg-white pt-6">
-
-
+            <div className="md:hidden flex flex-col min-h-screen bg-white pb-24 pt-4">
 
                 {/* Mobile Wallet Cards - Horizontal Swipeable */}
                 <div className="flex overflow-x-auto no-scrollbar gap-4 pb-6 px-6 scroll-px-6" style={{ scrollSnapType: 'x mandatory' }}>
@@ -863,40 +1056,51 @@ const CashLedger: React.FC = () => {
                         { id: 'BANK', name: 'Bank Account', icon: Building2 },
                     ].map((acc) => {
                         const isActive = selectedAccountType === acc.id;
+                        const balanceFormatted = formatCurrency(isActive ? balance : 0);
+                        const currencySymbol = acc.id === 'MONEYWISE_WALLET' ? 'ZMW' : 'K';
+                        const balanceAmountOnly = balanceFormatted.replace('K', '');
+
                         return (
                             <div
                                 key={acc.id}
                                 onClick={() => setSelectedAccountType(acc.id as any)}
-                                style={{ scrollSnapAlign: 'start', minWidth: '65vw', maxWidth: '65vw' }}
-                                className={`flex flex-col p-4 rounded-xl border-2 text-left transition-all duration-300 flex-shrink-0 cursor-pointer ${
+                                style={{ scrollSnapAlign: 'start', minWidth: '70vw', maxWidth: '70vw' }}
+                                className={`flex flex-col rounded-2xl border-2 text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative ${
                                     isActive
-                                        ? 'bg-white border-[#006AFF]'
-                                        : 'bg-gray-50 border-transparent'
+                                        ? 'bg-white border-[#006AFF] shadow-[0_4px_20px_-2px_rgba(0,106,255,0.08)]'
+                                        : 'bg-white border-transparent hover:border-gray-200 shadow-sm opacity-80'
                                 }`}
                             >
-                                {/* Card Icon + Name */}
-                                <div className="flex items-center mb-2">
-                                    <Wallet size={12} className={isActive ? 'text-[#006AFF]' : 'text-gray-400'} strokeWidth={3} />
-                                    <span className={`ml-2 text-[10px] font-bold uppercase tracking-widest ${
-                                        isActive ? 'text-[#006AFF]' : 'text-gray-400'
-                                    }`}>{acc.name}</span>
+                                {/* Card Body */}
+                                <div className="p-6 flex-1 flex flex-col justify-between min-h-[110px]">
+                                    <div>
+                                        <span className={`text-[10px] font-black uppercase tracking-widest block mb-2 ${
+                                            isActive ? 'text-[#5E6480]' : 'text-[#5E6480]/50'
+                                        }`}>
+                                            {acc.name}
+                                        </span>
+                                        <div className="flex items-baseline gap-1 mt-1">
+                                            <span className={`text-xs font-extrabold uppercase tracking-wider ${
+                                                isActive ? 'text-[#5E6480]' : 'text-[#5E6480]/50'
+                                            }`}>
+                                                {currencySymbol}
+                                            </span>
+                                            <span className={`text-[26px] font-black tracking-tight ${
+                                                isActive ? 'text-slate-900' : 'text-gray-400'
+                                            }`}>
+                                                {balanceAmountOnly}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
 
-                                {/* Balance */}
-                                <div className={`text-xl font-black tracking-tight mb-3 ${
-                                    isActive ? 'text-brand-navy' : 'text-gray-400'
-                                }`}>
-                                    {isActive ? formatCurrency(balance) : formatCurrency(0)}
-                                </div>
-
-                                {/* Deposit Button - Only on active card for admins */}
+                                {/* Deposit Button inside card */}
                                 {isActive && !isRequestor && (
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
-                                        className="w-full flex items-center justify-center py-2.5 rounded-full border border-gray-200 text-[12px] font-bold text-brand-navy bg-white transition-all active:bg-gray-50"
+                                        className="w-full py-3 bg-[#F5FAFF] border-t border-blue-50 text-center flex items-center justify-center font-bold text-xs text-[#006AFF] hover:bg-[#E5F1FF] transition-all"
                                     >
-                                        <PlusCircle size={14} className="mr-2" strokeWidth={2.5} />
-                                        Deposit Funds
+                                        + Deposit Funds
                                     </button>
                                 )}
                             </div>
@@ -904,39 +1108,74 @@ const CashLedger: React.FC = () => {
                     })}
                 </div>
 
-                {/* Mobile Toolbar: Search, Filter, Date */}
-                <div className="px-6 pb-4 flex items-center gap-3 border-b border-gray-50">
-                    <div className="relative flex-1">
-                        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" strokeWidth={2.5} />
-                        <input
-                            type="text"
-                            placeholder="Search transactions..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-100 rounded-2xl text-[13px] font-medium text-brand-navy placeholder:text-gray-400 focus:outline-none"
-                        />
-                    </div>
-                    <button
-                        onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                        className={`p-2.5 rounded-2xl border transition-colors ${
-                            isFilterMenuOpen ? 'bg-[#F0F7FF] border-[#006AFF]/20 text-[#006AFF]' : 'bg-gray-50 border-gray-100 text-gray-400'
-                        }`}
-                    >
-                        <Filter size={17} strokeWidth={2.5} />
-                    </button>
-                    <button
-                        onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
-                        className="p-2.5 rounded-2xl border bg-gray-50 border-gray-100 text-gray-400"
-                    >
-                        <ArrowDownUp size={17} strokeWidth={2.5} />
-                    </button>
+                {/* Mobile Transactions Header & Control Pill */}
+                <div className="px-6 py-4 flex items-center justify-between">
+                    {isSearchExpanded ? (
+                        <div className="flex items-center gap-3 w-full animate-in fade-in slide-in-from-left-2 duration-200">
+                            <button
+                                onClick={() => {
+                                    setIsSearchExpanded(false);
+                                    setSearchQuery('');
+                                }}
+                                className="p-2 -ml-2 text-gray-500 hover:text-gray-900 transition-colors"
+                            >
+                                <ChevronRight className="rotate-180" size={20} strokeWidth={2.5} />
+                            </button>
+                            <div className="relative flex-1">
+                                <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" strokeWidth={2.5} />
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    placeholder="Search transactions..."
+                                    value={searchQuery}
+                                    onChange={(e) => setSearchQuery(e.target.value)}
+                                    className="w-full pl-10 pr-4 py-2 bg-gray-100/70 border-none rounded-2xl text-[14px] font-medium text-slate-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                />
+                            </div>
+                        </div>
+                    ) : (
+                        <>
+                            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Transactions</h2>
+                            <div className="bg-gray-100/60 rounded-full px-2.5 py-1.5 flex items-center gap-3 shadow-xs">
+                                <button
+                                    onClick={() => setIsSearchExpanded(true)}
+                                    className="p-1.5 text-gray-500 hover:text-slate-900 active:scale-90 transition-all rounded-full"
+                                    aria-label="Search"
+                                >
+                                    <Search size={18} strokeWidth={2.5} />
+                                </button>
+                                <div className="w-[1px] h-3.5 bg-gray-300/60" />
+                                <button
+                                    onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
+                                    className={`p-1.5 text-gray-500 hover:text-slate-900 active:scale-90 transition-all rounded-full ${
+                                        sortBy === 'DATE_ASC' ? 'rotate-180 text-[#006AFF]' : ''
+                                    }`}
+                                    aria-label="Sort"
+                                >
+                                    <ArrowDownUp size={18} strokeWidth={2.5} />
+                                </button>
+                                <div className="w-[1px] h-3.5 bg-gray-300/60" />
+                                <button
+                                    onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                                    className={`p-1.5 text-gray-500 hover:text-slate-900 active:scale-90 transition-all rounded-full ${
+                                        isFilterMenuOpen || filterDepartment !== 'ALL' || filterStatus !== 'ALL'
+                                            ? 'text-[#006AFF]'
+                                            : ''
+                                    }`}
+                                    aria-label="Filter"
+                                >
+                                    <Filter size={18} strokeWidth={2.5} />
+                                </button>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Mobile Filter Menu */}
                 {isFilterMenuOpen && (
-                    <div className="mx-6 mb-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
+                    <div className="mx-6 mb-5 p-4 bg-white rounded-3xl border border-gray-100 shadow-md flex flex-col gap-3.5 animate-in slide-in-from-top-2 duration-200">
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5">Department</span>
+                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Department</span>
                             <select
                                 value={filterDepartment}
                                 onChange={(e) => setFilterDepartment(e.target.value)}
@@ -947,7 +1186,7 @@ const CashLedger: React.FC = () => {
                             </select>
                         </div>
                         <div className="flex flex-col">
-                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5">Status</span>
+                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Status</span>
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
@@ -957,9 +1196,29 @@ const CashLedger: React.FC = () => {
                                 {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
                             </select>
                         </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="flex flex-col">
+                                <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Start Date</span>
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    onChange={(e) => setStartDate(e.target.value)}
+                                    className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                                />
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">End Date</span>
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    onChange={(e) => setEndDate(e.target.value)}
+                                    className="bg-gray-50 border border-gray-100 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 focus:outline-none"
+                                />
+                            </div>
+                        </div>
                         <button
                             onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}
-                            className="text-[10px] font-black uppercase tracking-widest text-[#006AFF] text-left"
+                            className="text-[10px] font-black uppercase tracking-widest text-[#006AFF] text-left mt-1 ml-0.5"
                         >
                             Reset Filters
                         </button>
@@ -967,7 +1226,7 @@ const CashLedger: React.FC = () => {
                 )}
 
                 {/* Mobile Transaction List (Grouped by Month) */}
-                <div className="flex-1 bg-white">
+                <div className="flex-1 bg-transparent">
                     {loading && (
                         <div className="flex flex-col items-center justify-center py-24">
                             <div className="w-10 h-10 border-4 border-[#006AFF]/10 border-t-[#006AFF] rounded-full animate-spin" />
@@ -977,7 +1236,7 @@ const CashLedger: React.FC = () => {
 
                     {!loading && groupedEntries.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-24">
-                            <div className="p-5 bg-gray-50 rounded-full mb-4">
+                            <div className="p-5 bg-white rounded-full mb-4 shadow-sm border border-gray-100">
                                 <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
                             </div>
                             <p className="text-gray-900 font-bold">No transactions found</p>
@@ -986,66 +1245,69 @@ const CashLedger: React.FC = () => {
                     )}
 
                     {!loading && groupedEntries.map((group) => (
-                        <div key={group.month}>
+                        <div key={group.month} className="mb-4">
                             {/* Month Group Header */}
-                            <div className="px-6 py-3 bg-gray-50 border-y border-gray-100">
-                                <span className="text-[11px] font-bold text-gray-500">{group.month}</span>
+                            <div className="px-6 py-2">
+                                <span className="text-xs font-bold text-gray-400">{group.month}</span>
                             </div>
 
-                            {/* Transaction Rows */}
-                            <div className="divide-y divide-gray-50">
+                            {/* Transaction Rows in Card */}
+                            <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-xs overflow-hidden divide-y divide-gray-50/80">
                                 {group.entries.map((entry) => {
                                     const isOutflow = entry.credit > 0;
                                     const amount = isOutflow ? entry.credit : entry.debit;
-                                    const refNum = entry.reference_number || entry.requisitions?.reference_number;
+                                    const refNum = entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8);
                                     const description = entry.requisitions?.description || entry.description;
-                                    const date = new Date(entry.date);
-                                    const dayNum = date.getDate().toString().padStart(2, '0');
-                                    const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
 
                                     return (
-                                        <div
-                                            key={entry.id}
-                                            className="px-6 py-5 flex items-start justify-between active:bg-gray-50 transition-colors"
-                                            onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && toggleRow(entry.id)}
-                                        >
-                                            {/* Left: Date Column */}
-                                            <div className="flex flex-col items-center mr-4 pt-0.5" style={{ minWidth: '32px' }}>
-                                                <span className="text-[15px] font-normal text-brand-navy leading-none">{dayNum}</span>
-                                                <span className="text-[9px] font-normal text-gray-400 uppercase tracking-wider mt-0.5">{month}</span>
-                                            </div>
-
-                                            {/* Middle: Description + Ref + Status */}
-                                            <div className="flex-1 mr-4">
-                                                <p className="text-[14px] font-medium text-brand-navy leading-tight line-clamp-1">
-                                                    {description}
-                                                </p>
-                                                <div className="flex items-center gap-3 mt-1">
-                                                    {getEntryStatus(entry)}
+                                        <React.Fragment key={entry.id}>
+                                            <div
+                                                className={`px-5 py-4 flex items-start justify-between active:bg-gray-50 transition-colors ${
+                                                    expandedRows[entry.id] ? 'bg-slate-50/50' : ''
+                                                }`}
+                                                onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && toggleRow(entry.id)}
+                                            >
+                                                {/* Left Side: Description + Flag + Ref */}
+                                                <div className="flex-1 mr-4">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span className="text-[14px] font-bold text-slate-800 leading-tight">
+                                                            {description}
+                                                        </span>
+                                                        {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT') && (
+                                                            <Flag 
+                                                                size={12} 
+                                                                className={`flex-shrink-0 mt-0.5 ${getMobileFlagColor(entry)}`} 
+                                                                strokeWidth={2.5} 
+                                                            />
+                                                        )}
+                                                    </div>
                                                     {refNum && (
-                                                        <p className="text-[11px] font-normal text-gray-400 uppercase tracking-tight">
-                                                            {refNum}
+                                                        <p className="text-[11px] font-semibold text-slate-400 tracking-tight mt-1.5 uppercase">
+                                                            #{refNum}
                                                         </p>
                                                     )}
                                                 </div>
-                                            </div>
 
-                                            {/* Right: Amount + Closing Balance */}
-                                            <div className="flex flex-col items-end">
-                                                <span className="text-[14px] font-normal text-gray-900 leading-tight">
-                                                    {isOutflow ? '-' : '+'}{formatCurrency(amount)}
-                                                </span>
-                                                <span className="text-[11px] font-normal text-gray-400 mt-0.5">
-                                                    {formatCurrency(entry.balance_after)}
-                                                </span>
+                                                {/* Right Side: Amount + Date */}
+                                                <div className="flex flex-col items-end">
+                                                    <span className={`text-[14px] font-bold leading-tight ${
+                                                        isOutflow ? 'text-slate-800' : 'text-emerald-600'
+                                                    }`}>
+                                                        {isOutflow ? '-' : '+'}{formatCurrency(amount).replace('K', '')}
+                                                    </span>
+                                                    <span className="text-[11px] font-semibold text-black mt-1.5">
+                                                        {formatDateSlash(entry.date)}
+                                                    </span>
+                                                </div>
                                             </div>
-
-                                            <ChevronRight 
-                                                size={14} 
-                                                className={`ml-2 mt-1 flex-shrink-0 transition-opacity ${entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ? 'text-gray-300' : 'text-gray-200 opacity-50'}`} 
-                                                strokeWidth={2.5} 
-                                            />
-                                        </div>
+                                            
+                                            {/* Mobile Breakdown Drawer */}
+                                            {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
+                                                <div className="bg-slate-50/45 border-t border-slate-50 px-5 py-5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                    {renderMobileBreakdown(entry)}
+                                                </div>
+                                            )}
+                                        </React.Fragment>
                                     );
                                 })}
                             </div>
@@ -1055,7 +1317,7 @@ const CashLedger: React.FC = () => {
             </div>
 
             {/* ============ DESKTOP LAYOUT ============ */}
-            <div className="hidden md:block">
+            <div className="hidden md:block max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8">
             <div className="space-y-8 pb-4">
                 {/* Account Selection Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

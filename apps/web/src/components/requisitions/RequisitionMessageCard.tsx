@@ -332,8 +332,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     useEffect(() => {
         const stage = message.metadata?.stage;
         const content = message.content?.trim();
-        const isDisbursal = stage === 'DISBURSAL' || stage === 'DISBURSAL_SUCCESS' || 
-                           content === 'Status updated to AUTHORISED' || 
+        const isDisbursal = stage === 'DISBURSAL' || 
                            content === 'How would you like to disburse these funds?';
 
         if (requisitionData && isDisbursal && !hasInitializedForm.current) {
@@ -726,7 +725,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         const content = message.content?.trim();
         
         const isCreation = stage === 'APPROVAL' || content === 'Requisition created' || content === 'Requisition submitted for approval';
-        const isDisbursal = stage === 'DISBURSAL' || stage === 'DISBURSAL_SUCCESS' || content === 'Status updated to AUTHORISED' || content === 'How would you like to disburse these funds?';
+        const isDisbursal = stage === 'DISBURSAL' || content === 'How would you like to disburse these funds?';
         const isExpenseTracking = stage === 'EXPENSE_TRACKING' || (content?.includes('needs to be expensed') && !stage);
         const isAIReview = message.metadata?.stage === 'AI_REVIEW';
         const isQBPosting = message.metadata?.stage === 'QUICKBOOKS_POSTING';

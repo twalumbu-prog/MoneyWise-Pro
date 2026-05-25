@@ -131,7 +131,6 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         console.log(`[Lenco] Creating new transfer with reference: ${resolvedRef}`);
                         const mobileOps = ['mtn', 'airtel', 'zamtel'];
                         const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
-
                         if (isMobile) {
                             payout = await LencoService.createMobileMoneyPayout({
                                 amount: total_prepared,
@@ -141,11 +140,12 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                                 narration: `Disbursement for Requisition #${id.slice(0, 8)}`
                             }, org.lenco_subaccount_id, org.lenco_secret_key);
                         } else {
+                            const bankId = await LencoService.findBankId(recipient_bank_code || '', org.lenco_secret_key);
                             payout = await LencoService.createBankPayout({
                                 amount: total_prepared,
                                 reference: resolvedRef,
                                 accountNumber: recipient_account,
-                                bankId: recipient_bank_code,
+                                bankId,
                                 narration: `Disbursement for Requisition #${id.slice(0, 8)}`
                             }, org.lenco_subaccount_id, org.lenco_secret_key);
                         }
@@ -944,11 +944,12 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
                                 narration: `Excess Disbursement for Req #${id.slice(0, 8)}`
                             }, org.lenco_subaccount_id, org.lenco_secret_key);
                         } else {
+                            const bankId = await LencoService.findBankId(recipient_bank_code || '', org.lenco_secret_key);
                             payout = await LencoService.createBankPayout({
                                 amount: payoutAmount,
                                 reference: resolvedRef,
                                 accountNumber: recipient_account,
-                                bankId: recipient_bank_code,
+                                bankId,
                                 narration: `Excess Disbursement for Req #${id.slice(0, 8)}`
                             }, org.lenco_subaccount_id, org.lenco_secret_key);
                         }
@@ -1255,11 +1256,12 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                             }, subaccountId, secretKey);
                             lencoReference = payout.reference || resolvedRef;
                         } else if (item.payment_method === 'BANK') {
+                            const bankId = await LencoService.findBankId(item.recipient_bank_code || '', secretKey);
                             payout = await LencoService.createBankPayout({
                                 amount,
                                 reference: resolvedRef,
                                 accountNumber: item.recipient_account || '',
-                                bankId: item.recipient_bank_code || '',
+                                bankId,
                                 narration: `Payroll for ${item.employee_name}`
                             }, subaccountId, secretKey);
                             lencoReference = payout.reference || resolvedRef;

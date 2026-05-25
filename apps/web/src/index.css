@@ -5,7 +5,7 @@
 
 @layer base {
   html, body, input, button, textarea, select {
-    font-family: 'Space Grotesk', sans-serif !important;
+    font-family: 'DM Sans', sans-serif !important;
   }
 }
 

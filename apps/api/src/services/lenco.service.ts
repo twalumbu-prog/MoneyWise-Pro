@@ -251,18 +251,47 @@ export class LencoService {
     }
 
     /**
+     * Normalize Zambian phone number to standard 10-digit format starting with 0
+     */
+    static normalizePhoneNumber(phone: string): string {
+        if (!phone) return '';
+        let clean = phone.replace(/[^0-9]/g, '');
+        let normalized = clean.startsWith('260') ? '0' + clean.substring(3) : clean;
+        if (normalized.length === 9 && (normalized.startsWith('9') || normalized.startsWith('7') || normalized.startsWith('5'))) {
+            normalized = '0' + normalized;
+        }
+        return normalized;
+    }
+
+    /**
      * Helper to resolve mobile operator from phone number prefix (Zambia)
      */
     static resolveMobileOperator(phone: string): string | null {
-        // Clean phone number (remove +, spaces, 26, etc)
-        const clean = phone.replace(/[^0-9]/g, '');
-        const normalized = clean.startsWith('260') ? '0' + clean.substring(3) : clean;
+        const normalized = this.normalizePhoneNumber(phone);
         
         if (normalized.startsWith('097') || normalized.startsWith('077')) return 'airtel';
         if (normalized.startsWith('096') || normalized.startsWith('076')) return 'mtn';
         if (normalized.startsWith('095') || normalized.startsWith('075')) return 'zamtel';
         
         return null;
+    }
+
+    /**
+     * Resolve bank code/name (e.g. "FNB") to Lenco bank ID (e.g. "014")
+     */
+    static async findBankId(bankString: string, secretKey?: string): Promise<string> {
+        const clean = String(bankString || '').trim().toLowerCase();
+        if (!clean) return bankString;
+        try {
+            const bankList = await this.getBanks(secretKey);
+            let match = bankList.find((b: any) => String(b.code || '').toLowerCase() === clean || String(b.id || '').toLowerCase() === clean);
+            if (match) return match.id || match.code;
+            match = bankList.find((b: any) => String(b.name || '').toLowerCase().includes(clean) || clean.includes(String(b.name || '').toLowerCase()));
+            if (match) return match.id || match.code;
+        } catch (err) {
+            console.error('[findBankId] Failed to resolve bank name from Lenco:', err);
+        }
+        return bankString;
     }
 
     /**

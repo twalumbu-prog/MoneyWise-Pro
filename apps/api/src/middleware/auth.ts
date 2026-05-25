@@ -111,23 +111,28 @@ export const requireRole = (allowedRoles: string[]) => {
                 return;
             }
 
-            console.log(`[Auth] requireRole: Checking role for User ${req.user.id}...`);
-            // Fetch user role from database
-            const { data, error } = await supabase
-                .from('users')
-                .select('role')
-                .eq('id', req.user.id)
-                .single();
+            // Use already attached role if available
+            let userRole = req.user.role;
 
-            if (error || !data) {
-                console.error(`[Auth] requireRole: ❌ Error fetching user role for ${req.user.id}:`, error?.message || 'Not found');
-                return res.status(403).json({ error: 'User profile not found' });
+            if (!userRole) {
+                console.log(`[Auth] requireRole: Checking role for User ${req.user.id} from DB fallback...`);
+                // Fetch user role from database
+                const { data, error } = await supabase
+                    .from('users')
+                    .select('role')
+                    .eq('id', req.user.id)
+                    .single();
+
+                if (error || !data) {
+                    console.error(`[Auth] requireRole: ❌ Error fetching user role for ${req.user.id}:`, error?.message || 'Not found');
+                    return res.status(403).json({ error: 'User profile not found' });
+                }
+                userRole = data.role;
             }
 
-            const userRole = data.role;
             console.log(`[Auth] requireRole: ✅ User ${req.user.id} has role ${userRole}. Allowed: ${allowedRoles.join(', ')}`);
 
-            if (!allowedRoles.includes(userRole)) {
+            if (!userRole || !allowedRoles.includes(userRole)) {
                 console.warn(`[Auth] requireRole: ⛔ Access denied for role: ${userRole}. Required: ${allowedRoles.join(', ')}`);
                 return res.status(403).json({ error: 'Permission denied', details: `Required one of: ${allowedRoles.join(', ')}` });
             }
@@ -141,3 +146,4 @@ export const requireRole = (allowedRoles: string[]) => {
         }
     };
 };
+

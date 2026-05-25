@@ -30,6 +30,7 @@ export interface CashbookEntry {
         disbursements: any[];
         type?: string;
         department?: string;
+        audit_score?: number;
         qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
         qb_sync_error?: string;
         qb_sync_at?: string;

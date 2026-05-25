@@ -195,19 +195,22 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
                     } else {
                         try {
                             if (item.payment_method === 'MOBILE_MONEY') {
-                                const operator = LencoService.resolveMobileOperator(item.recipient_account);
+                                const normPhone = LencoService.normalizePhoneNumber(item.recipient_account || '');
+                                const operator = LencoService.resolveMobileOperator(normPhone);
                                 if (!operator) {
                                     item.verified_name = null;
                                     item.is_valid = false;
                                     item.error_message = 'Invalid mobile money number or operator';
                                 } else {
-                                    const resolution = await LencoService.resolveMobileMoney(item.recipient_account, operator, secretKey);
+                                    item.recipient_account = normPhone;
+                                    const resolution = await LencoService.resolveMobileMoney(normPhone, operator.toUpperCase(), secretKey);
                                     item.verified_name = resolution.accountName;
                                     item.is_valid = true;
                                     item.error_message = null;
                                 }
                             } else {
-                                const resolution = await LencoService.resolveBankAccount(item.recipient_account, item.recipient_bank_code, secretKey);
+                                const bankId = await LencoService.findBankId(item.recipient_bank_code || '', secretKey);
+                                const resolution = await LencoService.resolveBankAccount(item.recipient_account || '', bankId, secretKey);
                                 item.verified_name = resolution.accountName;
                                 item.is_valid = true;
                                 item.error_message = null;
@@ -1906,9 +1909,9 @@ export const updateLineItemDetails = async (req: any, res: any): Promise<any> =>
         let is_valid = true;
         let error_message = null;
         
-        const targetPaymentMethod = payment_method || lineItem.payment_method;
-        const targetAccount = recipient_account || lineItem.recipient_account;
-        const targetBankCode = recipient_bank_code || lineItem.recipient_bank_code;
+        let targetPaymentMethod = payment_method || lineItem.payment_method;
+        let targetAccount = recipient_account || lineItem.recipient_account;
+        let targetBankCode = recipient_bank_code || lineItem.recipient_bank_code;
         const targetEmpName = employee_name || lineItem.employee_name;
         
         if (targetPaymentMethod === 'MOBILE_MONEY' || targetPaymentMethod === 'BANK') {
@@ -1923,19 +1926,23 @@ export const updateLineItemDetails = async (req: any, res: any): Promise<any> =>
             } else {
                 try {
                     if (targetPaymentMethod === 'MOBILE_MONEY') {
-                        const operator = LencoService.resolveMobileOperator(targetAccount);
+                        const normPhone = LencoService.normalizePhoneNumber(targetAccount || '');
+                        const operator = LencoService.resolveMobileOperator(normPhone);
                         if (!operator) {
                             verified_name = null;
                             is_valid = false;
                             error_message = 'Invalid mobile money number or operator';
                         } else {
-                            const resolution = await LencoService.resolveMobileMoney(targetAccount, operator, secretKey);
+                            targetAccount = normPhone;
+                            const resolution = await LencoService.resolveMobileMoney(normPhone, operator.toUpperCase(), secretKey);
                             verified_name = resolution.accountName;
                             is_valid = true;
                             error_message = null;
                         }
                     } else {
-                        const resolution = await LencoService.resolveBankAccount(targetAccount, targetBankCode, secretKey);
+                        const bankId = await LencoService.findBankId(targetBankCode || '', secretKey);
+                        targetBankCode = bankId;
+                        const resolution = await LencoService.resolveBankAccount(targetAccount || '', bankId, secretKey);
                         verified_name = resolution.accountName;
                         is_valid = true;
                         error_message = null;

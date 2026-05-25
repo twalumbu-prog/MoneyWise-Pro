@@ -245,7 +245,7 @@ export const RequisitionList: React.FC = () => {
 
     return (
         <>
-            <Layout noPadding={true}>
+            <Layout noPadding={true} backgroundColor="bg-white">
             <div className={`space-y-0 md:space-y-8 ${isRequestor ? 'pb-32' : ''} md:max-w-[1440px] md:mx-auto md:px-12 md:py-8`}>
                 {/* Desktop Action Row (Unified with Navigation Edges) */}
                 <div className="hidden md:block pt-2 mb-4">
@@ -407,7 +407,7 @@ export const RequisitionList: React.FC = () => {
                             <div className="md:hidden space-y-6 px-6">
                                 {groupRequisitionsByDate(sortedRequisitions).map((group) => (
                                     <div key={group.dateKey} className="space-y-3">
-                                        <h4 className="text-[12px] font-bold text-[#7C8FA2] px-1">
+                                        <h4 className="text-[12px] font-bold text-black px-1">
                                             {group.dateLabel}
                                         </h4>
                                         <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
