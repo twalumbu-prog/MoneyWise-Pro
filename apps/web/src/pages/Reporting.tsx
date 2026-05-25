@@ -4,7 +4,7 @@ import { reportService, ExpenditureAggregation, ExpenditureItem } from '../servi
 import { budgetService, Budget } from '../services/budget.service';
 import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
-import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, ChevronDown, ChevronUp, Loader2, DollarSign, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, ChevronDown, ChevronUp, Loader2, DollarSign, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
@@ -22,9 +22,15 @@ export const Reporting: React.FC = () => {
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
     
     const [expenditures, setExpenditures] = useState<ExpenditureAggregation[]>([]);
+    const [prevExpenditures, setPrevExpenditures] = useState<ExpenditureAggregation[]>([]);
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [allAccounts, setAllAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(false);
+
+    // Mobile Layout States
+    const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
+    const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+    const [expandedMobileGroups, setExpandedMobileGroups] = useState<Set<string>>(new Set());
     
     // Visibility Settings
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -89,18 +95,45 @@ export const Reporting: React.FC = () => {
         return { start: startStr, end: endStr, label, type: periodType };
     }, [currentDate, periodType]);
 
+    const prevPeriodData = useMemo(() => {
+        const start = new Date(currentDate);
+        const end = new Date(currentDate);
+
+        if (periodType === 'MONTHLY') {
+            start.setMonth(start.getMonth() - 1, 1);
+            end.setMonth(end.getMonth(), 0);
+        } else if (periodType === 'WEEKLY') {
+            const day = start.getDay();
+            const diff = start.getDate() - day + (day === 0 ? -6 : 1) - 7;
+            start.setDate(diff);
+            end.setDate(start.getDate() + 6);
+        } else if (periodType === 'QUARTERLY') {
+            const currentMonth = start.getMonth();
+            const quarterStartMonth = (Math.floor(currentMonth / 3) * 3) - 3;
+            start.setMonth(quarterStartMonth, 1);
+            end.setMonth(quarterStartMonth + 3, 0);
+        }
+
+        const startStr = start.toISOString().split('T')[0];
+        const endStr = end.toISOString().split('T')[0];
+
+        return { start: startStr, end: endStr };
+    }, [currentDate, periodType]);
+
     // Data Fetching
     const loadData = async () => {
         setLoading(true);
         try {
-            const [expData, budData, accData] = await Promise.all([
+            const [expData, budData, accData, prevExpData] = await Promise.all([
                 reportService.getExpenditures(periodData.start, periodData.end, mode),
                 budgetService.getBudgets(periodData.start, periodData.end, periodType),
-                accountService.getAll()
+                accountService.getAll(),
+                reportService.getExpenditures(prevPeriodData.start, prevPeriodData.end, mode)
             ]);
             setExpenditures(expData);
             setBudgets(budData);
             setAllAccounts(accData.filter((a: Account) => a.type === 'EXPENSE'));
+            setPrevExpenditures(prevExpData);
 
             // Load saved groups from local storage
             if (orgId) {
@@ -394,6 +427,7 @@ export const Reporting: React.FC = () => {
     );
 
     // Calculate integrated data for display
+    // Calculate integrated data for display
     const displayData = useMemo(() => {
         // Build base map from all expense accounts
         const integrationMap = new Map<string, any>();
@@ -429,11 +463,16 @@ export const Reporting: React.FC = () => {
             const budgetedAmount = budget ? budget.amount : 0;
             const variance = budgetedAmount > 0 ? budgetedAmount - exp.total_amount : null;
             
+            // Find previous amount
+            const prevExp = prevExpenditures.find(p => p.account_id === exp.account_id);
+            const prevTotalAmount = prevExp ? prevExp.total_amount : 0;
+            
             return {
                 ...exp,
                 budgeted_amount: budgetedAmount,
                 variance: variance,
-                variancePercentage: budgetedAmount > 0 ? (exp.total_amount / budgetedAmount) * 100 : null
+                variancePercentage: budgetedAmount > 0 ? (exp.total_amount / budgetedAmount) * 100 : null,
+                prev_total_amount: prevTotalAmount
             };
         });
 
@@ -472,9 +511,9 @@ export const Reporting: React.FC = () => {
         
         // Initialize groups
         groups.forEach(g => {
-            groupedData[g.id] = { groupName: g.name, items: [], totals: { total_amount: 0, budgeted_amount: 0 } };
+            groupedData[g.id] = { groupName: g.name, items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
         });
-        groupedData['ungrouped'] = { groupName: 'Ungrouped Accounts', items: [], totals: { total_amount: 0, budgeted_amount: 0 } };
+        groupedData['ungrouped'] = { groupName: 'Ungrouped Accounts', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
 
         sorted.forEach(item => {
             const groupId = accountGroups[item.account_id];
@@ -483,6 +522,7 @@ export const Reporting: React.FC = () => {
             targetGroup.items.push(item);
             targetGroup.totals.total_amount += item.total_amount;
             targetGroup.totals.budgeted_amount += (item.budgeted_amount || 0);
+            targetGroup.totals.prev_total_amount += (item.prev_total_amount || 0);
         });
 
         // Calculate variance totals for groups
@@ -493,7 +533,7 @@ export const Reporting: React.FC = () => {
 
         return { isGrouped: true, groups: groupedData, flatData: sorted };
 
-    }, [expenditures, budgets, allAccounts, sortField, sortDesc, hiddenAccounts, excludeZeroSpend, isGroupingEnabled, groups, accountGroups]);
+    }, [expenditures, budgets, allAccounts, sortField, sortDesc, hiddenAccounts, excludeZeroSpend, isGroupingEnabled, groups, accountGroups, prevExpenditures]);
 
     const toggleAccountVisibility = (accountId: string) => {
         setHiddenAccounts(prev => {
@@ -508,10 +548,74 @@ export const Reporting: React.FC = () => {
     };
 
 
+    // Helper to calculate percentage change
+    const getPercentageChange = (current: number, previous: number) => {
+        if (previous === 0) {
+            return current > 0 ? { value: 100, isIncrease: true } : { value: 0, isIncrease: false };
+        }
+        const diff = current - previous;
+        const pct = (diff / previous) * 100;
+        return {
+            value: Math.round(Math.abs(pct)),
+            isIncrease: pct > 0
+        };
+    };
+
+    // Mobile Helper Values
+    const mobileData = useMemo(() => {
+        const items = displayData.isGrouped ? displayData.flatData : displayData.data;
+        const totalSpent = items?.reduce((acc: number, curr: any) => acc + curr.total_amount, 0) || 0;
+        const prevTotalSpent = items?.reduce((acc: number, curr: any) => acc + (curr.prev_total_amount || 0), 0) || 0;
+        const totalBudget = items?.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0) || 0;
+
+        const change = getPercentageChange(totalSpent, prevTotalSpent);
+
+        return {
+            totalSpent,
+            prevTotalSpent,
+            totalBudget,
+            pctVal: change.value,
+            isIncrease: change.isIncrease
+        };
+    }, [displayData]);
+
+    const displayMonthName = useMemo(() => {
+        if (periodType === 'MONTHLY') {
+            return currentDate.toLocaleDateString('en-US', { month: 'long' });
+        }
+        return periodData.label;
+    }, [currentDate, periodType, periodData.label]);
+
+    const monthOptions = useMemo(() => {
+        const options = [];
+        const date = new Date();
+        // Go 10 months back and 2 months forward
+        for (let i = -10; i <= 2; i++) {
+            const d = new Date();
+            d.setDate(1); // avoid month overflow issues
+            d.setMonth(date.getMonth() + i);
+            options.push({
+                label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+                date: new Date(d.getFullYear(), d.getMonth(), 1)
+            });
+        }
+        return options;
+    }, []);
+
+    const toggleMobileGroupExpand = (groupId: string) => {
+        setExpandedMobileGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) next.delete(groupId);
+            else next.add(groupId);
+            return next;
+        });
+    };
+
+
     return (
-        <Layout>
-            <div className="max-w-6xl mx-auto space-y-6">
-                
+        <Layout noPadding={true} backgroundColor="bg-white" title="Budget">
+            {/* Desktop View */}
+            <div className="hidden md:block max-w-6xl mx-auto space-y-6 px-4 md:px-12 py-4 md:py-8">
                 {/* Header & Controls */}
                 <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-8">
                     <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
@@ -609,7 +713,7 @@ export const Reporting: React.FC = () => {
                                                 >
                                                     <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
                                                         <Filter className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
-                                                        Exclude Zero K0.00 Spend
+                                                        Exclude Zero Spend
                                                     </div>
                                                     <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${excludeZeroSpend ? 'bg-brand-green' : 'bg-gray-200'}`}>
                                                         <div className={`w-3 h-3 bg-white rounded-full absolute transition-transform ${excludeZeroSpend ? 'translate-x-4' : 'translate-x-1'}`} />
@@ -765,10 +869,8 @@ export const Reporting: React.FC = () => {
                     </div>
                 </div>
 
-
-
                 {/* Data Table */}
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mt-8">
                     <div className="overflow-x-auto">
                         <table className="w-full text-left border-collapse">
                             <thead>
@@ -790,10 +892,10 @@ export const Reporting: React.FC = () => {
                                     <th className="p-5 font-bold text-xs uppercase tracking-widest text-gray-500 text-right cursor-pointer hover:bg-gray-100 transition-colors"
                                         onClick={() => { setSortField('amount'); setSortDesc(!sortDesc); }}
                                     >
-                                        Actual Spent
+                                        Total spent
                                     </th>
                                     <th className="p-5 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
-                                        Budget Target
+                                        Budget Limit
                                     </th>
                                     <th className="p-5 font-bold text-xs uppercase tracking-widest text-gray-500 text-right cursor-pointer hover:bg-gray-100 transition-colors"
                                         onClick={() => { setSortField('variance'); setSortDesc(!sortDesc); }}
@@ -922,7 +1024,527 @@ export const Reporting: React.FC = () => {
                         </div>
                     </div>
                 )}
+            </div>
 
+            {/* Mobile Responsive View */}
+            <div className="md:hidden flex flex-col min-h-screen bg-white pb-28 pt-2">
+                {/* Total Expenditure Gradient Summary Card */}
+                <div className="mx-6 mb-6 rounded-[28px] bg-gradient-to-br from-[#061C3F] via-[#083063] to-[#0A4787] p-6 text-white shadow-lg relative overflow-hidden">
+                    <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
+                        Total {mode === 'EXPENSE' ? 'Expenses' : 'Outflows'}
+                    </p>
+                    <div className="flex items-baseline justify-between">
+                        <h2 className="text-[34px] font-black leading-none">
+                            K{mobileData.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                        </h2>
+                        <div className={`flex items-center text-xs font-black px-2.5 py-1 rounded-full ${
+                            mobileData.isIncrease ? 'text-red-400 bg-red-500/10' : 'text-emerald-400 bg-emerald-500/10'
+                        }`}>
+                            {mobileData.isIncrease ? '+' : '-'}{mobileData.pctVal}%
+                        </div>
+                    </div>
+                    
+                    {/* Secondary Band */}
+                    <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
+                        <div className="flex items-center gap-1.5">
+                            <Link2 size={13} className="text-white/60" />
+                            <span>Budget Total <strong className="font-extrabold text-white">K{mobileData.totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></span>
+                        </div>
+                        <div className="h-3 w-px bg-white/20"></div>
+                        <div className="flex items-center gap-1.5">
+                            <ArrowUpRight size={14} className="text-[#34D399]" />
+                            <span>Actual Total <strong className="font-extrabold text-white">K{mobileData.totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Month Dropdown & Pill Controls Row */}
+                <div className="mx-6 mb-5 flex items-center justify-between relative">
+                    {/* Month selector dropdown trigger */}
+                    <div className="relative">
+                        <button 
+                            onClick={() => setIsMonthDropdownOpen(!isMonthDropdownOpen)}
+                            className="flex items-center gap-1 text-2xl font-black text-brand-navy tracking-tight focus:outline-none"
+                        >
+                            <span>{displayMonthName}</span>
+                            <ChevronDown size={22} className="text-gray-400 mt-1" />
+                        </button>
+                        
+                        {isMonthDropdownOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsMonthDropdownOpen(false)} />
+                                <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-100 rounded-3xl shadow-xl z-50 py-2 max-h-80 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
+                                    {monthOptions.map((opt, index) => {
+                                        const isSelected = opt.date.getMonth() === currentDate.getMonth() && opt.date.getFullYear() === currentDate.getFullYear();
+                                        return (
+                                            <button
+                                                key={index}
+                                                onClick={() => {
+                                                    setCurrentDate(opt.date);
+                                                    setPeriodType('MONTHLY');
+                                                    setIsMonthDropdownOpen(false);
+                                                }}
+                                                className={`w-full text-left px-5 py-3 text-sm font-bold transition-all ${
+                                                    isSelected 
+                                                        ? 'text-[#006AFF] bg-[#F5FAFF]' 
+                                                        : 'text-gray-600 hover:text-brand-navy hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                {opt.label}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </>
+                        )}
+                    </div>
+
+                    {/* Pill controls */}
+                    <div className="flex items-center gap-3">
+                        <div className="flex bg-gray-100/80 rounded-full p-1 items-center">
+                            {/* Sort button */}
+                            <button 
+                                onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
+                                className={`p-2 rounded-full transition-all text-gray-500 hover:text-gray-900 active:scale-95`}
+                                title="Sort"
+                            >
+                                <ArrowUpDown size={18} />
+                            </button>
+                            
+                            <div className="h-4 w-px bg-gray-200 mx-0.5"></div>
+                            
+                            {/* Filter button */}
+                            <button 
+                                onClick={() => setExcludeZeroSpend(!excludeZeroSpend)}
+                                className={`p-2 rounded-full transition-all active:scale-95 ${excludeZeroSpend ? 'text-[#006AFF] bg-white shadow-xs' : 'text-gray-500 hover:text-gray-900'}`}
+                                title="Filter zero spend"
+                            >
+                                <Filter size={18} />
+                            </button>
+                        </div>
+
+                        {/* Settings button */}
+                        <div className="relative">
+                            <button 
+                                onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                                className={`p-2.5 rounded-full transition-all active:scale-95 bg-gray-100/80 text-gray-500 hover:text-gray-900 ${isSettingsOpen ? 'text-[#006AFF] bg-[#F0F7FF]' : ''}`}
+                                title="Settings"
+                            >
+                                <Settings2 size={18} />
+                            </button>
+
+                            {isSettingsOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsSettingsOpen(false)} />
+                                    <div className="absolute right-0 mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 p-4 animate-in fade-in slide-in-from-top-2">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="font-bold text-gray-900">View Settings</h3>
+                                        </div>
+
+                                        <div className="space-y-4">
+                                            {/* Preset Filters */}
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Preset Filters</p>
+                                                <button
+                                                    onClick={() => setExcludeZeroSpend(!excludeZeroSpend)}
+                                                    className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors group text-left"
+                                                >
+                                                    <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
+                                                        <Filter className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
+                                                        Exclude Zero Spend
+                                                    </div>
+                                                    <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${excludeZeroSpend ? 'bg-brand-green' : 'bg-gray-200'}`}>
+                                                        <div className={`w-3 h-3 bg-white rounded-full absolute transition-transform ${excludeZeroSpend ? 'translate-x-4' : 'translate-x-1'}`} />
+                                                    </div>
+                                                </button>
+                                            </div>
+
+                                            <div className="h-px bg-gray-100"></div>
+
+                                            {/* Account Grouping settings */}
+                                            <div>
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Account Grouping</p>
+                                                
+                                                <label className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer group mb-2">
+                                                    <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
+                                                        <FolderOutput className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
+                                                        Group by Custom Groups
+                                                    </div>
+                                                    <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${isGroupingEnabled ? 'bg-brand-green' : 'bg-gray-200'}`}>
+                                                        <div className={`w-3 h-3 bg-white rounded-full absolute transition-transform ${isGroupingEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+                                                    </div>
+                                                    <input type="checkbox" className="hidden" checked={isGroupingEnabled} onChange={toggleGrouping} />
+                                                </label>
+
+                                                <div className="flex items-center gap-2 mb-2 px-2">
+                                                    <input 
+                                                        type="text" 
+                                                        value={newGroupName}
+                                                        onChange={(e) => setNewGroupName(e.target.value)}
+                                                        placeholder="New Group Name"
+                                                        className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                        onKeyDown={(e) => { if(e.key === 'Enter') handleCreateGroup() }}
+                                                    />
+                                                    <button 
+                                                        onClick={handleCreateGroup}
+                                                        disabled={!newGroupName.trim()}
+                                                        className="p-1.5 bg-[#006AFF] text-white rounded-lg hover:bg-brand-navy transition-colors disabled:opacity-50"
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5" />
+                                                    </button>
+                                                </div>
+
+                                                {groups.length > 0 && (
+                                                    <div className="max-h-32 overflow-y-auto pr-1 space-y-1 custom-scrollbar px-2 mt-2 border-t border-gray-100 pt-2">
+                                                        {groups.map(group => (
+                                                            <div key={group.id} className="flex items-center justify-between text-xs py-1 group/item">
+                                                                <span className="text-gray-600 truncate mr-2">{group.name}</span>
+                                                                <button 
+                                                                    onClick={() => handleDeleteGroup(group.id)}
+                                                                    className="text-red-400 hover:text-red-600 opacity-0 group-hover/item:opacity-100 transition-opacity"
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="h-px bg-gray-100"></div>
+
+                                            {/* Account Visibility */}
+                                            <div>
+                                                <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Account Visibility</p>
+                                                    {hiddenAccounts.size > 0 && (
+                                                        <button 
+                                                            onClick={() => setHiddenAccounts(new Set())}
+                                                            className="text-xs font-bold text-brand-green hover:text-brand-navy transition-colors"
+                                                        >
+                                                            Show All
+                                                        </button>
+                                                    )}
+                                                </div>
+                                                <div className="max-h-40 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
+                                                    {allAccounts.map(account => (
+                                                        <button
+                                                            key={account.id}
+                                                            onClick={() => toggleAccountVisibility(account.id)}
+                                                            className="w-full flex items-center justify-between p-1.5 hover:bg-gray-50 rounded-lg transition-colors group text-left"
+                                                        >
+                                                            <span className={`text-xs font-medium truncate pr-2 ${hiddenAccounts.has(account.id) ? 'text-gray-400' : 'text-gray-700'}`}>
+                                                                {account.name}
+                                                            </span>
+                                                            {hiddenAccounts.has(account.id) ? (
+                                                                <EyeOff className="h-3.5 w-3.5 text-gray-300 flex-shrink-0" />
+                                                            ) : (
+                                                                <Eye className="h-3.5 w-3.5 text-brand-navy flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                            )}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                    
+                    {/* Sort selection dropdown overlay */}
+                    {isSortDropdownOpen && (
+                        <>
+                            <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsSortDropdownOpen(false)} />
+                            <div className="absolute right-12 mt-12 w-56 bg-white border border-gray-100 rounded-3xl shadow-xl z-50 py-2 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {[
+                                    { label: 'Amount (High to Low)', field: 'amount', desc: true },
+                                    { label: 'Amount (Low to High)', field: 'amount', desc: false },
+                                    { label: 'Name (A to Z)', field: 'name', desc: false },
+                                    { label: 'Name (Z to A)', field: 'name', desc: true },
+                                    { label: 'Variance (High to Low)', field: 'variance', desc: true },
+                                    { label: 'Variance (Low to High)', field: 'variance', desc: false },
+                                ].map((opt, index) => {
+                                    const isSelected = sortField === opt.field && sortDesc === opt.desc;
+                                    return (
+                                        <button
+                                            key={index}
+                                            onClick={() => {
+                                                setSortField(opt.field as any);
+                                                setSortDesc(opt.desc);
+                                                setIsSortDropdownOpen(false);
+                                            }}
+                                            className={`w-full text-left px-5 py-3 text-sm font-bold transition-all ${
+                                                isSelected 
+                                                    ? 'text-[#006AFF] bg-[#F5FAFF]' 
+                                                    : 'text-gray-600 hover:text-brand-navy hover:bg-gray-50'
+                                            }`}
+                                        >
+                                            {opt.label}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Categories and Progress Bars White Card */}
+                <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-xs p-5 space-y-6">
+                    {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                        <div className="py-8 text-center text-gray-500">
+                            <Loader2 className="h-8 w-8 animate-spin text-[#006AFF] mx-auto mb-4" />
+                            Loading expenditure data...
+                        </div>
+                    ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                        <div className="py-8 text-center text-gray-500 font-bold">
+                            No expenditures found for this period.
+                        </div>
+                    ) : (
+                        <div className="space-y-6 divide-y divide-gray-100">
+                            {/* Rendering Grouped Categories */}
+                            {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
+                                if (groupData.items.length === 0) return null;
+                                
+                                const isExpanded = expandedMobileGroups.has(groupId);
+                                const progressPercent = groupData.totals.budgeted_amount > 0 ? (groupData.totals.total_amount / groupData.totals.budgeted_amount) * 100 : 0;
+                                const change = getPercentageChange(groupData.totals.total_amount, groupData.totals.prev_total_amount);
+
+                                return (
+                                    <div key={`mob-group-${groupId}`} className="pt-5 first:pt-0">
+                                        {/* Group Header Row */}
+                                        <div 
+                                            onClick={() => toggleMobileGroupExpand(groupId)}
+                                            className="cursor-pointer"
+                                        >
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="pr-4">
+                                                    <h3 className="font-bold text-sm text-brand-navy leading-tight flex items-center gap-1.5">
+                                                        {groupData.groupName}
+                                                        <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                                                            {groupData.items.length}
+                                                        </span>
+                                                    </h3>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-sm font-bold text-gray-900">
+                                                        +K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                    </div>
+                                                    <div className={`flex items-center justify-end text-[10px] font-bold mt-1 ${
+                                                        change.isIncrease ? 'text-red-500' : 'text-emerald-500'
+                                                    }`}>
+                                                        {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
+                                                        {change.value}%
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Progress bar */}
+                                            <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+                                                <div 
+                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
+                                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                                />
+                                            </div>
+
+                                            {/* Progress sub-label */}
+                                            <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 mt-2">
+                                                <div>
+                                                    {groupData.totals.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {groupData.totals.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </div>
+                                                <div className="flex items-center gap-0.5 text-gray-400">
+                                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Subaccounts Cascade list */}
+                                        {isExpanded && (
+                                            <div className="mt-4 pl-3 border-l-2 border-gray-100 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                                                {groupData.items.map((row: any) => {
+                                                    const rowChange = getPercentageChange(row.total_amount, row.prev_total_amount);
+                                                    const isRowExpanded = expandedAccount === row.account_id;
+
+                                                    return (
+                                                        <div key={`subacc-${row.account_id}`} className="py-2 border-b border-gray-50 last:border-0 last:pb-0">
+                                                            <div 
+                                                                onClick={() => toggleExpand(row.account_id)}
+                                                                className="cursor-pointer flex justify-between items-start"
+                                                            >
+                                                                <div className="pr-4">
+                                                                    <h4 className="text-xs font-bold text-gray-700">{row.account_name}</h4>
+                                                                    <span className="text-[10px] text-gray-400 font-semibold block mt-0.5">
+                                                                        {row.transaction_count} transactions
+                                                                    </span>
+                                                                </div>
+                                                                <div className="text-right flex-shrink-0">
+                                                                    <span className="text-xs font-bold text-gray-900 block">
+                                                                        K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                    </span>
+                                                                    <span className={`text-[10px] font-bold mt-0.5 inline-block ${
+                                                                        rowChange.isIncrease ? 'text-red-400' : 'text-emerald-500'
+                                                                    }`}>
+                                                                        {rowChange.isIncrease ? '↗' : '↘'} {rowChange.value}%
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Transaction details cascade */}
+                                                            {isRowExpanded && (
+                                                                <div className="mt-3 bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-3">
+                                                                    <div className="flex justify-between items-center pb-2 border-b border-gray-200/50">
+                                                                        <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Transaction History</h5>
+                                                                        <button
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
+                                                                                setIsBudgetModalOpen(true);
+                                                                            }}
+                                                                            className="text-[10px] font-black text-[#006AFF] hover:underline"
+                                                                        >
+                                                                            Set Budget
+                                                                        </button>
+                                                                    </div>
+                                                                    
+                                                                    {itemsLoading ? (
+                                                                        <div className="flex items-center text-xs text-gray-500 py-2">
+                                                                            <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#006AFF]" />
+                                                                            Loading items...
+                                                                        </div>
+                                                                    ) : !accountItems[row.account_id]?.length ? (
+                                                                        <div className="text-xs text-gray-400 py-1 italic">No transactions found for this period.</div>
+                                                                    ) : (
+                                                                        <div className="space-y-2">
+                                                                            {accountItems[row.account_id].map(item => (
+                                                                                <div key={item.id} className="text-xs flex justify-between items-start py-1 border-b border-gray-100 last:border-0 last:pb-0">
+                                                                                    <div className="flex-1 pr-3">
+                                                                                        <p className="font-bold text-gray-800 line-clamp-1">{item.description}</p>
+                                                                                        <div className="flex items-center gap-1.5 text-[9px] text-gray-400 mt-0.5">
+                                                                                            <span>{item.requisition_ref || 'N/A'}</span>
+                                                                                            <span>•</span>
+                                                                                            <span>{new Date(item.date).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: 'numeric' })}</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                    <span className="font-black text-gray-900 whitespace-nowrap">
+                                                                                        K{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                                    </span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+
+                            {/* Flat Rows (when grouping is disabled) */}
+                            {!displayData.isGrouped && displayData.data && displayData.data.map((row: any) => {
+                                const progressPercent = row.budgeted_amount > 0 ? (row.total_amount / row.budgeted_amount) * 100 : 0;
+                                const change = getPercentageChange(row.total_amount, row.prev_total_amount);
+                                const isExpanded = expandedAccount === row.account_id;
+
+                                return (
+                                    <div key={`mob-flat-${row.account_id}`} className="pt-5 first:pt-0">
+                                        {/* Flat Row Header */}
+                                        <div 
+                                            onClick={() => toggleExpand(row.account_id)}
+                                            className="cursor-pointer"
+                                        >
+                                            <div className="flex justify-between items-start mb-2">
+                                                <div className="pr-4">
+                                                    <h3 className="font-bold text-sm text-brand-navy leading-tight">
+                                                        {row.account_name}
+                                                    </h3>
+                                                </div>
+                                                <div className="text-right flex-shrink-0">
+                                                    <div className="text-sm font-bold text-gray-900">
+                                                        +K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                    </div>
+                                                    <div className={`flex items-center justify-end text-[10px] font-bold mt-1 ${
+                                                        change.isIncrease ? 'text-red-500' : 'text-emerald-500'
+                                                    }`}>
+                                                        {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
+                                                        {change.value}%
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Progress bar */}
+                                            <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden mt-3">
+                                                <div 
+                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
+                                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                                />
+                                            </div>
+
+                                            {/* Progress sub-label */}
+                                            <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 mt-2">
+                                                <div>
+                                                    {row.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {row.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </div>
+                                                <div className="flex items-center gap-0.5 text-gray-400">
+                                                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Flat Row Transaction Cascade */}
+                                        {isExpanded && (
+                                            <div className="mt-3 bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-3">
+                                                <div className="flex justify-between items-center pb-2 border-b border-gray-200/50">
+                                                    <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Transaction History</h5>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
+                                                            setIsBudgetModalOpen(true);
+                                                        }}
+                                                        className="text-[10px] font-black text-[#006AFF] hover:underline"
+                                                    >
+                                                        Set Budget
+                                                    </button>
+                                                </div>
+                                                
+                                                {itemsLoading ? (
+                                                    <div className="flex items-center text-xs text-gray-500 py-2">
+                                                        <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#006AFF]" />
+                                                        Loading items...
+                                                    </div>
+                                                ) : !accountItems[row.account_id]?.length ? (
+                                                    <div className="text-xs text-gray-400 py-1 italic">No transactions found for this period.</div>
+                                                ) : (
+                                                    <div className="space-y-2">
+                                                        {accountItems[row.account_id].map(item => (
+                                                            <div key={item.id} className="text-xs flex justify-between items-start py-1 border-b border-gray-100 last:border-0 last:pb-0">
+                                                                <div className="flex-1 pr-3">
+                                                                    <p className="font-bold text-gray-800 line-clamp-1">{item.description}</p>
+                                                                    <div className="flex items-center gap-1.5 text-[9px] text-gray-400 mt-0.5">
+                                                                        <span>{item.requisition_ref || 'N/A'}</span>
+                                                                        <span>•</span>
+                                                                        <span>{new Date(item.date).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: 'numeric' })}</span>
+                                                                    </div>
+                                                                </div>
+                                                                <span className="font-black text-gray-900 whitespace-nowrap">
+                                                                    K{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {isBudgetModalOpen && selectedAccountForBudget && (
