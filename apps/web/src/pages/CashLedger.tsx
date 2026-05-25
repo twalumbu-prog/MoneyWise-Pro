@@ -38,6 +38,7 @@ import { accountService, Account } from '../services/account.service';
 import RequisitionModal from '../components/requisitions/RequisitionModal';
 import { Requisition } from '../services/requisition.service';
 import ExportLedgerModal from '../components/ExportLedgerModal';
+import budgetBg from '../assets/Frame 24.png';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 
 
@@ -1083,45 +1084,54 @@ const CashLedger: React.FC = () => {
                             <div
                                 key={acc.id}
                                 onClick={() => setSelectedAccountType(acc.id as any)}
-                                style={{ scrollSnapAlign: 'start', minWidth: '70vw', maxWidth: '70vw' }}
-                                className={`flex flex-col rounded-2xl border-2 text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative ${
+                                style={{ 
+                                    scrollSnapAlign: 'start', 
+                                    minWidth: '70vw', 
+                                    maxWidth: '70vw',
+                                    ...(isActive ? {
+                                        backgroundImage: `url(${budgetBg})`,
+                                        backgroundSize: 'cover',
+                                        backgroundPosition: 'center',
+                                    } : {})
+                                }}
+                                className={`flex flex-col rounded-[24px] text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative shadow-lg ${
                                     isActive
-                                        ? 'bg-white border-[#006AFF] shadow-[0_4px_20px_-2px_rgba(0,106,255,0.08)]'
-                                        : 'bg-white border-transparent hover:border-gray-200 shadow-sm opacity-80'
+                                        ? 'text-white'
+                                        : 'bg-white border-2 border-transparent shadow-sm opacity-80 text-[#5E6480]'
                                 }`}
                             >
                                 {/* Card Body */}
-                                <div className="p-6 flex-1 flex flex-col justify-between min-h-[110px]">
+                                <div className="p-6 flex-1 flex flex-col justify-between">
                                     <div>
-                                        <span className={`text-[10px] font-black uppercase tracking-widest block mb-2 ${
-                                            isActive ? 'text-[#5E6480]' : 'text-[#5E6480]/50'
+                                        <span className={`text-[15px] font-medium tracking-wide block mb-3 ${
+                                            isActive ? 'text-white/90' : 'text-[#5E6480]/50'
                                         }`}>
                                             {acc.name}
                                         </span>
-                                        <div className="flex items-baseline gap-1 mt-1">
-                                            <span className={`text-xs font-extrabold uppercase tracking-wider ${
-                                                isActive ? 'text-[#5E6480]' : 'text-[#5E6480]/50'
+                                        <div className="flex items-baseline gap-2 mt-1">
+                                            <span className={`text-xl font-medium tracking-wider ${
+                                                isActive ? 'text-white/70' : 'text-[#5E6480]/50'
                                             }`}>
                                                 {currencySymbol}
                                             </span>
-                                            <span className={`text-[26px] font-black tracking-tight ${
-                                                isActive ? 'text-slate-900' : 'text-gray-400'
+                                            <span className={`text-[36px] font-bold tracking-tight ${
+                                                isActive ? 'text-white' : 'text-slate-900'
                                             }`}>
                                                 {balanceAmountOnly}
                                             </span>
                                         </div>
                                     </div>
-                                </div>
 
-                                {/* Deposit Button inside card */}
-                                {isActive && !isRequestor && (
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
-                                        className="w-full py-3 bg-[#F5FAFF] border-t border-blue-50 text-center flex items-center justify-center font-bold text-xs text-[#006AFF] hover:bg-[#E5F1FF] transition-all"
-                                    >
-                                        + Deposit Funds
-                                    </button>
-                                )}
+                                    {/* Deposit Button inside card */}
+                                    {isActive && !isRequestor && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
+                                            className="w-full py-3.5 mt-8 bg-white/10 border border-white/10 rounded-xl text-center flex items-center justify-center font-bold text-[14px] text-white hover:bg-white/20 transition-all backdrop-blur-md"
+                                        >
+                                            + Deposit Funds
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         );
                     })}
@@ -1366,26 +1376,31 @@ const CashLedger: React.FC = () => {
                             <button
                                 key={acc.id}
                                 onClick={() => setSelectedAccountType(acc.id as any)}
+                                style={isActive ? {
+                                    backgroundImage: `url(${budgetBg})`,
+                                    backgroundSize: 'cover',
+                                    backgroundPosition: 'center',
+                                } : {}}
                                 className={`relative p-6 rounded-[24px] border-2 text-left transition-all duration-300 group ${
                                     isActive 
-                                        ? 'bg-white border-[#006AFF] shadow-[0_8px_30px_rgba(0,0,0,0.04)]' 
+                                        ? 'border-transparent shadow-lg text-white' 
                                         : 'bg-white border-transparent hover:border-gray-100'
                                 }`}
                             >
                                 <div className="flex items-start justify-between mb-4">
-                                    <div className={`p-3 rounded-2xl ${isActive ? 'bg-gray-50' : acc.bg} ${isActive ? 'text-gray-900' : acc.color} transition-colors duration-300`}>
+                                    <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10 text-white' : `${acc.bg} ${acc.color}`} transition-colors duration-300`}>
                                         <acc.icon size={20} strokeWidth={2.5} />
                                     </div>
                                 </div>
                                 <div>
-                                    <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-gray-900' : 'text-gray-400'}`}>
+                                    <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-white/80' : 'text-gray-400'}`}>
                                         {acc.name}
                                     </span>
                                     <div className="flex items-baseline gap-1">
-                                        <span className={`text-2xl font-black tracking-tight ${isActive ? 'text-gray-900' : 'text-gray-500'}`}>
+                                        <span className={`text-2xl font-black tracking-tight ${isActive ? 'text-white' : 'text-gray-900'}`}>
                                             {formatCurrency(isActive ? balance : 0).split('.')[0]}
                                         </span>
-                                        <span className={`text-sm font-bold opacity-60 ${isActive ? 'text-gray-900' : 'text-gray-400'}`}>
+                                        <span className={`text-sm font-bold opacity-60 ${isActive ? 'text-white' : 'text-gray-400'}`}>
                                             .{formatCurrency(isActive ? balance : 0).split('.')[1] || '00'}
                                         </span>
                                     </div>
