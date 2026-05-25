@@ -108,7 +108,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
         }
     };
 
-    const handleWalletDeposit = () => {
+    const handleWalletDeposit = async () => {
         if (!walletAmount || Number(walletAmount) <= 0) {
             setError('Please enter a valid deposit amount.');
             return;
@@ -129,6 +129,12 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
         const payableGross = targetNet / 0.99;
         const ref = `DEP-${Date.now()}-${lencoSubaccountId}-${organizationId}`;
         setCurrentReference(ref);
+
+        try {
+            await cashbookService.logWalletDepositIntent(ref, purpose || 'Wallet Deposit', targetNet);
+        } catch (err) {
+            console.error('Failed to log deposit intent:', err);
+        }
 
         console.log('Initiating Lenco deposit', {
             targetNet: targetNet.toFixed(2),

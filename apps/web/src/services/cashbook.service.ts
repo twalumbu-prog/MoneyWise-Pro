@@ -135,6 +135,14 @@ export const cashbookService = {
         return response.json();
     },
 
+    async logWalletDepositIntent(reference: string, purpose: string, amount: number) {
+        const response = await apiFetch('/cashbook/wallet-deposit-intent', {
+            method: 'POST',
+            body: JSON.stringify({ reference, purpose, amount }),
+        });
+        return response.json();
+    },
+
     async classifyBulk(requisitionIds?: string[]) {
         const response = await apiFetch('/cashbook/classify-bulk', {
             method: 'POST',

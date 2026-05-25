@@ -10,7 +10,8 @@ import {
     closeBook,
     classifyBulk,
     postEntryToQuickBooks,
-    updateEntryAccount
+    updateEntryAccount,
+    logWalletDepositIntent
 } from '../controllers/cashbook.controller';
 
 const router = Router();
@@ -47,6 +48,9 @@ router.post('/return', requireRole(['CASHIER', 'ADMIN']), returnExcessCash);
 
 // Log cash inflow (Cashier, Accountant, Admin)
 router.post('/inflow', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logCashInflow);
+
+// Log wallet deposit intent (Cashier, Accountant, Admin)
+router.post('/wallet-deposit-intent', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logWalletDepositIntent);
 
 // Close book (Cashier, Accountant, Admin)
 router.post('/close', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), closeBook);

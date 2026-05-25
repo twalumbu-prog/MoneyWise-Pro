@@ -85,32 +85,43 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
     // FIX (Issue 10): Deduplicate collections based on Lenco reference.
     // Strategy 1: Try external_reference column (available after migration)
     // Strategy 2: Fallback to description-based LIKE check (always works)
+    let pendingEntry = null;
     if (reference) {
         try {
             const { data: existingByRef, error: refError } = await supabase
                 .from('cashbook_entries')
-                .select('id')
+                .select('id, status, description')
                 .eq('external_reference', reference)
                 .maybeSingle();
             
             if (!refError && existingByRef) {
-                console.log(`[Lenco Webhook] DUPLICATE IGNORED (by ref): Collection ${reference} already logged.`);
-                return true;
+                if (existingByRef.status === 'PENDING') {
+                    pendingEntry = existingByRef;
+                } else {
+                    console.log(`[Lenco Webhook] DUPLICATE IGNORED (by ref): Collection ${reference} already logged.`);
+                    return true;
+                }
             }
         } catch (_) {
             // Column may not exist yet — fall through to description-based check
         }
 
-        // Fallback: description-based dedup (works before migration)
-        const { data: existingByDesc } = await supabase
-            .from('cashbook_entries')
-            .select('id')
-            .like('description', `%${reference}%`)
-            .maybeSingle();
+        if (!pendingEntry) {
+            // Fallback: description-based dedup (works before migration)
+            const { data: existingByDesc } = await supabase
+                .from('cashbook_entries')
+                .select('id, status, description')
+                .like('description', `%${reference}%`)
+                .maybeSingle();
 
-        if (existingByDesc) {
-            console.log(`[Lenco Webhook] DUPLICATE IGNORED (by desc): Collection ${reference} already logged.`);
-            return true;
+            if (existingByDesc) {
+                if (existingByDesc.status === 'PENDING') {
+                    pendingEntry = existingByDesc;
+                } else {
+                    console.log(`[Lenco Webhook] DUPLICATE IGNORED (by desc): Collection ${reference} already logged.`);
+                    return true;
+                }
+            }
         }
     }
 
@@ -199,8 +210,17 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // Extract the actual purpose from the webhook payload if available
             let actualNarration = narration || description || meta?.purpose || metadata?.purpose;
             
+            if (pendingEntry && pendingEntry.description && pendingEntry.description.includes('PENDING_INTENT:')) {
+                actualNarration = pendingEntry.description.replace('PENDING_INTENT: ', '').replace('PENDING_INTENT:', '').trim();
+            }
+
             if (!actualNarration) {
                 actualNarration = `Wallet Deposit - Ref: ${reference || 'N/A'}`;
+            }
+            
+            if (pendingEntry) {
+                // Delete the pending intent before recreating the finalized entry so we don't mess up balances
+                await supabase.from('cashbook_entries').delete().eq('id', pendingEntry.id);
             }
             
             // 1. Log the Gross Inflow

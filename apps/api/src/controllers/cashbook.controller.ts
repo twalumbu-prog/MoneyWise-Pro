@@ -205,6 +205,44 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
 };
 
 /**
+ * Log wallet deposit intent
+ */
+export const logWalletDepositIntent = async (req: any, res: any): Promise<any> => {
+    try {
+        const { reference, purpose, amount } = req.body;
+        const organizationId = (req as any).user.organization_id;
+
+        if (!reference || !purpose) {
+            return res.status(400).json({ error: 'reference and purpose are required' });
+        }
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const { error } = await supabase.from('cashbook_entries').insert({
+            organization_id: organizationId,
+            entry_type: 'INFLOW',
+            account_type: 'MONEYWISE_WALLET',
+            description: `PENDING_INTENT: ${purpose}`,
+            debit: amount || 0,
+            credit: 0,
+            balance_after: 0,
+            date: new Date().toISOString().split('T')[0],
+            status: 'PENDING',
+            external_reference: reference
+        });
+
+        if (error) throw error;
+
+        res.json({ message: 'Intent logged successfully' });
+    } catch (error: any) {
+        console.error('Error logging wallet deposit intent:', error);
+        res.status(500).json({ error: 'Failed to log wallet deposit intent', details: error.message });
+    }
+};
+
+/**
  * Close the cashbook
  */
 export const closeBook = async (req: any, res: any): Promise<any> => {
