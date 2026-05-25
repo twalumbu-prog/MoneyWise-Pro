@@ -1101,20 +1101,20 @@ const CashLedger: React.FC = () => {
                                 }`}
                             >
                                 {/* Card Body */}
-                                <div className="p-6 flex-1 flex flex-col justify-between">
+                                <div className="p-5 flex-1 flex flex-col justify-between">
                                     <div>
-                                        <span className={`text-[15px] font-medium tracking-wide block mb-3 ${
-                                            isActive ? 'text-white/90' : 'text-[#5E6480]/50'
+                                        <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${
+                                            isActive ? 'text-white/60' : 'text-[#5E6480]/50'
                                         }`}>
                                             {acc.name}
                                         </span>
-                                        <div className="flex items-baseline gap-2 mt-1">
-                                            <span className={`text-xl font-medium tracking-wider ${
+                                        <div className="flex items-baseline gap-1.5">
+                                            <span className={`text-lg font-bold tracking-wider ${
                                                 isActive ? 'text-white/70' : 'text-[#5E6480]/50'
                                             }`}>
                                                 {currencySymbol}
                                             </span>
-                                            <span className={`text-[36px] font-bold tracking-tight ${
+                                            <span className={`text-[32px] font-black leading-none tracking-tight ${
                                                 isActive ? 'text-white' : 'text-slate-900'
                                             }`}>
                                                 {balanceAmountOnly}
@@ -1126,7 +1126,7 @@ const CashLedger: React.FC = () => {
                                     {isActive && !isRequestor && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
-                                            className="w-full py-3.5 mt-8 bg-white/10 border border-white/10 rounded-xl text-center flex items-center justify-center font-bold text-[14px] text-white hover:bg-white/20 transition-all backdrop-blur-md"
+                                            className="w-full py-3 mt-5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
                                         >
                                             + Deposit Funds
                                         </button>
