@@ -1301,7 +1301,7 @@ export const Reporting: React.FC = () => {
                             No expenditures found for this period.
                         </div>
                     ) : (
-                        <div className="space-y-6">
+                        <div className="space-y-8">
                             {/* Rendering Grouped Categories */}
                             {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
                                 if (groupData.items.length === 0) return null;
@@ -1357,13 +1357,13 @@ export const Reporting: React.FC = () => {
 
                                         {/* Subaccounts Cascade list */}
                                         {isExpanded && (
-                                            <div className="mt-4 pl-3 border-l-2 border-gray-100 space-y-4 animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <div className="mt-4 pl-3 border-l-2 border-gray-100 space-y-6 animate-in fade-in slide-in-from-top-1 duration-200">
                                                 {groupData.items.map((row: any) => {
                                                     const rowChange = getPercentageChange(row.total_amount, row.prev_total_amount);
                                                     const isRowExpanded = expandedAccount === row.account_id;
 
                                                     return (
-                                                        <div key={`subacc-${row.account_id}`}>
+                                                        <div key={`subacc-${row.account_id}`} className="py-3.5">
                                                             <div 
                                                                 onClick={() => toggleExpand(row.account_id)}
                                                                 className="cursor-pointer flex justify-between items-start"
@@ -1447,7 +1447,7 @@ export const Reporting: React.FC = () => {
                                 const isExpanded = expandedAccount === row.account_id;
 
                                 return (
-                                    <div key={`mob-flat-${row.account_id}`}>
+                                    <div key={`mob-flat-${row.account_id}`} className="py-3.5">
                                         {/* Flat Row Header */}
                                         <div 
                                             onClick={() => toggleExpand(row.account_id)}
