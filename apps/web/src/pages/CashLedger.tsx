@@ -128,6 +128,25 @@ const SearchableAccountSelect: React.FC<{
 };
 
 
+const renderMobileStatusIcon = (status: string) => {
+    const config = getStatusConfig(status);
+    const colorClass = config.color === 'blue' ? 'text-[#006AFF]' : 
+                       config.color === 'emerald' ? 'text-emerald-500' :
+                       config.color === 'amber' ? 'text-amber-500' :
+                       config.color === 'red' ? 'text-red-500' :
+                       config.color === 'purple' ? 'text-purple-500' : 'text-gray-400';
+
+    switch (config.iconType) {
+        case 'clock': return <Clock size={12} className={colorClass} />;
+        case 'check-circle': return <CheckCircle2 size={12} className={colorClass} />;
+        case 'check': return <Check size={12} className={colorClass} />;
+        case 'alert': return <AlertCircle size={12} className={colorClass} />;
+        case 'rotate': return <RotateCcw size={12} className={colorClass} />;
+        default: return <Clock size={12} className={colorClass} />;
+    }
+};
+
+
 const CashLedger: React.FC = () => {
     const [entries, setEntries] = useState<CashbookEntry[]>([]);
     const [balance, setBalance] = useState<number>(0);
@@ -1281,10 +1300,25 @@ const CashLedger: React.FC = () => {
                                                             />
                                                         )}
                                                     </div>
-                                                    {refNum && (
-                                                        <p className="text-[11px] font-normal text-[#808080] tracking-tight mt-1.5 uppercase">
-                                                            {refNum}
-                                                        </p>
+                                                    {(entry.requisitions || refNum) && (
+                                                        <div className="flex items-center gap-1.5 mt-1.5">
+                                                            {entry.requisitions && (
+                                                                <div className="flex items-center gap-1">
+                                                                    {renderMobileStatusIcon(entry.requisitions.status)}
+                                                                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                                                        {getStatusConfig(entry.requisitions.status).label}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {entry.requisitions && refNum && (
+                                                                <span className="text-[10px] text-gray-300 font-bold">•</span>
+                                                            )}
+                                                            {refNum && (
+                                                                <span className="text-[11px] font-normal text-[#808080] tracking-tight uppercase">
+                                                                    {refNum}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                     )}
                                                 </div>
 
