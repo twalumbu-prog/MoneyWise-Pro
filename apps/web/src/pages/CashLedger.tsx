@@ -1282,7 +1282,7 @@ const CashLedger: React.FC = () => {
                                                         )}
                                                     </div>
                                                     {refNum && (
-                                                        <p className="text-[11px] font-normal text-[#6C6C6C] tracking-tight mt-1.5 uppercase">
+                                                        <p className="text-[11px] font-normal text-[#808080] tracking-tight mt-1.5 uppercase">
                                                             {refNum}
                                                         </p>
                                                     )}
@@ -1295,7 +1295,7 @@ const CashLedger: React.FC = () => {
                                                     }`}>
                                                         {isOutflow ? '-' : '+'}{formatCurrency(amount).replace('K', '')}
                                                     </span>
-                                                    <span className="text-[11px] font-normal text-[#6C6C6C] mt-1.5">
+                                                    <span className="text-[11px] font-normal text-[#808080] mt-1.5">
                                                         {formatDateSlash(entry.date)}
                                                     </span>
                                                 </div>
