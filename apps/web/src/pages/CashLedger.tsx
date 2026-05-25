@@ -1270,7 +1270,7 @@ const CashLedger: React.FC = () => {
                                                 {/* Left Side: Description + Flag + Ref */}
                                                 <div className="flex-1 mr-4">
                                                     <div className="flex items-center gap-1.5">
-                                                        <span className="text-[14px] font-bold text-slate-800 leading-tight">
+                                                        <span className="text-[14px] font-normal text-slate-800 leading-tight">
                                                             {description}
                                                         </span>
                                                         {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT') && (
@@ -1282,20 +1282,20 @@ const CashLedger: React.FC = () => {
                                                         )}
                                                     </div>
                                                     {refNum && (
-                                                        <p className="text-[11px] font-semibold text-slate-400 tracking-tight mt-1.5 uppercase">
-                                                            #{refNum}
+                                                        <p className="text-[11px] font-normal text-[#6C6C6C] tracking-tight mt-1.5 uppercase">
+                                                            {refNum}
                                                         </p>
                                                     )}
                                                 </div>
 
                                                 {/* Right Side: Amount + Date */}
                                                 <div className="flex flex-col items-end">
-                                                    <span className={`text-[14px] font-bold leading-tight ${
+                                                    <span className={`text-[14px] font-normal leading-tight ${
                                                         isOutflow ? 'text-slate-800' : 'text-emerald-600'
                                                     }`}>
                                                         {isOutflow ? '-' : '+'}{formatCurrency(amount).replace('K', '')}
                                                     </span>
-                                                    <span className="text-[11px] font-semibold text-black mt-1.5">
+                                                    <span className="text-[11px] font-normal text-[#6C6C6C] mt-1.5">
                                                         {formatDateSlash(entry.date)}
                                                     </span>
                                                 </div>
