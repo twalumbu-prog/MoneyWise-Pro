@@ -1262,7 +1262,7 @@ const CashLedger: React.FC = () => {
                                     return (
                                         <React.Fragment key={entry.id}>
                                             <div
-                                                className={`px-5 py-4 flex items-start justify-between active:bg-gray-50 transition-colors ${
+                                                className={`px-5 py-[22px] flex items-start justify-between active:bg-gray-50 transition-colors ${
                                                     expandedRows[entry.id] ? 'bg-slate-50/50' : ''
                                                 }`}
                                                 onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && toggleRow(entry.id)}
