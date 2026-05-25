@@ -280,7 +280,7 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
 
     return (
         <div className="flex flex-col h-full bg-[#E6F2FE] relative">
-            <div className="flex-1 overflow-y-auto px-8 py-6 scroll-smooth" ref={scrollRef}>
+            <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 scroll-smooth" ref={scrollRef}>
                 {isLoading && messages.length === 0 ? (
                     <div className="flex items-center justify-center h-full">
                         <Loader2 className="w-6 h-6 text-[#006AFF] animate-spin" />

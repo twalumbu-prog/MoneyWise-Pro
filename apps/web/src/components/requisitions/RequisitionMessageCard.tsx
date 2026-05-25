@@ -1444,7 +1444,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden transition-all duration-300">
-                        <div className="px-8 py-8">
+                        <div className="px-5 md:px-8 py-6 md:py-8">
                             <div className="flex items-center space-x-3 mb-4">
                                 <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
                                     <Smartphone size={14} strokeWidth={2.5} />
@@ -1515,8 +1515,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                     {isExpanded && (
                                         <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-400">
                                             {requisitionData?.disbursements?.[0] ? (
-                                                <div className="rounded-2xl border border-gray-100 overflow-hidden bg-gray-50/30">
-                                                    <table className="w-full text-left border-collapse">
+                                                <div className="rounded-2xl border border-gray-100 overflow-x-auto bg-gray-50/30">
+                                                    <table className="w-full min-w-[320px] text-left border-collapse">
                                                         <tbody className="divide-y divide-gray-50">
                                                             <tr className="hover:bg-white/50 transition-colors">
                                                                 <td className="px-6 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Funds Disbursed</td>
@@ -1883,7 +1883,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
-                        <div className="px-8 py-8">
+                        <div className="px-5 md:px-8 py-6 md:py-8">
                              <div className="flex items-center space-x-3 mb-4">
                                  <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
                                      <FileText size={14} strokeWidth={2.5} />
@@ -1919,8 +1919,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
                                     {isExpenseExpanded && (
                                         <div className="animate-in slide-in-from-top-2 duration-300">
-                                            <div className="rounded-2xl border border-gray-100 overflow-hidden mb-6">
-                                                <table className="w-full text-left border-collapse">
+                                            <div className="rounded-2xl border border-gray-100 overflow-x-auto mb-6">
+                                                <table className="w-full min-w-[340px] text-left border-collapse">
                                                     <thead>
                                                         <tr className="bg-gray-50/80">
                                                             <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b border-gray-100">Item</th>
@@ -2328,7 +2328,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-visible">
-                        <div className="px-8 py-8">
+                        <div className="px-5 md:px-8 py-6 md:py-8">
                             <div className="flex items-center space-x-3 mb-6">
                                 <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
                                     <Building2 size={14} />
@@ -2420,8 +2420,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         The AI has suggested the following chart of accounts mapping. You can manually edit any category if needed.
                                     </p>
 
-                                    <div className="rounded-xl border border-gray-100 overflow-visible mb-6">
-                                        <table className="w-full text-left">
+                                    <div className="rounded-xl border border-gray-100 overflow-x-auto mb-6">
+                                        <table className="w-full min-w-[380px] text-left">
                                             <thead>
                                                 <tr className="bg-gray-50/80">
                                                     <th className="px-4 py-2.5 text-[9px] font-black uppercase text-gray-400 w-1/3">Item</th>
@@ -2471,7 +2471,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             </div>
 
                                                                             {isAccountDropdownOpen === idx && (
-                                                                                <div className="absolute top-full left-0 mt-2 w-[350px] bg-white border border-gray-100 shadow-2xl rounded-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                                                                <div className="absolute top-full left-0 mt-2 min-w-[200px] w-[90vw] max-w-[350px] bg-white border border-gray-100 shadow-2xl rounded-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
                                                                                     <div className="p-4 border-b border-gray-50 bg-gray-50/30">
                                                                                         <div className="relative">
                                                                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -2611,7 +2611,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
-                        <div className="px-8 py-8">
+                        <div className="px-5 md:px-8 py-6 md:py-8">
                             <div className="flex items-center space-x-3 mb-6">
                                  <div className="w-7 h-7 rounded-full bg-blue-50/50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
                                      <Building2 size={14} />
@@ -2855,7 +2855,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden">
-                        <div className="px-8 py-6">
+                        <div className="px-5 md:px-8 py-5 md:py-6">
                              <div className="flex items-center justify-between mb-4">
                                 <div className="flex items-center space-x-3">
                                     <div className="w-8 h-8 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600">
