@@ -146,6 +146,11 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
             accountId: lencoSubaccountId,
             email: 'customer@example.com',
             name: personName || 'MoneyWise User',
+            description: purpose || 'Wallet Deposit',
+            narration: purpose || 'Wallet Deposit',
+            meta: {
+                purpose: purpose || 'Wallet Deposit'
+            },
             channels: ['card', 'mobile-money'],
             onSuccess: async (response: any) => {
                 console.log('Payment window success reported', response);

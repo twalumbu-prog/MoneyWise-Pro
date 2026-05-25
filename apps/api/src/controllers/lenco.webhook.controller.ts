@@ -68,7 +68,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         return false;
     }
 
-    const { reference, amount, currency } = data;
+    const { reference, amount, currency, narration, description, meta, metadata } = data;
     const accountId = data.accountId || data.account_id;
     
     let organizationId = forcedOrganizationId;
@@ -196,13 +196,17 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             
             console.log(`[Lenco Webhook] Meta-data updated for change return. Skipping ledger entry for pure netting.`);
         } else {
-            const formattedAmount = parseFloat(amount).toLocaleString(undefined, { minimumFractionDigits: 2 });
-            const narration = `A deposit of K${formattedAmount} has been successfully deposited to the MoneyWise Wallet. Reference: ${reference || 'N/A'}`;
+            // Extract the actual purpose from the webhook payload if available
+            let actualNarration = narration || description || meta?.purpose || metadata?.purpose;
+            
+            if (!actualNarration) {
+                actualNarration = `Wallet Deposit - Ref: ${reference || 'N/A'}`;
+            }
             
             // 1. Log the Gross Inflow
             await cashbookService.createEntry(organizationId, {
                 date: new Date().toISOString().split('T')[0],
-                description: narration,
+                description: actualNarration,
                 debit: parseFloat(amount),
                 credit: 0,
                 entry_type: 'INFLOW',
@@ -212,7 +216,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
             // 2. Log the 1% Transaction Charge
             const feeAmount = parseFloat(amount) * 0.01;
-            const feeDescription = `Transaction Fee (1%) for Wallet Deposit - Ref: ${reference || 'N/A'}`;
+            const feeDescription = `MoneyWise Transaction Fee`;
             
             await cashbookService.createEntry(organizationId, {
                 date: new Date().toISOString().split('T')[0],
