@@ -1330,12 +1330,6 @@ export const Reporting: React.FC = () => {
                                                     <div className="text-sm font-bold text-gray-900">
                                                         +K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                                                     </div>
-                                                    <div className={`flex items-center justify-end text-[10px] font-bold mt-1 ${
-                                                        change.isIncrease ? 'text-red-500' : 'text-emerald-500'
-                                                    }`}>
-                                                        {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
-                                                        {change.value}%
-                                                    </div>
                                                 </div>
                                             </div>
 
@@ -1352,9 +1346,12 @@ export const Reporting: React.FC = () => {
                                                 <div>
                                                     {groupData.totals.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {groupData.totals.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </div>
-                                                <span className="text-[#006AFF] font-black text-[11px]">
-                                                    {Math.round(progressPercent)}%
-                                                </span>
+                                                <div className={`flex items-center text-[11px] font-bold ${
+                                                    change.isIncrease ? 'text-red-500' : 'text-emerald-500'
+                                                }`}>
+                                                    {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
+                                                    {change.value}%
+                                                </div>
                                             </div>
                                         </div>
 
@@ -1466,12 +1463,6 @@ export const Reporting: React.FC = () => {
                                                     <div className="text-sm font-bold text-gray-900">
                                                         +K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                                                     </div>
-                                                    <div className={`flex items-center justify-end text-[10px] font-bold mt-1 ${
-                                                        change.isIncrease ? 'text-red-500' : 'text-emerald-500'
-                                                    }`}>
-                                                        {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
-                                                        {change.value}%
-                                                    </div>
                                                 </div>
                                             </div>
 
@@ -1488,9 +1479,12 @@ export const Reporting: React.FC = () => {
                                                 <div>
                                                     {row.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {row.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                 </div>
-                                                <span className="text-[#006AFF] font-black text-[11px]">
-                                                    {Math.round(progressPercent)}%
-                                                </span>
+                                                <div className={`flex items-center text-[11px] font-bold ${
+                                                    change.isIncrease ? 'text-red-500' : 'text-emerald-500'
+                                                }`}>
+                                                    {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
+                                                    {change.value}%
+                                                </div>
                                             </div>
                                         </div>
 
