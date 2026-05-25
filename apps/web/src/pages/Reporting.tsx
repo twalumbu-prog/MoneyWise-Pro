@@ -6,6 +6,7 @@ import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
 import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, ChevronDown, ChevronUp, Loader2, DollarSign, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import budgetBg from '../assets/Frame 24.png';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
 type ModeType = 'EXPENSE' | 'CASH_OUTFLOW';
@@ -1028,8 +1029,15 @@ export const Reporting: React.FC = () => {
 
             {/* Mobile Responsive View */}
             <div className="md:hidden flex flex-col min-h-screen bg-white pb-28 pt-2">
-                {/* Total Expenditure Gradient Summary Card */}
-                <div className="mx-6 mb-6 rounded-[28px] bg-gradient-to-br from-[#061C3F] via-[#083063] to-[#0A4787] p-6 text-white shadow-lg relative overflow-hidden">
+                {/* Total Expenditure Summary Card */}
+                <div
+                    className="mx-6 mb-6 rounded-[28px] p-6 text-white shadow-lg relative overflow-hidden"
+                    style={{
+                        backgroundImage: `url(${budgetBg})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                    }}
+                >
                     <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
                         Total {mode === 'EXPENSE' ? 'Expenses' : 'Outflows'}
                     </p>
