@@ -21,6 +21,7 @@ import { Join } from './pages/Join';
 import { Audit } from './pages/Audit';
 import { Menu } from './pages/Menu';
 import { Loader2 } from 'lucide-react';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { session, loading, userStatus, signOut } = useAuth();
@@ -193,6 +194,7 @@ function App() {
                         }
                     />
                 </Routes>
+                <PWAInstallPrompt />
             </Router>
         </AuthProvider>
     );
