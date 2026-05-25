@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FileText, Settings, LogOut, Wallet, Menu, X, BarChart3, PieChart, ShieldCheck } from 'lucide-react';
+import { Settings, LogOut, Menu, BarChart3, Navigation, Inbox, Sparkles, User } from 'lucide-react';
 import { TopNavbar } from './TopNavbar';
 import { SubNavbar } from './SubNavbar';
 
@@ -9,18 +9,38 @@ interface LayoutProps {
     children: React.ReactNode;
     backgroundColor?: string;
     noPadding?: boolean;
+    title?: string;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F8F9FA]', noPadding = false }) => {
-    const { user, userRole, signOut, organizationName, notificationCounts } = useAuth();
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title }) => {
+    const { user, userRole, signOut } = useAuth();
+    const [isProfileOpen, setIsProfileOpen] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
 
     const handleSignOut = async () => {
         await signOut();
+        navigate('/login');
     };
 
     const isRequestor = userRole === 'REQUESTOR';
+
+    const getPageTitle = () => {
+        if (title) return title;
+        const path = location.pathname;
+        if (path === '/' || path === '/requisitions') return 'Inbox';
+        if (path === '/cashbook') return 'Wallet';
+        if (path === '/reporting') return 'Budgets & Reporting';
+        if (path === '/intelligence') return 'Business Intelligence';
+        if (path === '/audit') return 'Audit';
+        if (path === '/settings') return 'Settings';
+        if (path === '/menu') return 'Menu';
+        if (path === '/requisitions/new') return 'New Request';
+        if (path === '/approvals') return 'Approvals';
+        if (path === '/disbursements') return 'Disbursements';
+        if (path.startsWith('/vouchers')) return 'Vouchers';
+        return 'MoneyWise';
+    };
 
     return (
         <div className={`min-h-screen ${backgroundColor} flex flex-col font-sans`}>
@@ -31,113 +51,95 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             </div>
 
             {/* Mobile Header */}
-            <div className="md:hidden">
-                <div className="bg-white px-6 py-4 flex items-center justify-between sticky top-0 z-20 border-b border-gray-100">
-                    <div>
-                        <div className="flex items-center space-x-1">
-                            <span className="text-[20px] font-bold text-brand-navy tracking-tight">MoneyWise</span>
-                            <span className="text-[20px] font-bold text-[#006AFF] tracking-tight">Pro</span>
-                        </div>
-                        <p className="text-[12px] text-gray-400 font-medium tracking-tight mt-0.5">
-                            {organizationName || 'Financial Control'}
-                        </p>
-                    </div>
+            <div className="md:hidden sticky top-0 z-20">
+                <div className="bg-[#F5FAFF] px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80">
+                    <h1 className="text-[28px] font-black text-brand-navy tracking-tight">
+                        {getPageTitle()}
+                    </h1>
                     <button
-                        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                        className="text-brand-navy p-1 transition-colors"
+                        onClick={() => setIsProfileOpen(!isProfileOpen)}
+                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm active:scale-95 transition-all"
                     >
-                        {isMobileMenuOpen ? (
-                            <X className="h-7 w-7" />
-                        ) : (
-                            <Menu className="h-7 w-7" />
-                        )}
+                        <User size={20} />
                     </button>
                 </div>
 
-                {/* Full Screen Mobile Menu Overlay */}
-                <div 
-                    className={`fixed inset-0 z-[100] bg-white transform transition-transform duration-500 ease-in-out md:hidden ${
-                        isMobileMenuOpen ? 'translate-x-0' : 'translate-x-full'
-                    }`}
-                >
-                    <div className="flex flex-col h-full">
-                        {/* Menu Header */}
-                        <div className="p-6 flex items-center justify-between border-b border-gray-50">
-                            <div>
-                                <div className="flex items-center space-x-1">
-                                    <span className="text-[20px] font-bold text-brand-navy tracking-tight">MoneyWise</span>
-                                    <span className="text-[20px] font-bold text-[#006AFF] tracking-tight">Pro</span>
-                                </div>
-                                <p className="text-[12px] text-gray-400 font-medium tracking-tight mt-0.5">
-                                    {organizationName || 'Financial Control'}
-                                </p>
-                            </div>
-                            <button onClick={() => setIsMobileMenuOpen(false)} className="text-brand-navy">
-                                <X className="h-7 w-7" />
-                            </button>
-                        </div>
-
-                        {/* Menu Items */}
-                        <nav className="flex-1 overflow-y-auto py-8 px-6 space-y-2">
-                            {[
-                                { path: '/requisitions', icon: FileText, label: 'Inbox', count: notificationCounts?.requisitions },
-                                { path: '/cashbook', icon: Wallet, label: 'Cash Ledger' },
-                                { path: '/reporting', icon: BarChart3, label: 'Budgets & Reporting' },
-                                { path: '/intelligence', icon: PieChart, label: 'Business Intelligence' },
-                                { path: '/audit', icon: ShieldCheck, label: 'Audit' },
-                                { path: '/settings', icon: Settings, label: 'Settings', count: notificationCounts?.settings },
-                            ].map((item) => (
-                                <Link
-                                    key={item.path}
-                                    to={item.path}
-                                    onClick={() => setIsMobileMenuOpen(false)}
-                                    className={`flex items-center px-5 py-4 rounded-2xl transition-all group font-bold text-base ${
-                                        location.pathname === item.path
-                                        ? 'bg-[#F0F7FF] text-[#006AFF]'
-                                        : 'text-gray-600 active:bg-gray-50'
-                                    }`}
-                                >
-                                    <span className="flex-1">{item.label}</span>
-                                    {item.count ? (
-                                        <div className="px-2.5 py-0.5 rounded-full bg-[#006AFF] text-white text-[10px] font-black">
-                                            {item.count}
-                                        </div>
-                                    ) : null}
-                                </Link>
-                            ))}
-                        </nav>
-
-                        {/* Menu Footer */}
-                        <div className="p-8 border-t border-gray-50">
-                            <div className="mb-8">
-                                <p className="text-base font-bold text-brand-navy truncate">
-                                    {user?.email}
-                                </p>
+                {/* Profile Overlay */}
+                {isProfileOpen && (
+                    <>
+                        <div 
+                            className="fixed inset-0 z-[150] bg-brand-navy/20 backdrop-blur-xs transition-opacity" 
+                            onClick={() => setIsProfileOpen(false)} 
+                        />
+                        <div className="fixed top-18 right-6 z-[160] w-64 bg-white rounded-3xl shadow-xl border border-gray-100 p-5 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="pb-3 border-b border-gray-50 mb-3">
+                                <p className="text-sm font-black text-brand-navy truncate">{user?.email}</p>
                                 <div className="flex items-center mt-1">
-                                    <div className="h-2 w-2 rounded-full bg-brand-green mr-2"></div>
-                                    <p className="text-[12px] text-gray-400 font-bold uppercase tracking-widest">
+                                    <div className="h-1.5 w-1.5 rounded-full bg-brand-green mr-1.5"></div>
+                                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
                                         {userRole}
                                     </p>
                                 </div>
                             </div>
                             <button
-                                onClick={handleSignOut}
-                                className="flex items-center w-full px-6 py-4 text-base font-bold text-red-500 bg-red-50 rounded-2xl active:bg-red-100 transition-all"
+                                onClick={() => {
+                                    setIsProfileOpen(false);
+                                    navigate('/settings');
+                                }}
+                                className="w-full flex items-center text-left py-2.5 text-xs font-bold text-gray-600 hover:text-brand-navy active:bg-gray-50 rounded-xl transition-all"
                             >
-                                <LogOut className="h-5 w-5 mr-4" />
+                                <Settings size={14} className="mr-2.5 text-gray-400" />
+                                Settings
+                            </button>
+                            <button
+                                onClick={async () => {
+                                    setIsProfileOpen(false);
+                                    await handleSignOut();
+                                }}
+                                className="w-full flex items-center text-left py-2.5 text-xs font-bold text-red-500 hover:text-red-600 active:bg-red-50 rounded-xl transition-all mt-1"
+                            >
+                                <LogOut size={14} className="mr-2.5 text-red-400" />
                                 Sign Out
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </>
+                )}
             </div>
 
             {/* Main Content Area */}
-            <main className={`flex-1 overflow-x-hidden overflow-y-auto ${isRequestor ? 'h-screen' : 'h-[calc(100vh-60px)] md:h-screen'}`}>
+            <main className={`flex-1 overflow-x-hidden overflow-y-auto pb-24 md:pb-0 ${isRequestor ? 'h-screen' : 'h-[calc(100vh-60px)] md:h-screen'}`}>
                 <div className={noPadding ? 'w-full h-full' : 'max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8'}>
                     {children}
                 </div>
             </main>
+
+            {/* Mobile Bottom Navigation Bar */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+                {[
+                    { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
+                    { path: '/cashbook', icon: Inbox, label: 'Wallet', isActive: (p: string) => p === '/cashbook' },
+                    { path: '/intelligence', icon: Sparkles, label: 'BI', isActive: (p: string) => p === '/intelligence' },
+                    { path: '/reporting', icon: BarChart3, label: 'Reporting', isActive: (p: string) => p === '/reporting' },
+                    { path: '/menu', icon: Menu, label: 'Menu', isActive: (p: string) => ['/menu', '/settings', '/audit', '/approvals', '/disbursements'].some(prefix => p.startsWith(prefix)) || p.startsWith('/vouchers') }
+                ].map((tab, idx) => {
+                    const TabIcon = tab.icon;
+                    const active = tab.isActive(location.pathname);
+                    return (
+                        <Link
+                            key={idx}
+                            to={tab.path}
+                            className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
+                                active 
+                                    ? 'bg-[#F0F7FF] text-[#006AFF]' 
+                                    : 'text-gray-400 hover:text-gray-500 active:scale-95'
+                            }`}
+                            aria-label={tab.label}
+                        >
+                            <TabIcon size={22} className={active ? "fill-[#006AFF]/10" : ""} />
+                        </Link>
+                    );
+                })}
+            </div>
         </div>
     );
 };

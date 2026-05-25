@@ -9,8 +9,9 @@ import RequisitionModal from '../components/requisitions/RequisitionModal';
 import { MobileRequisitionWizard } from '../components/requisitions/MobileRequisitionWizard';
 import { MobileStaffLoanWizard } from '../components/requisitions/MobileStaffLoanWizard';
 import { MobileSalaryAdvanceWizard } from '../components/requisitions/MobileSalaryAdvanceWizard';
+import { MobilePayrollWizard } from '../components/requisitions/MobilePayrollWizard';
 import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ChevronRight } from 'lucide-react';
+import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, Filter } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 
 interface Requisition {
@@ -55,6 +56,32 @@ export const RequisitionList: React.FC = () => {
     const [isRequisitionWizardOpen, setIsRequisitionWizardOpen] = useState(false);
     const [isStaffLoanWizardOpen, setIsStaffLoanWizardOpen] = useState(false);
     const [isSalaryAdvanceWizardOpen, setIsSalaryAdvanceWizardOpen] = useState(false);
+    const [isPayrollWizardOpen, setIsPayrollWizardOpen] = useState(false);
+
+    // Mobile filter/sort states
+    const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+    const [filterRead, setFilterRead] = useState<'ALL' | 'READ' | 'UNREAD'>('ALL');
+    const [filterDepartment, setFilterDepartment] = useState('ALL');
+    const [filterStartDate, setFilterStartDate] = useState('');
+    const [filterEndDate, setFilterEndDate] = useState('');
+    const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+
+    // Temp state for bottom sheet filters
+    const [tempStatus, setTempStatus] = useState('ALL');
+    const [tempRead, setTempRead] = useState<'ALL' | 'READ' | 'UNREAD'>('ALL');
+    const [tempDepartment, setTempDepartment] = useState('ALL');
+    const [tempStartDate, setTempStartDate] = useState('');
+    const [tempEndDate, setTempEndDate] = useState('');
+
+    useEffect(() => {
+        if (isFilterSheetOpen) {
+            setTempStatus(activeTab);
+            setTempRead(filterRead);
+            setTempDepartment(filterDepartment);
+            setTempStartDate(filterStartDate);
+            setTempEndDate(filterEndDate);
+        }
+    }, [isFilterSheetOpen]);
 
     useEffect(() => {
         if (searchParams.get('new') === 'true') {
@@ -103,8 +130,19 @@ export const RequisitionList: React.FC = () => {
 
 
 
-    // Determine completed statuses (for filtering active requisitions)
-    
+    const uniqueDepartments = React.useMemo(() => {
+        const depts = new Set<string>();
+        requisitions.forEach(req => {
+            if (req.department) {
+                depts.add(req.department);
+            }
+        });
+        const arr = Array.from(depts);
+        if (arr.length === 0) {
+            return ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
+        }
+        return arr.sort();
+    }, [requisitions]);
 
     const filteredRequisitions = requisitions.filter(req => {
         // Apply search filter
@@ -124,6 +162,27 @@ export const RequisitionList: React.FC = () => {
             if (config.tab !== activeTab) return false;
         }
 
+        // Apply read/unread filter
+        if (filterRead === 'UNREAD' && !req.has_unread_updates) return false;
+        if (filterRead === 'READ' && req.has_unread_updates) return false;
+
+        // Apply department filter
+        if (filterDepartment !== 'ALL') {
+            if ((req.department || 'General').toLowerCase() !== filterDepartment.toLowerCase()) return false;
+        }
+
+        // Apply date range filter
+        if (filterStartDate) {
+            const reqDate = new Date(req.created_at);
+            const startDate = new Date(filterStartDate + 'T00:00:00');
+            if (reqDate < startDate) return false;
+        }
+        if (filterEndDate) {
+            const reqDate = new Date(req.created_at);
+            const endDate = new Date(filterEndDate + 'T23:59:59');
+            if (reqDate > endDate) return false;
+        }
+
         // For requestors in active view, exclude completed requisitions
         if (isRequestor && currentView === 'active' && COMPLETED_STATUSES.includes(req.status)) {
             return false;
@@ -131,6 +190,58 @@ export const RequisitionList: React.FC = () => {
 
         return true;
     });
+
+    const sortedRequisitions = React.useMemo(() => {
+        return [...filteredRequisitions].sort((a, b) => {
+            const dateA = new Date(a.created_at).getTime();
+            const dateB = new Date(b.created_at).getTime();
+            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+        });
+    }, [filteredRequisitions, sortOrder]);
+
+    interface DateGroup {
+        dateLabel: string;
+        dateKey: string;
+        requisitions: Requisition[];
+    }
+
+    const groupRequisitionsByDate = (reqs: Requisition[]): DateGroup[] => {
+        const groupsMap: { [key: string]: Requisition[] } = {};
+        reqs.forEach(req => {
+            const dateObj = new Date(req.created_at);
+            const yyyy = dateObj.getFullYear();
+            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const dd = String(dateObj.getDate()).padStart(2, '0');
+            const dateKey = `${yyyy}-${mm}-${dd}`;
+            
+            if (!groupsMap[dateKey]) {
+                groupsMap[dateKey] = [];
+            }
+            groupsMap[dateKey].push(req);
+        });
+
+        const sortedKeys = Object.keys(groupsMap).sort((a, b) => {
+            return sortOrder === 'desc' 
+                ? b.localeCompare(a) 
+                : a.localeCompare(b);
+        });
+
+        return sortedKeys.map(key => {
+            const firstReq = groupsMap[key][0];
+            const dateObj = new Date(firstReq.created_at);
+            const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const year = dateObj.getFullYear();
+            const dateLabel = `${dayName} - ${day}/${month}/${year}`;
+            
+            return {
+                dateLabel,
+                dateKey: key,
+                requisitions: groupsMap[key]
+            };
+        });
+    };
 
     return (
         <>
@@ -225,52 +336,38 @@ export const RequisitionList: React.FC = () => {
                                 })}
                             </div>
 
-                            {/* Mobile Navigation (Headers & Tabs) */}
-                            <div className="md:hidden">
-                                {/* View Switcher - Restored in minimalist style */}
-                                <div className="px-6 pt-5 pb-3">
-                                    <div className="flex items-center">
-                                        <button 
-                                            onClick={() => setViewMode('inbox')}
-                                            className={`mr-8 text-lg font-bold transition-all ${viewMode === 'inbox' ? 'text-brand-navy' : 'text-gray-300'}`}
-                                        >
-                                            Requisition Inbox
-                                        </button>
-                                        <button 
-                                            onClick={() => setViewMode('scheduled')}
-                                            className={`text-lg font-bold transition-all ${viewMode === 'scheduled' ? 'text-brand-navy' : 'text-gray-300'}`}
-                                        >
-                                            Scheduled
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Filter Sub-Tabs (Scrollable) - White Background */}
-                                <div className="bg-white py-4 border-b border-gray-50 mt-3">
-                                    <div className="flex items-center space-x-2 px-6 overflow-x-auto no-scrollbar">
-                                        {TABS.map((tab) => {
-                                            const count = getTabCount(tab.value);
-                                            return (
-                                                <button
-                                                    key={tab.value}
-                                                    onClick={() => setActiveTab(tab.value)}
-                                                    className={`px-6 py-2 rounded-full text-[13px] transition-all whitespace-nowrap border flex items-center
-                                                        ${activeTab === tab.value 
-                                                            ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/20 font-bold' 
-                                                            : 'text-gray-400 hover:text-gray-600 border-transparent bg-transparent font-normal'}`}
-                                                >
-                                                    <span>{tab.label}</span>
-                                                    {count > 0 && (
-                                                        <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[9px] font-black min-w-[16px] text-center ${
-                                                            activeTab === tab.value ? 'bg-[#006AFF] text-white' : 'bg-gray-100 text-gray-400'
-                                                        }`}>
-                                                            {count}
-                                                        </span>
-                                                    )}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
+                            {/* Mobile Search & Sort/Filter Bar */}
+                            <div className="md:hidden px-6 pt-2 pb-4">
+                                <div className="flex items-center bg-white border border-gray-100 rounded-full px-4 py-3 shadow-sm">
+                                    <Search className="text-gray-400 mr-2 flex-shrink-0" size={18} />
+                                    <input 
+                                        type="text"
+                                        placeholder="Search..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="flex-1 bg-transparent border-none outline-none text-sm text-brand-navy placeholder:text-gray-400 font-bold"
+                                    />
+                                    <div className="w-[1px] h-6 bg-gray-100 mx-2 flex-shrink-0" />
+                                    <button 
+                                        onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                                        className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ${
+                                            sortOrder !== 'desc' ? 'bg-[#F0F7FF] text-[#006AFF]' : 'text-gray-400 hover:text-brand-navy'
+                                        }`}
+                                        title="Sort by Date"
+                                    >
+                                        <ArrowUpDown size={18} />
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsFilterSheetOpen(true)}
+                                        className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ml-1 ${
+                                            activeTab !== 'ALL' || filterRead !== 'ALL' || filterDepartment !== 'ALL' || filterStartDate || filterEndDate
+                                                ? 'bg-[#F0F7FF] text-[#006AFF]' 
+                                                : 'text-gray-400 hover:text-brand-navy'
+                                        }`}
+                                        title="Filters"
+                                    >
+                                        <Filter size={18} />
+                                    </button>
                                 </div>
                             </div>
                         </>
@@ -294,7 +391,7 @@ export const RequisitionList: React.FC = () => {
                         </div>
                     )}
 
-                    {!loading && !error && filteredRequisitions.length === 0 && (
+                    {!loading && !error && sortedRequisitions.length === 0 && (
                         <div className="bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
                             <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
                                 <FileText className="h-10 w-10 text-gray-200" />
@@ -304,95 +401,83 @@ export const RequisitionList: React.FC = () => {
                         </div>
                     )}
 
-                    {!loading && !error && filteredRequisitions.length > 0 && (
+                    {!loading && !error && sortedRequisitions.length > 0 && (
                         <>
                             {/* Mobile Card View (Unified Component Styling) */}
-                            <div className="md:hidden">
-                                {filteredRequisitions.map((req, index) => {
-                                    const statusConfig = getStatusConfig(req.status);
-                                    
-                                    const getStatusIcon = (status: string) => {
-                                        const config = getStatusConfig(status);
-                                        switch (config.iconType) {
-                                            case 'clock': return <Clock size={14} className="text-blue-500" />;
-                                            case 'check-circle': return <CheckCircle2 size={14} className="text-[#006AFF]" />;
-                                            case 'check': return <Check size={14} className="text-emerald-500" />;
-                                            case 'alert': return <AlertCircle size={14} className="text-red-500" />;
-                                            case 'rotate': return <RotateCcw size={14} className="text-gray-400" />;
-                                            default: return <Clock size={14} className="text-gray-400" />;
-                                        }
-                                    };
-
-                                    return (
-                                        <div key={req.id} className="bg-white">
-                                            <div 
-                                                className="px-6 py-7 active:bg-gray-50 transition-colors cursor-pointer" 
-                                                onClick={async () => {
-                                                    try {
-                                                        const fullReq = await requisitionService.getById(req.id);
-                                                        setSelectedRequisition(fullReq);
-                                                        if (req.has_unread_updates) {
-                                                            setRequisitions(prev => prev.map(r => r.id === req.id ? { ...r, has_unread_updates: false } : r));
-                                                            requisitionService.markRead(req.id).then(() => refreshNotifications()).catch(console.error);
-                                                        }
-                                                    } catch (err) {
-                                                        console.error('Failed to fetch requisition details:', err);
-                                                        setSelectedRequisition(req as any);
+                            <div className="md:hidden space-y-6 px-6">
+                                {groupRequisitionsByDate(sortedRequisitions).map((group) => (
+                                    <div key={group.dateKey} className="space-y-3">
+                                        <h4 className="text-[12px] font-bold text-[#7C8FA2] px-1">
+                                            {group.dateLabel}
+                                        </h4>
+                                        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                                            {group.requisitions.map((req) => {
+                                                const statusConfig = getStatusConfig(req.status);
+                                                
+                                                const getStatusIcon = (status: string) => {
+                                                    const config = getStatusConfig(status);
+                                                    switch (config.iconType) {
+                                                        case 'clock': return <Clock size={13} className="text-blue-500" />;
+                                                        case 'check-circle': return <CheckCircle2 size={13} className="text-[#006AFF]" />;
+                                                        case 'check': return <Check size={13} className="text-emerald-500" />;
+                                                        case 'alert': return <AlertCircle size={13} className="text-red-500" />;
+                                                        case 'rotate': return <RotateCcw size={13} className="text-gray-400" />;
+                                                        default: return <Clock size={13} className="text-gray-400" />;
                                                     }
-                                                }}
-                                            >
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex items-start flex-1 mr-4">
-                                                        <div className="flex flex-col">
-                                                            <h3 className="font-normal text-[15px] text-brand-navy leading-tight line-clamp-1 mb-1.5">
+                                                };
+
+                                                return (
+                                                    <div 
+                                                        key={req.id} 
+                                                        className="p-5 active:bg-gray-50 transition-colors cursor-pointer"
+                                                        onClick={async () => {
+                                                            try {
+                                                                const fullReq = await requisitionService.getById(req.id);
+                                                                setSelectedRequisition(fullReq);
+                                                                if (req.has_unread_updates) {
+                                                                    setRequisitions(prev => prev.map(r => r.id === req.id ? { ...r, has_unread_updates: false } : r));
+                                                                    requisitionService.markRead(req.id).then(() => refreshNotifications()).catch(console.error);
+                                                                }
+                                                            } catch (err) {
+                                                                console.error('Failed to fetch requisition details:', err);
+                                                                setSelectedRequisition(req as any);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <div className="text-[11px] font-bold text-gray-400 mb-1.5">
+                                                            {req.requestor_name || 'System User'}
+                                                        </div>
+                                                        <div className="flex justify-between items-start gap-4 mb-2">
+                                                            <h3 className="font-normal text-[15px] text-brand-navy leading-tight line-clamp-2">
                                                                 {req.description}
                                                             </h3>
-                                                            <div className="flex items-center flex-wrap gap-2">
-                                                                {/* Requestor Name - All Caps Grey (Regular Weight) */}
-                                                                <span className="text-[10px] font-normal text-gray-400 uppercase tracking-tight">
-                                                                    BY {req.requestor_name || 'SYSTEM USER'}
-                                                                </span>
-                                                                
-                                                                {/* Status Pill */}
-                                                                <div className="flex items-center gap-1">
-                                                                    {getStatusIcon(req.status)}
-                                                                    <span className="text-[9px] font-black text-brand-navy uppercase tracking-widest">
-                                                                        {statusConfig.label}
-                                                                    </span>
-                                                                </div>
+                                                            <div className="font-normal text-[15px] text-brand-navy tracking-tight whitespace-nowrap text-right">
+                                                                K{req.estimated_total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                             </div>
                                                         </div>
-                                                    </div>
-
-                                                    <div className="text-right flex flex-col items-end">
-                                                        <div className="font-normal text-[15px] text-brand-navy tracking-tight leading-none mb-1">
-                                                            K{req.estimated_total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        </div>
-                                                        <div className="text-[11px] text-gray-400 font-normal tracking-tight">
-                                                            {new Date(req.created_at).toLocaleDateString('en-GB')}
+                                                        <div className="flex items-center gap-1.5">
+                                                            {getStatusIcon(req.status)}
+                                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                                                {statusConfig.label}
+                                                            </span>
                                                         </div>
                                                     </div>
-                                                    <ChevronRight size={14} className="text-gray-300 ml-2 mt-1 flex-shrink-0" strokeWidth={2.5} />
-                                                </div>
-                                            </div>
-                                            {/* Inset Divider (matching content padding) */}
-                                            {index < filteredRequisitions.length - 1 && (
-                                                <div className="mx-6 h-[1px] bg-gray-100" />
-                                            )}
+                                                );
+                                            })}
                                         </div>
-                                    );
-                                })}
+                                    </div>
+                                ))}
                             </div>
 
                             {/* Desktop View (Overhauled Inbox) */}
                             <div className="hidden md:block">
                                 <RequisitionInbox 
-                                    requisitions={filteredRequisitions} 
+                                    requisitions={sortedRequisitions} 
                                     onRowClick={async (id) => {
                                         try {
                                             const fullReq = await requisitionService.getById(id);
                                             setSelectedRequisition(fullReq);
-                                            const clickedReq = filteredRequisitions.find(r => r.id === id);
+                                            const clickedReq = sortedRequisitions.find(r => r.id === id);
                                             if (clickedReq?.has_unread_updates) {
                                                 setRequisitions(prev => prev.map(r => r.id === id ? { ...r, has_unread_updates: false } : r));
                                                 requisitionService.markRead(id).then(() => refreshNotifications()).catch(console.error);
@@ -427,7 +512,7 @@ export const RequisitionList: React.FC = () => {
             <div className="md:hidden">
                 {/* Backdrop */}
                 <div
-                    className={`fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-[150] transition-opacity duration-300 ${isNewRequisitionOpen && !isRequisitionWizardOpen && !isStaffLoanWizardOpen && !isSalaryAdvanceWizardOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                    className={`fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-[150] transition-opacity duration-300 ${isNewRequisitionOpen && !isRequisitionWizardOpen && !isStaffLoanWizardOpen && !isSalaryAdvanceWizardOpen && !isPayrollWizardOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     onClick={() => setIsNewRequisitionOpen(false)}
                 />
 
@@ -500,6 +585,162 @@ export const RequisitionList: React.FC = () => {
                                 <div className="text-xs text-blue-600/70 font-medium">Long-term loan with fixed 15% interest</div>
                             </div>
                         </button>
+
+                        <button
+                            onClick={() => {
+                                setIsNewRequisitionOpen(false);
+                                setIsPayrollWizardOpen(true);
+                            }}
+                            className="w-full flex items-center p-4 text-left bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100/30 rounded-2xl transition-all group active:scale-[0.98]"
+                        >
+                            <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
+                                <FileText className="h-6 w-6 text-indigo-650" />
+                            </div>
+                            <div>
+                                <div className="font-bold text-gray-900 text-base">New Payroll Requisition</div>
+                                <div className="text-xs text-indigo-600/70 font-medium">Batch processing via spreadsheet upload</div>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Filter Bottom Sheet */}
+                <div
+                    className={`fixed inset-0 bg-brand-navy/60 backdrop-blur-xs z-[200] transition-opacity duration-300 ${isFilterSheetOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                    onClick={() => setIsFilterSheetOpen(false)}
+                />
+                <div
+                    className={`fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl z-[210] transition-transform duration-500 ease-out flex flex-col max-h-[90vh] ${isFilterSheetOpen ? 'translate-y-0' : 'translate-y-full'}`}
+                >
+                    <div className="flex justify-center pt-3 pb-1">
+                        <div className="w-12 h-1.5 bg-gray-200 rounded-full" />
+                    </div>
+                    <div className="px-6 py-4 flex items-center justify-between border-b border-gray-50">
+                        <h2 className="text-xl font-bold text-brand-navy">Filters</h2>
+                        <button
+                            onClick={() => setIsFilterSheetOpen(false)}
+                            className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"
+                        >
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="p-6 space-y-6 overflow-y-auto pb-28">
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Status</label>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { label: 'All', value: 'ALL' },
+                                    { label: 'Draft', value: 'DRAFT' },
+                                    { label: 'Awaiting Approval', value: 'PENDING_APPROVAL' },
+                                    { label: 'Reviewed / Authorised', value: 'REVIEWED' },
+                                    { label: 'Disbursed', value: 'DISBURSED' },
+                                    { label: 'Returned', value: 'CHANGE_SUBMITTED' },
+                                    { label: 'Completed', value: 'COMPLETED' },
+                                ].map(status => (
+                                    <button
+                                        key={status.value}
+                                        onClick={() => setTempStatus(status.value)}
+                                        className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${
+                                            tempStatus === status.value
+                                                ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
+                                                : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {status.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Updates</label>
+                            <div className="flex gap-2">
+                                {[
+                                    { label: 'All', value: 'ALL' },
+                                    { label: 'Unread Only', value: 'UNREAD' },
+                                    { label: 'Read Only', value: 'READ' }
+                                ].map(option => (
+                                    <button
+                                        key={option.value}
+                                        onClick={() => setTempRead(option.value as any)}
+                                        className={`flex-1 py-2.5 rounded-2xl text-xs font-bold transition-all border text-center ${
+                                            tempRead === option.value
+                                                ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
+                                                : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {option.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Department</label>
+                            <div className="flex flex-wrap gap-2">
+                                {['ALL', ...uniqueDepartments].map(dept => (
+                                    <button
+                                        key={dept}
+                                        onClick={() => setTempDepartment(dept)}
+                                        className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${
+                                            tempDepartment === dept
+                                                ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
+                                                : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
+                                        }`}
+                                    >
+                                        {dept === 'ALL' ? 'All Departments' : dept}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Date Range</label>
+                            <div className="flex items-center gap-3">
+                                <div className="flex-1">
+                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">Start Date</span>
+                                    <input
+                                        type="date"
+                                        value={tempStartDate}
+                                        onChange={(e) => setTempStartDate(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm text-brand-navy font-bold focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                    />
+                                </div>
+                                <div className="flex-1">
+                                    <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block mb-1">End Date</span>
+                                    <input
+                                        type="date"
+                                        value={tempEndDate}
+                                        onChange={(e) => setTempEndDate(e.target.value)}
+                                        className="w-full bg-gray-50 border border-gray-100 rounded-2xl px-4 py-3 text-sm text-brand-navy font-bold focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div className="p-5 border-t border-gray-50 bg-white flex items-center gap-3 absolute bottom-0 left-0 right-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+                        <button
+                            onClick={() => {
+                                setTempStatus('ALL');
+                                setTempRead('ALL');
+                                setTempDepartment('ALL');
+                                setTempStartDate('');
+                                setTempEndDate('');
+                            }}
+                            className="px-6 py-4 bg-gray-50 text-gray-500 font-bold rounded-2xl hover:bg-gray-100 active:scale-95 transition-all text-sm"
+                        >
+                            Reset
+                        </button>
+                        <button
+                            onClick={() => {
+                                setActiveTab(tempStatus);
+                                setFilterRead(tempRead);
+                                setFilterDepartment(tempDepartment);
+                                setFilterStartDate(tempStartDate);
+                                setFilterEndDate(tempEndDate);
+                                setIsFilterSheetOpen(false);
+                            }}
+                            className="flex-1 py-4 bg-[#006AFF] hover:bg-blue-600 text-white font-bold rounded-2xl active:scale-[0.98] transition-all text-sm text-center shadow-md shadow-blue-100"
+                        >
+                            Apply Filters
+                        </button>
                     </div>
                 </div>
 
@@ -519,15 +760,19 @@ export const RequisitionList: React.FC = () => {
                     onClose={() => setIsSalaryAdvanceWizardOpen(false)}
                     onSuccess={loadRequisitions}
                 />
+                <MobilePayrollWizard
+                    isOpen={isPayrollWizardOpen}
+                    onClose={() => setIsPayrollWizardOpen(false)}
+                    onSuccess={loadRequisitions}
+                />
 
-                {/* Floating Action Button (FAB) */}
                 <div 
-                    className={`fixed bottom-8 right-6 z-[140] flex items-center justify-center transition-all duration-300 ${
-                        selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen 
+                    className={`fixed bottom-24 right-6 z-[140] flex items-center justify-center transition-all duration-300 ${
+                        selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen 
                             ? 'opacity-0 pointer-events-none scale-0' 
                             : 'opacity-100 scale-100'
                     }`}
-                    style={{ display: selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen ? 'none' : 'flex' }}
+                    style={{ display: selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen ? 'none' : 'flex' }}
                 >
                     <button
                         onClick={() => setIsNewRequisitionOpen(true)}

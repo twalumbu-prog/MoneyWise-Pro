@@ -19,6 +19,7 @@ import { TermsOfService } from './pages/TermsOfService';
 import { Disconnect } from './pages/Disconnect';
 import { Join } from './pages/Join';
 import { Audit } from './pages/Audit';
+import { Menu } from './pages/Menu';
 import { Loader2 } from 'lucide-react';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
@@ -180,6 +181,14 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <Audit />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/menu"
+                        element={
+                            <ProtectedRoute>
+                                <Menu />
                             </ProtectedRoute>
                         }
                     />
