@@ -31,13 +31,21 @@ async function runTest() {
     console.log(`Using User: ${user.name} (${user.id})`);
     console.log(`Using Org: ${organizationId}`);
 
-    // Ensure org is in payment test mode for simulation
-    await supabase
+    const { data: orgBefore } = await supabase
         .from('organizations')
-        .update({ payment_test_mode: true })
-        .eq('id', organizationId);
+        .select('payment_test_mode')
+        .eq('id', organizationId)
+        .single();
+    const originalTestMode = orgBefore?.payment_test_mode ?? false;
 
-    console.log('✅ Organization set to payment_test_mode = true');
+    try {
+        // Ensure org is in payment test mode for simulation
+        await supabase
+            .from('organizations')
+            .update({ payment_test_mode: true })
+            .eq('id', organizationId);
+
+        console.log('✅ Organization set to payment_test_mode = true');
 
     // 2. Create PAYROLL requisition header
     const { data: requisition, error: reqError } = await supabase
@@ -277,6 +285,13 @@ async function runTest() {
     console.log('='.repeat(60));
     console.log('TEST COMPLETE');
     console.log('='.repeat(60));
+    } finally {
+        await supabase
+            .from('organizations')
+            .update({ payment_test_mode: originalTestMode })
+            .eq('id', organizationId);
+        console.log(`Restored payment_test_mode to ${originalTestMode}`);
+    }
 }
 
 runTest()

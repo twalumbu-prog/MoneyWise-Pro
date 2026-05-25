@@ -674,6 +674,81 @@ export const analyzeDisbursementProof = async (req: any, res: Response) => {
 };
 
 /**
+ * Shared helper to revert a disbursement and cleanup related database records
+ */
+async function revertDisbursementAndCleanup(
+    requisitionId: string,
+    organizationId: string,
+    paymentMethod: string = 'MONEYWISE_WALLET'
+): Promise<void> {
+    console.warn(`[Revert Disbursement] Starting revert and cleanup for requisition: ${requisitionId}`);
+
+    // A. Revert Requisition to AUTHORISED
+    await supabase
+        .from('requisitions')
+        .update({ 
+            status: 'AUTHORISED', 
+            actual_total: null,
+            updated_at: new Date().toISOString() 
+        })
+        .eq('id', requisitionId);
+
+    // B. Delete any disbursement record
+    await supabase
+        .from('disbursements')
+        .delete()
+        .eq('requisition_id', requisitionId);
+
+    // C. Delete cashbook entries and recalculate
+    const { data: ledgerEntry } = await supabase
+        .from('cashbook_entries')
+        .select('date, created_at, account_type')
+        .eq('requisition_id', requisitionId)
+        .maybeSingle();
+
+    if (ledgerEntry) {
+        await supabase.from('cashbook_entries').delete().eq('requisition_id', requisitionId);
+
+        // Recalculate balances starting from the point of deletion
+        await cashbookService.recalculateBalancesFrom(
+            organizationId, 
+            ledgerEntry.date, 
+            ledgerEntry.created_at,
+            ledgerEntry.account_type || paymentMethod
+        );
+    }
+
+    // D. Delete messages related to disbursement and expense tracking
+    const { data: messages } = await supabase
+        .from('requisition_messages')
+        .select('id, metadata')
+        .eq('requisition_id', requisitionId);
+
+    if (messages) {
+        const messageIdsToDelete = messages
+            .filter(m => m.metadata && ['DISBURSAL_SUCCESS', 'EXPENSE_TRACKING', 'EXPENSE_SUMMARY'].includes((m.metadata as any).stage))
+            .map(m => m.id);
+
+        if (messageIdsToDelete.length > 0) {
+            await supabase
+                .from('requisition_messages')
+                .delete()
+                .in('id', messageIdsToDelete);
+        }
+    }
+
+    // E. Log audit log
+    await supabase
+        .from('audit_logs')
+        .insert({
+            entity_type: 'REQUISITION',
+            entity_id: requisitionId,
+            action: 'TRANSFER_FAILED',
+            changes: { reverted_to: 'AUTHORISED' }
+        });
+}
+
+/**
  * Verify the status of a Lenco payout and finalize the disbursement if successful
  */
 export const verifyDisbursementStatus = async (req: any, res: any): Promise<any> => {
@@ -705,7 +780,16 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
         const { data: orgKeys } = await supabase.from('organizations').select('lenco_secret_key').eq('id', targetOrgId).single();
         const statusCheck = await LencoService.getTransferStatus(disbursement.external_reference, orgKeys?.lenco_secret_key);
 
-        console.log(`[Lenco Verify] Reference: ${disbursement.external_reference}, Status: ${statusCheck.status}`);
+        console.log(`[Lenco Verify] Reference: ${disbursement.external_reference}, Status: ${statusCheck?.status || 'NOT FOUND'}`);
+
+        if (!statusCheck) {
+            console.warn(`[Lenco Verify] Transaction not found on Lenco for reference: ${disbursement.external_reference}. Reverting records.`);
+            await revertDisbursementAndCleanup(id, targetOrgId, disbursement.payment_method);
+            return res.status(400).json({ 
+                status: 'failed', 
+                error: 'Transfer was not found on Lenco. The requisition has been reset to AUTHORISED.'
+            });
+        }
 
         if (statusCheck.status === 'successful') {
             // CRITICAL: Finalize Ledger and Fees NOW that we are sure it succeeded.
@@ -732,40 +816,7 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
         if (statusCheck.status === 'failed') {
             // CRITICAL: Revert everything if Lenco now reports failure
             console.warn(`[Lenco Verify] Transaction FAILED for ${id}. Reverting records.`);
-
-            // A. Revert Requisition to AUTHORISED so it can be corrected/retried
-            await supabase
-                .from('requisitions')
-                .update({ 
-                    status: 'AUTHORISED', 
-                    updated_at: new Date().toISOString() 
-                })
-                .eq('id', id);
-
-            // B. Delete the disbursement record since it didn't happen
-            await supabase.from('disbursements').delete().eq('id', disbursement.id);
-
-            // C. Delete the cashbook entry if it was already created
-            // We fetch the entry first so we know where to start recalculation from
-            const { data: ledgerEntry } = await supabase
-                .from('cashbook_entries')
-                .select('date, created_at')
-                .eq('requisition_id', id)
-                .maybeSingle();
-
-            if (ledgerEntry) {
-                await supabase.from('cashbook_entries').delete().eq('requisition_id', id);
-
-                // Recalculate balances starting from the point of deletion
-                await cashbookService.recalculateBalancesFrom(
-                    organizationId, 
-                    ledgerEntry.date, 
-                    ledgerEntry.created_at,
-                    disbursement.payment_method
-                );
-            }
-
-            // D. Delete any audit logs for this disbursement (optional but cleaner)
+            await revertDisbursementAndCleanup(id, targetOrgId, disbursement.payment_method);
 
             return res.status(400).json({ 
                 status: 'failed', 
@@ -807,7 +858,19 @@ function scheduleDeferredLedgerFinalization(
 
     const attemptFinalization = async (attemptIndex: number): Promise<void> => {
         if (attemptIndex >= RETRY_INTERVALS_MS.length) {
-            console.warn(`[Deferred Finalization] Giving up for ${requisitionId} after ${RETRY_INTERVALS_MS.length} attempts. Manual review required.`);
+            console.warn(`[Deferred Finalization] Giving up for ${requisitionId} after ${RETRY_INTERVALS_MS.length} attempts. Reverting records...`);
+            const { data: disb } = await supabase
+                .from('disbursements')
+                .select('organization_id, payment_method')
+                .eq('requisition_id', requisitionId)
+                .maybeSingle();
+            
+            const orgId = disb?.organization_id;
+            if (orgId) {
+                await revertDisbursementAndCleanup(requisitionId, orgId, disb.payment_method);
+            } else {
+                console.error(`[Deferred Finalization] Could not find disbursement record for ${requisitionId} to revert.`);
+            }
             return;
         }
 
@@ -829,7 +892,19 @@ function scheduleDeferredLedgerFinalization(
             }
 
             if (statusCheck?.status === 'failed') {
-                console.error(`[Deferred Finalization] Transfer ${reference} reported FAILED by Lenco. Requisition ${requisitionId} needs manual review.`);
+                console.error(`[Deferred Finalization] Transfer ${reference} reported FAILED by Lenco. Reverting records for ${requisitionId}.`);
+                const { data: disb } = await supabase
+                    .from('disbursements')
+                    .select('organization_id, payment_method')
+                    .eq('requisition_id', requisitionId)
+                    .maybeSingle();
+                
+                const orgId = disb?.organization_id;
+                if (orgId) {
+                    await revertDisbursementAndCleanup(requisitionId, orgId, disb.payment_method);
+                } else {
+                    console.error(`[Deferred Finalization] Could not find disbursement record for ${requisitionId} to revert.`);
+                }
                 return; // Don't retry a definitively failed transfer
             }
 
