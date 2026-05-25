@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { RequisitionMessage, requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
-import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles, RotateCcw } from 'lucide-react';
+import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles, RotateCcw, Edit3, Clock } from 'lucide-react';
 import { accountService, Account } from '../../services/account.service';
 import { integrationService } from '../../services/integration.service';
 import { useAuth } from '../../context/AuthContext';
@@ -91,6 +91,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [isExcessLookingUp, setIsExcessLookingUp] = useState(false);
     const [isExcessProcessing, setIsExcessProcessing] = useState(false);
     const [excessError, setExcessError] = useState<string | null>(null);
+    
+    // Payroll Edit States
+    const [editingPayrollItemId, setEditingPayrollItemId] = useState<string | null>(null);
+    const [editPayrollAccount, setEditPayrollAccount] = useState<string>('');
+    const [editPayrollBankCode, setEditPayrollBankCode] = useState<string>('');
+    const [editPayrollMethod, setEditPayrollMethod] = useState<string>('BANK');
+    const [editPayrollEmployeeName, setEditPayrollEmployeeName] = useState<string>('');
+    const [isReverifyingPayroll, setIsReverifyingPayroll] = useState<boolean>(false);
     
     const isSystem = message.message_type?.toUpperCase() === 'SYSTEM';
 
@@ -253,7 +261,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     }, [recipientValue, paymentType, recipientProvider, lookupName, isLookingUp, requisitionData?.organization_id]);
 
     useEffect(() => {
-        if ((paymentType === 'BANK' || excessPaymentType === 'BANK') && banks.length === 0 && !isFetchingBanks) {
+        if ((paymentType === 'BANK' || excessPaymentType === 'BANK' || editPayrollMethod === 'BANK') && banks.length === 0 && !isFetchingBanks) {
             const fetchBanks = async () => {
                 setIsFetchingBanks(true);
                 try {
@@ -267,7 +275,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             };
             fetchBanks();
         }
-    }, [paymentType, excessPaymentType, banks.length, isFetchingBanks]);
+    }, [paymentType, excessPaymentType, editPayrollMethod, banks.length, isFetchingBanks]);
 
     // Excess disbursal: auto-detect mobile money operator from phone prefix
     useEffect(() => {
@@ -731,6 +739,314 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
         if (isCreation) {
             const showActions = canAction && (status === 'DRAFT' || status === 'PENDING_APPROVAL');
+            const isPayroll = requisitionData?.type === 'PAYROLL';
+            const hasFailedVerification = isPayroll && requisitionData?.items?.some((item: any) => item.is_valid === false);
+
+            if (isPayroll) {
+                return (
+                    <div className="flex flex-col mb-6 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
+                        <div className="bg-white border border-gray-100 rounded-[20px] md:rounded-[16px] md:rounded-tl-none shadow-[0_4px_16px_-4px_rgba(0,0,0,0.04)] overflow-hidden transition-all duration-300 w-full md:w-auto">
+                            <div className="px-6 pt-4 pb-1.5 flex items-center space-x-2.5">
+                                <div className="w-7 h-7 rounded-full bg-[#FFE3E3] flex items-center justify-center text-[#E56B6B] border border-red-50 shadow-sm">
+                                    <User size={14} strokeWidth={2.5} />
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-[12px] font-semibold text-gray-900 tracking-tight">
+                                        {requisitionData?.requestor_name || 'System User'}
+                                    </span>
+                                    
+                                    {isPastApproval && (
+                                        <div className={`flex items-center space-x-1 px-2 py-0.5 rounded-full border ${
+                                            isRejected 
+                                                ? 'bg-transparent border-red-100 text-red-500' 
+                                                : 'bg-transparent border-emerald-100 text-emerald-500'
+                                        }`}>
+                                            {isRejected ? (
+                                                <>
+                                                    <X size={10} strokeWidth={3} />
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider">Rejected</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <Check size={10} strokeWidth={3} />
+                                                    <span className="text-[10px] font-bold uppercase tracking-wider">Approved</span>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div 
+                                className="px-6 pb-4 flex items-center justify-between cursor-pointer md:cursor-pointer group"
+                                onClick={() => window.innerWidth >= 768 && setIsExpanded(!isExpanded)}
+                            >
+                                <div className="flex-1 pr-4">
+                                    <h3 className="text-[14px] md:text-[15px] font-normal md:font-bold text-gray-900 leading-tight transition-colors">
+                                        {requisitionData?.description || 'Payroll Requisition'}
+                                    </h3>
+                                    <p className="text-[10px] text-gray-400 font-semibold tracking-wider uppercase mt-1">PAYROLL BATCH ({requisitionData?.items?.length || 0} employees)</p>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                    <span className="text-[15px] md:text-[16px] font-normal md:font-black text-gray-900 tracking-tight">
+                                        K{requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                    <div className={`hidden md:flex p-0.5 rounded-full transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-gray-50' : 'bg-transparent group-hover:bg-gray-50'}`}>
+                                        <ChevronDown size={18} className="text-gray-400 group-hover:text-gray-900" />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {isExpanded && (
+                                <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-400">
+                                    {hasFailedVerification && (
+                                        <div className="mb-4 p-3.5 bg-red-50/50 border border-red-100 rounded-xl flex items-start space-x-2.5">
+                                            <AlertTriangle className="text-red-500 w-4 h-4 flex-shrink-0 mt-0.5" />
+                                            <div>
+                                                <p className="text-xs font-bold text-red-900">Verification Failures Detected</p>
+                                                <p className="text-[11px] text-red-700 font-medium leading-normal mt-0.5">
+                                                    Some employee details failed verification. Fix them below to enable approval.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="rounded-xl border border-gray-100 overflow-x-auto mb-6 bg-white shadow-sm">
+                                        <table className="w-full text-left border-collapse min-w-[650px] table-fixed">
+                                            <thead>
+                                                <tr className="bg-gray-50/80">
+                                                    <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[12%]">Emp ID</th>
+                                                    <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[20%]">Name</th>
+                                                    <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[25%]">Account Details</th>
+                                                    <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[28%]">Resolved Name</th>
+                                                    <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[15%] text-right">Amount</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-50">
+                                                {requisitionData?.items?.map((item: any, idx: number) => {
+                                                    const isEditing = editingPayrollItemId === item.id;
+                                                    const isValid = item.is_valid !== false;
+
+                                                    return (
+                                                        <tr key={item.id || idx} className={`transition-colors ${!isValid ? 'bg-red-50/10' : 'hover:bg-gray-50/30'}`}>
+                                                            <td className="px-3 py-3 text-[11px] font-semibold text-gray-500 truncate">{item.employee_id || 'N/A'}</td>
+                                                            <td className="px-3 py-3 text-[11px] text-gray-900 truncate">
+                                                                {isEditing ? (
+                                                                    <input 
+                                                                        type="text" 
+                                                                        value={editPayrollEmployeeName} 
+                                                                        onChange={(e) => setEditPayrollEmployeeName(e.target.value)} 
+                                                                        className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:border-blue-500"
+                                                                    />
+                                                                ) : (
+                                                                    item.employee_name || 'N/A'
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-[11px]">
+                                                                {isEditing ? (
+                                                                    <div className="flex flex-col space-y-1">
+                                                                        <select 
+                                                                            value={editPayrollMethod} 
+                                                                            onChange={(e) => {
+                                                                                setEditPayrollMethod(e.target.value);
+                                                                                setEditPayrollBankCode('');
+                                                                            }} 
+                                                                            className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded bg-white focus:outline-none"
+                                                                        >
+                                                                            <option value="BANK">Bank</option>
+                                                                            <option value="MOBILE_MONEY">Mobile Money</option>
+                                                                        </select>
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={editPayrollAccount} 
+                                                                            onChange={(e) => setEditPayrollAccount(e.target.value)} 
+                                                                            placeholder="Account / Phone" 
+                                                                            className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none"
+                                                                        />
+                                                                        {editPayrollMethod === 'BANK' ? (
+                                                                            <select 
+                                                                                value={editPayrollBankCode} 
+                                                                                onChange={(e) => setEditPayrollBankCode(e.target.value)} 
+                                                                                className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded bg-white focus:outline-none"
+                                                                            >
+                                                                                <option value="">Select Bank</option>
+                                                                                {banks.map((b) => (
+                                                                                    <option key={b.id || b.code} value={b.id || b.code}>{b.name}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        ) : (
+                                                                            <select 
+                                                                                value={editPayrollBankCode} 
+                                                                                onChange={(e) => setEditPayrollBankCode(e.target.value)} 
+                                                                                className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded bg-white focus:outline-none"
+                                                                            >
+                                                                                <option value="">Select Operator</option>
+                                                                                <option value="mtn">MTN</option>
+                                                                                <option value="airtel">Airtel</option>
+                                                                                <option value="zamtel">Zamtel</option>
+                                                                            </select>
+                                                                        )}
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex flex-col">
+                                                                        <span className="font-semibold text-gray-800">{item.recipient_account}</span>
+                                                                        <span className="text-[10px] text-gray-400 capitalize">{item.payment_method?.toLowerCase().replace('_', ' ')} · {item.recipient_bank_code || 'N/A'}</span>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-[11px]">
+                                                                {isEditing ? (
+                                                                    <div className="flex space-x-1.5 mt-2">
+                                                                        <button 
+                                                                            onClick={async (e) => {
+                                                                                e.stopPropagation();
+                                                                                setIsReverifyingPayroll(true);
+                                                                                try {
+                                                                                    await requisitionService.updateLineItemDetails(item.id, {
+                                                                                        employee_name: editPayrollEmployeeName,
+                                                                                        recipient_account: editPayrollAccount,
+                                                                                        recipient_bank_code: editPayrollBankCode,
+                                                                                        payment_method: editPayrollMethod
+                                                                                    });
+                                                                                    setEditingPayrollItemId(null);
+                                                                                    if (onAction) onAction('REFRESH');
+                                                                                } catch (err: any) {
+                                                                                    alert(err.message || 'Verification failed');
+                                                                                } finally {
+                                                                                    setIsReverifyingPayroll(false);
+                                                                                }
+                                                                            }}
+                                                                            disabled={isReverifyingPayroll || !editPayrollAccount || !editPayrollBankCode}
+                                                                            className="p-1 text-emerald-600 hover:bg-emerald-50 rounded disabled:opacity-50"
+                                                                            title="Save & Re-Verify"
+                                                                        >
+                                                                            {isReverifyingPayroll ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} strokeWidth={2.5} />}
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={(e) => { e.stopPropagation(); setEditingPayrollItemId(null); }}
+                                                                            className="p-1 text-gray-400 hover:bg-gray-100 rounded"
+                                                                            title="Cancel"
+                                                                        >
+                                                                            <X size={14} strokeWidth={2.5} />
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="flex flex-col min-w-0 pr-1">
+                                                                            <span className={`font-semibold flex items-center gap-1 ${isValid ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                                                                {isValid ? (
+                                                                                    <>
+                                                                                        <span>Verified</span>
+                                                                                        <span className="text-[12px] font-bold text-emerald-600">✓</span>
+                                                                                    </>
+                                                                                ) : (
+                                                                                    <span>Failed</span>
+                                                                                )}
+                                                                            </span>
+                                                                            {isValid && item.verified_name && (
+                                                                                <span className="text-[10px] text-gray-500 break-words leading-tight mt-0.5">
+                                                                                    {item.verified_name.startsWith('Test Verified: ') 
+                                                                                        ? item.verified_name.replace('Test Verified: ', '') 
+                                                                                        : item.verified_name}
+                                                                                </span>
+                                                                            )}
+                                                                            {!isValid && item.error_message && (
+                                                                                <span className="text-[9px] text-red-500 leading-tight break-words mt-0.5" title={item.error_message}>
+                                                                                    {item.error_message}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                        {showActions && (
+                                                                            <button 
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setEditingPayrollItemId(item.id);
+                                                                                    setEditPayrollEmployeeName(item.employee_name || '');
+                                                                                    setEditPayrollAccount(item.recipient_account || '');
+                                                                                    setEditPayrollBankCode(item.recipient_bank_code || '');
+                                                                                    setEditPayrollMethod(item.payment_method || 'BANK');
+                                                                                }}
+                                                                                className="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                                                                title="Edit details"
+                                                                            >
+                                                                                <Edit3 size={13} />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="px-3 py-3 text-[11px] font-bold text-gray-900 text-right">
+                                                                K{item.estimated_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    {isPastApproval ? (
+                                        <div className={`mt-4 py-3 px-5 rounded-[18px] flex items-center justify-between transition-all duration-500 ${
+                                            isRejected ? 'bg-red-50/20 border border-red-50' : 'bg-emerald-50/20 border border-emerald-50'
+                                        }`}>
+                                            <div className="flex items-center space-x-2.5">
+                                                <div className={`w-7 h-7 rounded-full flex items-center justify-center ${
+                                                    isRejected ? 'bg-red-50' : 'bg-emerald-50'
+                                                }`}>
+                                                    {isRejected ? <X size={14} className="text-red-500" /> : <Check size={14} className="text-emerald-500" />}
+                                                </div>
+                                                <div>
+                                                    <p className="text-[12px] font-bold text-gray-900">
+                                                        {isRejected ? 'Payroll Requisition Rejected' : 'Payroll Requisition Approved'}
+                                                    </p>
+                                                    <p className="text-[10px] text-gray-500 font-medium tracking-tight">
+                                                        {isRejected ? 'This request was declined' : 'This request was authorized'}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className={`px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest ${
+                                                isRejected ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'
+                                            }`}>
+                                                {isRejected ? 'Rejected' : 'Authorized'}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        showActions && (
+                                            <div className="flex flex-col space-y-3 mt-4">
+                                                {hasFailedVerification && (
+                                                    <p className="text-[11px] text-red-500 font-bold text-center">
+                                                        * You must correct all verification failures before approving this payroll.
+                                                    </p>
+                                                )}
+                                                <div className="flex space-x-3">
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleActionClick('REJECT'); }}
+                                                        disabled={!!activeAction}
+                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#F5F5F7] text-gray-700 text-[13px] font-bold rounded-full hover:bg-gray-200 disabled:opacity-50 h-11"
+                                                    >
+                                                        {activeAction === 'REJECT' ? <Loader2 size={16} className="animate-spin text-gray-400" /> : 'Decline'}
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleActionClick('APPROVE'); }}
+                                                        disabled={!!activeAction || hasFailedVerification}
+                                                        className="flex-1 flex items-center justify-center px-6 py-2 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:bg-gray-300 disabled:text-gray-500 disabled:cursor-not-allowed h-11 font-black"
+                                                    >
+                                                        {activeAction === 'APPROVE' ? <Loader2 size={16} className="animate-spin text-white" /> : 'Accept'}
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                );
+            }
+        }
+
+        if (isCreation) {
+            const showActions = canAction && (status === 'DRAFT' || status === 'PENDING_APPROVAL');
 
             return (
                 <div className="flex flex-col mb-6 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
@@ -933,6 +1249,199 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
 
         else if (isDisbursal) {
+            const isPayroll = requisitionData?.type === 'PAYROLL';
+            const isPrivileged = userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'MANAGER';
+            
+            if (isPayroll) {
+                const items = requisitionData?.items || [];
+                const disbursements = requisitionData?.disbursements || [];
+                
+                const disbursedItems = items.filter((item: any) => 
+                    disbursements.some((d: any) => d.line_item_id === item.id)
+                );
+                const pendingItems = items.filter((item: any) => 
+                    !disbursements.some((d: any) => d.line_item_id === item.id) &&
+                    !item.description.toLowerCase().includes('withdrawal fee')
+                );
+                
+                const totalFees = items.reduce((sum: number, item: any) => {
+                    if (item.description.toLowerCase().includes('withdrawal fee')) return sum;
+                    return sum + lencoService.calculatePayoutFee(Number(item.estimated_amount), item.payment_method);
+                }, 0);
+
+                const isFullyDisbursed = pendingItems.length === 0;
+
+                const handleDisbursePayroll = async () => {
+                    setIsProcessing(true);
+                    setDisburseError(null);
+                    try {
+                        const result = await requisitionService.disbursePayroll(requisitionData.id);
+                        if (result.failedCount > 0) {
+                            setDisburseError(`Payroll batch partially processed. Succeeded: ${result.successfulCount}, Failed: ${result.failedCount}. Please check employee account details for failures and try again.`);
+                        } else {
+                            setIsSuccess(true);
+                        }
+                        if (onAction) onAction('REFRESH');
+                    } catch (err: any) {
+                        setDisburseError(err.message || 'Payroll disbursal failed');
+                    } finally {
+                        setIsProcessing(false);
+                    }
+                };
+
+                return (
+                    <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
+                        <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden transition-all duration-300">
+                            <div className="px-8 py-8">
+                                <div className="flex items-center space-x-3 mb-6">
+                                    <div className="w-7 h-7 rounded-full bg-blue-50 flex items-center justify-center text-[#006AFF] border border-blue-50 shadow-sm">
+                                        <Smartphone size={14} strokeWidth={2.5} />
+                                    </div>
+                                    <div className="flex-1 flex items-center justify-between">
+                                        <span className="text-[12px] font-semibold text-gray-900 tracking-tight">MoneyWise Wallet</span>
+                                        {isFullyDisbursed && (
+                                            <div className="flex items-center space-x-1 px-2.5 py-0.5 rounded-full border border-emerald-100 text-emerald-600 bg-emerald-50/20">
+                                                <Check size={10} strokeWidth={3} className="text-emerald-500" />
+                                                <span className="text-[10px] font-bold uppercase tracking-wider">Fully Disbursed</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between mb-6">
+                                    <div>
+                                        <h3 className="text-[15px] font-bold text-gray-900 leading-tight">
+                                            {isFullyDisbursed ? 'Batch Payroll Disbursal Successful' : 'Batch Payroll Disbursal'}
+                                        </h3>
+                                        <p className="text-[11px] text-gray-500 font-medium tracking-tight mt-1">
+                                            {isFullyDisbursed 
+                                                ? `All ${items.length - (totalFees > 0 ? 1 : 0)} employees paid.` 
+                                                : `${disbursedItems.length} paid, ${pendingItems.length} pending.`
+                                            }
+                                        </p>
+                                    </div>
+                                    
+                                    {!isFullyDisbursed && canAction && currentStatus === 'AUTHORISED' && isPrivileged && (
+                                        <button 
+                                            onClick={async (e) => {
+                                                e.stopPropagation();
+                                                if (confirm('Reverting to draft will allow editing. Proceed?')) {
+                                                    try {
+                                                        await requisitionService.revertToDraft(requisitionData.id);
+                                                        if (onAction) onAction('REFRESH');
+                                                    } catch (err: any) {
+                                                        alert(err.message);
+                                                    }
+                                                }
+                                            }}
+                                            className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-50 text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+                                        >
+                                            <RotateCcw size={12} />
+                                            <span>Revert to Draft</span>
+                                        </button>
+                                    )}
+                                </div>
+
+                                {requisitionData?.organization?.payment_test_mode && (
+                                    <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-100 flex items-start space-x-3">
+                                        <Beaker className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-[12px] font-bold text-amber-900 leading-tight">Payment Simulation Active</p>
+                                            <p className="text-[11px] text-amber-700 mt-1 font-medium leading-relaxed">
+                                                System is in test mode. Payouts will be simulated instantly without transferring real funds.
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {disburseError && (
+                                    <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs font-medium">
+                                        {disburseError}
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-3 gap-3 mb-6">
+                                    <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Payroll Amount</p>
+                                        <p className="text-[14px] font-bold text-gray-900">K{requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Lenco Fees</p>
+                                        <p className="text-[14px] font-bold text-gray-900">K{totalFees.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <div className="p-4 rounded-2xl border border-gray-100 bg-gray-50/50">
+                                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Total Debit</p>
+                                        <p className="text-[14px] font-bold text-gray-900">K{(requisitionData?.estimated_total + totalFees).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                </div>
+
+                                <div className="mb-6 rounded-xl border border-gray-100 overflow-x-auto bg-white shadow-sm">
+                                    <table className="w-full text-left border-collapse min-w-[500px] table-fixed">
+                                        <thead>
+                                            <tr className="bg-gray-50/80">
+                                                <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[40%]">Employee</th>
+                                                <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[35%]">Status</th>
+                                                <th className="px-3 py-2 text-[9px] font-medium text-gray-400 uppercase tracking-widest border-b border-gray-100 w-[25%] text-right font-semibold">Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-50">
+                                            {items.map((item: any, idx: number) => {
+                                                if (item.description.toLowerCase().includes('withdrawal fee')) return null;
+                                                const isPaid = disbursements.some((d: any) => d.line_item_id === item.id);
+
+                                                return (
+                                                    <tr key={item.id || idx} className="hover:bg-gray-50/20 transition-colors">
+                                                        <td className="px-3 py-3 text-[11px] font-semibold text-gray-700 truncate">
+                                                            <div className="flex flex-col">
+                                                                <span>{item.employee_name || 'Employee'}</span>
+                                                                <span className="text-[9px] text-gray-400 truncate">{item.recipient_account} ({item.recipient_bank_code || 'N/A'})</span>
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-3 py-3 text-[11px]">
+                                                            {isPaid ? (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                                                                    <Check size={8} className="mr-1" /> Paid
+                                                                </span>
+                                                            ) : (
+                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
+                                                                    <Clock size={8} className="mr-1" /> Pending
+                                                                </span>
+                                                            )}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-[11px] font-bold text-gray-900 text-right">
+                                                            K{item.estimated_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {!isFullyDisbursed && canAction && currentStatus === 'AUTHORISED' && isPrivileged && (
+                                    <div className="flex space-x-3">
+                                        <button 
+                                            onClick={handleDisbursePayroll}
+                                            disabled={isProcessing}
+                                            className="w-full flex items-center justify-center px-6 py-3 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-12 font-black transition-all shadow-md shadow-blue-100"
+                                        >
+                                            {isProcessing ? (
+                                                <>
+                                                    <Loader2 size={16} className="animate-spin text-white mr-2" />
+                                                    Disbursing Payroll Batch...
+                                                </>
+                                            ) : (
+                                                disbursedItems.length > 0 ? 'Resume Payroll Disbursal' : 'Disburse Payroll'
+                                            )}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                     <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden transition-all duration-300">

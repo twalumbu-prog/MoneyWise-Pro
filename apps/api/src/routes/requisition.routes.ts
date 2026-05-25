@@ -22,7 +22,8 @@ import {
     updateLineItemAccount,
     revertToDraft,
     getAuditReport,
-    backfillAuditScores
+    backfillAuditScores,
+    updateLineItemDetails
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -31,7 +32,8 @@ import {
     updateDisbursement,
     analyzeDisbursementProof,
     verifyDisbursementStatus,
-    disburseExcessRequisition
+    disburseExcessRequisition,
+    disbursePayrollRequisition
 } from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
 import { requireAuth } from '../middleware/auth';
@@ -50,6 +52,7 @@ router.post('/maintenance/backfill-audit', backfillAuditScores);
 // Disbursement routes
 router.get('/disbursements/history', getDisbursementHistory);
 router.post('/:id/disburse', disburseRequisition);
+router.post('/:id/disburse-payroll', disbursePayrollRequisition);
 router.post('/:id/disburse-excess', disburseExcessRequisition);
 router.post('/:id/acknowledge', acknowledgeReceipt);
 router.patch('/disbursements/:id', updateDisbursement);
@@ -68,6 +71,7 @@ router.post('/:id/retrigger-ai', retriggerAICategorization);
 router.post('/:id/post-quickbooks', postToQuickBooks);
 router.delete('/:id/receipts/:receiptId', deleteReceipt);
 router.patch('/items/:itemId/account', updateLineItemAccount);
+router.patch('/items/:itemId/details', updateLineItemDetails);
 
 // Message routes
 router.get('/:id/messages', getRequisitionMessages);

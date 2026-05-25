@@ -1125,3 +1125,349 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
         res.status(500).json({ error: 'Failed to disburse excess', details: error.message });
     }
 };
+
+/**
+ * Disburse batch payroll requisition via MoneyWise wallet (Lenco)
+ */
+export const disbursePayrollRequisition = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const cashier_id = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
+
+        if (!organizationId) throw new Error("Missing organization context");
+
+        // 1. Atomically check and lock status to prevent concurrent double disbursal
+        const { data: lockResult, error: lockError } = await supabase
+            .from('requisitions')
+            .update({ 
+                status: 'RECEIVED', 
+                updated_at: new Date().toISOString() 
+            })
+            .eq('id', id)
+            .eq('status', 'AUTHORISED')
+            .eq('type', 'PAYROLL')
+            .eq('organization_id', organizationId)
+            .select('*');
+
+        if (lockError || !lockResult || lockResult.length === 0) {
+            return res.status(400).json({ 
+                error: 'Requisition cannot be disbursed. It may have already been processed, is not in AUTHORISED status, is not of type PAYROLL, or does not belong to your organization.' 
+            });
+        }
+
+        const requisition = lockResult[0];
+
+        // 2. Fetch Lenco keys
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
+            .eq('id', organizationId)
+            .single();
+
+        const testMode = org?.payment_test_mode || false;
+        const secretKey = org?.lenco_secret_key || undefined;
+        const subaccountId = org?.lenco_subaccount_id || '';
+
+        if (!testMode && (!subaccountId || !secretKey)) {
+            // Revert status to AUTHORISED on failure
+            await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+            return res.status(400).json({ error: 'Organization is not properly configured for MoneyWise Wallet payouts.' });
+        }
+
+        // 3. Fetch all valid line items
+        const { data: lineItems, error: itemsError } = await supabase
+            .from('line_items')
+            .select('*')
+            .eq('requisition_id', id)
+            .eq('is_valid', true);
+
+        if (itemsError || !lineItems || lineItems.length === 0) {
+            await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+            return res.status(400).json({ error: 'No valid line items found to disburse' });
+        }
+
+        const successfulDisbursements: Array<{ item: any; amount: number; fee: number; reference: string }> = [];
+        const failedDisbursements: Array<{ item: any; error: string }> = [];
+
+        // 4. Process each employee payout
+        for (const item of lineItems) {
+            // Skip withdrawal fee items if they already exist
+            if (item.description.toLowerCase().includes('withdrawal fee') || item.description.toLowerCase().includes('transaction charges')) {
+                continue;
+            }
+
+            const amount = Number(item.estimated_amount);
+            const fee = LencoService.calculatePayoutFee(amount, item.payment_method || 'BANK');
+            const stableRef = `P-${id.slice(0, 8)}-${item.id.slice(0, 8)}`;
+
+            // Check if disbursement already exists for this line item (idempotency check)
+            const { data: existingDisb } = await supabase
+                .from('disbursements')
+                .select('*')
+                .eq('line_item_id', item.id)
+                .maybeSingle();
+
+            if (existingDisb) {
+                console.log(`[Payroll Disbursal] Disbursement already exists for line item ${item.id}. skipping.`);
+                successfulDisbursements.push({
+                    item,
+                    amount,
+                    fee,
+                    reference: existingDisb.external_reference || ''
+                });
+                continue;
+            }
+
+            try {
+                let lencoReference = '';
+                if (testMode) {
+                    lencoReference = `SIM-${stableRef}`;
+                    console.log(`[Payroll Test Mode] Simulating payout for employee ${item.employee_name} of K${amount}`);
+                } else {
+                    let statusCheck;
+                    let payout;
+                    let resolvedRef = stableRef;
+
+                    for (let i = 0; i < 10; i++) {
+                        resolvedRef = i === 0 ? stableRef : `${stableRef}-R${i}`;
+                        statusCheck = await LencoService.getTransferStatus(resolvedRef, secretKey);
+
+                        if (!statusCheck) break;
+                        if (statusCheck.status !== 'failed') break;
+                    }
+
+                    if (statusCheck && statusCheck.status !== 'failed') {
+                        lencoReference = resolvedRef;
+                        console.log(`[Payroll Disbursal] Found existing transfer on Lenco for ${resolvedRef}, reusing.`);
+                    } else {
+                        // Initiate new payout using resolvedRef
+                        if (item.payment_method === 'MOBILE_MONEY') {
+                            const operator = LencoService.resolveMobileOperator(item.recipient_account || '');
+                            if (!operator) throw new Error(`Invalid mobile operator for account ${item.recipient_account}`);
+
+                            payout = await LencoService.createMobileMoneyPayout({
+                                amount,
+                                reference: resolvedRef,
+                                phone: item.recipient_account || '',
+                                operator,
+                                narration: `Payroll for ${item.employee_name}`
+                            }, subaccountId, secretKey);
+                            lencoReference = payout.reference || resolvedRef;
+                        } else if (item.payment_method === 'BANK') {
+                            payout = await LencoService.createBankPayout({
+                                amount,
+                                reference: resolvedRef,
+                                accountNumber: item.recipient_account || '',
+                                bankId: item.recipient_bank_code || '',
+                                narration: `Payroll for ${item.employee_name}`
+                            }, subaccountId, secretKey);
+                            lencoReference = payout.reference || resolvedRef;
+                        } else {
+                            throw new Error(`Unsupported payment method: ${item.payment_method}`);
+                        }
+
+                        if (payout.status === 'failed') {
+                            throw new Error(payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco');
+                        }
+                    }
+                }
+
+                // Record individual disbursement for sub-item details
+                await supabase.from('disbursements').insert({
+                    requisition_id: id,
+                    line_item_id: item.id,
+                    cashier_id,
+                    organization_id: organizationId,
+                    payment_method: item.payment_method,
+                    total_prepared: amount,
+                    recipient_account: item.recipient_account,
+                    recipient_bank_code: item.recipient_bank_code,
+                    recipient_account_name: item.verified_name || item.employee_name,
+                    external_reference: lencoReference,
+                    issued_at: new Date().toISOString()
+                });
+
+                // Update line item actual amount
+                await supabase
+                    .from('line_items')
+                    .update({ actual_amount: amount, updated_at: new Date().toISOString() })
+                    .eq('id', item.id);
+
+                successfulDisbursements.push({ item, amount, fee, reference: lencoReference });
+            } catch (err: any) {
+                console.error(`[Payroll Disbursal Failed] Employee: ${item.employee_name}, Error:`, err);
+                failedDisbursements.push({ item, error: err.message || 'Payout failed' });
+            }
+        }
+
+        // If all payouts failed and none succeeded, revert status and return error
+        if (successfulDisbursements.length === 0 && failedDisbursements.length > 0) {
+            await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+            return res.status(400).json({ 
+                error: 'All payouts failed to process.', 
+                details: failedDisbursements.map(f => `${f.item.employee_name}: ${f.error}`).join(', ') 
+            });
+        }
+
+        // 5. Finalize Ledger & Transaction Fees based on ALL successful disbursements so far
+        const { data: allDisbursements, error: allDisbError } = await supabase
+            .from('disbursements')
+            .select('total_prepared, payment_method')
+            .eq('requisition_id', id);
+
+        if (allDisbError) {
+            throw new Error(`Failed to fetch all disbursements: ${allDisbError.message}`);
+        }
+
+        const totalAmountPaid = allDisbursements.reduce((sum, d) => sum + Number(d.total_prepared), 0);
+        const totalFees = allDisbursements.reduce((sum, d) => sum + LencoService.calculatePayoutFee(Number(d.total_prepared), d.payment_method || 'BANK'), 0);
+        const totalDeduction = totalAmountPaid + totalFees;
+
+        // Check if cashbook entry already exists
+        const { data: existingEntry } = await supabase
+            .from('cashbook_entries')
+            .select('id, date, created_at')
+            .eq('requisition_id', id)
+            .eq('entry_type', 'DISBURSEMENT')
+            .maybeSingle();
+
+        const ledgerDescription = `Batch Payroll payout for Requisition #${id.slice(0, 8)} (${allDisbursements.length} employees)`;
+
+        if (existingEntry) {
+            // Update existing entry
+            await supabase
+                .from('cashbook_entries')
+                .update({
+                    credit: totalDeduction,
+                    description: ledgerDescription,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existingEntry.id);
+
+            // Recalculate balances starting from this entry's date
+            await cashbookService.recalculateBalancesFrom(
+                organizationId,
+                existingEntry.date,
+                existingEntry.created_at,
+                'MONEYWISE_WALLET'
+            );
+        } else {
+            // Log new entry
+            await cashbookService.logDisbursement(
+                organizationId,
+                id,
+                totalDeduction,
+                cashier_id,
+                ledgerDescription,
+                'MONEYWISE_WALLET'
+            );
+        }
+
+        // Record or update single withdrawal fee line item if fees > 0
+        const chargesAccountId = await cashbookService.getOrCreateTransactionChargesAccount(organizationId);
+        const { data: existingFee } = await supabase
+            .from('line_items')
+            .select('id')
+            .eq('requisition_id', id)
+            .ilike('description', '%Withdrawal Fee%')
+            .maybeSingle();
+
+        if (existingFee) {
+            await supabase
+                .from('line_items')
+                .update({
+                    unit_price: totalFees,
+                    estimated_amount: totalFees,
+                    actual_amount: totalFees,
+                    updated_at: new Date().toISOString()
+                })
+                .eq('id', existingFee.id);
+        } else if (totalFees > 0) {
+            await supabase.from('line_items').insert({
+                requisition_id: id,
+                description: `Withdrawal Fee (Payroll Batch)`,
+                quantity: 1,
+                unit_price: totalFees,
+                estimated_amount: totalFees,
+                actual_amount: totalFees,
+                account_id: chargesAccountId
+            });
+        }
+
+        // Update requisition totals
+        const { data: employeeLineItems } = await supabase
+            .from('line_items')
+            .select('estimated_amount, actual_amount')
+            .eq('requisition_id', id)
+            .not('description', 'ilike', '%Withdrawal Fee%');
+
+        const baseEstimatedTotal = employeeLineItems?.reduce((sum, li) => sum + Number(li.estimated_amount), 0) || 0;
+        const baseActualTotal = employeeLineItems?.reduce((sum, li) => sum + Number(li.actual_amount || li.estimated_amount), 0) || 0;
+
+        await supabase.from('requisitions').update({
+            estimated_total: baseEstimatedTotal + totalFees,
+            actual_total: baseActualTotal + totalFees,
+            updated_at: new Date().toISOString()
+        }).eq('id', id);
+
+        if (failedDisbursements.length > 0) {
+            // Some payouts failed, revert requisition status back to AUTHORISED so they can retry
+            await supabase
+                .from('requisitions')
+                .update({ 
+                    status: 'AUTHORISED', 
+                    updated_at: new Date().toISOString() 
+                })
+                .eq('id', id);
+
+            // Send notification message for partial success
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: cashier_id,
+                content: `Payroll payout partially completed. Succeeded: ${successfulDisbursements.length} employees. Failed: ${failedDisbursements.length} employees. Requisition remains AUTHORISED for retry.`,
+                type: 'SYSTEM',
+                metadata: {
+                    stage: 'DISBURSAL_PARTIAL',
+                    successfulCount: successfulDisbursements.length,
+                    failedCount: failedDisbursements.length,
+                    failedItems: failedDisbursements.map(f => ({ name: f.item.employee_name, error: f.error }))
+                }
+            });
+
+            return res.json({ 
+                message: 'Payroll partially disbursed. Some payouts failed. Requisition remains in AUTHORISED status.', 
+                successfulCount: successfulDisbursements.length, 
+                failedCount: failedDisbursements.length 
+            });
+        } else {
+            // All payouts succeeded! Send full success message
+            await RequisitionMessageService.createMessage({
+                requisitionId: id,
+                userId: cashier_id,
+                content: `Consolidated Payroll Disbursed successfully for ${successfulDisbursements.length} employees. Total amount: K${totalAmountPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}. Total transaction fees: K${totalFees.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`,
+                type: 'SYSTEM',
+                metadata: { 
+                    stage: 'DISBURSAL_SUCCESS', 
+                    successfulCount: successfulDisbursements.length,
+                    failedCount: failedDisbursements.length
+                }
+            });
+
+            // Trigger AI Review which will automatically bypass and post deterministically
+            await triggerAIReview(id, organizationId, cashier_id).catch(err => 
+                console.error('[AI Review] Auto-trigger failed after payroll disbursal:', err)
+            );
+
+            return res.json({ 
+                message: 'Payroll disbursed successfully', 
+                successfulCount: successfulDisbursements.length, 
+                failedCount: failedDisbursements.length 
+            });
+        }
+
+    } catch (error: any) {
+        console.error('Error in disbursePayrollRequisition:', error);
+        res.status(500).json({ error: 'Failed to process payroll batch disbursal', details: error.message });
+    }
+};

@@ -360,6 +360,7 @@ export const cashbookService = {
                     requestor:users!requestor_id(name),
                     line_items (
                         id, description, quantity, unit_price, estimated_amount, actual_amount, account_id,
+                        employee_id, employee_name, payment_method, recipient_account, recipient_bank_code, verified_name, is_valid, error_message,
                         accounts ( id, code, name, category )
                     ),
                     disbursements (
@@ -776,6 +777,45 @@ export const cashbookService = {
         if (createError) {
             console.error(`[Ledger] FAILED to create charges account for ${organizationId}:`, createError);
             // Even if it fails, the transaction will just be uncategorized (null), handled gracefully in UI.
+            return '';
+        }
+
+        return newAccount.id;
+    },
+
+    /**
+     * Finds or creates the standard "Wages and salaries control" liability account for an organization.
+     */
+    async getOrCreateWagesAndSalariesControlAccount(organizationId: string): Promise<string> {
+        // 1. Try to find the account
+        const { data: existing } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .or('name.ilike.Wages and salaries control,code.eq.QB-48')
+            .limit(1)
+            .maybeSingle();
+
+        if (existing) {
+            return existing.id;
+        }
+
+        // 2. Create if missing
+        console.log(`[Ledger] Creating 'Wages and salaries control' account for org ${organizationId}`);
+        const { data: newAccount, error: createError } = await supabase
+            .from('accounts')
+            .insert({
+                organization_id: organizationId,
+                name: 'Wages and salaries control',
+                type: 'LIABILITY',
+                code: 'QB-48',
+                description: 'Automated wages and salaries control account'
+            })
+            .select('id')
+            .single();
+
+        if (createError) {
+            console.error(`[Ledger] FAILED to create wages and salaries control account for ${organizationId}:`, createError);
             return '';
         }
 

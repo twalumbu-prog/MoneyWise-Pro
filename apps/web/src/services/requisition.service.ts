@@ -44,7 +44,7 @@ export interface Requisition {
     items?: LineItem[];
     requestor_name?: string;
     department?: string;
-    type?: 'EXPENSE' | 'ADVANCE' | 'LOAN';
+    type?: 'EXPENSE' | 'ADVANCE' | 'LOAN' | 'PAYROLL';
     staff_name?: string;
     employee_id?: string;
     loan_amount?: number;
@@ -494,6 +494,29 @@ export const requisitionService = {
         const response = await apiFetch(url);
         if (!response.ok) throw new Error('Failed to fetch audit report');
         return response.json();
+    },
+
+    async disbursePayroll(id: string) {
+        const response = await apiFetch(`/requisitions/${id}/disburse-payroll`, {
+            method: 'POST',
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Payroll disbursement failed');
+        }
+        return data;
+    },
+
+    async updateLineItemDetails(itemId: string, details: any) {
+        const response = await apiFetch(`/requisitions/items/${itemId}/details`, {
+            method: 'PATCH',
+            body: JSON.stringify(details),
+        });
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Failed to update line item details');
+        }
+        return data;
     }
 };
 

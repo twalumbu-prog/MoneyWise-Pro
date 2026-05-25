@@ -1,9 +1,45 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Settings, LogOut, Menu, BarChart3, Navigation, Inbox, Sparkles, User } from 'lucide-react';
+import { Settings, LogOut, Menu, BarChart3, Navigation, User } from 'lucide-react';
 import { TopNavbar } from './TopNavbar';
 import { SubNavbar } from './SubNavbar';
+
+const WalletCardsIcon: React.FC<{ size?: number; className?: string }> = ({ size = 22, className }) => (
+    <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        width={size} 
+        height={size} 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        className={className}
+    >
+        <rect width="18" height="18" x="3" y="3" rx="2"/>
+        <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2"/>
+        <path d="M3 11h3c.8 0 1.6.3 2.1.9l1.1.9c1.6 1.6 4.1 1.6 5.7 0l1.1-.9c.5-.5 1.3-.9 2.1-.9H21"/>
+    </svg>
+);
+
+const AstroidIcon: React.FC<{ size?: number; className?: string }> = ({ size = 22, className }) => (
+    <svg 
+        xmlns="http://www.w3.org/2000/svg" 
+        width={size} 
+        height={size} 
+        viewBox="0 0 24 24" 
+        fill="none" 
+        stroke="currentColor" 
+        strokeWidth="2" 
+        strokeLinecap="round" 
+        strokeLinejoin="round" 
+        className={className}
+    >
+        <path d="M12.983 21.186a1 1 0 0 1-1.966 0 10 10 0 0 0-8.203-8.203 1 1 0 0 1 0-1.966 10 10 0 0 0 8.203-8.203 1 1 0 0 1 1.966 0 10 10 0 0 0 8.203 8.203 1 1 0 0 1 0 1.966 10 10 0 0 0-8.203 8.203"/>
+    </svg>
+);
 
 interface LayoutProps {
     children: React.ReactNode;
@@ -107,18 +143,18 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             </div>
 
             {/* Main Content Area */}
-            <main className={`flex-1 overflow-x-hidden overflow-y-auto pb-24 md:pb-0 ${isRequestor ? 'h-screen' : 'h-[calc(100vh-60px)] md:h-screen'}`}>
+            <main className={`flex-1 overflow-x-hidden overflow-y-auto pb-28 md:pb-0 ${isRequestor ? 'h-screen' : 'h-[calc(100vh-60px)] md:h-screen'}`}>
                 <div className={noPadding ? 'w-full h-full' : 'max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8'}>
                     {children}
                 </div>
             </main>
 
             {/* Mobile Bottom Navigation Bar */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 h-16 bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+            <div className="md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
                 {[
                     { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
-                    { path: '/cashbook', icon: Inbox, label: 'Wallet', isActive: (p: string) => p === '/cashbook' },
-                    { path: '/intelligence', icon: Sparkles, label: 'BI', isActive: (p: string) => p === '/intelligence' },
+                    { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook' },
+                    { path: '/intelligence', icon: AstroidIcon, label: 'BI', isActive: (p: string) => p === '/intelligence' },
                     { path: '/reporting', icon: BarChart3, label: 'Reporting', isActive: (p: string) => p === '/reporting' },
                     { path: '/menu', icon: Menu, label: 'Menu', isActive: (p: string) => ['/menu', '/settings', '/audit', '/approvals', '/disbursements'].some(prefix => p.startsWith(prefix)) || p.startsWith('/vouchers') }
                 ].map((tab, idx) => {

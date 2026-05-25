@@ -105,6 +105,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             status: 'DRAFT',
             interest_rate,
             monthly_deduction,
+            type: type || 'EXPENSE',
             department: department || null // Ensure empty strings are handled as null
         };
 
@@ -170,13 +171,78 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             }];
         }
 
+        // Parallel Lenco Verification for Payroll Line Items
+        if (type === 'PAYROLL' && lineItemsToInsert.length > 0) {
+            const { data: orgData } = await supabase
+                .from('organizations')
+                .select('lenco_secret_key, payment_test_mode')
+                .eq('id', organization_id)
+                .single();
+
+            const secretKey = orgData?.lenco_secret_key || undefined;
+            const testMode = orgData?.payment_test_mode || false;
+
+            const resolutionPromises = lineItemsToInsert.map(async (item: any) => {
+                if (item.payment_method === 'MOBILE_MONEY' || item.payment_method === 'BANK') {
+                    if (testMode) {
+                        item.verified_name = `Test Verified: ${item.employee_name || 'Employee'}`;
+                        item.is_valid = true;
+                        item.error_message = null;
+                    } else if (!secretKey) {
+                        item.verified_name = null;
+                        item.is_valid = false;
+                        item.error_message = 'Lenco API key not configured for organization';
+                    } else {
+                        try {
+                            if (item.payment_method === 'MOBILE_MONEY') {
+                                const operator = LencoService.resolveMobileOperator(item.recipient_account);
+                                if (!operator) {
+                                    item.verified_name = null;
+                                    item.is_valid = false;
+                                    item.error_message = 'Invalid mobile money number or operator';
+                                } else {
+                                    const resolution = await LencoService.resolveMobileMoney(item.recipient_account, operator, secretKey);
+                                    item.verified_name = resolution.accountName;
+                                    item.is_valid = true;
+                                    item.error_message = null;
+                                }
+                            } else {
+                                const resolution = await LencoService.resolveBankAccount(item.recipient_account, item.recipient_bank_code, secretKey);
+                                item.verified_name = resolution.accountName;
+                                item.is_valid = true;
+                                item.error_message = null;
+                            }
+                        } catch (err: any) {
+                            item.verified_name = null;
+                            item.is_valid = false;
+                            item.error_message = err.message || 'Verification failed';
+                        }
+                    }
+                } else {
+                    item.verified_name = null;
+                    item.is_valid = false;
+                    item.error_message = 'Unsupported payment method';
+                }
+            });
+
+            await Promise.all(resolutionPromises);
+        }
+
         const lineItemsData = lineItemsToInsert.map((item: any) => ({
             requisition_id: requisition.id,
-            description: item.description || description || 'General Expense',
-            quantity: item.quantity,
-            unit_price: item.unit_price,
+            description: item.description || (item.employee_name ? `Payroll for ${item.employee_name}` : description) || 'General Expense',
+            quantity: item.quantity !== undefined ? item.quantity : 1,
+            unit_price: item.unit_price !== undefined ? item.unit_price : item.estimated_amount,
             estimated_amount: item.estimated_amount,
-            account_id: item.account_id || null
+            account_id: item.account_id || null,
+            employee_id: item.employee_id || null,
+            employee_name: item.employee_name || null,
+            payment_method: item.payment_method || null,
+            recipient_account: item.recipient_account || null,
+            recipient_bank_code: item.recipient_bank_code || null,
+            verified_name: item.verified_name || null,
+            is_valid: item.is_valid !== undefined ? item.is_valid : true,
+            error_message: item.error_message || null
         }));
 
         const { error: itemsError } = await supabase
@@ -1297,6 +1363,13 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
     try {
         console.log(`[AI Review] Triggering for Req ${requisitionId}`);
         
+        // Check requisition type
+        const { data: requisition } = await supabase
+            .from('requisitions')
+            .select('type, description, estimated_total, actual_total')
+            .eq('id', requisitionId)
+            .single();
+
         // 1. Update Status
         await supabase
             .from('requisitions')
@@ -1304,7 +1377,6 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
             .eq('id', requisitionId);
 
         // 2. Find or create a single AI_REVIEW message — NEVER create a second one.
-        //    Use order + limit to safely get the most recent one, avoiding .single() errors.
         const { data: existingMsgRows } = await supabase
             .from('requisition_messages')
             .select('id')
@@ -1336,6 +1408,118 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
             aiMessageId = newMsg.id;
         }
 
+        // PAYROLL BYPASS
+        if (requisition && requisition.type === 'PAYROLL') {
+            console.log(`[AI Review] Bypassing AI Review for PAYROLL Requisition ${requisitionId}`);
+            
+            // A. Get or create Wages & salaries control account (QB-48) and Transaction Charges (QB-28)
+            const wagesAccountId = await cashbookService.getOrCreateWagesAndSalariesControlAccount(organizationId);
+            const chargesAccountId = await cashbookService.getOrCreateTransactionChargesAccount(organizationId);
+            
+            const { data: wagesAccount } = await supabase
+                .from('accounts')
+                .select('*')
+                .eq('id', wagesAccountId)
+                .single();
+                
+            const { data: chargesAccount } = await supabase
+                .from('accounts')
+                .select('*')
+                .eq('id', chargesAccountId)
+                .single();
+
+            // B. Fetch Line Items
+            const { data: lineItemsRaw } = await supabase
+                .from('line_items')
+                .select('*')
+                .eq('requisition_id', requisitionId);
+
+            const lineItems = lineItemsRaw || [];
+            
+            // C. Update each line item
+            const itemsMetadata = [];
+            for (const li of lineItems) {
+                const isFee = li.description.toLowerCase().includes('fee') || li.description.toLowerCase().includes('withdrawal charges');
+                const targetAccount = isFee ? chargesAccount : wagesAccount;
+                
+                await supabase
+                    .from('line_items')
+                    .update({
+                        account_id: targetAccount ? targetAccount.id : null,
+                        qb_account_id: targetAccount?.qb_account_id || null,
+                        qb_account_name: targetAccount?.name || null,
+                        ai_reasoning: isFee ? 'Transaction charges mapped to Transaction Charges' : 'Payroll line item mapped to Wages and salaries control',
+                        ai_confidence: 1.0,
+                        ai_decision_path: 'DETERMINISTIC_RULES'
+                    })
+                    .eq('id', li.id);
+                    
+                itemsMetadata.push({
+                    id: li.id,
+                    description: li.description,
+                    amount: li.actual_amount ?? li.estimated_amount ?? 0,
+                    category_code: targetAccount ? targetAccount.code : null,
+                    category_name: targetAccount ? targetAccount.name : null,
+                    reasoning: isFee ? 'Transaction charges mapped to Transaction Charges' : 'Payroll line item mapped to Wages and salaries control',
+                    confidence: 1.0,
+                    method: 'DETERMINISTIC_RULES'
+                });
+            }
+
+            // D. Update AI Review message
+            await RequisitionMessageService.updateMessage(aiMessageId, {
+                content: 'Payroll has been categorized deterministically.',
+                metadata: { 
+                    stage: 'AI_REVIEW',
+                    isThinking: false,
+                    items: itemsMetadata
+                }
+            });
+            
+            // E. Determine if QuickBooks is connected
+            const { data: qbIntegration } = await supabase
+                .from('integrations')
+                .select('id')
+                .eq('provider', 'QUICKBOOKS')
+                .eq('organization_id', organizationId)
+                .maybeSingle();
+
+            const isQBConnected = !!qbIntegration;
+            const nextStatus = isQBConnected ? 'CATEGORIZED' : 'COMPLETED';
+
+            // F. Update requisition status
+            await supabase
+                .from('requisitions')
+                .update({ 
+                    status: nextStatus, 
+                    updated_at: new Date().toISOString() 
+                })
+                .eq('id', requisitionId);
+
+            // G. Send "Approved" message
+            await RequisitionMessageService.createMessage({
+                requisitionId: requisitionId,
+                userId: userId,
+                content: isQBConnected ? 'Payroll Categorization Automatically Approved' : 'Payroll Categorization Automatically Approved. Requisition COMPLETED.',
+                type: 'CHAT',
+                metadata: { isSummary: true, isCategorizationApproval: true }
+            });
+
+            if (isQBConnected) {
+                // Send QuickBooks Posting card
+                await RequisitionMessageService.createMessage({
+                    requisitionId: requisitionId,
+                    userId: userId,
+                    content: 'Ready to post to QuickBooks',
+                    type: 'SYSTEM',
+                    metadata: { stage: 'POST_QUICKBOOKS' }
+                });
+            }
+            
+            console.log(`[AI Review] Completed deterministic payroll categorization for Req ${requisitionId}.`);
+            return;
+        }
+
         // 3. Fetch Line Items
         const { data: lineItemsRaw } = await supabase
             .from('line_items')
@@ -1345,12 +1529,6 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
         let lineItems = lineItemsRaw || [];
 
         // 3.5 RESILIENCE: Handle Loans/Advances missing principal (e.g. only fees present)
-        const { data: requisition } = await supabase
-            .from('requisitions')
-            .select('type, description, estimated_total, actual_total')
-            .eq('id', requisitionId)
-            .single();
-
         if (requisition && (requisition.type === 'LOAN' || requisition.type === 'ADVANCE')) {
             const principalDesc = requisition.type === 'LOAN' ? 'Staff Loan Principal' : 'Salary Advance Principal';
             const hasPrincipal = lineItems.some(li => 
@@ -1689,6 +1867,121 @@ export const updateLineItemAccount = async (req: AuthRequest, res: Response): Pr
     } catch (error: any) {
         console.error('Error updating line item account:', error);
         res.status(500).json({ error: 'Failed to update line item account', details: error.message });
+    }
+};
+
+/**
+ * Update line item details (for correcting verification details on payroll items)
+ */
+export const updateLineItemDetails = async (req: any, res: any): Promise<any> => {
+    try {
+        const { itemId } = req.params;
+        const { recipient_account, recipient_bank_code, payment_method, employee_name } = req.body;
+        
+        // 1. Fetch line item and requisition to check authorization context
+        const { data: lineItem, error: lineError } = await supabase
+            .from('line_items')
+            .select('*, requisitions(organization_id)')
+            .eq('id', itemId)
+            .single();
+            
+        if (lineError || !lineItem) {
+            return res.status(404).json({ error: 'Line item not found' });
+        }
+        
+        const requisition = (lineItem as any).requisitions;
+        const organization_id = requisition.organization_id;
+        
+        // 2. Fetch organization context for Lenco keys
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key, payment_test_mode')
+            .eq('id', organization_id)
+            .single();
+            
+        const secretKey = orgData?.lenco_secret_key;
+        const testMode = orgData?.payment_test_mode || false;
+        
+        let verified_name = null;
+        let is_valid = true;
+        let error_message = null;
+        
+        const targetPaymentMethod = payment_method || lineItem.payment_method;
+        const targetAccount = recipient_account || lineItem.recipient_account;
+        const targetBankCode = recipient_bank_code || lineItem.recipient_bank_code;
+        const targetEmpName = employee_name || lineItem.employee_name;
+        
+        if (targetPaymentMethod === 'MOBILE_MONEY' || targetPaymentMethod === 'BANK') {
+            if (testMode) {
+                verified_name = `Test Verified: ${targetEmpName || 'Employee'}`;
+                is_valid = true;
+                error_message = null;
+            } else if (!secretKey) {
+                verified_name = null;
+                is_valid = false;
+                error_message = 'Lenco API key not configured for organization';
+            } else {
+                try {
+                    if (targetPaymentMethod === 'MOBILE_MONEY') {
+                        const operator = LencoService.resolveMobileOperator(targetAccount);
+                        if (!operator) {
+                            verified_name = null;
+                            is_valid = false;
+                            error_message = 'Invalid mobile money number or operator';
+                        } else {
+                            const resolution = await LencoService.resolveMobileMoney(targetAccount, operator, secretKey);
+                            verified_name = resolution.accountName;
+                            is_valid = true;
+                            error_message = null;
+                        }
+                    } else {
+                        const resolution = await LencoService.resolveBankAccount(targetAccount, targetBankCode, secretKey);
+                        verified_name = resolution.accountName;
+                        is_valid = true;
+                        error_message = null;
+                    }
+                } catch (err: any) {
+                    verified_name = null;
+                    is_valid = false;
+                    error_message = err.message || 'Verification failed';
+                }
+            }
+        } else {
+            verified_name = null;
+            is_valid = false;
+            error_message = 'Unsupported payment method';
+        }
+        
+        // 3. Update the line item in DB
+        const updateData: any = {
+            payment_method: targetPaymentMethod,
+            recipient_account: targetAccount,
+            recipient_bank_code: targetBankCode,
+            verified_name,
+            is_valid,
+            error_message
+        };
+        
+        if (employee_name) {
+            updateData.employee_name = employee_name;
+        }
+        
+        const { data: updatedItem, error: updateError } = await supabase
+            .from('line_items')
+            .update(updateData)
+            .eq('id', itemId)
+            .select()
+            .single();
+            
+        if (updateError) {
+            console.error('Error updating line item details:', updateError);
+            return res.status(500).json({ error: 'Failed to update line item details', details: updateError.message });
+        }
+        
+        res.json(updatedItem);
+    } catch (error: any) {
+        console.error('Error in updateLineItemDetails:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
 

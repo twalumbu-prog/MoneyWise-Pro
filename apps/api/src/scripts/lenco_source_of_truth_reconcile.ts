@@ -22,7 +22,30 @@ import { LencoService } from '../services/lenco.service';
 const DRY_RUN    = process.env.DRY_RUN === 'true';
 const ORG_ID     = 'e359c84e-b42b-4b0a-b422-a2074d87d83a';
 const ACCOUNT_TYPE = 'MONEYWISE_WALLET';
-const EXPECTED_CLOSING_BALANCE = 105.29;
+const EXPECTED_CLOSING_BALANCE = 4356.13;
+
+async function retryQuery(fn: () => any, retries = 5, delay = 2000): Promise<any> {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res: any = await fn();
+            if (res && res.error) {
+                const errMsg = String(res.error.message || '');
+                if (errMsg.includes('fetch failed') || errMsg.includes('timeout') || errMsg.includes('ConnectTimeoutError')) {
+                    console.warn(`[Supabase Retry] Attempt ${i + 1} returned transient error: ${errMsg}`);
+                    if (i === retries - 1) return res;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+            }
+            return res;
+        } catch (err: any) {
+            console.warn(`[Supabase Retry] Attempt ${i + 1} threw exception:`, err.message || err);
+            if (i === retries - 1) throw err;
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    throw new Error('Unreachable');
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -68,11 +91,12 @@ async function main() {
     console.log('='.repeat(72));
 
     // ── 1. Load org credentials ──────────────────────────────────────────────
-    const { data: org, error: orgErr } = await supabase
+    const { data: org, error: orgErr } = await retryQuery(() => supabase
         .from('organizations')
         .select('lenco_subaccount_id, lenco_secret_key')
         .eq('id', ORG_ID)
-        .single();
+        .single()
+    );
 
     if (orgErr || !org?.lenco_subaccount_id || !org?.lenco_secret_key) {
         console.error('❌ Cannot load org credentials:', orgErr?.message);
@@ -127,10 +151,11 @@ async function main() {
 
     // ── 4. Load all disbursements to build reference → requisition_id map ────
     console.log('\n🔗 Building reference → requisition map...');
-    const { data: allDisbursements } = await supabase
+    const { data: allDisbursements } = await retryQuery(() => supabase
         .from('disbursements')
         .select('requisition_id, external_reference, organization_id, cashier_id, payment_method, requisitions!inner(organization_id, updated_at, description)')
-        .eq('requisitions.organization_id', ORG_ID);
+        .eq('requisitions.organization_id', ORG_ID)
+    );
 
     // Map: external_reference → disbursement record
     const refToDisb = new Map<string, any>();
@@ -180,6 +205,7 @@ async function main() {
     }
 
     let runningBalanceTracker = entriesToInsert.length > 0 ? entriesToInsert[0].balance_after : 0;
+    const usedRequisitionIds = new Set<string>();
 
     for (const txn of filteredTxns) {
         // Normalize Lenco transaction fields
@@ -232,7 +258,15 @@ async function main() {
             }
         }
 
-        const requisitionId   = matchedDisb?.requisition_id || null;
+        let requisitionId   = matchedDisb?.requisition_id || null;
+        if (requisitionId) {
+            if (usedRequisitionIds.has(requisitionId)) {
+                console.log(`⚠️  Requisition ${requisitionId.slice(0, 8)} already matched to a prior transaction. Setting requisition_id to null for this entry to avoid unique constraint violation.`);
+                requisitionId = null;
+            } else {
+                usedRequisitionIds.add(requisitionId);
+            }
+        }
         const cashierId        = matchedDisb?.cashier_id || null;
         const entryType        = isInflow ? 'INFLOW' : 'DISBURSEMENT';
         const entryStatus      = isInflow ? 'COMPLETED' : 'DISBURSED';
@@ -310,11 +344,12 @@ async function main() {
 
     // Step A: Delete all existing MONEYWISE_WALLET entries for this org
     console.log('\n🗑️  Deleting existing MONEYWISE_WALLET cashbook entries...');
-    const { error: deleteErr, count: deletedCount } = await supabase
+    const { error: deleteErr, count: deletedCount } = await retryQuery(() => supabase
         .from('cashbook_entries')
         .delete({ count: 'exact' })
         .eq('organization_id', ORG_ID)
-        .eq('account_type', ACCOUNT_TYPE);
+        .eq('account_type', ACCOUNT_TYPE)
+    );
 
     if (deleteErr) {
         console.error('❌ Failed to delete existing entries:', deleteErr.message);
@@ -328,9 +363,10 @@ async function main() {
     let insertedTotal = 0;
     for (let i = 0; i < entriesToInsert.length; i += CHUNK) {
         const chunk = entriesToInsert.slice(i, i + CHUNK);
-        const { error: insertErr, count } = await supabase
+        const { error: insertErr, count } = await retryQuery(() => supabase
             .from('cashbook_entries')
-            .insert(chunk, { count: 'exact' });
+            .insert(chunk, { count: 'exact' })
+        );
 
         if (insertErr) {
             console.error(`❌ Insert failed at chunk ${i / CHUNK + 1}:`, insertErr.message);
@@ -343,7 +379,7 @@ async function main() {
     console.log(`\n   ✅ Inserted ${insertedTotal} entries.`);
 
     // Step C: Final verification — read back the last balance
-    const { data: lastEntry } = await supabase
+    const { data: lastEntry } = await retryQuery(() => supabase
         .from('cashbook_entries')
         .select('balance_after, date')
         .eq('organization_id', ORG_ID)
@@ -351,7 +387,8 @@ async function main() {
         .order('date', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()
+    );
 
     const dbFinalBalance = round2(Number(lastEntry?.balance_after || 0));
     console.log('\n' + '='.repeat(72));
