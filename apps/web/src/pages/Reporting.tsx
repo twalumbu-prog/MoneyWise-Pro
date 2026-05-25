@@ -1045,11 +1045,9 @@ export const Reporting: React.FC = () => {
                         <h2 className="text-[34px] font-black leading-none">
                             K{mobileData.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </h2>
-                        <div className={`flex items-center text-xs font-black px-2.5 py-1 rounded-full ${
-                            mobileData.isIncrease ? 'text-red-400 bg-red-500/10' : 'text-emerald-400 bg-emerald-500/10'
-                        }`}>
+                        <span className="text-[34px] font-black leading-none text-[#4D9FFF]">
                             {mobileData.isIncrease ? '+' : '-'}{mobileData.pctVal}%
-                        </div>
+                        </span>
                     </div>
                     
                     {/* Secondary Band */}
