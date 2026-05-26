@@ -178,6 +178,7 @@ const CashLedger: React.FC = () => {
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+    const [editingNarration, setEditingNarration] = useState<{ [entryId: string]: string }>({});
 
     // Search, Sort, and Filter State
     const [searchQuery, setSearchQuery] = useState('');
@@ -681,6 +682,18 @@ const CashLedger: React.FC = () => {
         }
     };
 
+    const handleAccountAndNarrate = async (entryId: string, description: string, accountId?: string) => {
+        try {
+            await cashbookService.narrateEntry(entryId, description, accountId);
+            const newEditing = { ...editingNarration };
+            delete newEditing[entryId];
+            setEditingNarration(newEditing);
+            loadData();
+        } catch (error: any) {
+            alert('Failed to save transaction details: ' + error.message);
+        }
+    };
+
     const confirmPostRequisition = async (req: any) => {
         try {
             setIsPosting(true);
@@ -1028,14 +1041,55 @@ const CashLedger: React.FC = () => {
                                 <tr className="hover:bg-gray-50/50 transition-colors">
                                     <td className="pl-6 py-4">
                                         <div className="flex flex-col">
-                                            <span className="text-[13px] font-semibold text-gray-800">{entry.description}</span>
+                                            {entry.status === 'UNACCOUNTED' ? (
+                                                <div className="flex items-center gap-2">
+                                                    <input
+                                                        type="text"
+                                                        value={editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0]}
+                                                        onChange={(e) => setEditingNarration({ ...editingNarration, [entry.id]: e.target.value })}
+                                                        placeholder="Enter transaction narration / purpose..."
+                                                        className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#006AFF] outline-none text-[13px] font-semibold text-gray-800"
+                                                    />
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
+                                                            if (!desc.trim()) {
+                                                                alert('Narration cannot be empty.');
+                                                                return;
+                                                            }
+                                                            let finalDesc = desc;
+                                                            if (entry.description.includes(' | Ref:')) {
+                                                                finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
+                                                            }
+                                                            await handleAccountAndNarrate(entry.id, finalDesc, entry.account_id);
+                                                        }}
+                                                        className="px-4 py-2 bg-brand-navy hover:bg-slate-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-sm flex-shrink-0"
+                                                    >
+                                                        Save
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <span className="text-[13px] font-semibold text-gray-800">{entry.description}</span>
+                                            )}
                                         </div>
                                     </td>
                                     <td className="py-4">
                                         <SearchableAccountSelect 
                                             value={entry.account_id || ''} 
                                             options={accounts} 
-                                            onChange={(val) => handleLedgerAccountChange(entry.id, val)}
+                                            onChange={(val) => {
+                                                if (entry.status === 'UNACCOUNTED') {
+                                                    const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
+                                                    let finalDesc = desc;
+                                                    if (entry.description.includes(' | Ref:')) {
+                                                        finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
+                                                    }
+                                                    handleAccountAndNarrate(entry.id, finalDesc, val);
+                                                } else {
+                                                    handleLedgerAccountChange(entry.id, val);
+                                                }
+                                            }}
                                             placeholder={entry.entry_type === 'INFLOW' ? "Select Credit Account..." : "Select Debit Account..."}
                                         />
                                     </td>

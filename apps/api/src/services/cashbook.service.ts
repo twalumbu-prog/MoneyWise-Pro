@@ -17,7 +17,7 @@ export interface CashbookEntry {
         [key: string]: any; // Allow other requisition fields
     };
     created_by?: string;
-    status?: 'PENDING' | 'COMPLETED' | 'DISBURSED';
+    status?: 'PENDING' | 'COMPLETED' | 'DISBURSED' | 'UNACCOUNTED';
     account_type?: string;
     organization_id?: string;
     reference_number?: string;

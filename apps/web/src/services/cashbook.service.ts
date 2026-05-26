@@ -11,7 +11,7 @@ export interface CashbookEntry {
     account_type: 'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET';
     requisition_id?: string;
     created_by?: string;
-    status?: 'PENDING' | 'COMPLETED' | 'ACCOUNTED';
+    status?: 'PENDING' | 'COMPLETED' | 'ACCOUNTED' | 'UNACCOUNTED';
     reference_number?: string;
     account_id?: string;
     accounts?: { id: string; name: string; code: string };
@@ -163,6 +163,14 @@ export const cashbookService = {
         const response = await apiFetch(`/cashbook/${entryId}/account`, {
             method: 'PATCH',
             body: JSON.stringify({ accountId }),
+        });
+        return response.json();
+    },
+
+    async narrateEntry(entryId: string, description: string, accountId?: string) {
+        const response = await apiFetch(`/cashbook/${entryId}/narrate`, {
+            method: 'PATCH',
+            body: JSON.stringify({ description, accountId }),
         });
         return response.json();
     }

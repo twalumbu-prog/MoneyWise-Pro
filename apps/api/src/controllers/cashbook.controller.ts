@@ -482,3 +482,45 @@ export const updateEntryAccount = async (req: any, res: any): Promise<any> => {
         res.status(500).json({ error: 'Failed to update entry account', details: error.message });
     }
 };
+
+/**
+ * Update narration and account category for an entry (accounts it)
+ */
+export const narrateEntry = async (req: any, res: any): Promise<any> => {
+    try {
+        const { entryId } = req.params;
+        const { description, accountId } = req.body;
+
+        if (!entryId || !description) {
+            return res.status(400).json({ error: 'entryId and description are required' });
+        }
+
+        console.log(`[Ledger] Accounting Entry ${entryId}: description="${description}", account=${accountId || 'none'}...`);
+        
+        const updateData: any = {
+            description
+        };
+        if (accountId) {
+            updateData.account_id = accountId;
+            updateData.status = 'COMPLETED';
+        } else {
+            updateData.status = 'UNACCOUNTED';
+        }
+
+        const { data, error } = await supabase
+            .from('cashbook_entries')
+            .update(updateData)
+            .eq('id', entryId)
+            .select();
+
+        if (error) {
+            console.error('[Ledger] ❌ Error accounting entry:', error);
+            throw error;
+        }
+
+        res.json({ success: true, data: sanitizeEntry(data?.[0]) });
+    } catch (error: any) {
+        console.error('Error accounting entry:', error);
+        res.status(500).json({ error: 'Failed to update transaction details', details: error.message });
+    }
+};

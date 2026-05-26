@@ -11,7 +11,8 @@ import {
     classifyBulk,
     postEntryToQuickBooks,
     updateEntryAccount,
-    logWalletDepositIntent
+    logWalletDepositIntent,
+    narrateEntry
 } from '../controllers/cashbook.controller';
 
 const router = Router();
@@ -63,5 +64,8 @@ router.post('/post-to-qb', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), post
 
 // Update entry account (Cashier, Accountant, Admin)
 router.patch('/:entryId/account', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), updateEntryAccount);
+
+// Narrate entry (Cashier, Accountant, Admin)
+router.patch('/:entryId/narrate', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), narrateEntry);
 
 export default router;

@@ -236,7 +236,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 credit: 0,
                 entry_type: 'INFLOW',
                 account_type: 'MONEYWISE_WALLET',
-                status: 'COMPLETED'
+                status: pendingEntry ? 'COMPLETED' : 'UNACCOUNTED'
             });
 
             // 2. Log the 1% Transaction Charge
