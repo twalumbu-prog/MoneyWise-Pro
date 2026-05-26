@@ -39,6 +39,7 @@ export const cashbookService = {
             .select('balance_after')
             .eq('organization_id', organizationId)
             .eq('account_type', accountType)
+            .neq('status', 'PENDING')
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(1)
@@ -57,6 +58,7 @@ export const cashbookService = {
             .select('balance_after')
             .eq('organization_id', organizationId)
             .eq('account_type', accountType)
+            .neq('status', 'PENDING')
             .or(`date.lt.${targetDate},and(date.eq.${targetDate},created_at.lt.${targetCreatedAt})`)
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
@@ -90,6 +92,16 @@ export const cashbookService = {
         console.log(`[Ledger] Updating ${entries.length} entries...`);
 
         for (const entry of entries) {
+            if (entry.status === 'PENDING') {
+                const { error: updateError } = await supabase
+                    .from('cashbook_entries')
+                    .update({ balance_after: 0 })
+                    .eq('id', entry.id);
+                if (updateError) {
+                    console.error(`[Ledger] Failed to clear balance for pending entry ${entry.id}:`, updateError);
+                }
+                continue;
+            }
             const debit = parseFloat(entry.debit || '0');
             const credit = parseFloat(entry.credit || '0');
             const newBalance = runningBalance + debit - credit;
@@ -593,6 +605,7 @@ export const cashbookService = {
             .eq('organization_id', organizationId)
             .eq('date', date)
             .eq('account_type', accountType)
+            .neq('status', 'PENDING')
             .order('created_at', { ascending: false })
             .limit(1)
             .single();
@@ -608,6 +621,7 @@ export const cashbookService = {
                 .eq('organization_id', organizationId)
                 .eq('account_type', accountType)
                 .lt('date', date)
+                .neq('status', 'PENDING')
                 .order('date', { ascending: false })
                 .order('created_at', { ascending: false })
                 .limit(1)

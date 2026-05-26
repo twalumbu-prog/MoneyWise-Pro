@@ -22,7 +22,7 @@ import { LencoService } from '../services/lenco.service';
 const DRY_RUN    = process.env.DRY_RUN === 'true';
 const ORG_ID     = 'e359c84e-b42b-4b0a-b422-a2074d87d83a';
 const ACCOUNT_TYPE = 'MONEYWISE_WALLET';
-const EXPECTED_CLOSING_BALANCE = 4356.13;
+const EXPECTED_CLOSING_BALANCE = 5628.13;
 
 async function retryQuery(fn: () => any, retries = 5, delay = 2000): Promise<any> {
     for (let i = 0; i < retries; i++) {

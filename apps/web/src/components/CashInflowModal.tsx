@@ -48,6 +48,10 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
         }
     }, [isOpen, initialInflowType]);
 
+    useEffect(() => {
+        setCurrentReference(null);
+    }, [walletAmount, purpose]);
+
     const loadOrganization = async () => {
         try {
             setLoadingOrg(true);
@@ -127,13 +131,17 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
 
         const targetNet = Number(walletAmount);
         const payableGross = targetNet / 0.99;
-        const ref = `DEP-${Date.now()}-${lencoSubaccountId}-${organizationId}`;
-        setCurrentReference(ref);
+        
+        let ref = currentReference;
+        if (!ref) {
+            ref = `DEP-${Date.now()}-${lencoSubaccountId}-${organizationId}`;
+            setCurrentReference(ref);
 
-        try {
-            await cashbookService.logWalletDepositIntent(ref, purpose || 'Wallet Deposit', targetNet);
-        } catch (err) {
-            console.error('Failed to log deposit intent:', err);
+            try {
+                await cashbookService.logWalletDepositIntent(ref, purpose || 'Wallet Deposit', targetNet);
+            } catch (err) {
+                console.error('Failed to log deposit intent:', err);
+            }
         }
 
         console.log('Initiating Lenco deposit', {
