@@ -241,7 +241,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
             // 2. Log the 1% Transaction Charge
             const feeAmount = parseFloat(amount) * 0.01;
-            const feeDescription = `MoneyWise Transaction Fee`;
+            const feeDescription = `MoneyWise Charge`;
             
             await cashbookService.createEntry(organizationId, {
                 date: new Date().toISOString().split('T')[0],

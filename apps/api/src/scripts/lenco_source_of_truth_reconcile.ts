@@ -270,9 +270,13 @@ async function main() {
         const cashierId        = matchedDisb?.cashier_id || null;
         const entryType        = isInflow ? 'INFLOW' : 'DISBURSEMENT';
         const entryStatus      = isInflow ? 'COMPLETED' : 'DISBURSED';
-        const description      = txnDesc || (isInflow
+        let description      = txnDesc || (isInflow
             ? `Wallet top-up | Ref: ${txnRef}`
             : `${matchedDisb?.payment_method || 'Wallet'} disbursed for Req #${requisitionId?.slice(0, 8) || 'UNKNOWN'} | Ref: ${txnRef}`);
+
+        if (description.includes('Split-Inflow Payment') || description.toLowerCase().startsWith('transaction fee')) {
+            description = 'MoneyWise Charge';
+        }
 
         const entry = {
             organization_id: ORG_ID,
