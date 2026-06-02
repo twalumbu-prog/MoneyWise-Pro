@@ -90,7 +90,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         try {
             const { data: existingByRef, error: refError } = await supabase
                 .from('cashbook_entries')
-                .select('id, status, description')
+                .select('id, status, description, wallet_id')
                 .eq('external_reference', reference)
                 .maybeSingle();
             
@@ -110,7 +110,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // Fallback: description-based dedup (works before migration)
             const { data: existingByDesc } = await supabase
                 .from('cashbook_entries')
-                .select('id, status, description')
+                .select('id, status, description, wallet_id')
                 .like('description', `%${reference}%`)
                 .maybeSingle();
 
@@ -223,6 +223,21 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 actualNarration = `${actualNarration} | Ref: ${reference}`;
             }
             
+            let walletId = pendingEntry?.wallet_id || null;
+
+            if (!walletId) {
+                const { data: mainWallet } = await supabase
+                    .from('organization_wallets')
+                    .select('id')
+                    .eq('organization_id', organizationId)
+                    .eq('is_main', true)
+                    .maybeSingle();
+                
+                if (mainWallet) {
+                    walletId = mainWallet.id;
+                }
+            }
+
             if (pendingEntry) {
                 // Delete the pending intent before recreating the finalized entry so we don't mess up balances
                 await supabase.from('cashbook_entries').delete().eq('id', pendingEntry.id);
@@ -236,8 +251,9 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 credit: 0,
                 entry_type: 'INFLOW',
                 account_type: 'MONEYWISE_WALLET',
-                status: pendingEntry ? 'COMPLETED' : 'UNACCOUNTED'
-            });
+                status: pendingEntry ? 'COMPLETED' : 'UNACCOUNTED',
+                wallet_id: walletId
+            } as any);
 
             // 2. Log the 1% Transaction Charge
             const feeAmount = parseFloat(amount) * 0.01;
@@ -250,8 +266,9 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 credit: feeAmount,
                 entry_type: 'ADJUSTMENT',
                 account_type: 'MONEYWISE_WALLET',
-                status: 'COMPLETED'
-            });
+                status: 'COMPLETED',
+                wallet_id: walletId
+            } as any);
 
             console.log(`[Lenco Webhook] Standard collection logged as INFLOW + 1% Fee ADJUSTMENT.`);
         }

@@ -66,7 +66,9 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             payment_method,
             recipient_account,
             recipient_bank_code,
-            recipient_name
+            recipient_name,
+            wallet_id,
+            walletId
         } = req.body;
         const requestor_id = (req as any).user.id;
         const organization_id = (req as any).user.organization_id;
@@ -106,7 +108,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             interest_rate,
             monthly_deduction,
             type: type || 'EXPENSE',
-            department: department || null // Ensure empty strings are handled as null
+            department: department || null, // Ensure empty strings are handled as null
+            wallet_id: wallet_id || walletId || null
         };
 
         // Feature detection: Check if payment columns exist in the database schema
@@ -383,15 +386,22 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
 export const updateRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
-        const { description, estimated_total } = req.body;
+        const { description, estimated_total, wallet_id, walletId } = req.body;
+
+        const updateData: any = {
+            description,
+            estimated_total,
+            updated_at: new Date().toISOString()
+        };
+
+        const bodyWalletId = wallet_id || walletId;
+        if (bodyWalletId !== undefined) {
+            updateData.wallet_id = bodyWalletId;
+        }
 
         const { data, error } = await supabase
             .from('requisitions')
-            .update({
-                description,
-                estimated_total,
-                updated_at: new Date().toISOString()
-            })
+            .update(updateData)
             .eq('id', id)
             .eq('requestor_id', (req as any).user.id)
             .eq('status', 'DRAFT')

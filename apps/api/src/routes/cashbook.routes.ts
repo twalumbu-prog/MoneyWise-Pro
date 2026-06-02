@@ -12,13 +12,25 @@ import {
     postEntryToQuickBooks,
     updateEntryAccount,
     logWalletDepositIntent,
-    narrateEntry
+    narrateEntry,
+    getWallets,
+    createWallet,
+    transferSubwalletFunds
 } from '../controllers/cashbook.controller';
 
 const router = Router();
 
 // All cashbook routes require authentication
 router.use(requireAuth);
+
+// Get subwallets
+router.get('/wallets', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getWallets);
+
+// Create subwallet
+router.post('/wallets', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), createWallet);
+
+// Transfer funds between subwallets
+router.post('/wallets/transfer', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), transferSubwalletFunds);
 
 // Get cashbook entries (All roles can view for transparency)
 router.get('/', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getCashbookEntries);

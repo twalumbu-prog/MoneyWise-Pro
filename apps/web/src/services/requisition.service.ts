@@ -112,6 +112,8 @@ export const requisitionService = {
         recipient_account?: string;
         recipient_bank_code?: string;
         recipient_account_name?: string;
+        wallet_id?: string;
+        walletId?: string;
     }) {
         const response = await apiFetch(`/requisitions/${id}/disburse`, {
             method: 'POST',
@@ -133,6 +135,8 @@ export const requisitionService = {
         recipient_account?: string;
         recipient_bank_code?: string;
         recipient_account_name?: string;
+        wallet_id?: string;
+        walletId?: string;
     }) {
         const response = await apiFetch(`/requisitions/${id}/disburse-excess`, {
             method: 'POST',

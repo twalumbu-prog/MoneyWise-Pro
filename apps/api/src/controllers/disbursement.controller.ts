@@ -35,16 +35,22 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
         // 1. Atomic status check and lock
         // We try to update the status to 'DISBURSED' or 'RECEIVED' (for digital)
+        const bodyWalletId = req.body.wallet_id || req.body.walletId;
+        const updateParams: any = { 
+            status: isDigital ? 'RECEIVED' : 'DISBURSED', 
+            updated_at: new Date().toISOString() 
+        };
+        if (bodyWalletId) {
+            updateParams.wallet_id = bodyWalletId;
+        }
+
         const { data: lockResult, error: lockError } = await supabase
             .from('requisitions')
-            .update({ 
-                status: isDigital ? 'RECEIVED' : 'DISBURSED', 
-                updated_at: new Date().toISOString() 
-            })
+            .update(updateParams)
             .eq('id', id)
             .eq('status', 'AUTHORISED')
             .eq('organization_id', organizationId)   // ← Org boundary hard-enforced at DB level
-            .select('estimated_total, organization_id');
+            .select('estimated_total, organization_id, wallet_id');
 
         if (lockError || !lockResult || lockResult.length === 0) {
             return res.status(400).json({ 
@@ -952,6 +958,15 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
             return res.status(400).json({ error: 'Original disbursement record not found.' });
         }
 
+        const bodyWalletId = req.body.wallet_id || req.body.walletId;
+        if (bodyWalletId && requisition.wallet_id !== bodyWalletId) {
+            await supabase
+                .from('requisitions')
+                .update({ wallet_id: bodyWalletId })
+                .eq('id', id);
+            requisition.wallet_id = bodyWalletId;
+        }
+
         const totalActual = Number(requisition.actual_total || 0);
         const originalDisbursed = Number(disbursement.total_prepared || 0);
         const excess = totalActual - originalDisbursed;
@@ -1214,12 +1229,18 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
         if (!organizationId) throw new Error("Missing organization context");
 
         // 1. Atomically check and lock status to prevent concurrent double disbursal
+        const bodyWalletId = req.body.wallet_id || req.body.walletId;
+        const updateParams: any = { 
+            status: 'RECEIVED', 
+            updated_at: new Date().toISOString() 
+        };
+        if (bodyWalletId) {
+            updateParams.wallet_id = bodyWalletId;
+        }
+
         const { data: lockResult, error: lockError } = await supabase
             .from('requisitions')
-            .update({ 
-                status: 'RECEIVED', 
-                updated_at: new Date().toISOString() 
-            })
+            .update(updateParams)
             .eq('id', id)
             .eq('status', 'AUTHORISED')
             .eq('type', 'PAYROLL')

@@ -66,6 +66,7 @@ export const cashbookService = {
         endDate?: string;
         entryType?: string;
         accountType?: string;
+        walletId?: string;
         limit?: number;
     }) {
         const params = new URLSearchParams();
@@ -74,15 +75,17 @@ export const cashbookService = {
         if (filters?.endDate) params.append('endDate', filters.endDate);
         if (filters?.entryType) params.append('entryType', filters.entryType);
         if (filters?.accountType) params.append('accountType', filters.accountType);
+        if (filters?.walletId) params.append('walletId', filters.walletId);
         if (filters?.limit) params.append('limit', filters.limit.toString());
 
         const response = await apiFetch(`/cashbook?${params.toString()}`);
         return response.json();
     },
 
-    async getBalance(accountType: string = 'CASH', organizationId?: string) {
+    async getBalance(accountType: string = 'CASH', organizationId?: string, walletId?: string) {
         const params = new URLSearchParams({ accountType });
         if (organizationId) params.append('organizationId', organizationId);
+        if (walletId) params.append('walletId', walletId);
 
         const response = await apiFetch(`/cashbook/balance?${params.toString()}`);
         const data = await response.json();
@@ -90,8 +93,10 @@ export const cashbookService = {
     },
 
 
-    async getSummary(startDate: string, endDate: string, accountType: string = 'CASH') {
-        const response = await apiFetch(`/cashbook/summary?startDate=${startDate}&endDate=${endDate}&accountType=${accountType}`);
+    async getSummary(startDate: string, endDate: string, accountType: string = 'CASH', walletId?: string) {
+        const params = new URLSearchParams({ startDate, endDate, accountType });
+        if (walletId) params.append('walletId', walletId);
+        const response = await apiFetch(`/cashbook/summary?${params.toString()}`);
         return response.json();
     },
 
@@ -111,10 +116,10 @@ export const cashbookService = {
         return response.json();
     },
 
-    async closeBook(physicalCount: number, date: string, notes?: string, accountType: string = 'CASH') {
+    async closeBook(physicalCount: number, date: string, notes?: string, accountType: string = 'CASH', walletId?: string) {
         const response = await apiFetch('/cashbook/close', {
             method: 'POST',
-            body: JSON.stringify({ physicalCount, date, notes, accountType }),
+            body: JSON.stringify({ physicalCount, date, notes, accountType, walletId }),
         });
         return response.json();
     },
@@ -135,10 +140,10 @@ export const cashbookService = {
         return response.json();
     },
 
-    async logWalletDepositIntent(reference: string, purpose: string, amount: number) {
+    async logWalletDepositIntent(reference: string, purpose: string, amount: number, walletId?: string) {
         const response = await apiFetch('/cashbook/wallet-deposit-intent', {
             method: 'POST',
-            body: JSON.stringify({ reference, purpose, amount }),
+            body: JSON.stringify({ reference, purpose, amount, walletId }),
         });
         return response.json();
     },
@@ -171,6 +176,27 @@ export const cashbookService = {
         const response = await apiFetch(`/cashbook/${entryId}/narrate`, {
             method: 'PATCH',
             body: JSON.stringify({ description, accountId }),
+        });
+        return response.json();
+    },
+
+    async getWallets() {
+        const response = await apiFetch('/cashbook/wallets');
+        return response.json();
+    },
+
+    async createWallet(name: string, qbAccountId?: string, qbAccountName?: string) {
+        const response = await apiFetch('/cashbook/wallets', {
+            method: 'POST',
+            body: JSON.stringify({ name, qbAccountId, qbAccountName }),
+        });
+        return response.json();
+    },
+
+    async transfer(sourceWalletId: string, destinationWalletId: string, amount: number, description?: string) {
+        const response = await apiFetch('/cashbook/wallets/transfer', {
+            method: 'POST',
+            body: JSON.stringify({ sourceWalletId, destinationWalletId, amount, description }),
         });
         return response.json();
     }

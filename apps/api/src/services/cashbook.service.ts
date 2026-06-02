@@ -27,19 +27,44 @@ export interface CashbookEntry {
     qb_sync_at?: string;
     qb_expense_id?: string;
     qb_deposit_id?: string;
+    wallet_id?: string;
 }
 
 export const cashbookService = {
     /**
      * Get the current cash balance
      */
-    async getCurrentBalance(organizationId: string, accountType: string = 'CASH'): Promise<number> {
-        const { data, error } = await supabase
+    async getCurrentBalance(organizationId: string, accountType: string = 'CASH', walletId?: string): Promise<number> {
+        if (accountType === 'MONEYWISE_WALLET' && !walletId) {
+            const { data: wallets, error: walletsError } = await supabase
+                .from('organization_wallets')
+                .select('id')
+                .eq('organization_id', organizationId);
+            
+            if (walletsError || !wallets || wallets.length === 0) return 0;
+            
+            let totalBalance = 0;
+            for (const wallet of wallets) {
+                const balance = await this.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', wallet.id);
+                totalBalance += balance;
+            }
+            return totalBalance;
+        }
+
+        let query = supabase
             .from('cashbook_entries')
             .select('balance_after')
             .eq('organization_id', organizationId)
             .eq('account_type', accountType)
-            .neq('status', 'PENDING')
+            .neq('status', 'PENDING');
+
+        if (walletId) {
+            query = query.eq('wallet_id', walletId);
+        } else if (accountType === 'MONEYWISE_WALLET') {
+            query = query.is('wallet_id', null);
+        }
+
+        const { data, error } = await query
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(1)
@@ -49,17 +74,25 @@ export const cashbookService = {
         return parseFloat(data.balance_after || '0');
     },
 
-    async recalculateBalancesFrom(organizationId: string, targetDate: string, targetCreatedAt: string, accountType: string = 'CASH') {
-        console.log(`[Ledger] Recalculating balances for Org ${organizationId.slice(0, 8)}, Account ${accountType} from ${targetDate} ${targetCreatedAt.slice(11, 19)}`);
+    async recalculateBalancesFrom(organizationId: string, targetDate: string, targetCreatedAt: string, accountType: string = 'CASH', walletId?: string) {
+        console.log(`[Ledger] Recalculating balances for Org ${organizationId.slice(0, 8)}, Account ${accountType}${walletId ? `, Wallet ${walletId.slice(0, 8)}` : ''} from ${targetDate} ${targetCreatedAt.slice(11, 19)}`);
 
         // 1. Find the entry immediately BEFORE the target (logical temporal predecessor)
-        const { data: prevEntry } = await supabase
+        let prevQuery = supabase
             .from('cashbook_entries')
             .select('balance_after')
             .eq('organization_id', organizationId)
             .eq('account_type', accountType)
             .neq('status', 'PENDING')
-            .or(`date.lt.${targetDate},and(date.eq.${targetDate},created_at.lt.${targetCreatedAt})`)
+            .or(`date.lt.${targetDate},and(date.eq.${targetDate},created_at.lt.${targetCreatedAt})`);
+
+        if (walletId) {
+            prevQuery = prevQuery.eq('wallet_id', walletId);
+        } else if (accountType === 'MONEYWISE_WALLET') {
+            prevQuery = prevQuery.is('wallet_id', null);
+        }
+
+        const { data: prevEntry } = await prevQuery
             .order('date', { ascending: false })
             .order('created_at', { ascending: false })
             .limit(1)
@@ -70,12 +103,20 @@ export const cashbookService = {
 
         // 2. Fetch all entries from the target point forward (inclusive of the target)
         // We use the same temporal logic: today's remaining entries + all future entries
-        const { data: entries, error } = await supabase
+        let query = supabase
             .from('cashbook_entries')
             .select('*')
             .eq('organization_id', organizationId)
             .eq('account_type', accountType)
-            .or(`date.gt.${targetDate},and(date.eq.${targetDate},created_at.gte.${targetCreatedAt})`)
+            .or(`date.gt.${targetDate},and(date.eq.${targetDate},created_at.gte.${targetCreatedAt})`);
+
+        if (walletId) {
+            query = query.eq('wallet_id', walletId);
+        } else if (accountType === 'MONEYWISE_WALLET') {
+            query = query.is('wallet_id', null);
+        }
+
+        const { data: entries, error } = await query
             .order('date', { ascending: true })
             .order('created_at', { ascending: true });
 
@@ -125,6 +166,7 @@ export const cashbookService = {
      */
     async createEntry(organizationId: string, entry: Omit<CashbookEntry, 'id' | 'balance_after'>): Promise<CashbookEntry> {
         const accountType = entry.account_type || 'CASH';
+        const walletId = (entry as any).wallet_id || null;
         let refNum = (entry as any).reference_number || null;
 
         // Auto-generate reference for certain types if not provided
@@ -147,6 +189,7 @@ export const cashbookService = {
                 ...entry,
                 organization_id: organizationId,
                 account_type: accountType,
+                wallet_id: walletId,
                 reference_number: refNum,
                 balance_after: 0
             })
@@ -156,7 +199,7 @@ export const cashbookService = {
         if (error) throw new Error(`Failed to create cashbook entry: ${error.message}`);
 
         // 2. Recalculate balances starting from this entry's logical position
-        await this.recalculateBalancesFrom(organizationId, data.date, data.created_at, accountType);
+        await this.recalculateBalancesFrom(organizationId, data.date, data.created_at, accountType, walletId);
 
         // 3. Fetch the updated entry
         const { data: updatedData } = await supabase
@@ -177,7 +220,8 @@ export const cashbookService = {
         amount: number,
         cashierId: string,
         description?: string,
-        accountType: string = 'CASH'
+        accountType: string = 'CASH',
+        walletId?: string
     ): Promise<CashbookEntry> {
         return this.createEntry(organizationId, {
             entry_type: 'DISBURSEMENT',
@@ -188,8 +232,9 @@ export const cashbookService = {
             requisition_id: requisitionId,
             created_by: cashierId,
             status: 'DISBURSED',  // Fixed: was 'PENDING', must match duplicate guard
-            account_type: accountType
-        });
+            account_type: accountType,
+            wallet_id: walletId
+        } as any);
     },
 
     /**
@@ -224,7 +269,7 @@ export const cashbookService = {
         // 1. Fetch disbursement record
         const { data: disbursement, error: disbError } = await supabase
             .from('disbursements')
-            .select('*, requisitions(status, estimated_total, actual_total)')
+            .select('*, requisitions(status, estimated_total, actual_total, wallet_id)')
             .eq('requisition_id', requisitionId)
             .single();
 
@@ -239,6 +284,8 @@ export const cashbookService = {
         const netAmount = Number(disbursement.requisitions?.estimated_total || 0);
         const feeToUse = actualFee !== undefined ? actualFee : 
                         LencoService.calculatePayoutFee(netAmount, disbursement.payment_method || 'BANK');
+
+        const walletId = disbursement.requisitions?.wallet_id;
 
         // 2. Prevent Double Entry
         const { data: existingLedger } = await supabase
@@ -265,7 +312,8 @@ export const cashbookService = {
             totalDeduction,
             disbursement.cashier_id,
             mainDescription,
-            'MONEYWISE_WALLET'
+            'MONEYWISE_WALLET',
+            walletId
         );
 
         // 2. Prevent Double Entry (Line Items)
@@ -361,6 +409,7 @@ export const cashbookService = {
         endDate?: string;
         entryType?: string;
         accountType?: string;
+        walletId?: string;
         limit?: number;
     } = {}): Promise<CashbookEntry[]> {
         let query = supabase
@@ -398,6 +447,9 @@ export const cashbookService = {
         if (filters?.accountType) {
             query = query.eq('account_type', filters.accountType);
         }
+        if (filters?.walletId) {
+            query = query.eq('wallet_id', filters.walletId);
+        }
         if (filters?.limit) {
             query = query.limit(filters.limit);
         }
@@ -410,14 +462,52 @@ export const cashbookService = {
     /**
      * Get cashbook summary for a date range
      */
-    async getSummary(organizationId: string, startDate: string, endDate: string, accountType: string = 'CASH') {
-        const { data, error } = await supabase
+    async getSummary(organizationId: string, startDate: string, endDate: string, accountType: string = 'CASH', walletId?: string) {
+        if (accountType === 'MONEYWISE_WALLET' && !walletId) {
+            const { data: wallets } = await supabase
+                .from('organization_wallets')
+                .select('id')
+                .eq('organization_id', organizationId);
+            
+            let openingBalance = 0;
+            let totalReceipts = 0;
+            let totalPayments = 0;
+            let closingBalance = 0;
+            
+            if (wallets && wallets.length > 0) {
+                for (const wallet of wallets) {
+                    const s = await this.getSummary(organizationId, startDate, endDate, 'MONEYWISE_WALLET', wallet.id);
+                    openingBalance += s.openingBalance;
+                    totalReceipts += s.totalReceipts;
+                    totalPayments += s.totalPayments;
+                    closingBalance += s.closingBalance;
+                }
+            }
+            
+            return {
+                openingBalance,
+                totalReceipts,
+                totalPayments,
+                closingBalance,
+                netMovement: totalReceipts - totalPayments
+            };
+        }
+
+        let summaryQuery = supabase
             .from('cashbook_entries')
             .select('debit, credit, balance_after')
             .eq('organization_id', organizationId)
             .eq('account_type', accountType)
             .gte('date', startDate)
-            .lte('date', endDate)
+            .lte('date', endDate);
+
+        if (walletId) {
+            summaryQuery = summaryQuery.eq('wallet_id', walletId);
+        } else if (accountType === 'MONEYWISE_WALLET') {
+            summaryQuery = summaryQuery.is('wallet_id', null);
+        }
+
+        const { data, error } = await summaryQuery
             .order('date', { ascending: true })
             .order('created_at', { ascending: true });
 
@@ -472,11 +562,12 @@ export const cashbookService = {
 
             const { data: req } = await supabase
                 .from('requisitions')
-                .select('description, requestor_id')
+                .select('description, requestor_id, wallet_id')
                 .eq('id', requisitionId)
                 .single();
 
             const createdBy = disb?.cashier_id || req?.requestor_id;
+            const walletId = req?.wallet_id || null;
 
         // 1.5 Fetch disbursement to get confirmed change for the description
         const { data: disbursement } = await supabase
@@ -506,8 +597,9 @@ export const cashbookService = {
                 created_by: createdBy,
                 status: 'COMPLETED',
                 voucher_id: voucherId,
-                account_type: 'CASH' // Assume default if not found
-            });
+                account_type: walletId ? 'MONEYWISE_WALLET' : 'CASH',
+                wallet_id: walletId
+            } as any);
             return;
         }
 
@@ -528,8 +620,8 @@ export const cashbookService = {
 
         if (updateError) throw updateError;
 
-        // 3. Recalculate ALL subsequent entries for the specific account type
-        await this.recalculateBalancesFrom(organizationId, originalEntry.date, originalEntry.created_at, originalEntry.account_type || 'CASH');
+        // 3. Recalculate ALL subsequent entries for the specific account type and wallet
+        await this.recalculateBalancesFrom(organizationId, originalEntry.date, originalEntry.created_at, originalEntry.account_type || 'CASH', originalEntry.wallet_id);
     },
 
     /**
@@ -581,7 +673,7 @@ export const cashbookService = {
         if (disbUpdateError) throw disbUpdateError;
 
         // 4. Recalculate subsequent balances
-        await this.recalculateBalancesFrom(organizationId, entry.date, entry.created_at, entry.account_type || 'CASH');
+        await this.recalculateBalancesFrom(organizationId, entry.date, entry.created_at, entry.account_type || 'CASH', entry.wallet_id);
         
         return entry;
     },
@@ -595,37 +687,54 @@ export const cashbookService = {
         physicalCount: number,
         notes: string,
         userId: string,
-        accountType: string = 'CASH'
+        accountType: string = 'CASH',
+        walletId?: string
     ) {
         // 1. Calculate system balance FOR THAT SPECIFIC DATE
         // We need the balance after all transactions on that date
-        const { data: lastEntryOnDate } = await supabase
+        let balanceQuery = supabase
             .from('cashbook_entries')
             .select('balance_after')
             .eq('organization_id', organizationId)
             .eq('date', date)
             .eq('account_type', accountType)
-            .neq('status', 'PENDING')
+            .neq('status', 'PENDING');
+
+        if (walletId) {
+            balanceQuery = balanceQuery.eq('wallet_id', walletId);
+        } else if (accountType === 'MONEYWISE_WALLET') {
+            balanceQuery = balanceQuery.is('wallet_id', null);
+        }
+
+        const { data: lastEntryOnDate } = await balanceQuery
             .order('created_at', { ascending: false })
             .limit(1)
-            .single();
+            .maybeSingle();
 
         // If no entries on that date, get the latest overall before this date
         let systemBalanceAtEndOfDay = 0;
         if (lastEntryOnDate) {
             systemBalanceAtEndOfDay = parseFloat(lastEntryOnDate.balance_after);
         } else {
-            const { data: lastEntryBefore } = await supabase
+            let beforeQuery = supabase
                 .from('cashbook_entries')
                 .select('balance_after')
                 .eq('organization_id', organizationId)
                 .eq('account_type', accountType)
                 .lt('date', date)
-                .neq('status', 'PENDING')
+                .neq('status', 'PENDING');
+
+            if (walletId) {
+                beforeQuery = beforeQuery.eq('wallet_id', walletId);
+            } else if (accountType === 'MONEYWISE_WALLET') {
+                beforeQuery = beforeQuery.is('wallet_id', null);
+            }
+
+            const { data: lastEntryBefore } = await beforeQuery
                 .order('date', { ascending: false })
                 .order('created_at', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
             systemBalanceAtEndOfDay = lastEntryBefore ? parseFloat(lastEntryBefore.balance_after) : 0;
         }
 
@@ -640,7 +749,8 @@ export const cashbookService = {
                 credit: variance < 0 ? Math.abs(variance) : 0,
                 date: date,
                 created_by: userId,
-                account_type: accountType
+                account_type: accountType,
+                wallet_id: walletId
             });
         }
 
@@ -652,7 +762,8 @@ export const cashbookService = {
             credit: 0,
             date: date,
             created_by: userId,
-            account_type: accountType
+            account_type: accountType,
+            wallet_id: walletId
         });
 
         // 4. Create OPENING_BALANCE entry for next day
@@ -661,15 +772,23 @@ export const cashbookService = {
         const nextDayStr = nextDay.toISOString().split('T')[0];
 
         // Check if opening balance for next day already exists
-        const { data: existingOpening } = await supabase
+        let openingQuery = supabase
             .from('cashbook_entries')
             .select('id')
             .eq('organization_id', organizationId)
             .eq('date', nextDayStr)
             .eq('entry_type', 'OPENING_BALANCE')
-            .eq('account_type', accountType)
+            .eq('account_type', accountType);
+
+        if (walletId) {
+            openingQuery = openingQuery.eq('wallet_id', walletId);
+        } else if (accountType === 'MONEYWISE_WALLET') {
+            openingQuery = openingQuery.is('wallet_id', null);
+        }
+
+        const { data: existingOpening } = await openingQuery
             .limit(1)
-            .single();
+            .maybeSingle();
 
         if (!existingOpening) {
             await this.createEntry(organizationId, {
@@ -679,7 +798,8 @@ export const cashbookService = {
                 credit: 0,
                 date: nextDayStr,
                 created_by: userId,
-                account_type: accountType
+                account_type: accountType,
+                wallet_id: walletId
             });
         }
 

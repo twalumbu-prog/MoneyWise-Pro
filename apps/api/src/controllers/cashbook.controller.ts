@@ -29,7 +29,7 @@ const sanitizeEntry = (entry: any) => {
 export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
     // ... existing entries logic ... (simplified for brevity, assume unchanged or just import updated)
     try {
-        const { startDate, endDate, entryType, accountType, limit } = req.query;
+        const { startDate, endDate, entryType, accountType, walletId, limit } = req.query;
         const organizationId = (req as any).user.organization_id;
 
         if (!organizationId) {
@@ -41,6 +41,7 @@ export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
             endDate: endDate as string,
             entryType: entryType as string,
             accountType: accountType as string,
+            walletId: walletId as string,
             limit: limit ? parseInt(limit as string) : undefined
         });
 
@@ -57,7 +58,7 @@ export const getCashbookEntries = async (req: any, res: any): Promise<any> => {
  */
 export const getCashBalance = async (req: any, res: any): Promise<any> => {
     try {
-        const { accountType, organizationId } = req.query;
+        const { accountType, walletId, organizationId } = req.query;
         const userOrgId = (req as any).user.organization_id;
         const userRole = (req as any).user.role;
 
@@ -71,7 +72,7 @@ export const getCashBalance = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'Organization context missing' });
         }
 
-        const balance = await cashbookService.getCurrentBalance(targetOrgId, accountType as string);
+        const balance = await cashbookService.getCurrentBalance(targetOrgId, accountType as string, walletId as string);
         res.json({ balance });
     } catch (error: any) {
         console.error('Error fetching cash balance:', error);
@@ -84,7 +85,7 @@ export const getCashBalance = async (req: any, res: any): Promise<any> => {
  */
 export const getCashbookSummary = async (req: any, res: any): Promise<any> => {
     try {
-        const { startDate, endDate, accountType } = req.query;
+        const { startDate, endDate, accountType, walletId } = req.query;
         const organizationId = (req as any).user.organization_id;
 
         if (!startDate || !endDate) {
@@ -99,7 +100,8 @@ export const getCashbookSummary = async (req: any, res: any): Promise<any> => {
             organizationId,
             startDate as string,
             endDate as string,
-            accountType as string
+            accountType as string,
+            walletId as string
         );
 
         res.json(summary);
@@ -228,7 +230,7 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
  */
 export const logWalletDepositIntent = async (req: any, res: any): Promise<any> => {
     try {
-        const { reference, purpose, amount } = req.body;
+        const { reference, purpose, amount, walletId } = req.body;
         const organizationId = (req as any).user.organization_id;
 
         if (!reference || !purpose) {
@@ -248,7 +250,8 @@ export const logWalletDepositIntent = async (req: any, res: any): Promise<any> =
             credit: 0,
             balance_after: 0,
             date: new Date().toISOString().split('T')[0],
-            status: 'PENDING'
+            status: 'PENDING',
+            wallet_id: walletId || null
         });
 
         if (error) throw error;
@@ -265,7 +268,7 @@ export const logWalletDepositIntent = async (req: any, res: any): Promise<any> =
  */
 export const closeBook = async (req: any, res: any): Promise<any> => {
     try {
-        const { date, physicalCount, notes, accountType } = req.body;
+        const { date, physicalCount, notes, accountType, walletId } = req.body;
         const userId = (req as any).user.id;
         const organizationId = (req as any).user.organization_id;
 
@@ -283,7 +286,8 @@ export const closeBook = async (req: any, res: any): Promise<any> => {
             parseFloat(physicalCount),
             notes || '',
             userId,
-            accountType || 'CASH'
+            accountType || 'CASH',
+            walletId
         );
 
         res.json(result);
@@ -522,5 +526,193 @@ export const narrateEntry = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('Error accounting entry:', error);
         res.status(500).json({ error: 'Failed to update transaction details', details: error.message });
+    }
+};
+
+/**
+ * Get all subwallets for an organization
+ */
+export const getWallets = async (req: any, res: any): Promise<any> => {
+    try {
+        const organizationId = (req as any).user.organization_id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        let { data: wallets, error } = await supabase
+            .from('organization_wallets')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('is_main', { ascending: false })
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        // If no wallets found (e.g. new organization), seed Main Wallet on the fly
+        if (!wallets || wallets.length === 0) {
+            const { data: newWallet, error: seedError } = await supabase
+                .from('organization_wallets')
+                .insert({
+                    organization_id: organizationId,
+                    name: 'Main Wallet',
+                    is_main: true
+                })
+                .select()
+                .single();
+
+            if (seedError) throw seedError;
+            wallets = [newWallet];
+        }
+
+        // Fetch balances for each wallet dynamically
+        const walletsWithBalances = await Promise.all((wallets || []).map(async (wallet: any) => {
+            const balance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', wallet.id);
+            return {
+                ...wallet,
+                balance
+            };
+        }));
+
+        res.json(walletsWithBalances);
+    } catch (error: any) {
+        console.error('Error fetching wallets:', error);
+        res.status(500).json({ error: 'Failed to fetch wallets', details: error.message });
+    }
+};
+
+/**
+ * Create a new subwallet
+ */
+export const createWallet = async (req: any, res: any): Promise<any> => {
+    try {
+        const { name, qbAccountId, qbAccountName } = req.body;
+        const organizationId = (req as any).user.organization_id;
+        const userId = (req as any).user.id;
+
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ error: 'Wallet name is required' });
+        }
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        // Insert wallet
+        const { data: wallet, error } = await supabase
+            .from('organization_wallets')
+            .insert({
+                organization_id: organizationId,
+                name: name.trim(),
+                qb_account_id: qbAccountId || null,
+                qb_account_name: qbAccountName || null,
+                is_main: false
+            })
+            .select()
+            .single();
+
+        if (error) {
+            if (error.code === '23505') {
+                return res.status(400).json({ error: 'A wallet with this name already exists' });
+            }
+            throw error;
+        }
+
+        // Create opening balance entry for the wallet
+        await cashbookService.createEntry(organizationId, {
+            entry_type: 'OPENING_BALANCE',
+            description: `Opening Balance for ${wallet.name}`,
+            debit: 0,
+            credit: 0,
+            date: new Date().toISOString().split('T')[0],
+            created_by: userId,
+            account_type: 'MONEYWISE_WALLET',
+            wallet_id: wallet.id
+        } as any);
+
+        res.status(201).json(wallet);
+    } catch (error: any) {
+        console.error('Error creating wallet:', error);
+        res.status(500).json({ error: 'Failed to create wallet', details: error.message });
+    }
+};
+
+/**
+ * Transfer funds between subwallets
+ */
+export const transferSubwalletFunds = async (req: any, res: any): Promise<any> => {
+    try {
+        const { sourceWalletId, destinationWalletId, amount, description } = req.body;
+        const organizationId = (req as any).user.organization_id;
+        const userId = (req as any).user.id;
+
+        if (!sourceWalletId || !destinationWalletId || typeof amount !== 'number' || amount <= 0) {
+            return res.status(400).json({ error: 'Source wallet, destination wallet, and a valid amount are required' });
+        }
+
+        if (sourceWalletId === destinationWalletId) {
+            return res.status(400).json({ error: 'Source and destination wallets must be different' });
+        }
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        // 1. Verify source wallet has sufficient balance
+        const sourceBalance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', sourceWalletId);
+        if (sourceBalance < amount) {
+            return res.status(400).json({ error: `Insufficient funds in source wallet. Available: K${sourceBalance.toFixed(2)}` });
+        }
+
+        // 2. Fetch wallet details for descriptions
+        const { data: wallets, error: fetchError } = await supabase
+            .from('organization_wallets')
+            .select('id, name')
+            .in('id', [sourceWalletId, destinationWalletId]);
+
+        if (fetchError || !wallets || wallets.length !== 2) {
+            return res.status(404).json({ error: 'One or both wallets were not found' });
+        }
+
+        const sourceWallet = wallets.find(w => w.id === sourceWalletId)!;
+        const destWallet = wallets.find(w => w.id === destinationWalletId)!;
+
+        // 3. Log credit/debit adjustment entries
+        const transferDesc = description || `Transfer: ${sourceWallet.name} ➡️ ${destWallet.name}`;
+
+        // Debit source subwallet (reduce funds: credit = amount)
+        const creditEntry = await cashbookService.createEntry(organizationId, {
+            entry_type: 'ADJUSTMENT',
+            description: `${transferDesc} (Outflow)`,
+            debit: 0,
+            credit: amount,
+            date: new Date().toISOString().split('T')[0],
+            created_by: userId,
+            account_type: 'MONEYWISE_WALLET',
+            wallet_id: sourceWalletId,
+            status: 'COMPLETED'
+        } as any);
+
+        // Credit destination subwallet (increase funds: debit = amount)
+        const debitEntry = await cashbookService.createEntry(organizationId, {
+            entry_type: 'ADJUSTMENT',
+            description: `${transferDesc} (Inflow)`,
+            debit: amount,
+            credit: 0,
+            date: new Date().toISOString().split('T')[0],
+            created_by: userId,
+            account_type: 'MONEYWISE_WALLET',
+            wallet_id: destinationWalletId,
+            status: 'COMPLETED'
+        } as any);
+
+        res.json({
+            message: 'Transfer completed successfully',
+            creditEntry: sanitizeEntry(creditEntry),
+            debitEntry: sanitizeEntry(debitEntry)
+        });
+    } catch (error: any) {
+        console.error('Error transferring funds:', error);
+        res.status(500).json({ error: 'Failed to transfer funds', details: error.message });
     }
 };

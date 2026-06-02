@@ -331,44 +331,66 @@ export class QuickBooksService {
 
             // 4a. If it's a wallet transaction, STRICTLY prioritize the mapped account
             if (isWallet) {
-                const { data: qbIntegration } = await supabase
-                    .from('integrations')
-                    .select('config')
-                    .eq('provider', 'QUICKBOOKS')
-                    .eq('organization_id', organizationId)
-                    .single();
+                let walletAccountId = '';
+                let walletAccountName = '';
 
-                const mappings = qbIntegration?.config?.mappings || {};
-                let walletMapping = mappings['WALLET'] || mappings['MONEYWISE_WALLET'];
-
-                // Sanity check: If the mapping exists but doesn't look like a wallet account, ignore it and re-detect
-                if (walletMapping && 
-                    !walletMapping.name.toLowerCase().includes('wallet') && 
-                    !walletMapping.name.toLowerCase().includes('moneywise')) {
-                    console.warn(`[QB Purchase] Existing wallet mapping "${walletMapping.name}" looks incorrect. Re-detecting...`);
-                    walletMapping = null;
+                if (requisition.wallet_id) {
+                    const { data: wallet } = await supabase
+                        .from('organization_wallets')
+                        .select('qb_account_id, qb_account_name')
+                        .eq('id', requisition.wallet_id)
+                        .maybeSingle();
+                    
+                    if (wallet?.qb_account_id) {
+                        walletAccountId = wallet.qb_account_id;
+                        walletAccountName = wallet.qb_account_name || 'MoneyWise Subwallet';
+                        console.log(`[QB Purchase] Found mapped account on subwallet: ${walletAccountName} (${walletAccountId})`);
+                    }
                 }
 
-                if (walletMapping) {
-                    sourceAccountId = walletMapping.id;
-                    sourceAccountName = walletMapping.name;
-                    console.log(`[QB Purchase] Locked wallet transaction to mapped account: ${sourceAccountName}`);
+                if (walletAccountId) {
+                    sourceAccountId = walletAccountId;
+                    sourceAccountName = walletAccountName;
                 } else {
-                    // Fallback to auto-detection
-                    console.log('[QB Purchase] Wallet transaction detected but no valid mapping found, searching QuickBooks accounts...');
-                    try {
-                        const qbAccounts = await this.fetchAccounts(organizationId);
-                        const walletAcc = qbAccounts.find((a: any) => 
-                            a.Name.toLowerCase().includes('wallet') || 
-                            a.Name.toLowerCase().includes('moneywise')
-                        );
-                        if (walletAcc) {
-                            sourceAccountId = walletAcc.Id;
-                            sourceAccountName = walletAcc.Name;
-                            console.log(`[QB Purchase] Auto-detected Wallet account: ${sourceAccountName} (${sourceAccountId})`);
+                    const { data: qbIntegration } = await supabase
+                        .from('integrations')
+                        .select('config')
+                        .eq('provider', 'QUICKBOOKS')
+                        .eq('organization_id', organizationId)
+                        .maybeSingle();
+
+                    const mappings = qbIntegration?.config?.mappings || {};
+                    let walletMapping = mappings['WALLET'] || mappings['MONEYWISE_WALLET'];
+
+                    // Sanity check: If the mapping exists but doesn't look like a wallet account, ignore it and re-detect
+                    if (walletMapping && 
+                        !walletMapping.name.toLowerCase().includes('wallet') && 
+                        !walletMapping.name.toLowerCase().includes('moneywise')) {
+                        console.warn(`[QB Purchase] Existing wallet mapping "${walletMapping.name}" looks incorrect. Re-detecting...`);
+                        walletMapping = null;
+                    }
+
+                    if (walletMapping) {
+                        sourceAccountId = walletMapping.id;
+                        sourceAccountName = walletMapping.name;
+                        console.log(`[QB Purchase] Locked wallet transaction to mapped account: ${sourceAccountName}`);
+                    } else {
+                        // Fallback to auto-detection
+                        console.log('[QB Purchase] Wallet transaction detected but no valid mapping found, searching QuickBooks accounts...');
+                        try {
+                            const qbAccounts = await this.fetchAccounts(organizationId);
+                            const walletAcc = qbAccounts.find((a: any) => 
+                                a.Name.toLowerCase().includes('wallet') || 
+                                a.Name.toLowerCase().includes('moneywise')
+                            );
+                            if (walletAcc) {
+                                sourceAccountId = walletAcc.Id;
+                                sourceAccountName = walletAcc.Name;
+                                console.log(`[QB Purchase] Auto-detected Wallet account: ${sourceAccountName} (${sourceAccountId})`);
+                            }
+                        } catch (fetchErr) {
+                            console.error('[QB Purchase] Failed to fetch accounts for wallet auto-detection:', fetchErr);
                         }
-                    } catch (fetchErr) {
-                        console.error('[QB Purchase] Failed to fetch accounts for wallet auto-detection:', fetchErr);
                     }
                 }
             }
@@ -542,17 +564,33 @@ export class QuickBooksService {
             let sourceAccountId = '';
             let sourceAccountName = '';
 
-            const qbAccounts = await this.fetchAccounts(organizationId);
-            const walletAcc = qbAccounts.find((a: any) => 
-                a.Name.toLowerCase().includes('wallet') || 
-                a.Name.toLowerCase().includes('moneywise')
-            );
+            if (entry.wallet_id) {
+                const { data: wallet } = await supabase
+                    .from('organization_wallets')
+                    .select('qb_account_id, qb_account_name')
+                    .eq('id', entry.wallet_id)
+                    .maybeSingle();
+                
+                if (wallet?.qb_account_id) {
+                    sourceAccountId = wallet.qb_account_id;
+                    sourceAccountName = wallet.qb_account_name || 'MoneyWise Subwallet';
+                    console.log(`[QB Deposit] Found mapped account on subwallet: ${sourceAccountName} (${sourceAccountId})`);
+                }
+            }
 
-            if (walletAcc) {
-                sourceAccountId = walletAcc.Id;
-                sourceAccountName = walletAcc.Name;
-            } else {
-                throw new Error('Could not find MoneyWise Wallet account in QuickBooks.');
+            if (!sourceAccountId) {
+                const qbAccounts = await this.fetchAccounts(organizationId);
+                const walletAcc = qbAccounts.find((a: any) => 
+                    a.Name.toLowerCase().includes('wallet') || 
+                    a.Name.toLowerCase().includes('moneywise')
+                );
+
+                if (walletAcc) {
+                    sourceAccountId = walletAcc.Id;
+                    sourceAccountName = walletAcc.Name;
+                } else {
+                    throw new Error('Could not find MoneyWise Wallet account in QuickBooks.');
+                }
             }
 
             // 4. Construct Deposit
@@ -644,17 +682,33 @@ export class QuickBooksService {
             let sourceAccountId = '';
             let sourceAccountName = '';
 
-            const qbAccounts = await this.fetchAccounts(organizationId);
-            const walletAcc = qbAccounts.find((a: any) => 
-                a.Name.toLowerCase().includes('wallet') || 
-                a.Name.toLowerCase().includes('moneywise')
-            );
+            if (entry.wallet_id) {
+                const { data: wallet } = await supabase
+                    .from('organization_wallets')
+                    .select('qb_account_id, qb_account_name')
+                    .eq('id', entry.wallet_id)
+                    .maybeSingle();
+                
+                if (wallet?.qb_account_id) {
+                    sourceAccountId = wallet.qb_account_id;
+                    sourceAccountName = wallet.qb_account_name || 'MoneyWise Subwallet';
+                    console.log(`[QB Ledger Purchase] Found mapped account on subwallet: ${sourceAccountName} (${sourceAccountId})`);
+                }
+            }
 
-            if (walletAcc) {
-                sourceAccountId = walletAcc.Id;
-                sourceAccountName = walletAcc.Name;
-            } else {
-                throw new Error('Could not find MoneyWise Wallet account in QuickBooks.');
+            if (!sourceAccountId) {
+                const qbAccounts = await this.fetchAccounts(organizationId);
+                const walletAcc = qbAccounts.find((a: any) => 
+                    a.Name.toLowerCase().includes('wallet') || 
+                    a.Name.toLowerCase().includes('moneywise')
+                );
+
+                if (walletAcc) {
+                    sourceAccountId = walletAcc.Id;
+                    sourceAccountName = walletAcc.Name;
+                } else {
+                    throw new Error('Could not find MoneyWise Wallet account in QuickBooks.');
+                }
             }
 
             const purchase = {

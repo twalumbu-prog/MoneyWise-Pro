@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { RequisitionMessage, requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
+import { cashbookService } from '../../services/cashbook.service';
 import { User, ChevronDown, Loader2, Check, CheckCircle, X, FileText, Smartphone, Coins, Wallet, Building2, ArrowRight, RefreshCw, Search, Beaker, AlertTriangle, Image as ImageIcon, Plus, Sparkles, RotateCcw, Edit3, Clock } from 'lucide-react';
 import { accountService, Account } from '../../services/account.service';
 import { integrationService } from '../../services/integration.service';
@@ -81,6 +82,10 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [isSuccess, setIsSuccess] = useState(false);
     const [disburseError, setDisburseError] = useState<string | null>(null);
     const [disburseStatusMsg, setDisburseStatusMsg] = useState<string | null>(null);
+
+    // Wallets & Subwallets State
+    const [wallets, setWallets] = useState<any[]>([]);
+    const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
     // Excess Disbursal State (separate from normal disbursal to avoid conflicts)
     const [excessMethod, setExcessMethod] = useState<string | null>(null);
@@ -326,6 +331,24 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             resolveName();
         }
     }, [excessRecipient, excessPaymentType, excessProvider, excessLookupName, isExcessLookingUp, requisitionData?.organization_id]);
+
+    useEffect(() => {
+        if (activeMethod === 'MONEYWISE_WALLET' && wallets.length === 0) {
+            const loadWallets = async () => {
+                try {
+                    const data = await cashbookService.getWallets();
+                    setWallets(data || []);
+                    if (data && data.length > 0) {
+                        const mainWallet = data.find((w: any) => w.is_main) || data[0];
+                        setSelectedWalletId(mainWallet.id);
+                    }
+                } catch (err) {
+                    console.error('Failed to load wallets in RequisitionMessageCard:', err);
+                }
+            };
+            loadWallets();
+        }
+    }, [activeMethod, wallets.length]);
 
     const hasInitializedForm = useRef(false);
 
@@ -603,6 +626,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 recipient_account: normalizedPhone || recipientValue || undefined,
                 recipient_bank_code: recipientBankCode,
                 recipient_account_name: lookupName || undefined,
+                wallet_id: selectedWalletId || undefined,
             });
 
             if (activeMethod === 'MONEYWISE_WALLET' && result.lencoStatus === 'pending') {
@@ -1713,6 +1737,28 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         </div>
                                                                     </div>
                                                                 </div>
+
+                                                                {/* Source Subwallet Dropdown */}
+                                                                {wallets.length > 0 && (
+                                                                    <div className="flex flex-col space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                        <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">Source Subwallet</label>
+                                                                        <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                            <select 
+                                                                                value={selectedWalletId || ''}
+                                                                                onChange={(e) => setSelectedWalletId(e.target.value)}
+                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200 appearance-none cursor-pointer"
+                                                                            >
+                                                                                <option value="" disabled>Select Source Subwallet</option>
+                                                                                {wallets.map((w: any) => (
+                                                                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                            <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                                                <ChevronDown size={18} />
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
 
                                                                 <div className="flex flex-col space-y-2">
                                                                     <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">

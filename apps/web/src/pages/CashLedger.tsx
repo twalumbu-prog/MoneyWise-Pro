@@ -32,6 +32,8 @@ import {
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
+import CreateWalletModal from '../components/CreateWalletModal';
+import TransferModal from '../components/TransferModal';
 import { useAuth } from '../context/AuthContext';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
@@ -187,13 +189,40 @@ const CashLedger: React.FC = () => {
     const [filterAccount, setFilterAccount] = useState<string>('ALL');
     const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
+    // Wallets & Subwallets State
+    const [wallets, setWallets] = useState<any[]>([]);
+    const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(undefined);
+    const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL'>('MONEYWISE');
+    const [isCreateWalletModalOpen, setIsCreateWalletModalOpen] = useState(false);
+    const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [externalBalances, setExternalBalances] = useState<Record<string, number>>({ CASH: 0, AIRTEL_MONEY: 0, BANK: 0 });
+
     const { userRole } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
 
+    const loadWallets = async (shouldSetDefault = false) => {
+        try {
+            const data = await cashbookService.getWallets();
+            setWallets(data || []);
+            if (data && data.length > 0) {
+                const exists = data.some((w: any) => w.id === selectedWalletId);
+                if (shouldSetDefault || !selectedWalletId || !exists) {
+                    const mainWallet = data.find((w: any) => w.is_main) || data[0];
+                    setSelectedWalletId(mainWallet.id);
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load wallets:', error);
+        }
+    };
+
+    useEffect(() => {
+        loadAccounts();
+    }, []);
+
     useEffect(() => {
         loadData();
-        loadAccounts();
-    }, [startDate, endDate, selectedAccountType]);
+    }, [startDate, endDate, selectedAccountType, selectedWalletId]);
 
     const loadAccounts = async () => {
         try {
@@ -207,12 +236,33 @@ const CashLedger: React.FC = () => {
     const loadData = async () => {
         setLoading(true);
         try {
-            const [entriesData, balanceData] = await Promise.all([
-                cashbookService.getEntries({ startDate, endDate, accountType: selectedAccountType }),
-                cashbookService.getBalance(selectedAccountType)
+            const [entriesData, balanceData, cashBal, airtelBal, bankBal] = await Promise.all([
+                cashbookService.getEntries({ 
+                    startDate, 
+                    endDate, 
+                    accountType: selectedAccountType,
+                    walletId: selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined
+                }),
+                cashbookService.getBalance(
+                    selectedAccountType,
+                    undefined,
+                    selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined
+                ),
+                cashbookService.getBalance('CASH'),
+                cashbookService.getBalance('AIRTEL_MONEY'),
+                cashbookService.getBalance('BANK')
             ]);
             setEntries(entriesData);
             setBalance(balanceData);
+            setExternalBalances({
+                CASH: cashBal,
+                AIRTEL_MONEY: airtelBal,
+                BANK: bankBal
+            });
+
+            if (selectedAccountType === 'MONEYWISE_WALLET') {
+                await loadWallets();
+            }
         } catch (error) {
             console.error('Failed to load cashbook data:', error);
         } finally {
@@ -222,7 +272,12 @@ const CashLedger: React.FC = () => {
 
     const handleExport = async (format: 'csv' | 'xlsx' | 'pdf', exportStartDate: string, exportEndDate: string) => {
         try {
-            const exportEntries = await cashbookService.getEntries({ startDate: exportStartDate, endDate: exportEndDate, accountType: selectedAccountType });
+            const exportEntries = await cashbookService.getEntries({ 
+                startDate: exportStartDate, 
+                endDate: exportEndDate, 
+                accountType: selectedAccountType,
+                walletId: selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined
+            });
             
             const period = { start: exportStartDate, end: exportEndDate };
             const filename = `Cash_Ledger_${selectedAccountType}_${exportStartDate}_to_${exportEndDate}`;
@@ -1128,74 +1183,200 @@ const CashLedger: React.FC = () => {
             {/* ============ MOBILE LAYOUT ============ */}
             <div className="md:hidden flex flex-col min-h-screen bg-white pb-24 pt-4">
 
-                {/* Mobile Wallet Cards - Horizontal Swipeable */}
-                <div className="flex overflow-x-auto no-scrollbar gap-4 pb-6 px-6 scroll-px-6" style={{ scrollSnapType: 'x mandatory' }}>
-                    {[
-                        { id: 'MONEYWISE_WALLET', name: 'MoneyWise Wallet', icon: Wallet },
-                        { id: 'CASH', name: 'Cash Account', icon: Coins },
-                        { id: 'AIRTEL_MONEY', name: 'Airtel Money', icon: Smartphone },
-                        { id: 'BANK', name: 'Bank Account', icon: Building2 },
-                    ].map((acc) => {
-                        const isActive = selectedAccountType === acc.id;
-                        const balanceFormatted = formatCurrency(isActive ? balance : 0);
-                        const currencySymbol = acc.id === 'MONEYWISE_WALLET' ? 'ZMW' : 'K';
-                        const balanceAmountOnly = balanceFormatted.replace('K', '');
+                {/* Mobile Category Toggle */}
+                <div className="px-6 mb-6">
+                    <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100/50 shadow-2xs">
+                        <button
+                            onClick={() => {
+                                setCategoryGroup('MONEYWISE');
+                                setSelectedAccountType('MONEYWISE_WALLET');
+                                if (wallets.length > 0) {
+                                    const mainWallet = wallets.find(w => w.is_main) || wallets[0];
+                                    setSelectedWalletId(mainWallet.id);
+                                }
+                            }}
+                            className={`flex-1 py-3 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${categoryGroup === 'MONEYWISE' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}
+                        >
+                            MoneyWise Wallets
+                        </button>
+                        <button
+                            onClick={() => {
+                                setCategoryGroup('EXTERNAL');
+                                setSelectedAccountType('CASH');
+                                setSelectedWalletId(undefined);
+                            }}
+                            className={`flex-1 py-3 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${categoryGroup === 'EXTERNAL' ? 'bg-white text-slate-800 shadow-xs' : 'text-gray-400'}`}
+                        >
+                            External Accounts
+                        </button>
+                    </div>
+                </div>
 
-                        return (
-                            <div
-                                key={acc.id}
-                                onClick={() => setSelectedAccountType(acc.id as any)}
-                                style={{ 
-                                    scrollSnapAlign: 'start', 
-                                    minWidth: '70vw', 
-                                    maxWidth: '70vw',
-                                    ...(isActive ? {
-                                        backgroundImage: `url(${budgetBg})`,
-                                        backgroundSize: 'cover',
-                                        backgroundPosition: 'center',
-                                    } : {})
-                                }}
-                                className={`flex flex-col rounded-[24px] text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative shadow-lg ${
-                                    isActive
-                                        ? 'text-white'
-                                        : 'bg-white border-2 border-transparent shadow-sm opacity-80 text-[#5E6480]'
-                                }`}
-                            >
-                                {/* Card Body */}
-                                <div className="p-5 flex-1 flex flex-col justify-between">
-                                    <div>
-                                        <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${
-                                            isActive ? 'text-white/60' : 'text-[#5E6480]/50'
-                                        }`}>
-                                            {acc.name}
-                                        </span>
-                                        <div className="flex items-baseline gap-1.5">
-                                            <span className={`text-lg font-bold tracking-wider ${
-                                                isActive ? 'text-white/70' : 'text-[#5E6480]/50'
-                                            }`}>
-                                                {currencySymbol}
-                                            </span>
-                                            <span className={`text-[32px] font-black leading-none tracking-tight ${
-                                                isActive ? 'text-white' : 'text-slate-900'
-                                            }`}>
-                                                {balanceAmountOnly}
-                                            </span>
+                {/* Mobile Wallet Cards - Horizontal Swipeable */}
+                <div className="flex overflow-x-auto no-scrollbar gap-4 pb-6 px-6 scroll-px-6 animate-in fade-in duration-300" style={{ scrollSnapType: 'x mandatory' }}>
+                    {categoryGroup === 'MONEYWISE' ? (
+                        <>
+                            {wallets.map((w) => {
+                                const isActive = selectedWalletId === w.id;
+                                const balanceFormatted = formatCurrency(w.balance || 0);
+                                const currencySymbol = 'ZMW';
+                                const balanceAmountOnly = balanceFormatted.replace('K', '');
+
+                                return (
+                                    <div
+                                        key={w.id}
+                                        onClick={() => setSelectedWalletId(w.id)}
+                                        style={{ 
+                                            scrollSnapAlign: 'start', 
+                                            minWidth: '70vw', 
+                                            maxWidth: '70vw',
+                                            ...(isActive ? {
+                                                backgroundImage: `url(${budgetBg})`,
+                                                backgroundSize: 'cover',
+                                                backgroundPosition: 'center',
+                                            } : {})
+                                        }}
+                                        className={`flex flex-col rounded-[24px] text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative shadow-lg ${
+                                            isActive
+                                                ? 'text-white'
+                                                : 'bg-white border-2 border-transparent shadow-sm opacity-80 text-[#5E6480]'
+                                        }`}
+                                    >
+                                        {/* Card Body */}
+                                        <div className="p-5 flex-1 flex flex-col justify-between">
+                                            <div>
+                                                <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${
+                                                    isActive ? 'text-white/60' : 'text-[#5E6480]/50'
+                                                }`}>
+                                                    {w.name} {w.is_main && '(Main)'}
+                                                </span>
+                                                <div className="flex items-baseline gap-1.5">
+                                                    <span className={`text-lg font-bold tracking-wider ${
+                                                        isActive ? 'text-white/70' : 'text-[#5E6480]/50'
+                                                    }`}>
+                                                        {currencySymbol}
+                                                    </span>
+                                                    <span className={`text-[32px] font-black leading-none tracking-tight ${
+                                                        isActive ? 'text-white' : 'text-slate-900'
+                                                    }`}>
+                                                        {balanceAmountOnly}
+                                                    </span>
+                                                </div>
+                                                {w.qb_account_name && (
+                                                    <div className={`text-[9px] mt-2 font-bold uppercase tracking-wider ${
+                                                        isActive ? 'text-white/75' : 'text-slate-400'
+                                                    }`}>
+                                                        QBO: {w.qb_account_name}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Action Buttons inside card */}
+                                            {isActive && !isRequestor && (
+                                                <div className="flex gap-2 mt-5">
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
+                                                        className="flex-1 py-2.5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
+                                                    >
+                                                        + Deposit
+                                                    </button>
+                                                    {wallets.length > 1 && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setIsTransferModalOpen(true); }}
+                                                            className="flex-1 py-2.5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
+                                                        >
+                                                            Transfer
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
-
-                                    {/* Deposit Button inside card */}
-                                    {isActive && !isRequestor && (
-                                        <button
-                                            onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
-                                            className="w-full py-3 mt-5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
-                                        >
-                                            + Deposit Funds
-                                        </button>
-                                    )}
+                                );
+                            })}
+                            {!isRequestor && (
+                                <div
+                                    onClick={() => setIsCreateWalletModalOpen(true)}
+                                    style={{ 
+                                        scrollSnapAlign: 'start', 
+                                        minWidth: '70vw', 
+                                        maxWidth: '70vw',
+                                        minHeight: '140px'
+                                    }}
+                                    className="flex flex-col justify-center items-center rounded-[24px] text-center border-2 border-dashed border-gray-200 bg-white hover:border-gray-300 text-gray-400 hover:text-gray-600 transition-all duration-300 flex-shrink-0 cursor-pointer p-5 shadow-xs"
+                                >
+                                    <PlusCircle size={28} strokeWidth={2.5} />
+                                    <span className="text-xs font-bold uppercase tracking-widest block mt-2">Add Subwallet</span>
                                 </div>
-                            </div>
-                        );
-                    })}
+                            )}
+                        </>
+                    ) : (
+                        [
+                            { id: 'CASH', name: 'Cash Account', icon: Coins },
+                            { id: 'AIRTEL_MONEY', name: 'Airtel Money', icon: Smartphone },
+                            { id: 'BANK', name: 'Bank Account', icon: Building2 },
+                        ].map((acc) => {
+                            const isActive = selectedAccountType === acc.id;
+                            const balanceFormatted = formatCurrency(externalBalances[acc.id] || 0);
+                            const currencySymbol = 'K';
+                            const balanceAmountOnly = balanceFormatted.replace('K', '');
+
+                            return (
+                                <div
+                                    key={acc.id}
+                                    onClick={() => setSelectedAccountType(acc.id as any)}
+                                    style={{ 
+                                        scrollSnapAlign: 'start', 
+                                        minWidth: '70vw', 
+                                        maxWidth: '70vw',
+                                        ...(isActive ? {
+                                            backgroundImage: `url(${budgetBg})`,
+                                            backgroundSize: 'cover',
+                                            backgroundPosition: 'center',
+                                        } : {})
+                                    }}
+                                    className={`flex flex-col rounded-[24px] text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative shadow-lg ${
+                                        isActive
+                                            ? 'text-white'
+                                            : 'bg-white border-2 border-transparent shadow-sm opacity-80 text-[#5E6480]'
+                                    }`}
+                                >
+                                    {/* Card Body */}
+                                    <div className="p-5 flex-1 flex flex-col justify-between">
+                                        <div>
+                                            <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${
+                                                isActive ? 'text-white/60' : 'text-[#5E6480]/50'
+                                            }`}>
+                                                {acc.name}
+                                            </span>
+                                            <div className="flex items-baseline gap-1.5">
+                                                <span className={`text-lg font-bold tracking-wider ${
+                                                    isActive ? 'text-white/70' : 'text-[#5E6480]/50'
+                                                }`}>
+                                                    {currencySymbol}
+                                                </span>
+                                                <span className={`text-[32px] font-black leading-none tracking-tight ${
+                                                    isActive ? 'text-white' : 'text-slate-900'
+                                                }`}>
+                                                    {balanceAmountOnly}
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        {/* Deposit Button inside card */}
+                                        {isActive && !isRequestor && (
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
+                                                className="w-full py-3 mt-5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
+                                            >
+                                                + Deposit Funds
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
 
                 {/* Mobile Transactions Header & Control Pill */}
@@ -1433,54 +1614,148 @@ const CashLedger: React.FC = () => {
             {/* ============ DESKTOP LAYOUT ============ */}
             <div className="hidden md:block max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8">
             <div className="space-y-8 pb-4">
+                {/* Category Selector Tabs */}
+                <div className="flex border-b border-gray-100 mb-6 bg-slate-50 p-1.5 rounded-2xl w-fit">
+                    <button
+                        onClick={() => {
+                            setCategoryGroup('MONEYWISE');
+                            setSelectedAccountType('MONEYWISE_WALLET');
+                            if (wallets.length > 0) {
+                                const mainWallet = wallets.find(w => w.is_main) || wallets[0];
+                                setSelectedWalletId(mainWallet.id);
+                            }
+                        }}
+                        className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-300 ${
+                            categoryGroup === 'MONEYWISE'
+                                ? 'bg-white text-blue-600 shadow-xs'
+                                : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                        MoneyWise Wallets
+                    </button>
+                    <button
+                        onClick={() => {
+                            setCategoryGroup('EXTERNAL');
+                            setSelectedAccountType('CASH');
+                            setSelectedWalletId(undefined);
+                        }}
+                        className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-300 ${
+                            categoryGroup === 'EXTERNAL'
+                                ? 'bg-white text-slate-800 shadow-xs'
+                                : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                        External Accounts
+                    </button>
+                </div>
+
                 {/* Account Selection Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {[
-                        { id: 'MONEYWISE_WALLET', name: 'MoneyWise Wallet', icon: Wallet, color: 'text-[#006AFF]', bg: 'bg-[#006AFF]/5', border: 'border-[#006AFF]/20' },
-                        { id: 'CASH', name: 'Cash Account', icon: Coins, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
-                        { id: 'AIRTEL_MONEY', name: 'Airtel Money', icon: Smartphone, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' },
-                        { id: 'BANK', name: 'Bank Account', icon: Building2, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100' }
-                    ].map((acc) => {
-                        const isActive = selectedAccountType === acc.id;
-                        return (
-                            <button
-                                key={acc.id}
-                                onClick={() => setSelectedAccountType(acc.id as any)}
-                                style={isActive ? {
-                                    backgroundImage: `url(${budgetBg})`,
-                                    backgroundSize: 'cover',
-                                    backgroundPosition: 'center',
-                                } : {}}
-                                className={`relative p-6 rounded-[24px] border-2 text-left transition-all duration-300 group ${
-                                    isActive 
-                                        ? 'border-transparent shadow-lg text-white' 
-                                        : 'bg-white border-transparent hover:border-gray-100'
-                                }`}
-                            >
-                                <div className="flex items-start justify-between mb-4">
-                                    <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10 text-white' : `${acc.bg} ${acc.color}`} transition-colors duration-300`}>
-                                        <acc.icon size={20} strokeWidth={2.5} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-300">
+                    {categoryGroup === 'MONEYWISE' ? (
+                        <>
+                            {wallets.map((w) => {
+                                const isActive = selectedWalletId === w.id;
+                                return (
+                                    <button
+                                        key={w.id}
+                                        onClick={() => setSelectedWalletId(w.id)}
+                                        style={isActive ? {
+                                            backgroundImage: `url(${budgetBg})`,
+                                            backgroundSize: 'cover',
+                                            backgroundPosition: 'center',
+                                        } : {}}
+                                        className={`relative p-6 rounded-[24px] border-2 text-left transition-all duration-300 group ${
+                                            isActive 
+                                                ? 'border-transparent shadow-lg text-white' 
+                                                : 'bg-white border-transparent hover:border-gray-100 hover:shadow-xs'
+                                        }`}
+                                    >
+                                        <div className="flex items-start justify-between mb-4">
+                                            <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10 text-white' : 'bg-blue-50 text-blue-600'} transition-colors duration-300`}>
+                                                <Wallet size={20} strokeWidth={2.5} />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-white/80' : 'text-gray-400'}`}>
+                                                {w.name} {w.is_main && '(Main)'}
+                                            </span>
+                                            <div className="flex items-baseline gap-1">
+                                                <span className={`text-2xl font-black tracking-tight ${isActive ? 'text-white' : 'text-gray-900'}`}>
+                                                    {formatCurrency(w.balance || 0).split('.')[0]}
+                                                </span>
+                                                <span className={`text-sm font-bold opacity-60 ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                                                    .{formatCurrency(w.balance || 0).split('.')[1] || '00'}
+                                                </span>
+                                            </div>
+                                            {w.qb_account_name && (
+                                                <div className={`text-[9px] mt-2 font-bold uppercase tracking-wider ${isActive ? 'text-white/70' : 'text-gray-400'}`}>
+                                                    QBO: {w.qb_account_name}
+                                                </div>
+                                            )}
+                                        </div>
+                                        {!isActive && (
+                                            <div className="absolute inset-0 bg-gray-50/40 opacity-0 group-hover:opacity-100 rounded-[24px] transition-opacity pointer-events-none" />
+                                        )}
+                                    </button>
+                                );
+                            })}
+                            {!isRequestor && (
+                                <button
+                                    onClick={() => setIsCreateWalletModalOpen(true)}
+                                    className="p-6 rounded-[24px] border-2 border-dashed border-gray-200 bg-white hover:border-gray-300 flex flex-col justify-center items-center text-center transition-all duration-300 text-gray-400 hover:text-gray-600 gap-2 cursor-pointer h-full min-h-[140px]"
+                                >
+                                    <PlusCircle size={24} strokeWidth={2.5} />
+                                    <span className="text-[11px] font-bold uppercase tracking-widest block">Add Subwallet</span>
+                                </button>
+                            )}
+                        </>
+                    ) : (
+                        [
+                            { id: 'CASH', name: 'Cash Account', icon: Coins, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
+                            { id: 'AIRTEL_MONEY', name: 'Airtel Money', icon: Smartphone, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' },
+                            { id: 'BANK', name: 'Bank Account', icon: Building2, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100' }
+                        ].map((acc) => {
+                            const isActive = selectedAccountType === acc.id;
+                            return (
+                                <button
+                                    key={acc.id}
+                                    onClick={() => setSelectedAccountType(acc.id as any)}
+                                    style={isActive ? {
+                                        backgroundImage: `url(${budgetBg})`,
+                                        backgroundSize: 'cover',
+                                        backgroundPosition: 'center',
+                                    } : {}}
+                                    className={`relative p-6 rounded-[24px] border-2 text-left transition-all duration-300 group ${
+                                        isActive 
+                                            ? 'border-transparent shadow-lg text-white' 
+                                            : 'bg-white border-transparent hover:border-gray-100 hover:shadow-xs'
+                                    }`}
+                                >
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10 text-white' : `${acc.bg} ${acc.color}`} transition-colors duration-300`}>
+                                            <acc.icon size={20} strokeWidth={2.5} />
+                                        </div>
                                     </div>
-                                </div>
-                                <div>
-                                    <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-white/80' : 'text-gray-400'}`}>
-                                        {acc.name}
-                                    </span>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className={`text-2xl font-black tracking-tight ${isActive ? 'text-white' : 'text-gray-900'}`}>
-                                            {formatCurrency(isActive ? balance : 0).split('.')[0]}
+                                    <div>
+                                        <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-white/80' : 'text-gray-400'}`}>
+                                            {acc.name}
                                         </span>
-                                        <span className={`text-sm font-bold opacity-60 ${isActive ? 'text-white' : 'text-gray-400'}`}>
-                                            .{formatCurrency(isActive ? balance : 0).split('.')[1] || '00'}
-                                        </span>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className={`text-2xl font-black tracking-tight ${isActive ? 'text-white' : 'text-gray-900'}`}>
+                                                {formatCurrency(externalBalances[acc.id] || 0).split('.')[0]}
+                                            </span>
+                                            <span className={`text-sm font-bold opacity-60 ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                                                .{formatCurrency(externalBalances[acc.id] || 0).split('.')[1] || '00'}
+                                            </span>
+                                        </div>
                                     </div>
-                                </div>
-                                {!isActive && (
-                                    <div className="absolute inset-0 bg-gray-50/40 opacity-0 group-hover:opacity-100 rounded-[24px] transition-opacity pointer-events-none" />
-                                )}
-                            </button>
-                        );
-                    })}
+                                    {!isActive && (
+                                        <div className="absolute inset-0 bg-gray-50/40 opacity-0 group-hover:opacity-100 rounded-[24px] transition-opacity pointer-events-none" />
+                                    )}
+                                </button>
+                            );
+                        })
+                    )}
                 </div>
 
                 {/* Minimalist Toolbar */}
@@ -1493,6 +1768,16 @@ const CashLedger: React.FC = () => {
                             >
                                 <PlusCircle size={14} className="mr-2" strokeWidth={3} />
                                 Deposit Funds
+                            </button>
+                        )}
+
+                        {!isRequestor && selectedAccountType === 'MONEYWISE_WALLET' && wallets.length > 1 && (
+                            <button
+                                onClick={() => setIsTransferModalOpen(true)}
+                                className="bg-white hover:bg-gray-50 text-gray-950 border border-gray-200 px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
+                            >
+                                <ArrowDownUp size={14} className="mr-2 text-gray-500" strokeWidth={3} />
+                                Transfer Funds
                             </button>
                         )}
                         
@@ -1965,6 +2250,7 @@ const CashLedger: React.FC = () => {
                 }}
                 currentSystemBalance={balance}
                 accountType={selectedAccountType}
+                walletId={selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined}
             />
             <CashInflowModal
                 isOpen={isInflowModalOpen}
@@ -1972,6 +2258,7 @@ const CashLedger: React.FC = () => {
                 onSuccess={loadData}
                 initialInflowType={selectedAccountType === 'MONEYWISE_WALLET' ? 'WALLET' : 'CASH'}
                 isReadOnlyType={selectedAccountType === 'MONEYWISE_WALLET'}
+                walletId={selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined}
             />
 
             <RequisitionModal 
@@ -1990,6 +2277,23 @@ const CashLedger: React.FC = () => {
                 onExport={handleExport}
                 defaultStartDate={startDate}
                 defaultEndDate={endDate}
+            />
+
+            <CreateWalletModal
+                isOpen={isCreateWalletModalOpen}
+                onClose={() => setIsCreateWalletModalOpen(false)}
+                onSuccess={async () => {
+                    await loadWallets(true);
+                    loadData();
+                }}
+            />
+
+            <TransferModal
+                isOpen={isTransferModalOpen}
+                onClose={() => setIsTransferModalOpen(false)}
+                onSuccess={loadData}
+                wallets={wallets}
+                initialSourceWalletId={selectedWalletId}
             />
         </Layout>
     );

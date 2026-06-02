@@ -11,6 +11,7 @@ interface CashInflowModalProps {
     onSuccess: () => void;
     initialInflowType?: 'CASH' | 'WALLET';
     isReadOnlyType?: boolean;
+    walletId?: string;
 }
 
 const CashInflowModal: React.FC<CashInflowModalProps> = ({ 
@@ -18,7 +19,8 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
     onClose, 
     onSuccess,
     initialInflowType = 'CASH',
-    isReadOnlyType = false
+    isReadOnlyType = false,
+    walletId
 }) => {
     const [personName, setPersonName] = useState('');
     const [purpose, setPurpose] = useState('');
@@ -138,7 +140,7 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
             setCurrentReference(ref);
 
             try {
-                await cashbookService.logWalletDepositIntent(ref, purpose || 'Wallet Deposit', targetNet);
+                await cashbookService.logWalletDepositIntent(ref, purpose || 'Wallet Deposit', targetNet, walletId);
             } catch (err) {
                 console.error('Failed to log deposit intent:', err);
             }
