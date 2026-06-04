@@ -3094,7 +3094,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                  
                                                  const ref = `CHG-${Date.now()}-${requisitionData?.id}`;
                                                  LencoPay.getPaid({
-                                                     key: requisitionData.organization?.lenco_public_key,
+                                                     key: requisitionData.organization?.lenco_public_key || 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
                                                      amount: changeAmount.toFixed(2),
                                                      currency: 'ZMW',
                                                      reference: ref,
