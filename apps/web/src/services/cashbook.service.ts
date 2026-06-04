@@ -14,6 +14,8 @@ export interface CashbookEntry {
     status?: 'PENDING' | 'COMPLETED' | 'ACCOUNTED' | 'UNACCOUNTED';
     reference_number?: string;
     account_id?: string;
+    external_reference?: string;
+    organization_id?: string;
     accounts?: { id: string; name: string; code: string };
     qb_sync_status?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED';
     qb_sync_error?: string;

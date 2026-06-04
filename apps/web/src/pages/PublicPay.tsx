@@ -72,6 +72,9 @@ export const PublicPay: React.FC = () => {
     const [verificationReason, setVerificationReason] = useState('');
     const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
     const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
+    const [lastTransactionId, setLastTransactionId] = useState<string | null>(null);
+    const [isConfirmingManual, setIsConfirmingManual] = useState(false);
+    const [confirmManualError, setConfirmManualError] = useState<string | null>(null);
     
     // Global errors
     const [error, setError] = useState<string | null>(null);
@@ -208,6 +211,7 @@ export const PublicPay: React.FC = () => {
                 onSuccess: async (response: any) => {
                     console.log('Public payment window success reported', response);
                     const transactionId = response.id || response.transactionId;
+                    setLastTransactionId(transactionId || null);
                     setStep('VERIFYING');
                     setVerificationStep('POLLING');
                     
@@ -252,9 +256,40 @@ export const PublicPay: React.FC = () => {
         }
     };
 
+    const handleConfirmPaymentManual = async () => {
+        if (!org || !currentReference) return;
+        
+        try {
+            setIsConfirmingManual(true);
+            setConfirmManualError(null);
+            
+            let url = `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${org.id}`;
+            if (lastTransactionId) {
+                url += `&transactionId=${lastTransactionId}`;
+            }
+
+            const verifyRes = await axios.get(url);
+            
+            if (verifyRes.data.verified) {
+                setReceiptNumber(verifyRes.data.referenceNumber || null);
+                setStep('SUCCESS');
+            } else {
+                setConfirmManualError(`Reconciliation check returned: ${verifyRes.data.status || 'pending'}. The payment gateway hasn't reported this transaction as successful yet. Please try again in a few moments.`);
+            }
+        } catch (err: any) {
+            console.error('Manual confirmation check failed:', err);
+            setConfirmManualError(err.response?.data?.error || 'Verification check encountered an error. Please try again.');
+        } finally {
+            setIsConfirmingManual(false);
+        }
+    };
+
     const handleReset = () => {
         setSelectedQuantities({});
         setReceiptNumber(null);
+        setLastTransactionId(null);
+        setConfirmManualError(null);
+        setIsConfirmingManual(false);
         setStep('CATALOG');
         setError(null);
     };
@@ -664,12 +699,33 @@ Status: VERIFIED`;
                                 <p className="text-xs text-slate-400 mt-3 text-center max-w-xs leading-relaxed font-medium">
                                     {verificationReason}
                                 </p>
-                                <button
-                                    onClick={handleReset}
-                                    className="mt-6 px-6 py-3 bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-slate-800 transition-all"
-                                >
-                                    Return to Catalog
-                                </button>
+                                {confirmManualError && (
+                                    <p className="text-[11px] text-rose-600 mt-3 text-center max-w-xs font-semibold">
+                                        {confirmManualError}
+                                    </p>
+                                )}
+                                <div className="flex flex-col items-center gap-3 mt-6 w-full">
+                                    <button
+                                        onClick={handleConfirmPaymentManual}
+                                        disabled={isConfirmingManual}
+                                        className="w-full max-w-[200px] px-6 py-3 bg-blue-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-blue-700 disabled:bg-slate-200 transition-all flex items-center justify-center space-x-2"
+                                    >
+                                        {isConfirmingManual ? (
+                                            <>
+                                                <Loader2 size={12} className="animate-spin mr-1.5" />
+                                                <span>Confirming...</span>
+                                            </>
+                                        ) : (
+                                            <span>Confirm Payment</span>
+                                        )}
+                                    </button>
+                                    <button
+                                        onClick={handleReset}
+                                        className="px-6 py-2 text-slate-500 hover:text-slate-700 transition-all text-xs font-black uppercase tracking-wider"
+                                    >
+                                        Return to Catalog
+                                    </button>
+                                </div>
                             </>
                         )}
                     </div>

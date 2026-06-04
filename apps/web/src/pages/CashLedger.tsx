@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { Layout } from '../components/Layout';
+import { lencoService } from '../services/lenco.service';
 import {
     Receipt,
     Calendar,
@@ -200,6 +201,7 @@ const CashLedger: React.FC = () => {
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [shareWalletId, setShareWalletId] = useState<string | null>(null);
     const [externalBalances, setExternalBalances] = useState<Record<string, number>>({ CASH: 0, AIRTEL_MONEY: 0, BANK: 0 });
+    const [verifyingEntryId, setVerifyingEntryId] = useState<string | null>(null);
 
     const { userRole } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
@@ -808,6 +810,30 @@ const CashLedger: React.FC = () => {
         }
     };
 
+    const handleVerifyPendingInflow = async (entry: CashbookEntry) => {
+        const reference = entry.external_reference || entry.description.match(/Ref:\s*([^\s|]+)/)?.[1];
+        if (!reference) {
+            alert('No transaction reference found for this entry.');
+            return;
+        }
+
+        try {
+            setVerifyingEntryId(entry.id);
+            const res = await lencoService.verifyStatus(reference, undefined, entry.organization_id);
+            if (res.verified) {
+                alert('Transaction verified successfully! The ledger has been updated.');
+                loadData();
+            } else {
+                alert(`Transaction status check returned: ${res.status || 'pending'}. The payment gateway hasn't reported this transaction as successful yet.`);
+            }
+        } catch (error: any) {
+            console.error('Failed to verify transaction status:', error);
+            alert('Failed to verify transaction status: ' + error.message);
+        } finally {
+            setVerifyingEntryId(null);
+        }
+    };
+
     const renderBreakdown = (entry: CashbookEntry) => {
         // Case 1: Requisition Breakdown (Expenses)
         if (entry.requisition_id && entry.requisitions) {
@@ -1039,7 +1065,28 @@ const CashLedger: React.FC = () => {
                 <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
                     <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-100">
                         <div className="flex flex-wrap items-center gap-4">
-                            {entry.qb_sync_status !== 'SUCCESS' ? (
+                            {entry.status === 'PENDING' ? (
+                                <button 
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        handleVerifyPendingInflow(entry);
+                                    }}
+                                    disabled={verifyingEntryId === entry.id}
+                                    className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest disabled:opacity-50"
+                                >
+                                    {verifyingEntryId === entry.id ? (
+                                        <>
+                                            <Loader2 size={14} className="mr-2 animate-spin" />
+                                            Checking Gateway...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <RefreshCw size={14} className="mr-2" />
+                                            Verify Transaction
+                                        </>
+                                    )}
+                                </button>
+                            ) : entry.qb_sync_status !== 'SUCCESS' ? (
                                 <button 
                                     onClick={(e) => {
                                         e.stopPropagation();

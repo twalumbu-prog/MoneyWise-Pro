@@ -556,7 +556,8 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
             balance_after: 0,
             date: new Date().toISOString().split('T')[0],
             status: 'PENDING',
-            wallet_id: walletId
+            wallet_id: walletId,
+            external_reference: reference
         });
 
         if (error) throw error;
