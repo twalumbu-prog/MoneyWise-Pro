@@ -180,31 +180,11 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         throw new Error(reason);
                     }
                     
-                    // Poll for status if we just created it or if it was pending.
-                    // CRITICAL FIX: Use `resolvedRef` (not `stableRef`) — resolvedRef may have a retry
-                    // suffix (e.g. -R1, -R2) if earlier attempts had failed on Lenco's side.
-                    // Using stableRef here causes the poll to return nothing/stale data, so
-                    // currentStatus stays 'pending' and the ledger is never finalized.
-                    // Poll for status if we just created it or if it was not terminal.
-                    let attempts = 0;
-                    let currentStatus = payout.status;
-                    const terminalStatuses = ['successful', 'failed', 'reversed'];
-
-                    while (!terminalStatuses.includes(currentStatus) && attempts < 5) {
-                        await new Promise(resolve => setTimeout(resolve, 3000));
-                        statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
-                        currentStatus = statusCheck?.status || currentStatus;
-                        attempts++;
-                    }
-
-                    if (currentStatus === 'failed') {
-                        // Use reasonForFailure from the status check or the payout itself
-                        const reason = statusCheck?.reasonForFailure || statusCheck?.message || payout.reasonForFailure || 'Lenco reported transfer failure';
-                        throw new Error(reason);
-                    }
-
-                    (req as any).lencoStatus = currentStatus;
-                    (req as any).lencoFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
+                    // We no longer poll synchronously to avoid serverless function timeouts.
+                    // Instead, we carry forward the initial payout status and schedule background polling
+                    // or let Lenco's webhook handle finalization.
+                    (req as any).lencoStatus = payout.status || 'pending';
+                    (req as any).lencoFee = payout.fee ? parseFloat(payout.fee) : undefined;
                     (req as any).resolvedRef = resolvedRef; // Carry forward for deferred finalization
                 }
 
