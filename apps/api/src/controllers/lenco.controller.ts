@@ -170,7 +170,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
         const { data: existingEntry, error: dbError } = await supabase
             .from('cashbook_entries')
             .select('id, status, reference_number')
-            .like('description', `%${reference}`)
+            .like('description', `%${reference}%`)
             .maybeSingle();
 
         if (dbError) throw dbError;
@@ -210,7 +210,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                         const { data: createdEntry } = await supabase
                             .from('cashbook_entries')
                             .select('reference_number')
-                            .like('description', `%${reference}`)
+                            .like('description', `%${reference}%`)
                             .maybeSingle();
 
                         return res.json({ 
@@ -246,7 +246,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                     const { data: createdEntry } = await supabase
                         .from('cashbook_entries')
                         .select('reference_number')
-                        .like('description', `%${reference}`)
+                        .like('description', `%${reference}%`)
                         .maybeSingle();
 
                     return res.json({ 
