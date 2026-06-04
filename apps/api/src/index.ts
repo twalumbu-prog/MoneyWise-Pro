@@ -28,6 +28,7 @@ import organizationRoutes from './routes/organization.routes';
 import budgetRoutes from './routes/budget.routes';
 import reportRoutes from './routes/report.routes';
 import lencoRoutes from './routes/lenco.routes';
+import productRoutes from './routes/product.routes';
 
 dotenv.config();
 
@@ -43,7 +44,12 @@ const runMigration = async () => {
     }
 
     const migrationPool = directUrl
-        ? new Pool({ connectionString: directUrl, ssl: { rejectUnauthorized: false } })
+        ? new Pool({ 
+            connectionString: directUrl, 
+            ssl: directUrl.includes('supabase.co') || directUrl.includes('.db.elephantsql.com')
+                ? { rejectUnauthorized: false }
+                : false
+          })
         : pool;
 
     try {
@@ -197,6 +203,46 @@ const runMigration = async () => {
         `);
         console.log('[Migration] line_items QB columns ready.');
 
+        // Add logo and products tables
+        console.log('[Migration] Setting up organization logo and products database structures...');
+        await migrationPool.query(`
+            ALTER TABLE public.organizations ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+            CREATE TABLE IF NOT EXISTS public.products (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+                name VARCHAR(255) NOT NULL,
+                description TEXT,
+                price NUMERIC(15, 2) NOT NULL DEFAULT 0,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+
+            ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+
+            DROP POLICY IF EXISTS "Manage products of own organization" ON public.products;
+            CREATE POLICY "Manage products of own organization" ON public.products
+                FOR ALL TO authenticated USING (true) WITH CHECK (true);
+
+            INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+            VALUES ('organization-logos', 'organization-logos', true, 5242880, ARRAY['image/jpeg', 'image/png', 'image/gif', 'image/webp'])
+            ON CONFLICT (id) DO NOTHING;
+
+            DROP POLICY IF EXISTS "Allow public read from organization-logos" ON storage.objects;
+            CREATE POLICY "Allow public read from organization-logos" ON storage.objects
+                FOR SELECT TO public USING (bucket_id = 'organization-logos');
+
+            DROP POLICY IF EXISTS "Allow authenticated uploads to organization-logos" ON storage.objects;
+            CREATE POLICY "Allow authenticated uploads to organization-logos" ON storage.objects
+                FOR INSERT TO authenticated WITH CHECK (bucket_id = 'organization-logos');
+
+            DROP POLICY IF EXISTS "Allow authenticated management of organization-logos" ON storage.objects;
+            CREATE POLICY "Allow authenticated management of organization-logos" ON storage.objects
+                FOR ALL TO authenticated USING (bucket_id = 'organization-logos') WITH CHECK (bucket_id = 'organization-logos');
+        `);
+        console.log('[Migration] Logo and products DB structures ready.');
+
         // Update vouchers status check constraint
         console.log('[Migration] Updating vouchers status constraint...');
         await migrationPool.query(`
@@ -246,6 +292,7 @@ app.use('/integrations', integrationRoutes);
 app.use('/users', userRoutes);
 app.use('/ai', aiRoutes);
 app.use('/organizations', organizationRoutes);
+app.use('/organizations/products', productRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
 app.use('/lenco', lencoRoutes);
@@ -271,7 +318,7 @@ app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');
 });
 
-// For local development
+// For local development hot reloading
 if (process.env.NODE_ENV !== 'production') {
     app.listen(port, () => {
         console.log(`Server is running on port ${port}`);

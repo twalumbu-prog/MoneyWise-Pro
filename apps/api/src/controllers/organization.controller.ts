@@ -15,7 +15,7 @@ export const OrganizationController = {
 
             const { data, error } = await supabase
                 .from('organizations')
-                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode')
+                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode, logo_url')
                 .eq('id', organization_id)
                 .single();
 
@@ -39,7 +39,7 @@ export const OrganizationController = {
             }
 
             // Extract allowed fields
-            const { name, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode } = req.body;
+            const { name, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode, logo_url } = req.body;
 
             // Optional: Check if user is an ADMIN. 
             // Depending on requirements, we might restrict org updates to admins.
@@ -64,6 +64,7 @@ export const OrganizationController = {
             if (lenco_public_key !== undefined) updateData.lenco_public_key = lenco_public_key;
             if (lenco_secret_key !== undefined) updateData.lenco_secret_key = lenco_secret_key;
             if (payment_test_mode !== undefined) updateData.payment_test_mode = payment_test_mode;
+            if (logo_url !== undefined) updateData.logo_url = logo_url;
 
             updateData.updated_at = new Date().toISOString();
 
@@ -71,7 +72,7 @@ export const OrganizationController = {
                 .from('organizations')
                 .update(updateData)
                 .eq('id', organization_id)
-                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode')
+                .select('id, name, slug, email, phone, address, tax_id, website, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode, logo_url')
                 .single();
 
             if (error) {

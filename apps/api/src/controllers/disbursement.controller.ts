@@ -35,13 +35,27 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
         // 1. Atomic status check and lock
         // We try to update the status to 'DISBURSED' or 'RECEIVED' (for digital)
-        const bodyWalletId = req.body.wallet_id || req.body.walletId;
+        let finalWalletId = req.body.wallet_id || req.body.walletId;
+
+        if (isDigital && !finalWalletId) {
+            const { data: mainWallet } = await supabase
+                .from('organization_wallets')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('is_main', true)
+                .maybeSingle();
+            
+            if (mainWallet) {
+                finalWalletId = mainWallet.id;
+            }
+        }
+
         const updateParams: any = { 
             status: isDigital ? 'RECEIVED' : 'DISBURSED', 
             updated_at: new Date().toISOString() 
         };
-        if (bodyWalletId) {
-            updateParams.wallet_id = bodyWalletId;
+        if (finalWalletId) {
+            updateParams.wallet_id = finalWalletId;
         }
 
         const { data: lockResult, error: lockError } = await supabase
@@ -79,25 +93,26 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         let resolvedOrgKey: string | undefined; // Will be set inside isDigital block for deferred use
 
         if (isDigital) {
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
-                .eq('id', targetOrgId)
-                .single();
-
-            if (!org?.lenco_subaccount_id || !org?.lenco_secret_key) {
-                // If test mode is on, we can skip the strict credential check if desired, 
-                // but let's keep it robust.
-                if (!org?.payment_test_mode) {
-                    throw new Error("Organization is not properly configured for MoneyWise Wallet");
-                }
-            }
-
-            if (!recipient_account || !recipient_bank_code) {
-                return res.status(400).json({ error: 'Recipient account and bank code are required for Wallet transfers' });
-            }
-
             try {
+                const { data: org } = await supabase
+                    .from('organizations')
+                    .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
+                    .eq('id', targetOrgId)
+                    .single();
+
+                const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+                if (!org?.lenco_subaccount_id || !secretKey) {
+                    // If test mode is on, we can skip the strict credential check if desired, 
+                    // but let's keep it robust.
+                    if (!org?.payment_test_mode) {
+                        throw new Error("Organization is not properly configured for MoneyWise Wallet");
+                    }
+                }
+
+                if (!recipient_account || !recipient_bank_code) {
+                    throw new Error('Recipient account and bank code are required for Wallet transfers');
+                }
+
                 // Carry the org key forward for deferred finalization
                 resolvedOrgKey = org?.lenco_secret_key;
                 (req as any).orgLencoKey = resolvedOrgKey;
@@ -781,10 +796,9 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
         const targetOrgId = disbursement.requisitions?.organization_id || disbursement.organization_id;
         if (!targetOrgId) throw new Error("Could not determine organization for this disbursement");
 
-        // 2. Poll Lenco for status
-        // Fetch org secret key first
         const { data: orgKeys } = await supabase.from('organizations').select('lenco_secret_key').eq('id', targetOrgId).single();
-        const statusCheck = await LencoService.getTransferStatus(disbursement.external_reference, orgKeys?.lenco_secret_key);
+        const secretKey = orgKeys?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+        const statusCheck = await LencoService.getTransferStatus(disbursement.external_reference, secretKey);
 
         console.log(`[Lenco Verify] Reference: ${disbursement.external_reference}, Status: ${statusCheck?.status || 'NOT FOUND'}`);
 
@@ -990,7 +1004,8 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
                 .eq('id', organizationId)
                 .single();
 
-            if (!org?.lenco_subaccount_id || !org?.lenco_secret_key) {
+            const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+            if (!org?.lenco_subaccount_id || !secretKey) {
                 if (!org?.payment_test_mode) {
                     throw new Error("Organization is not properly configured for MoneyWise Wallet");
                 }
@@ -1229,13 +1244,27 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
         if (!organizationId) throw new Error("Missing organization context");
 
         // 1. Atomically check and lock status to prevent concurrent double disbursal
-        const bodyWalletId = req.body.wallet_id || req.body.walletId;
+        let finalWalletId = req.body.wallet_id || req.body.walletId;
+
+        if (!finalWalletId) {
+            const { data: mainWallet } = await supabase
+                .from('organization_wallets')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('is_main', true)
+                .maybeSingle();
+            
+            if (mainWallet) {
+                finalWalletId = mainWallet.id;
+            }
+        }
+
         const updateParams: any = { 
             status: 'RECEIVED', 
             updated_at: new Date().toISOString() 
         };
-        if (bodyWalletId) {
-            updateParams.wallet_id = bodyWalletId;
+        if (finalWalletId) {
+            updateParams.wallet_id = finalWalletId;
         }
 
         const { data: lockResult, error: lockError } = await supabase
@@ -1263,7 +1292,7 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
             .single();
 
         const testMode = org?.payment_test_mode || false;
-        const secretKey = org?.lenco_secret_key || undefined;
+        const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY || undefined;
         const subaccountId = org?.lenco_subaccount_id || '';
 
         if (!testMode && (!subaccountId || !secretKey)) {

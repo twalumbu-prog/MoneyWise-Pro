@@ -4,7 +4,7 @@ import { reportService, ExpenditureAggregation, ExpenditureItem } from '../servi
 import { budgetService, Budget } from '../services/budget.service';
 import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
-import { ChevronLeft, ChevronRight, BarChart3, TrendingUp, ChevronDown, ChevronUp, Loader2, DollarSign, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BarChart3, ChevronDown, ChevronUp, Loader2, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import budgetBg from '../assets/Frame 24.png';
 
@@ -16,8 +16,21 @@ interface ReportGroup {
     name: string;
 }
 
+// Helper to calculate percentage change
+const getPercentageChange = (current: number, previous: number) => {
+    if (previous === 0) {
+        return current > 0 ? { value: 100, isIncrease: true } : { value: 0, isIncrease: false };
+    }
+    const diff = current - previous;
+    const pct = (diff / previous) * 100;
+    return {
+        value: Math.round(Math.abs(pct)),
+        isIncrease: pct > 0
+    };
+};
+
 export const Reporting: React.FC = () => {
-    // State
+        // State
     const [mode, setMode] = useState<ModeType>('EXPENSE');
     const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY');
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -27,11 +40,12 @@ export const Reporting: React.FC = () => {
     const [budgets, setBudgets] = useState<Budget[]>([]);
     const [allAccounts, setAllAccounts] = useState<Account[]>([]);
     const [loading, setLoading] = useState(false);
+    const [reportView, setReportView] = useState<'PROFIT_LOSS' | 'NET_WORTH'>('PROFIT_LOSS');
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
 
     // Mobile Layout States
     const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
     const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
-    const [expandedMobileGroups, setExpandedMobileGroups] = useState<Set<string>>(new Set());
     
     // Visibility Settings
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -48,7 +62,6 @@ export const Reporting: React.FC = () => {
     const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
     const [isGroupingEnabled, setIsGroupingEnabled] = useState(false);
     const [newGroupName, setNewGroupName] = useState('');
-    const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
     
     const { organizationId: orgId } = useAuth();
 
@@ -133,7 +146,7 @@ export const Reporting: React.FC = () => {
             ]);
             setExpenditures(expData);
             setBudgets(budData);
-            setAllAccounts(accData.filter((a: Account) => a.type === 'EXPENSE'));
+            setAllAccounts(accData);
             setPrevExpenditures(prevExpData);
 
             // Load saved groups from local storage
@@ -145,9 +158,6 @@ export const Reporting: React.FC = () => {
                 if (savedGroups) setGroups(JSON.parse(savedGroups));
                 if (savedAssignments) setAccountGroups(JSON.parse(savedAssignments));
                 if (savedGroupingToggle) setIsGroupingEnabled(savedGroupingToggle === 'true');
-
-                const savedCollapsed = localStorage.getItem(`collapsedGroups_${orgId}`);
-                if (savedCollapsed) setCollapsedGroups(new Set(JSON.parse(savedCollapsed)));
             }
 
         } catch (error) {
@@ -200,6 +210,18 @@ export const Reporting: React.FC = () => {
                 setItemsLoading(false);
             }
         }
+    };
+
+    const toggleGroupExpand = (groupId: string) => {
+        setExpandedGroups(prev => {
+            const next = new Set(prev);
+            if (next.has(groupId)) {
+                next.delete(groupId);
+            } else {
+                next.add(groupId);
+            }
+            return next;
+        });
     };
 
     // Grouping Handlers
@@ -273,32 +295,6 @@ export const Reporting: React.FC = () => {
             if (newSet.has(accountId)) newSet.delete(accountId);
             else newSet.add(accountId);
             return newSet;
-        });
-    };
-
-    const toggleAllSelections = (accountsToSelect: any[]) => {
-        if (selectedAccounts.size === accountsToSelect.length) {
-            setSelectedAccounts(new Set());
-        } else {
-            setSelectedAccounts(new Set(accountsToSelect.map(a => a.account_id)));
-        }
-    };
-
-    const toggleGroupCollapse = (groupId: string) => {
-        setCollapsedGroups(prev => {
-            const next = new Set(prev);
-            if (next.has(groupId)) {
-                next.delete(groupId);
-            } else {
-                next.add(groupId);
-            }
-            
-            // Persist to local storage
-            if (orgId) {
-                localStorage.setItem(`collapsedGroups_${orgId}`, JSON.stringify(Array.from(next)));
-            }
-            
-            return next;
         });
     };
 
@@ -428,33 +424,36 @@ export const Reporting: React.FC = () => {
     );
 
     // Calculate integrated data for display
-    // Calculate integrated data for display
     const displayData = useMemo(() => {
-        // Build base map from all expense accounts
+        // Build base map from accounts matching current view
+        const activeTypes = reportView === 'PROFIT_LOSS' 
+            ? ['INCOME', 'EXPENSE'] 
+            : ['ASSET', 'LIABILITY', 'EQUITY'];
+
         const integrationMap = new Map<string, any>();
 
-        allAccounts.forEach(acc => {
-            // we use qb_account_id mapping where possible
-            integrationMap.set(acc.id, {
-                account_id: acc.id,
-                account_name: acc.name,
-                total_amount: 0,
-                transaction_count: 0
+        allAccounts
+            .filter(acc => activeTypes.includes(acc.type))
+            .forEach(acc => {
+                integrationMap.set(acc.id, {
+                    account_id: acc.id,
+                    account_name: acc.name,
+                    type: acc.type,
+                    total_amount: 0,
+                    transaction_count: 0
+                });
             });
-        });
 
-        // Merge in expenditures
+        // Merge in expenditures (actual balances from backend)
         expenditures.forEach(exp => {
             if (integrationMap.has(exp.account_id)) {
                 const existing = integrationMap.get(exp.account_id);
                 existing.total_amount = exp.total_amount;
                 existing.transaction_count = exp.transaction_count;
-                // Prefer API names if they somehow diverge or if account is generic
                 if (exp.account_name !== 'Uncategorized Expense') {
                     existing.account_name = exp.account_name;
                 }
-            } else {
-                // An expenditure came through for an account not in our `allAccounts` list (e.g., Uncategorized)
+            } else if (activeTypes.includes(exp.type)) {
                 integrationMap.set(exp.account_id, exp);
             }
         });
@@ -503,27 +502,26 @@ export const Reporting: React.FC = () => {
             return 0;
         });
 
-        // Apply Grouping
-        if (!isGroupingEnabled) {
-            return { isGrouped: false, data: sorted };
-        }
-
+        // Always group by standard categories
         const groupedData: Record<string, { groupName: string; items: any[]; totals: any }> = {};
         
-        // Initialize groups
-        groups.forEach(g => {
-            groupedData[g.id] = { groupName: g.name, items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
-        });
-        groupedData['ungrouped'] = { groupName: 'Ungrouped Accounts', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
+        if (reportView === 'PROFIT_LOSS') {
+            groupedData['INCOME'] = { groupName: 'Income', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
+            groupedData['EXPENSE'] = { groupName: 'Expenses', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
+        } else {
+            groupedData['ASSET'] = { groupName: 'Assets', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
+            groupedData['LIABILITY'] = { groupName: 'Liabilities', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
+            groupedData['EQUITY'] = { groupName: 'Equity', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
+        }
 
         sorted.forEach(item => {
-            const groupId = accountGroups[item.account_id];
-            const targetGroup = groupId && groupedData[groupId] ? groupedData[groupId] : groupedData['ungrouped'];
-            
-            targetGroup.items.push(item);
-            targetGroup.totals.total_amount += item.total_amount;
-            targetGroup.totals.budgeted_amount += (item.budgeted_amount || 0);
-            targetGroup.totals.prev_total_amount += (item.prev_total_amount || 0);
+            const targetGroup = groupedData[item.type];
+            if (targetGroup) {
+                targetGroup.items.push(item);
+                targetGroup.totals.total_amount += item.total_amount;
+                targetGroup.totals.budgeted_amount += (item.budgeted_amount || 0);
+                targetGroup.totals.prev_total_amount += (item.prev_total_amount || 0);
+            }
         });
 
         // Calculate variance totals for groups
@@ -532,9 +530,49 @@ export const Reporting: React.FC = () => {
             group.totals.variance = variance;
         });
 
-        return { isGrouped: true, groups: groupedData, flatData: sorted };
+        return { isGrouped: true, groups: groupedData, data: sorted, flatData: sorted };
 
-    }, [expenditures, budgets, allAccounts, sortField, sortDesc, hiddenAccounts, excludeZeroSpend, isGroupingEnabled, groups, accountGroups, prevExpenditures]);
+    }, [expenditures, budgets, allAccounts, sortField, sortDesc, hiddenAccounts, excludeZeroSpend, prevExpenditures, reportView]);
+
+    const totals = useMemo(() => {
+        const groups = displayData.groups || {};
+        
+        const totalRevenue = groups['INCOME']?.totals.total_amount || 0;
+        const totalExpenses = groups['EXPENSE']?.totals.total_amount || 0;
+        const totalProfit = totalRevenue - totalExpenses;
+        
+        const prevTotalRevenue = groups['INCOME']?.totals.prev_total_amount || 0;
+        const prevTotalExpenses = groups['EXPENSE']?.totals.prev_total_amount || 0;
+        const prevTotalProfit = prevTotalRevenue - prevTotalExpenses;
+        
+        const profitChange = getPercentageChange(totalProfit, prevTotalProfit);
+        
+        const totalAssets = groups['ASSET']?.totals.total_amount || 0;
+        const totalLiabilities = groups['LIABILITY']?.totals.total_amount || 0;
+        const totalEquity = groups['EQUITY']?.totals.total_amount || 0;
+        const netWorth = totalAssets - totalLiabilities;
+        
+        const prevTotalAssets = groups['ASSET']?.totals.prev_total_amount || 0;
+        const prevTotalLiabilities = groups['LIABILITY']?.totals.prev_total_amount || 0;
+        const prevNetWorth = prevTotalAssets - prevTotalLiabilities;
+        
+        const netWorthChange = getPercentageChange(netWorth, prevNetWorth);
+        
+        return {
+            totalRevenue,
+            totalExpenses,
+            totalProfit,
+            prevTotalProfit,
+            profitChange,
+            
+            totalAssets,
+            totalLiabilities,
+            totalEquity,
+            netWorth,
+            prevNetWorth,
+            netWorthChange
+        };
+    }, [displayData]);
 
     const toggleAccountVisibility = (accountId: string) => {
         setHiddenAccounts(prev => {
@@ -549,36 +587,9 @@ export const Reporting: React.FC = () => {
     };
 
 
-    // Helper to calculate percentage change
-    const getPercentageChange = (current: number, previous: number) => {
-        if (previous === 0) {
-            return current > 0 ? { value: 100, isIncrease: true } : { value: 0, isIncrease: false };
-        }
-        const diff = current - previous;
-        const pct = (diff / previous) * 100;
-        return {
-            value: Math.round(Math.abs(pct)),
-            isIncrease: pct > 0
-        };
-    };
 
-    // Mobile Helper Values
-    const mobileData = useMemo(() => {
-        const items = displayData.isGrouped ? displayData.flatData : displayData.data;
-        const totalSpent = items?.reduce((acc: number, curr: any) => acc + curr.total_amount, 0) || 0;
-        const prevTotalSpent = items?.reduce((acc: number, curr: any) => acc + (curr.prev_total_amount || 0), 0) || 0;
-        const totalBudget = items?.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0) || 0;
 
-        const change = getPercentageChange(totalSpent, prevTotalSpent);
 
-        return {
-            totalSpent,
-            prevTotalSpent,
-            totalBudget,
-            pctVal: change.value,
-            isIncrease: change.isIncrease
-        };
-    }, [displayData]);
 
     const displayMonthName = useMemo(() => {
         if (periodType === 'MONTHLY') {
@@ -603,18 +614,11 @@ export const Reporting: React.FC = () => {
         return options;
     }, []);
 
-    const toggleMobileGroupExpand = (groupId: string) => {
-        setExpandedMobileGroups(prev => {
-            const next = new Set(prev);
-            if (next.has(groupId)) next.delete(groupId);
-            else next.add(groupId);
-            return next;
-        });
-    };
+
 
 
     return (
-        <Layout noPadding={true} backgroundColor="bg-white" title="Budget">
+        <Layout noPadding={true} backgroundColor="bg-white" title="Reports">
             {/* Desktop View */}
             <div className="hidden md:block max-w-6xl mx-auto space-y-6 px-4 md:px-12 py-4 md:py-8">
                 {/* Header & Controls */}
@@ -627,33 +631,35 @@ export const Reporting: React.FC = () => {
                                     <BarChart3 className="h-5 w-5" />
                                 </div>
                                 <div>
-                                    <h1 className="text-2xl font-bold text-brand-navy leading-tight">Expenditure Report</h1>
-                                    <p className="text-sm text-gray-500">Track and analyze spending against budgets</p>
+                                    <h1 className="text-2xl font-bold text-brand-navy leading-tight">Financial Reports</h1>
+                                    <p className="text-sm text-gray-500">Track and analyze business financials and net worth</p>
                                 </div>
                             </div>
                         </div>
 
                         {/* Top Controls: Mode & Period */}
                         <div className="flex flex-wrap items-center gap-4">
-                            {/* Mode Toggle */}
-                            <div className="flex bg-gray-100 p-1 rounded-xl">
-                                <button
-                                    onClick={() => setMode('EXPENSE')}
-                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                                        mode === 'EXPENSE' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-                                    }`}
-                                >
-                                    Expense Mode
-                                </button>
-                                <button
-                                    onClick={() => setMode('CASH_OUTFLOW')}
-                                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
-                                        mode === 'CASH_OUTFLOW' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-                                    }`}
-                                >
-                                    Outflow Mode
-                                </button>
-                            </div>
+                            {/* Mode Toggle (P&L only) */}
+                            {reportView === 'PROFIT_LOSS' && (
+                                <div className="flex bg-gray-100 p-1 rounded-xl">
+                                    <button
+                                        onClick={() => setMode('EXPENSE')}
+                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                                            mode === 'EXPENSE' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Expense Mode
+                                    </button>
+                                    <button
+                                        onClick={() => setMode('CASH_OUTFLOW')}
+                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+                                            mode === 'CASH_OUTFLOW' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+                                        }`}
+                                    >
+                                        Outflow Mode
+                                    </button>
+                                </div>
+                            )}
 
                             <div className="h-8 w-px bg-gray-200 hidden md:block"></div>
 
@@ -790,21 +796,23 @@ export const Reporting: React.FC = () => {
                                                     )}
                                                 </div>
                                                 <div className="max-h-60 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
-                                                    {allAccounts.map(account => (
-                                                        <button
-                                                            key={account.id}
-                                                            onClick={() => toggleAccountVisibility(account.id)}
-                                                            className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors group text-left"
-                                                        >
-                                                            <span className={`text-sm font-medium truncate pr-2 ${hiddenAccounts.has(account.id) ? 'text-gray-400' : 'text-gray-700'}`}>
-                                                                {account.name}
-                                                            </span>
-                                                            {hiddenAccounts.has(account.id) ? (
-                                                                <EyeOff className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                                                            ) : (
-                                                                <Eye className="h-4 w-4 text-brand-navy flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                            )}
-                                                        </button>
+                                                    {allAccounts
+                                                        .filter(acc => (reportView === 'PROFIT_LOSS' ? ['INCOME', 'EXPENSE'] : ['ASSET', 'LIABILITY', 'EQUITY']).includes(acc.type))
+                                                        .map(account => (
+                                                            <button
+                                                                key={account.id}
+                                                                onClick={() => toggleAccountVisibility(account.id)}
+                                                                className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors group text-left"
+                                                            >
+                                                                <span className={`text-sm font-medium truncate pr-2 ${hiddenAccounts.has(account.id) ? 'text-gray-400' : 'text-gray-700'}`}>
+                                                                    {account.name}
+                                                                </span>
+                                                                {hiddenAccounts.has(account.id) ? (
+                                                                    <EyeOff className="h-4 w-4 text-gray-300 flex-shrink-0" />
+                                                                ) : (
+                                                                    <Eye className="h-4 w-4 text-brand-navy flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                                                )}
+                                                            </button>
                                                     ))}
                                                 </div>
                                             </div>
@@ -816,167 +824,200 @@ export const Reporting: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Metrics Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-bold text-gray-500 mb-1">Total {mode === 'EXPENSE' ? 'Expenses' : 'Outflows'}</p>
-                            <h3 className="text-3xl font-black text-brand-navy">
-                                K{(displayData.isGrouped ? displayData.flatData : displayData.data)?.reduce((acc: number, curr: any) => acc + curr.total_amount, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </h3>
-                        </div>
-                        <div className="h-12 w-12 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center">
-                            <TrendingUp className="h-6 w-6" />
-                        </div>
-                    </div>
-                    
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-bold text-gray-500 mb-1">Total Budget Allocated</p>
-                            <h3 className="text-3xl font-black text-brand-navy">
-                                K{(displayData.isGrouped ? displayData.flatData : displayData.data)?.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </h3>
-                        </div>
-                        <div className="h-12 w-12 rounded-2xl bg-brand-green/10 text-brand-green flex items-center justify-center">
-                            <DollarSign className="h-6 w-6" />
-                        </div>
-                    </div>
-
-                    <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between">
-                        <div>
-                            <p className="text-sm font-bold text-gray-500 mb-1">Overall Variance</p>
-                            <h3 className={`text-3xl font-black ${
-                                (() => {
-                                    const items = displayData.isGrouped ? displayData.flatData : displayData.data;
-                                    if (!items) return 'text-brand-navy';
-                                    const totalBudget = items.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0);
-                                    const totalExpense = items.reduce((acc: number, curr: any) => acc + curr.total_amount, 0);
-                                    const variance = totalBudget - totalExpense;
-                                    if (totalBudget === 0) return 'text-brand-navy';
-                                    return variance >= 0 ? 'text-brand-green' : 'text-red-500';
-                                })()
-                            }`}>
-                                {(() => {
-                                    const items = displayData.isGrouped ? displayData.flatData : displayData.data;
-                                    if (!items) return 'N/A';
-                                    const totalBudget = items.reduce((acc: number, curr: any) => acc + (curr.budgeted_amount || 0), 0);
-                                    const totalExpense = items.reduce((acc: number, curr: any) => acc + curr.total_amount, 0);
-                                    if (totalBudget === 0) return 'N/A';
-                                    const variance = totalBudget - totalExpense;
-                                    return `${variance >= 0 ? '+' : ''}K${variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                })()}
-                            </h3>
-                        </div>
-                    </div>
+                {/* Report Type Toggle Pill Selector */}
+                <div className="flex bg-gray-100/80 p-1 rounded-2xl max-w-sm mx-auto mb-8 border border-gray-200/50">
+                    <button
+                        onClick={() => setReportView('NET_WORTH')}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all text-center ${
+                            reportView === 'NET_WORTH' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                    >
+                        Net Worth
+                    </button>
+                    <button
+                        onClick={() => setReportView('PROFIT_LOSS')}
+                        className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all text-center ${
+                            reportView === 'PROFIT_LOSS' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                    >
+                        Profit/Loss
+                    </button>
                 </div>
 
-                {/* Data Table */}
-                <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden mt-8">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-gray-100 bg-gray-50/50">
-                                    <th className="p-5 w-12">
-                                        <input 
-                                            type="checkbox" 
-                                            className="rounded text-brand-green focus:ring-brand-green border-gray-300 w-4 h-4 cursor-pointer"
-                                            checked={selectedAccounts.size > 0 && selectedAccounts.size === (displayData.isGrouped ? displayData.flatData : displayData.data)?.length}
-                                            onChange={() => toggleAllSelections((displayData.isGrouped ? displayData.flatData : displayData.data) || [])}
-                                            disabled={loading || (displayData.isGrouped ? (!displayData.flatData || displayData.flatData.length === 0) : (!displayData.data || displayData.data.length === 0))}
-                                        />
-                                    </th>
-                                    <th className="py-5 pr-5 font-bold text-xs uppercase tracking-widest text-gray-500 cursor-pointer hover:bg-gray-100 transition-colors"
-                                        onClick={() => { setSortField('name'); setSortDesc(!sortDesc); }}
+                {/* Desktop Summary Card */}
+                <div
+                    className="rounded-[28px] p-8 text-white shadow-lg relative overflow-hidden mb-8"
+                    style={{
+                        backgroundImage: `url(${budgetBg})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                    }}
+                >
+                    {reportView === 'PROFIT_LOSS' ? (
+                        <>
+                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
+                                Total Profit
+                            </p>
+                            <div className="flex items-baseline justify-between">
+                                <h2 className="text-[42px] font-black leading-none tracking-tight">
+                                    K{totals.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </h2>
+                                <span className="text-[32px] font-black leading-none font-bold">
+                                    <span className="text-[#4D9FFF]">{totals.profitChange.isIncrease ? '+' : '-'}</span>
+                                    <span className="text-white">{totals.profitChange.value}%</span>
+                                </span>
+                            </div>
+                            
+                            <div className="bg-white/10 rounded-2xl px-6 py-4 mt-6 flex justify-between items-center text-xs font-bold text-white/90 max-w-2xl">
+                                <div className="flex items-center gap-2">
+                                    <Link2 size={14} className="text-white/60" />
+                                    <span>Total Revenue <strong className="font-extrabold text-white">K{totals.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                                <div className="h-4 w-px bg-white/20"></div>
+                                <div className="flex items-center gap-2">
+                                    <ArrowUpRight size={15} className="text-[#34D399]" />
+                                    <span>Total Expenses <strong className="font-extrabold text-white">K{totals.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
+                                Net Worth
+                            </p>
+                            <div className="flex items-baseline justify-between">
+                                <h2 className="text-[42px] font-black leading-none tracking-tight">
+                                    K{totals.netWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </h2>
+                                <span className="text-[32px] font-black leading-none font-bold">
+                                    <span className="text-[#4D9FFF]">{totals.netWorthChange.isIncrease ? '+' : '-'}</span>
+                                    <span className="text-white">{totals.netWorthChange.value}%</span>
+                                </span>
+                            </div>
+                            
+                            <div className="bg-white/10 rounded-2xl px-6 py-4 mt-6 flex justify-between items-center text-xs font-bold text-white/90 max-w-2xl">
+                                <div className="flex items-center gap-2">
+                                    <Link2 size={14} className="text-white/60" />
+                                    <span>Total Assets <strong className="font-extrabold text-white">K{totals.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                                <div className="h-4 w-px bg-white/20"></div>
+                                <div className="flex items-center gap-2">
+                                    <ArrowUpRight size={15} className="text-[#34D399]" />
+                                    <span>Total Liabilities <strong className="font-extrabold text-white">K{totals.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+
+                {/* Category Group Cards - Separate cards for each group */}
+                {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center text-gray-500 mt-8">
+                        <Loader2 className="h-8 w-8 animate-spin text-[#006AFF] mx-auto mb-4" />
+                        Loading reports...
+                    </div>
+                ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center text-gray-500 font-medium mt-8">
+                        No financial records found for this period.
+                    </div>
+                ) : (
+                    <div className="space-y-6 mt-8">
+                        {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
+                            if (groupData.items.length === 0) return null;
+                            
+                            const isExpanded = expandedGroups.has(groupId);
+                            
+                            return (
+                                <div key={groupId} className="bg-white rounded-3xl shadow-md border border-gray-100 overflow-hidden">
+                                    {/* Category Header */}
+                                    <div 
+                                        onClick={() => toggleGroupExpand(groupId)}
+                                        className="bg-gray-50/50 px-6 py-4 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors"
                                     >
-                                        Account Name
-                                    </th>
-                                    <th className="p-5 font-bold text-xs uppercase tracking-widest text-gray-500 text-right cursor-pointer hover:bg-gray-100 transition-colors"
-                                        onClick={() => { setSortField('amount'); setSortDesc(!sortDesc); }}
-                                    >
-                                        Total spent
-                                    </th>
-                                    <th className="p-5 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
-                                        Budget Limit
-                                    </th>
-                                    <th className="p-5 font-bold text-xs uppercase tracking-widest text-gray-500 text-right cursor-pointer hover:bg-gray-100 transition-colors"
-                                        onClick={() => { setSortField('variance'); setSortDesc(!sortDesc); }}
-                                    >
-                                        Variance
-                                    </th>
-                                    <th className="p-5 text-right font-bold text-xs uppercase tracking-widest text-gray-500">
-                                        Actions
-                                    </th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
-                                    <tr>
-                                        <td colSpan={6} className="p-8 text-center text-gray-500">
-                                            <Loader2 className="h-8 w-8 animate-spin text-brand-green mx-auto mb-4" />
-                                            Loading expenditure data...
-                                        </td>
-                                    </tr>
-                                ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
-                                    <tr>
-                                        <td colSpan={6} className="p-8 text-center text-gray-500 font-medium">
-                                            No expenditures found for this period.
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    <>
-                                        {/* Rendering Grouped View */}
-                                        {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => (
-                                            groupData.items.length > 0 && (
-                                                <React.Fragment key={`group-${groupId}`}>
-                                                    {/* Group Header */}
-                                                    <tr 
-                                                        className="bg-brand-navy/5 border-y-2 border-brand-navy/10 cursor-pointer hover:bg-brand-navy/10 transition-colors"
-                                                        onClick={() => toggleGroupCollapse(groupId)}
-                                                    >
-                                                        <td colSpan={2} className="p-4 font-bold text-brand-navy">
-                                                            <div className="flex items-center gap-2">
-                                                                {collapsedGroups.has(groupId) ? (
-                                                                    <ChevronRight className="h-4 w-4 text-gray-400" />
-                                                                ) : (
-                                                                    <ChevronDown className="h-4 w-4 text-gray-400" />
-                                                                )}
-                                                                <FolderOutput className="h-4 w-4 text-brand-green" />
-                                                                {groupData.groupName}
-                                                                <span className="text-xs font-normal text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200">
-                                                                    {groupData.items.length}
-                                                                </span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="p-4 text-right font-black text-gray-900">
-                                                            K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        </td>
-                                                        <td className="p-4 text-right font-medium text-gray-600">
-                                                            {groupData.totals.budgeted_amount > 0 ? `K${groupData.totals.budgeted_amount.toLocaleString()}` : '-'}
-                                                        </td>
-                                                        <td className="p-4 text-right">
-                                                            {groupData.totals.variance !== null ? (
-                                                                <span className={`font-bold ${groupData.totals.variance >= 0 ? 'text-brand-green' : 'text-red-500'}`}>
-                                                                    {groupData.totals.variance >= 0 ? '+' : ''}K{groupData.totals.variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                </span>
-                                                            ) : '-'}
-                                                        </td>
-                                                        <td></td>
+                                        <div className="flex items-center gap-2">
+                                            {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+                                            <FolderOutput className="h-4 w-4 text-brand-green" />
+                                            <h2 className="text-md font-bold text-brand-navy">{groupData.groupName}</h2>
+                                            <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200">
+                                                {groupData.items.length} accounts
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-6 text-sm font-bold text-gray-700">
+                                            <div>
+                                                <span className="text-gray-400 text-xs font-medium mr-2">TOTAL</span>
+                                                <span className="text-brand-navy">K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                            </div>
+                                            {groupData.totals.budgeted_amount > 0 && (
+                                                <>
+                                                    <div className="h-4 w-px bg-gray-200"></div>
+                                                    <div>
+                                                        <span className="text-gray-400 text-xs font-medium mr-2">BUDGET</span>
+                                                        <span>K{groupData.totals.budgeted_amount.toLocaleString()}</span>
+                                                    </div>
+                                                    <div className="h-4 w-px bg-gray-200"></div>
+                                                    <div>
+                                                        <span className="text-gray-400 text-xs font-medium mr-2">VARIANCE</span>
+                                                        <span className={groupData.totals.variance >= 0 ? 'text-brand-green' : 'text-red-500'}>
+                                                            {groupData.totals.variance >= 0 ? '+' : ''}K{groupData.totals.variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="border-b border-gray-100 bg-gray-50/10">
+                                                        <th className="p-4 w-12">
+                                                            <input 
+                                                                type="checkbox" 
+                                                                className="rounded text-brand-green focus:ring-brand-green border-gray-300 w-4 h-4 cursor-pointer"
+                                                                checked={groupData.items.every((item: any) => selectedAccounts.has(item.account_id))}
+                                                                onChange={(e) => {
+                                                                    e.stopPropagation();
+                                                                    const allInGroup = groupData.items.every((item: any) => selectedAccounts.has(item.account_id));
+                                                                    setSelectedAccounts(prev => {
+                                                                        const next = new Set(prev);
+                                                                        groupData.items.forEach((item: any) => {
+                                                                            if (allInGroup) next.delete(item.account_id);
+                                                                            else next.add(item.account_id);
+                                                                        });
+                                                                        return next;
+                                                                    });
+                                                                }}
+                                                            />
+                                                        </th>
+                                                        <th className="py-4 pr-4 font-bold text-xs uppercase tracking-widest text-gray-500">
+                                                            Account Name
+                                                        </th>
+                                                        <th className="p-4 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
+                                                            {reportView === 'PROFIT_LOSS' ? 'Actual Amount' : 'Balance'}
+                                                        </th>
+                                                        <th className="p-4 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
+                                                            {reportView === 'PROFIT_LOSS' ? 'Budget Limit' : 'Target'}
+                                                        </th>
+                                                        <th className="p-4 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
+                                                            Variance
+                                                        </th>
+                                                        <th className="p-4 text-right font-bold text-xs uppercase tracking-widest text-gray-500">
+                                                            Actions
+                                                        </th>
                                                     </tr>
-
-                                                    {/* Group Items */}
-                                                    {!collapsedGroups.has(groupId) && groupData.items.map((row: any) => renderAccountRow(row))}
-                                                </React.Fragment>
-                                            )
-                                        ))}
-
-                                        {/* Rendering Flat View */}
-                                        {!displayData.isGrouped && displayData.data && displayData.data.map((row: any) => renderAccountRow(row))}
-                                    </>
-                                )}
-                            </tbody>
-                        </table>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {groupData.items.map((row: any) => renderAccountRow(row))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
-                </div>
+                )}
 
                 {/* Bulk Actions Floating Toolbar */}
                 {selectedAccounts.size > 0 && (
@@ -1029,7 +1070,27 @@ export const Reporting: React.FC = () => {
 
             {/* Mobile Responsive View */}
             <div className="md:hidden flex flex-col min-h-screen bg-white pb-28 pt-2">
-                {/* Total Expenditure Summary Card */}
+                {/* Mobile View Toggle */}
+                <div className="mx-6 mb-4 flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+                    <button
+                        onClick={() => setReportView('NET_WORTH')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all text-center ${
+                            reportView === 'NET_WORTH' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                    >
+                        Net Worth
+                    </button>
+                    <button
+                        onClick={() => setReportView('PROFIT_LOSS')}
+                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all text-center ${
+                            reportView === 'PROFIT_LOSS' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
+                        }`}
+                    >
+                        Profit/Loss
+                    </button>
+                </div>
+
+                {/* Total Financials Summary Card */}
                 <div
                     className="mx-6 mb-6 rounded-[28px] p-6 text-white shadow-lg relative overflow-hidden"
                     style={{
@@ -1038,31 +1099,63 @@ export const Reporting: React.FC = () => {
                         backgroundPosition: 'center',
                     }}
                 >
-                    <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
-                        Total {mode === 'EXPENSE' ? 'Expenses' : 'Outflows'}
-                    </p>
-                    <div className="flex items-baseline justify-between">
-                        <h2 className="text-[34px] font-black leading-none">
-                            K{mobileData.totalSpent.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                        </h2>
-                        <span className="text-[34px] font-black leading-none">
-                            <span className="text-[#4D9FFF]">{mobileData.isIncrease ? '+' : '-'}</span>
-                            <span className="text-white">{mobileData.pctVal}%</span>
-                        </span>
-                    </div>
-                    
-                    {/* Secondary Band */}
-                    <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
-                        <div className="flex items-center gap-1.5">
-                            <Link2 size={13} className="text-white/60" />
-                            <span>Budget Total <strong className="font-extrabold text-white">K{mobileData.totalBudget.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></span>
-                        </div>
-                        <div className="h-3 w-px bg-white/20"></div>
-                        <div className="flex items-center gap-1.5">
-                            <ArrowUpRight size={14} className="text-[#34D399]" />
-                            <span>Actual Total <strong className="font-extrabold text-white">K{mobileData.totalSpent.toLocaleString(undefined, { maximumFractionDigits: 0 })}</strong></span>
-                        </div>
-                    </div>
+                    {reportView === 'PROFIT_LOSS' ? (
+                        <>
+                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
+                                Total Profit
+                            </p>
+                            <div className="flex items-baseline justify-between">
+                                <h2 className="text-[34px] font-black leading-none">
+                                    K{totals.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </h2>
+                                <span className="text-[28px] font-black leading-none font-bold">
+                                    <span className="text-[#4D9FFF]">{totals.profitChange.isIncrease ? '+' : '-'}</span>
+                                    <span className="text-white">{totals.profitChange.value}%</span>
+                                </span>
+                            </div>
+                            
+                            {/* Secondary Band */}
+                            <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
+                                <div className="flex items-center gap-1.5">
+                                    <Link2 size={13} className="text-white/60" />
+                                    <span>Total Revenue <strong className="font-extrabold text-white">K{totals.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                                <div className="h-3 w-px bg-white/20"></div>
+                                <div className="flex items-center gap-1.5">
+                                    <ArrowUpRight size={14} className="text-[#34D399]" />
+                                    <span>Total Expenses <strong className="font-extrabold text-white">K{totals.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
+                                Net Worth
+                            </p>
+                            <div className="flex items-baseline justify-between">
+                                <h2 className="text-[34px] font-black leading-none">
+                                    K{totals.netWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </h2>
+                                <span className="text-[28px] font-black leading-none font-bold">
+                                    <span className="text-[#4D9FFF]">{totals.netWorthChange.isIncrease ? '+' : '-'}</span>
+                                    <span className="text-white">{totals.netWorthChange.value}%</span>
+                                </span>
+                            </div>
+                            
+                            {/* Secondary Band */}
+                            <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
+                                <div className="flex items-center gap-1.5">
+                                    <Link2 size={13} className="text-white/60" />
+                                    <span>Total Assets <strong className="font-extrabold text-white">K{totals.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                                <div className="h-3 w-px bg-white/20"></div>
+                                <div className="flex items-center gap-1.5">
+                                    <ArrowUpRight size={14} className="text-[#34D399]" />
+                                    <span>Total Liabilities <strong className="font-extrabold text-white">K{totals.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
+                                </div>
+                            </div>
+                        </>
+                    )}
                 </div>
 
                 {/* Month Dropdown & Pill Controls Row */}
@@ -1296,89 +1389,96 @@ export const Reporting: React.FC = () => {
                     )}
                 </div>
 
-                {/* Categories and Progress Bars White Card */}
-                <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-xs p-5 space-y-6">
-                    {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
-                        <div className="py-8 text-center text-gray-500">
-                            <Loader2 className="h-8 w-8 animate-spin text-[#006AFF] mx-auto mb-4" />
-                            Loading expenditure data...
-                        </div>
-                    ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
-                        <div className="py-8 text-center text-gray-500 font-bold">
-                            No expenditures found for this period.
-                        </div>
-                    ) : (
-                        <div className="space-y-8">
-                            {/* Rendering Grouped Categories */}
-                            {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
-                                if (groupData.items.length === 0) return null;
-                                
-                                const isExpanded = expandedMobileGroups.has(groupId);
-                                const progressPercent = groupData.totals.budgeted_amount > 0 ? (groupData.totals.total_amount / groupData.totals.budgeted_amount) * 100 : 0;
-                                const change = getPercentageChange(groupData.totals.total_amount, groupData.totals.prev_total_amount);
+                {/* Category Group Cards - Separate cards for each group */}
+                {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                    <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-sm p-6 text-center text-gray-500">
+                        <Loader2 className="h-8 w-8 animate-spin text-[#006AFF] mx-auto mb-4" />
+                        Loading reports...
+                    </div>
+                ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                    <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-sm p-6 text-center text-gray-500 font-bold">
+                        No financial records found for this period.
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {/* Rendering Grouped Categories */}
+                        {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
+                            if (groupData.items.length === 0) return null;
+                            
+                            const progressPercent = groupData.totals.budgeted_amount > 0 ? (groupData.totals.total_amount / groupData.totals.budgeted_amount) * 100 : 0;
+                            const change = getPercentageChange(groupData.totals.total_amount, groupData.totals.prev_total_amount);
+                            const isExpanded = expandedGroups.has(groupId);
 
-                                return (
-                                    <div key={`mob-group-${groupId}`}>
-                                        {/* Group Header Row */}
-                                        <div 
-                                            onClick={() => toggleMobileGroupExpand(groupId)}
-                                            className="cursor-pointer"
-                                        >
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="pr-4">
-                                                    <h3 className="font-bold text-sm text-brand-navy leading-tight flex items-center gap-1.5">
-                                                        {groupData.groupName}
-                                                        <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
-                                                            {groupData.items.length}
+                            return (
+                                <div key={`mob-group-${groupId}`} className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-md p-6 space-y-4">
+                                    {/* Category Header - Clickable to collapse/expand card */}
+                                    <div 
+                                        onClick={() => toggleGroupExpand(groupId)}
+                                        className="flex justify-between items-center pb-2 cursor-pointer"
+                                    >
+                                        <h3 className="font-extrabold text-sm text-brand-navy leading-tight flex items-center gap-1.5">
+                                            {groupData.groupName}
+                                            <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">
+                                                {groupData.items.length}
+                                            </span>
+                                        </h3>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs font-black text-gray-900">
+                                                K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                            {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                                        </div>
+                                    </div>
+
+                                    {isExpanded && (
+                                        <>
+                                            {/* Category Progress and variance */}
+                                            {groupData.totals.budgeted_amount > 0 && (
+                                                <div className="space-y-2 pb-1">
+                                                    <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                        <div 
+                                                            className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
+                                                            style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                    <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
+                                                        <span>
+                                                            Budget: K{groupData.totals.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                                                         </span>
-                                                    </h3>
-                                                </div>
-                                                <div className="text-right flex-shrink-0">
-                                                    <div className="text-sm font-bold text-gray-900">
-                                                        +K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                        <span className={`flex items-center text-[11px] font-bold ${
+                                                            groupId === 'EXPENSE' || groupId === 'LIABILITY'
+                                                                ? (change.isIncrease ? 'text-red-500' : 'text-emerald-500')
+                                                                : (change.isIncrease ? 'text-emerald-500' : 'text-red-500')
+                                                        }`}>
+                                                            {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
+                                                            {change.value}%
+                                                        </span>
                                                     </div>
                                                 </div>
-                                            </div>
+                                            )}
 
-                                            {/* Progress bar */}
-                                            <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden mt-3">
-                                                <div 
-                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
-                                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
-                                                />
-                                            </div>
-
-                                            {/* Progress sub-label */}
-                                            <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 mt-2">
-                                                <div>
-                                                    {groupData.totals.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {groupData.totals.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                                </div>
-                                                <div className={`flex items-center text-[11px] font-bold ${
-                                                    change.isIncrease ? 'text-red-500' : 'text-emerald-500'
-                                                }`}>
-                                                    {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
-                                                    {change.value}%
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Subaccounts Cascade list */}
-                                        {isExpanded && (
-                                            <div className="mt-4 pl-3 border-l-2 border-gray-100 space-y-6 animate-in fade-in slide-in-from-top-1 duration-200">
+                                            {/* Subaccounts list */}
+                                            <div className="space-y-1">
                                                 {groupData.items.map((row: any) => {
                                                     const rowChange = getPercentageChange(row.total_amount, row.prev_total_amount);
                                                     const isRowExpanded = expandedAccount === row.account_id;
 
                                                     return (
-                                                        <div key={`subacc-${row.account_id}`} className="py-3.5">
+                                                        <div key={`subacc-${row.account_id}`} className="py-2">
                                                             <div 
                                                                 onClick={() => toggleExpand(row.account_id)}
                                                                 className="cursor-pointer flex justify-between items-start"
                                                             >
                                                                 <div className="pr-4">
-                                                                    <h4 className="text-xs font-bold text-gray-700">{row.account_name}</h4>
-                                                                    <span className="text-[10px] text-gray-400 font-semibold block mt-0.5">
-                                                                        {row.transaction_count} transactions
+                                                                    <h4 className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                                                                        {isRowExpanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
+                                                                        {row.account_name}
+                                                                    </h4>
+                                                                    <span className="text-[10px] text-gray-400 font-semibold block mt-0.5 pl-4.5">
+                                                                        {row.budgeted_amount > 0 
+                                                                            ? `${row.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ ${row.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}` 
+                                                                            : `${row.transaction_count} transactions`
+                                                                        }
                                                                     </span>
                                                                 </div>
                                                                 <div className="text-right flex-shrink-0">
@@ -1386,7 +1486,9 @@ export const Reporting: React.FC = () => {
                                                                         K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                                     </span>
                                                                     <span className={`text-[10px] font-bold mt-0.5 inline-block ${
-                                                                        rowChange.isIncrease ? 'text-red-400' : 'text-emerald-500'
+                                                                        row.type === 'EXPENSE' || row.type === 'LIABILITY'
+                                                                            ? (rowChange.isIncrease ? 'text-red-400' : 'text-emerald-500')
+                                                                            : (rowChange.isIncrease ? 'text-emerald-500' : 'text-red-400')
                                                                     }`}>
                                                                         {rowChange.isIncrease ? '↗' : '↘'} {rowChange.value}%
                                                                     </span>
@@ -1442,110 +1544,13 @@ export const Reporting: React.FC = () => {
                                                     );
                                                 })}
                                             </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-
-                            {/* Flat Rows (when grouping is disabled) */}
-                            {!displayData.isGrouped && displayData.data && displayData.data.map((row: any) => {
-                                const progressPercent = row.budgeted_amount > 0 ? (row.total_amount / row.budgeted_amount) * 100 : 0;
-                                const change = getPercentageChange(row.total_amount, row.prev_total_amount);
-                                const isExpanded = expandedAccount === row.account_id;
-
-                                return (
-                                    <div key={`mob-flat-${row.account_id}`} className="py-3.5">
-                                        {/* Flat Row Header */}
-                                        <div 
-                                            onClick={() => toggleExpand(row.account_id)}
-                                            className="cursor-pointer"
-                                        >
-                                            <div className="flex justify-between items-start mb-2">
-                                                <div className="pr-4">
-                                                    <h3 className="font-bold text-sm text-brand-navy leading-tight">
-                                                        {row.account_name}
-                                                    </h3>
-                                                </div>
-                                                <div className="text-right flex-shrink-0">
-                                                    <div className="text-sm font-bold text-gray-900">
-                                                        +K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
-                                                    </div>
-                                                </div>
-                                            </div>
-
-                                            {/* Progress bar */}
-                                            <div className="w-full h-2.5 bg-gray-100 rounded-full overflow-hidden mt-3">
-                                                <div 
-                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
-                                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
-                                                />
-                                            </div>
-
-                                            {/* Progress sub-label */}
-                                            <div className="flex justify-between items-center text-[10px] font-bold text-gray-400 mt-2">
-                                                <div>
-                                                    {row.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ {row.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                                                </div>
-                                                <div className={`flex items-center text-[11px] font-bold ${
-                                                    change.isIncrease ? 'text-red-500' : 'text-emerald-500'
-                                                }`}>
-                                                    {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
-                                                    {change.value}%
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Flat Row Transaction Cascade */}
-                                        {isExpanded && (
-                                            <div className="mt-3 bg-gray-50 rounded-2xl p-4 border border-gray-100 space-y-3">
-                                                <div className="flex justify-between items-center pb-2 border-b border-gray-200/50">
-                                                    <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Transaction History</h5>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
-                                                            setIsBudgetModalOpen(true);
-                                                        }}
-                                                        className="text-[10px] font-black text-[#006AFF] hover:underline"
-                                                    >
-                                                        Set Budget
-                                                    </button>
-                                                </div>
-                                                
-                                                {itemsLoading ? (
-                                                    <div className="flex items-center text-xs text-gray-500 py-2">
-                                                        <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#006AFF]" />
-                                                        Loading items...
-                                                    </div>
-                                                ) : !accountItems[row.account_id]?.length ? (
-                                                    <div className="text-xs text-gray-400 py-1 italic">No transactions found for this period.</div>
-                                                ) : (
-                                                    <div className="space-y-2">
-                                                        {accountItems[row.account_id].map(item => (
-                                                            <div key={item.id} className="text-xs flex justify-between items-start py-1 border-b border-gray-100 last:border-0 last:pb-0">
-                                                                <div className="flex-1 pr-3">
-                                                                    <p className="font-bold text-gray-800 line-clamp-1">{item.description}</p>
-                                                                    <div className="flex items-center gap-1.5 text-[9px] text-gray-400 mt-0.5">
-                                                                        <span>{item.requisition_ref || 'N/A'}</span>
-                                                                        <span>•</span>
-                                                                        <span>{new Date(item.date).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: 'numeric' })}</span>
-                                                                    </div>
-                                                                </div>
-                                                                <span className="font-black text-gray-900 whitespace-nowrap">
-                                                                    K{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                                </span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                                        </>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
             </div>
 
             {isBudgetModalOpen && selectedAccountForBudget && (

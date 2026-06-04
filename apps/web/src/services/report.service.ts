@@ -7,6 +7,7 @@ export interface ExpenditureAggregation {
     account_name: string;
     total_amount: number;
     transaction_count: number;
+    type: string;
 }
 
 export interface ExpenditureItem {

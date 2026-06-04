@@ -171,8 +171,13 @@ export const cashbookService = {
 
         // Auto-generate reference for certain types if not provided
         if (!refNum && ['INFLOW', 'RETURN', 'ADJUSTMENT'].includes(entry.entry_type)) {
-            const prefix = entry.entry_type === 'INFLOW' ? 'CR' : 
+            let prefix = entry.entry_type === 'INFLOW' ? 'CR' : 
                           entry.entry_type === 'RETURN' ? 'RT' : 'ADJ';
+            
+            if (entry.entry_type === 'INFLOW' && entry.description && 
+                (entry.description.startsWith('Sale:') || entry.description.startsWith('Revenue:'))) {
+                prefix = 'REC';
+            }
             
             const { data } = await supabase.rpc('generate_sequential_reference', {
                 p_org_id: organizationId,

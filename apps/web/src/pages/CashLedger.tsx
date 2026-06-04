@@ -27,13 +27,15 @@ import {
     RefreshCw,
     AlertTriangle,
     Download,
-    Flag
+    Flag,
+    Link2
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
 import CreateWalletModal from '../components/CreateWalletModal';
 import TransferModal from '../components/TransferModal';
+import ShareWalletLinkModal from '../components/ShareWalletLinkModal';
 import { useAuth } from '../context/AuthContext';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
@@ -195,6 +197,8 @@ const CashLedger: React.FC = () => {
     const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL'>('MONEYWISE');
     const [isCreateWalletModalOpen, setIsCreateWalletModalOpen] = useState(false);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+    const [shareWalletId, setShareWalletId] = useState<string | null>(null);
     const [externalBalances, setExternalBalances] = useState<Record<string, number>>({ CASH: 0, AIRTEL_MONEY: 0, BANK: 0 });
 
     const { userRole } = useAuth();
@@ -1245,11 +1249,28 @@ const CashLedger: React.FC = () => {
                                         {/* Card Body */}
                                         <div className="p-5 flex-1 flex flex-col justify-between">
                                             <div>
-                                                <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${
-                                                    isActive ? 'text-white/60' : 'text-[#5E6480]/50'
-                                                }`}>
-                                                    {w.name} {w.is_main && '(Main)'}
-                                                </span>
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <span className={`text-xs font-bold uppercase tracking-wider block ${
+                                                        isActive ? 'text-white/60' : 'text-[#5E6480]/50'
+                                                    }`}>
+                                                        {w.name} {w.is_main && '(Main)'}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setShareWalletId(w.id);
+                                                            setIsShareModalOpen(true);
+                                                        }}
+                                                        className={`p-1.5 rounded-lg transition-colors ${
+                                                            isActive 
+                                                                ? 'text-white/60 hover:text-white hover:bg-white/10' 
+                                                                : 'text-[#5E6480]/50 hover:text-[#5E6480] hover:bg-slate-100'
+                                                        }`}
+                                                        title="Share payment link"
+                                                    >
+                                                        <Link2 size={14} />
+                                                    </button>
+                                                </div>
                                                 <div className="flex items-baseline gap-1.5">
                                                     <span className={`text-lg font-bold tracking-wider ${
                                                         isActive ? 'text-white/70' : 'text-[#5E6480]/50'
@@ -1674,6 +1695,21 @@ const CashLedger: React.FC = () => {
                                             <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10 text-white' : 'bg-blue-50 text-blue-600'} transition-colors duration-300`}>
                                                 <Wallet size={20} strokeWidth={2.5} />
                                             </div>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setShareWalletId(w.id);
+                                                    setIsShareModalOpen(true);
+                                                }}
+                                                className={`p-2 rounded-xl transition-colors ${
+                                                    isActive 
+                                                        ? 'text-white/60 hover:text-white hover:bg-white/10' 
+                                                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+                                                }`}
+                                                title="Share payment link"
+                                            >
+                                                <Link2 size={16} strokeWidth={2.5} />
+                                            </button>
                                         </div>
                                         <div>
                                             <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-white/80' : 'text-gray-400'}`}>
@@ -2294,6 +2330,16 @@ const CashLedger: React.FC = () => {
                 onSuccess={loadData}
                 wallets={wallets}
                 initialSourceWalletId={selectedWalletId}
+            />
+
+            <ShareWalletLinkModal
+                isOpen={isShareModalOpen}
+                onClose={() => {
+                    setIsShareModalOpen(false);
+                    setShareWalletId(null);
+                }}
+                walletName={wallets.find(w => w.id === shareWalletId)?.name || ''}
+                shareUrl={shareWalletId ? `${window.location.origin}/pay/${shareWalletId}` : ''}
             />
         </Layout>
     );

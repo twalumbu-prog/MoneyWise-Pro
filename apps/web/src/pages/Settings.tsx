@@ -14,7 +14,8 @@ import {
     ArrowRightLeft,
     ArrowDownToLine,
     BrainCircuit,
-    Beaker
+    Beaker,
+    ShoppingBag
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -23,6 +24,7 @@ import { RuleManagement } from '../components/settings/RuleManagement';
 import { AIMetrics } from '../components/settings/AIMetrics';
 import { DebugSettings } from '../components/settings/DebugSettings';
 import { MyProfileSettings } from '../components/settings/MyProfileSettings';
+import { ProductSettings } from '../components/settings/ProductSettings';
 import { Layout } from '../components/Layout';
 
 export const Settings: React.FC = () => {
@@ -279,6 +281,17 @@ export const Settings: React.FC = () => {
                             >
                                 <BrainCircuit className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
                                 <span>AI & Automation</span>
+                            </button>
+
+                            <button
+                                onClick={() => handleTabChange('products')}
+                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'products'
+                                    ? 'bg-white text-brand-navy shadow-sm'
+                                    : 'text-gray-500 hover:text-gray-700'
+                                    }`}
+                            >
+                                <ShoppingBag className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
+                                <span>Products & Services</span>
                             </button>
 
                             <button
@@ -543,6 +556,9 @@ export const Settings: React.FC = () => {
                                 </div>
                             </div>
                         )}
+
+                        {/* Products & Services Tab */}
+                        {activeTab === 'products' && <ProductSettings />}
 
                         {/* Debug Tab */}
                         {activeTab === 'debug' && <DebugSettings />}

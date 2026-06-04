@@ -9,7 +9,9 @@ import {
     getReconciliationSummary,
     getBanks,
     resolveBankAccount,
-    resolveMobileMoney
+    resolveMobileMoney,
+    getPublicWalletContext,
+    logPublicWalletDepositIntent
 } from '../controllers/lenco.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -17,6 +19,11 @@ const router = Router();
 
 // Public webhook endpoint (Lenco will POST here)
 router.post('/webhook', handleLencoWebhook);
+
+// Public payment portal endpoints
+router.get('/public-verify-status/:reference', verifyCollectionStatus);
+router.get('/public-context/:wallet_id', getPublicWalletContext);
+router.post('/public-wallet-deposit-intent', logPublicWalletDepositIntent);
 
 // Protected routes
 router.use(requireAuth);

@@ -169,7 +169,7 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
         // 1. Check if the entry already exists and is finalized in our database
         const { data: existingEntry, error: dbError } = await supabase
             .from('cashbook_entries')
-            .select('id, status')
+            .select('id, status, reference_number')
             .like('description', `%${reference}`)
             .maybeSingle();
 
@@ -181,7 +181,8 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                 verified: true, 
                 source: 'database',
                 status: existingEntry.status,
-                stage: 'CONFIRMED_IN_DB'
+                stage: 'CONFIRMED_IN_DB',
+                referenceNumber: existingEntry.reference_number
             });
         }
 
@@ -205,11 +206,19 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                     );
                     
                     if (success) {
+                        // Fetch the created reference number
+                        const { data: createdEntry } = await supabase
+                            .from('cashbook_entries')
+                            .select('reference_number')
+                            .like('description', `%${reference}`)
+                            .maybeSingle();
+
                         return res.json({ 
                             verified: true, 
                             source: 'lenco_transaction_api',
                             status: 'COMPLETED',
-                            stage: 'PROCESSED_VIA_TX_ID'
+                            stage: 'PROCESSED_VIA_TX_ID',
+                            referenceNumber: createdEntry?.reference_number || null
                         });
                     }
                 }
@@ -233,11 +242,19 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                 const success = await handleCollectionSuccessful(lencoStatus, organizationId);
                 
                 if (success) {
+                    // Fetch the created reference number
+                    const { data: createdEntry } = await supabase
+                        .from('cashbook_entries')
+                        .select('reference_number')
+                        .like('description', `%${reference}`)
+                        .maybeSingle();
+
                     return res.json({ 
                         verified: true, 
                         source: 'lenco_collection_api',
                         status: 'COMPLETED',
-                        stage: 'PROCESSED_VIA_COLLECTION_REF'
+                        stage: 'PROCESSED_VIA_COLLECTION_REF',
+                        referenceNumber: createdEntry?.reference_number || null
                     });
                 }
             } catch (procError: any) {
@@ -435,5 +452,118 @@ export const resolveMobileMoney = async (req: Request, res: Response) => {
         res.json(resolution);
     } catch (error: any) {
         res.status(400).json({ error: error.message });
+    }
+};
+
+/**
+ * Fetch public context for a wallet (organization name, logo, products, and wallet settings)
+ */
+export const getPublicWalletContext = async (req: Request, res: Response) => {
+    const { wallet_id } = req.params;
+
+    if (!wallet_id) {
+        return res.status(400).json({ error: 'wallet_id is required' });
+    }
+
+    try {
+        console.log('[Lenco Public Context] Fetching wallet ID:', wallet_id);
+        // 1. Fetch wallet details
+        const { data: wallet, error: walletError } = await supabase
+            .from('organization_wallets')
+            .select('id, name, organization_id')
+            .eq('id', wallet_id)
+            .single();
+
+        console.log('[Lenco Public Context] Wallet query result:', { wallet, walletError });
+
+        if (walletError || !wallet) {
+            return res.status(404).json({ error: 'Wallet not found' });
+        }
+
+        // 2. Fetch organization details
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+            .eq('id', wallet.organization_id)
+            .single();
+
+        console.log('[Lenco Public Context] Org query result:', { org, orgError });
+
+        if (orgError || !org) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        // 3. Fetch active products for the organization
+        const { data: products, error: productsError } = await supabase
+            .from('products')
+            .select('*')
+            .eq('organization_id', wallet.organization_id)
+            .eq('is_active', true)
+            .order('name', { ascending: true });
+
+        if (productsError) throw productsError;
+
+        res.json({
+            organization: {
+                id: wallet.organization_id,
+                name: org.name,
+                logo_url: org.logo_url || null
+            },
+            wallet: {
+                id: wallet.id,
+                name: wallet.name,
+                lenco_subaccount_id: org.lenco_subaccount_id || null,
+                lenco_public_key: org.lenco_public_key || null,
+                payment_test_mode: org.payment_test_mode || false
+            },
+            products: products || []
+        });
+    } catch (error: any) {
+        console.error('[Lenco Public Context] Error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/**
+ * Log public wallet deposit intent (before external customer checkout redirects/initiates Lenco)
+ */
+export const logPublicWalletDepositIntent = async (req: Request, res: Response) => {
+    try {
+        const { reference, purpose, amount, walletId } = req.body;
+
+        if (!reference || !purpose || !walletId) {
+            return res.status(400).json({ error: 'reference, purpose, and walletId are required' });
+        }
+
+        // Fetch organization_id from wallet
+        const { data: wallet, error: walletError } = await supabase
+            .from('organization_wallets')
+            .select('organization_id')
+            .eq('id', walletId)
+            .single();
+
+        if (walletError || !wallet) {
+            return res.status(404).json({ error: 'Wallet not found' });
+        }
+
+        const { error } = await supabase.from('cashbook_entries').insert({
+            organization_id: wallet.organization_id,
+            entry_type: 'INFLOW',
+            account_type: 'MONEYWISE_WALLET',
+            description: `PENDING_INTENT: ${purpose} | Ref: ${reference}`,
+            debit: amount || 0,
+            credit: 0,
+            balance_after: 0,
+            date: new Date().toISOString().split('T')[0],
+            status: 'PENDING',
+            wallet_id: walletId
+        });
+
+        if (error) throw error;
+
+        res.json({ message: 'Intent logged successfully' });
+    } catch (error: any) {
+        console.error('[Lenco Public Intent] Error:', error);
+        res.status(500).json({ error: 'Failed to log wallet deposit intent', details: error.message });
     }
 };

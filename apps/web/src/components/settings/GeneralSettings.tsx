@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { lencoService } from '../../services/lenco.service';
+import { supabase } from '../../lib/supabase';
 
 export const GeneralSettings: React.FC = () => {
     const [loading, setLoading] = useState(true);
@@ -45,6 +46,8 @@ export const GeneralSettings: React.FC = () => {
         website: ''
     });
 
+    const [logoUrl, setLogoUrl] = useState<string | null>(null);
+    const [uploadingLogo, setUploadingLogo] = useState(false);
     const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
     const [provisioning, setProvisioning] = useState(false);
     const [availableAccounts, setAvailableAccounts] = useState<any[]>([]);
@@ -70,6 +73,7 @@ export const GeneralSettings: React.FC = () => {
                 website: data.website || ''
             });
             setLencoSubaccountId(data.lenco_subaccount_id || null);
+            setLogoUrl(data.logo_url || null);
 
             // Fetch Lenco accounts as well
             if (isAdmin) {
@@ -157,6 +161,62 @@ export const GeneralSettings: React.FC = () => {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !isAdmin) return;
+
+        try {
+            setUploadingLogo(true);
+            setError(null);
+
+            // 1. Upload to Supabase Storage
+            const fileExt = file.name.split('.').pop();
+            const orgData = await organizationService.getOrganization();
+            const filePath = `${orgData.id}/logo-${Date.now()}.${fileExt}`;
+
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('organization-logos')
+                .upload(filePath, file, { cacheControl: '3600', upsert: true });
+
+            if (uploadError) throw uploadError;
+
+            // 2. Get Public URL
+            const publicUrl = supabase.storage
+                .from('organization-logos')
+                .getPublicUrl(uploadData.path).data.publicUrl;
+
+            // 3. Save in DB
+            await organizationService.updateOrganization({ logo_url: publicUrl });
+
+            setLogoUrl(publicUrl);
+            setSuccessMessage('Logo uploaded and saved successfully.');
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } catch (err: any) {
+            console.error('Logo upload failed:', err);
+            setError(err.message || 'Failed to upload logo.');
+        } finally {
+            setUploadingLogo(false);
+        }
+    };
+
+    const handleRemoveLogo = async () => {
+        if (!isAdmin) return;
+        try {
+            setUploadingLogo(true);
+            setError(null);
+
+            await organizationService.updateOrganization({ logo_url: null as any });
+            setLogoUrl(null);
+            setSuccessMessage('Logo removed successfully.');
+            setTimeout(() => setSuccessMessage(null), 3000);
+        } catch (err: any) {
+            console.error('Logo removal failed:', err);
+            setError(err.message || 'Failed to remove logo.');
+        } finally {
+            setUploadingLogo(false);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -251,6 +311,50 @@ export const GeneralSettings: React.FC = () => {
                     <form onSubmit={handleSubmit} className="space-y-6">
                         {/* Basic Info */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Logo Upload Section */}
+                            <div className="md:col-span-2">
+                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                    Organization Logo
+                                </label>
+                                <div className="flex items-center gap-6">
+                                    <div className="relative h-20 w-20 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shadow-2xs shrink-0">
+                                        {logoUrl ? (
+                                            <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <Building2 className="h-8 w-8 text-gray-300" />
+                                        )}
+                                        {uploadingLogo && (
+                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                                                <Loader2 className="h-5 w-5 animate-spin text-white" />
+                                            </div>
+                                        )}
+                                    </div>
+                                    {isAdmin && (
+                                        <div className="flex flex-wrap gap-3">
+                                            <label className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest shadow-2xs cursor-pointer transition-all active:scale-95 flex items-center justify-center h-fit">
+                                                Upload Logo
+                                                <input 
+                                                    type="file" 
+                                                    accept="image/png, image/jpeg, image/gif, image/webp" 
+                                                    onChange={handleUploadLogo} 
+                                                    disabled={uploadingLogo} 
+                                                    className="hidden" 
+                                                />
+                                            </label>
+                                            {logoUrl && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleRemoveLogo}
+                                                    disabled={uploadingLogo}
+                                                    className="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center"
+                                                >
+                                                    Remove Logo
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                             <div>
                                 <label className="block text-sm font-semibold text-gray-700 mb-2">
                                     Organization Name <span className="text-red-500">*</span>

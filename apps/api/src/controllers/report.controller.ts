@@ -14,11 +14,35 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'start_date and end_date are required' });
         }
 
-        // Include all statuses where money has actually left the wallet
-        const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
+        // 1. Fetch all active accounts for the organization
+        const { data: accounts, error: accError } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('organization_id', organization_id)
+            .eq('is_active', true);
 
-        // Get all line items for requisitions in the allowed statuses
-        const query = supabase
+        if (accError) throw accError;
+
+        // 2. Fetch all cashbook entries up to endDate
+        const { data: cbEntries, error: cbError } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('organization_id', organization_id)
+            .lte('date', endDate);
+
+        if (cbError) throw cbError;
+
+        // 3. Fetch all organization wallets
+        const { data: wallets, error: wError } = await supabase
+            .from('organization_wallets')
+            .select('*')
+            .eq('organization_id', organization_id);
+
+        if (wError) throw wError;
+
+        // 4. Fetch all line items of requisitions in allowed statuses
+        const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
+        const { data: lineItems, error: liError } = await supabase
             .from('line_items')
             .select(`
                 *,
@@ -29,70 +53,129 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                     updated_at, 
                     organization_id,
                     cashbook_entries(id, date, entry_type)
-                ),
-                accounts ( id, name, code )
+                )
             `)
             .eq('requisition.organization_id', organization_id)
             .in('requisition.status', allowedStatuses);
 
-        const { data: lineItems, error } = await query;
+        if (liError) throw liError;
 
-        if (error) throw error;
-
-        // Aggregate by qb_account_id
-        const expenditures = new Map<string, any>();
-
-        for (const item of (lineItems || [])) {
+        // Date helper for line items
+        const getLineItemDate = (item: any) => {
             const req = item.requisition;
-            if (!req) continue;
-
-            // Resolve the transaction date from the cashbook entries
-            // Priority: entry_type === 'DISBURSEMENT' -> first cashbook entry -> updated_at -> created_at
+            if (!req) return '';
             const cashbookEntries = req.cashbook_entries || [];
             const disbursement = cashbookEntries.find((c: any) => c.entry_type === 'DISBURSEMENT');
-            
-            let itemDateStr = '';
-            if (disbursement) {
-                itemDateStr = disbursement.date;
-            } else if (cashbookEntries.length > 0) {
-                itemDateStr = cashbookEntries[0].date;
-            } else {
-                itemDateStr = req.updated_at || req.created_at;
-            }
+            if (disbursement) return disbursement.date;
+            if (cashbookEntries.length > 0) return cashbookEntries[0].date;
+            return req.updated_at || req.created_at || '';
+        };
 
-            const formattedDate = itemDateStr.split('T')[0];
-            
-            // Filter by date range
-            if (formattedDate < startDate || formattedDate > endDate) {
-                continue;
-            }
+        // Aggregate calculations for each account
+        const financials = [];
 
-            // Priority: QB ID -> Local ID -> 'UNCATEGORIZED'
-            const accountId = item.qb_account_id || item.account_id || 'UNCATEGORIZED';
-            
-            // Priority: QB Name -> Local Account Name -> Fallback
-            const accountName = item.qb_account_name || (item as any).accounts?.name || 'Uncategorized Expense';
-            
-            const amount = Number(item.actual_amount || item.estimated_amount || 0);
+        for (const acc of (accounts || [])) {
+            let totalAmount = 0;
+            let txCount = 0;
 
-            if (!expenditures.has(accountId)) {
-                expenditures.set(accountId, {
-                    account_id: accountId,
-                    account_name: accountName,
-                    total_amount: 0,
-                    transaction_count: 0
+            if (acc.type === 'EXPENSE') {
+                // Periodic (between startDate and endDate)
+                // Source A: Requisition line items matching this account within date range
+                const matchingLIs = (lineItems || []).filter(item => {
+                    const itemDate = getLineItemDate(item).split('T')[0];
+                    const matchAcc = item.account_id === acc.id || item.qb_account_id === acc.qb_account_id;
+                    return matchAcc && itemDate >= startDate && itemDate <= endDate;
                 });
+                const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+
+                // Source B: Non-requisition cashbook entries directly allocated to this account in the date range
+                const matchingCBs = (cbEntries || []).filter(entry => {
+                    const entryDate = entry.date;
+                    return entry.account_id === acc.id && !entry.requisition_id && entryDate >= startDate && entryDate <= endDate;
+                });
+                // Expense is debit-normal, so cash outflow (credit) increases balance and cash inflow (debit) decreases it
+                const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
+
+                totalAmount = liSum + cbSum;
+                txCount = matchingLIs.length + matchingCBs.length;
+
+            } else if (acc.type === 'INCOME') {
+                // Periodic (between startDate and endDate)
+                const matchingCBs = (cbEntries || []).filter(entry => {
+                    const entryDate = entry.date;
+                    return entry.account_id === acc.id && entryDate >= startDate && entryDate <= endDate;
+                });
+                // Income is credit-normal, so cash inflow (debit) increases it and cash outflow (credit) decreases it
+                totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                txCount = matchingCBs.length;
+
+            } else if (acc.type === 'ASSET') {
+                // Cumulative (up to endDate)
+                const nameLower = acc.name.toLowerCase();
+                const isBankWalletOrCash = acc.subtype === 'Bank' || nameLower.includes('wallet') || nameLower.includes('cash') || nameLower.includes('bank');
+
+                if (isBankWalletOrCash) {
+                    if (nameLower.includes('main') || acc.code === 'QB-1150040000') {
+                        // Main Wallet balance (debits - credits)
+                        const matchingCBs = (cbEntries || []).filter(entry => entry.account_type === 'MONEYWISE_WALLET');
+                        totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                        txCount = matchingCBs.length;
+                    } else {
+                        // Matches a specific subwallet
+                        const matchedWallet = (wallets || []).find(w => w.name === acc.name || w.qb_account_id === acc.qb_account_id);
+                        if (matchedWallet) {
+                            const matchingCBs = (cbEntries || []).filter(entry => entry.wallet_id === matchedWallet.id);
+                            totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                            txCount = matchingCBs.length;
+                        } else if (nameLower.includes('cash')) {
+                            // Physical Cash account
+                            const matchingCBs = (cbEntries || []).filter(entry => entry.account_type === 'CASH');
+                            totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                            txCount = matchingCBs.length;
+                        } else {
+                            // General Bank Account
+                            const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
+                            const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
+                            const matchingLIs = (lineItems || []).filter(item => item.account_id === acc.id || item.qb_account_id === acc.qb_account_id);
+                            const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+                            totalAmount = cbSum + liSum;
+                            txCount = matchingCBs.length + matchingLIs.length;
+                        }
+                    }
+                } else {
+                    // Other Asset
+                    const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
+                    const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
+                    const matchingLIs = (lineItems || []).filter(item => item.account_id === acc.id || item.qb_account_id === acc.qb_account_id);
+                    const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+                    totalAmount = cbSum + liSum;
+                    txCount = matchingCBs.length + matchingLIs.length;
+                }
+
+            } else if (acc.type === 'LIABILITY' || acc.type === 'EQUITY') {
+                // Cumulative (up to endDate)
+                const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
+                const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
+                const matchingLIs = (lineItems || []).filter(item => item.account_id === acc.id || item.qb_account_id === acc.qb_account_id);
+                const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+
+                totalAmount = cbSum - liSum;
+                txCount = matchingCBs.length + matchingLIs.length;
             }
 
-            const agg = expenditures.get(accountId);
-            agg.total_amount += amount;
-            agg.transaction_count += 1;
+            financials.push({
+                account_id: acc.id,
+                account_name: acc.name,
+                total_amount: totalAmount,
+                transaction_count: txCount,
+                type: acc.type
+            });
         }
 
-        res.json(Array.from(expenditures.values()));
+        res.json(financials);
     } catch (error: any) {
-        console.error('Error fetching expenditure:', error);
-        res.status(500).json({ error: 'Failed to fetch expenditure', details: error.message });
+        console.error('Error fetching expenditures:', error);
+        res.status(500).json({ error: 'Failed to fetch expenditures', details: error.message });
     }
 };
 
@@ -106,81 +189,180 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'Organization context missing' });
         }
 
-        // Include all statuses where money has actually left the wallet
-        const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
-
-        // Identify if accountId is a UUID to avoid database casting errors
-        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
-
-        let query = supabase
-            .from('line_items')
-            .select(`
-                *,
-                requisition:requisitions!inner(
-                    id, 
-                    reference_number, 
-                    status, 
-                    description, 
-                    created_at, 
-                    updated_at, 
-                    requestor_id, 
-                    requestor:users!requestor_id(name),
-                    cashbook_entries(id, date, entry_type)
-                ),
-                accounts(id, name, code)
-            `)
-            .eq('requisition.organization_id', organization_id)
-            .in('requisition.status', allowedStatuses);
-
-        if (accountId === 'UNCATEGORIZED') {
-            query = query.is('qb_account_id', null).is('account_id', null);
-        } else if (isUuid) {
-            // Check both fields if it's a UUID
-            query = query.or(`qb_account_id.eq.${accountId},account_id.eq.${accountId}`);
-        } else {
-            // Not a UUID, so it must be a QuickBooks account ID or similar string
-            query = query.eq('qb_account_id', accountId);
+        // Fetch account to verify type
+        let account: any = null;
+        if (accountId !== 'UNCATEGORIZED') {
+            const { data: acc } = await supabase
+                .from('accounts')
+                .select('*')
+                .eq('id', accountId)
+                .single();
+            account = acc;
         }
 
-        const { data, error } = await query;
-
-        if (error) throw error;
-
-        // Filter in memory by date range and map data to make it caller friendly
+        const accountType = account?.type || 'EXPENSE';
         const items = [];
 
-        for (const item of (data || [])) {
-            const req = item.requisition;
-            if (!req) continue;
+        // 1. Fetch requisition line items if they apply
+        if (accountType === 'EXPENSE' || accountType === 'ASSET' || accountType === 'LIABILITY' || accountType === 'EQUITY') {
+            const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
+            const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(accountId);
 
-            const cashbookEntries = req.cashbook_entries || [];
-            const disbursement = cashbookEntries.find((c: any) => c.entry_type === 'DISBURSEMENT');
-            
-            let itemDateStr = '';
-            if (disbursement) {
-                itemDateStr = disbursement.date;
-            } else if (cashbookEntries.length > 0) {
-                itemDateStr = cashbookEntries[0].date;
+            let query = supabase
+                .from('line_items')
+                .select(`
+                    *,
+                    requisition:requisitions!inner(
+                        id, 
+                        reference_number, 
+                        status, 
+                        description, 
+                        created_at, 
+                        updated_at, 
+                        requestor_id, 
+                        requestor:users!requestor_id(name),
+                        cashbook_entries(id, date, entry_type)
+                    ),
+                    accounts(id, name, code)
+                `)
+                .eq('requisition.organization_id', organization_id)
+                .in('requisition.status', allowedStatuses);
+
+            if (accountId === 'UNCATEGORIZED') {
+                query = query.is('qb_account_id', null).is('account_id', null);
+            } else if (isUuid) {
+                query = query.or(`qb_account_id.eq.${accountId},account_id.eq.${accountId}`);
             } else {
-                itemDateStr = req.updated_at || req.created_at;
+                query = query.eq('qb_account_id', accountId);
             }
 
-            const formattedDate = itemDateStr.split('T')[0];
+            const { data: lineItemsData, error: liError } = await query;
+            if (liError) throw liError;
 
-            if (startDate && formattedDate < startDate) continue;
-            if (endDate && formattedDate > endDate) continue;
+            for (const item of (lineItemsData || [])) {
+                const req = item.requisition;
+                if (!req) continue;
 
-            items.push({
-                id: item.id,
-                description: item.description,
-                amount: Number(item.actual_amount || item.estimated_amount || 0),
-                date: itemDateStr,
-                requisition_id: req.id,
-                requisition_ref: req.reference_number,
-                requisition_desc: req.description,
-                requestor_name: req.requestor?.name || 'Unknown'
-            });
+                const cashbookEntries = req.cashbook_entries || [];
+                const disbursement = cashbookEntries.find((c: any) => c.entry_type === 'DISBURSEMENT');
+                
+                let itemDateStr = '';
+                if (disbursement) {
+                    itemDateStr = disbursement.date;
+                } else if (cashbookEntries.length > 0) {
+                    itemDateStr = cashbookEntries[0].date;
+                } else {
+                    itemDateStr = req.updated_at || req.created_at;
+                }
+
+                const formattedDate = itemDateStr.split('T')[0];
+
+                // For balance sheet accounts we check <= endDate (cumulative), for expenses we check date range
+                if (accountType === 'EXPENSE') {
+                    if (startDate && formattedDate < startDate) continue;
+                }
+                if (endDate && formattedDate > endDate) continue;
+
+                items.push({
+                    id: item.id,
+                    description: item.description,
+                    amount: Number(item.actual_amount || item.estimated_amount || 0),
+                    date: itemDateStr,
+                    requisition_id: req.id,
+                    requisition_ref: req.reference_number,
+                    requisition_desc: req.description,
+                    requestor_name: req.requestor?.name || 'Unknown'
+                });
+            }
         }
+
+        // 2. Fetch cashbook entries if they apply
+        // Cashbook entries directly apply to all accounts (except UNCATEGORIZED)
+        if (accountId !== 'UNCATEGORIZED') {
+            let cbQuery = supabase
+                .from('cashbook_entries')
+                .select(`
+                    id,
+                    description,
+                    debit,
+                    credit,
+                    date,
+                    requisition_id,
+                    created_by,
+                    creator:users!created_by(name)
+                `)
+                .eq('organization_id', organization_id);
+
+            // Special check: bank/wallet/cash accounts are represented by wallet_id or account_type,
+            // rather than account_id field in cashbook_entries
+            const nameLower = account?.name?.toLowerCase() || '';
+            const isBankWalletOrCash = account?.subtype === 'Bank' || nameLower.includes('wallet') || nameLower.includes('cash') || nameLower.includes('bank');
+
+            if (isBankWalletOrCash && accountType === 'ASSET') {
+                if (nameLower.includes('main') || account?.code === 'QB-1150040000') {
+                    cbQuery = cbQuery.eq('account_type', 'MONEYWISE_WALLET');
+                } else if (nameLower.includes('cash')) {
+                    cbQuery = cbQuery.eq('account_type', 'CASH');
+                } else {
+                    // Specific wallet
+                    const { data: wallets } = await supabase
+                        .from('organization_wallets')
+                        .select('id')
+                        .eq('organization_id', organization_id)
+                        .or(`name.eq."${account?.name}",qb_account_id.eq."${account?.qb_account_id}"`);
+
+                    if (wallets && wallets.length > 0) {
+                        cbQuery = cbQuery.eq('wallet_id', wallets[0].id);
+                    } else {
+                        cbQuery = cbQuery.eq('account_id', accountId);
+                    }
+                }
+            } else {
+                cbQuery = cbQuery.eq('account_id', accountId);
+            }
+
+            // Date filtering
+            if (accountType === 'EXPENSE' || accountType === 'INCOME') {
+                if (startDate) cbQuery = cbQuery.gte('date', startDate);
+            }
+            if (endDate) cbQuery = cbQuery.lte('date', endDate);
+
+            const { data: cbData, error: cbError } = await cbQuery;
+            if (cbError) throw cbError;
+
+            for (const entry of (cbData || [])) {
+                // If it is linked to a requisition and we are in EXPENSE, we already loaded it via line_items.
+                // Avoid double-counting requisition entries.
+                if (entry.requisition_id && accountType === 'EXPENSE') continue;
+
+                // Amount direction depends on account type
+                let amt = 0;
+                if (accountType === 'EXPENSE' || accountType === 'ASSET') {
+                    amt = Number(entry.credit || 0) - Number(entry.debit || 0);
+                    // For Asset wallets, positive change is debit (money in), negative is credit (money out)
+                    if (isBankWalletOrCash && accountType === 'ASSET') {
+                        amt = Number(entry.debit || 0) - Number(entry.credit || 0);
+                    }
+                } else {
+                    // INCOME, LIABILITY, EQUITY
+                    amt = Number(entry.debit || 0) - Number(entry.credit || 0);
+                }
+
+                items.push({
+                    id: entry.id,
+                    description: entry.description,
+                    amount: Math.abs(amt), // Show absolute amount in list
+                    date: entry.date,
+                    requisition_id: entry.requisition_id,
+                    requisition_ref: entry.requisition_id ? 'REQ' : 'LEDGER',
+                    requisition_desc: entry.description,
+                    requestor_name: (entry as any).creator?.name || 'System'
+                });
+            }
+        }
+
+        // Sort items by date descending
+        items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
         res.json(items);
     } catch (error: any) {

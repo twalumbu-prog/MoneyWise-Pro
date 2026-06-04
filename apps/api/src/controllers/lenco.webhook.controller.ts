@@ -90,7 +90,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         try {
             const { data: existingByRef, error: refError } = await supabase
                 .from('cashbook_entries')
-                .select('id, status, description, wallet_id')
+                .select('id, status, description, wallet_id, debit')
                 .eq('external_reference', reference)
                 .maybeSingle();
             
@@ -110,7 +110,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // Fallback: description-based dedup (works before migration)
             const { data: existingByDesc } = await supabase
                 .from('cashbook_entries')
-                .select('id, status, description, wallet_id')
+                .select('id, status, description, wallet_id, debit')
                 .like('description', `%${reference}%`)
                 .maybeSingle();
 
@@ -243,11 +243,18 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 await supabase.from('cashbook_entries').delete().eq('id', pendingEntry.id);
             }
             
-            // 1. Log the Gross Inflow
+            const isPublicSale = (reference && reference.endsWith('-PUB')) || 
+                                (actualNarration && (actualNarration.startsWith('Sale:') || actualNarration.startsWith('Revenue:')));
+
+            const inflowAmount = isPublicSale
+                ? (pendingEntry?.debit ? Number(pendingEntry.debit) : parseFloat(amount) * 0.99)
+                : parseFloat(amount);
+
+            // 1. Log the Inflow
             await cashbookService.createEntry(organizationId, {
                 date: new Date().toISOString().split('T')[0],
                 description: actualNarration,
-                debit: parseFloat(amount),
+                debit: inflowAmount,
                 credit: 0,
                 entry_type: 'INFLOW',
                 account_type: 'MONEYWISE_WALLET',
@@ -255,22 +262,25 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 wallet_id: walletId
             } as any);
 
-            // 2. Log the 1% Transaction Charge
-            const feeAmount = parseFloat(amount) * 0.01;
-            const feeDescription = `MoneyWise Charge`;
-            
-            await cashbookService.createEntry(organizationId, {
-                date: new Date().toISOString().split('T')[0],
-                description: feeDescription,
-                debit: 0,
-                credit: feeAmount,
-                entry_type: 'ADJUSTMENT',
-                account_type: 'MONEYWISE_WALLET',
-                status: 'COMPLETED',
-                wallet_id: walletId
-            } as any);
-
-            console.log(`[Lenco Webhook] Standard collection logged as INFLOW + 1% Fee ADJUSTMENT.`);
+            // 2. Log the 1% Transaction Charge (only for standard/internal deposits)
+            if (!isPublicSale) {
+                const feeAmount = parseFloat(amount) * 0.01;
+                const feeDescription = `MoneyWise Charge`;
+                
+                await cashbookService.createEntry(organizationId, {
+                    date: new Date().toISOString().split('T')[0],
+                    description: feeDescription,
+                    debit: 0,
+                    credit: feeAmount,
+                    entry_type: 'ADJUSTMENT',
+                    account_type: 'MONEYWISE_WALLET',
+                    status: 'COMPLETED',
+                    wallet_id: walletId
+                } as any);
+                console.log(`[Lenco Webhook] Standard collection logged as INFLOW + 1% Fee ADJUSTMENT.`);
+            } else {
+                console.log(`[Lenco Webhook] Public product sale logged as single line item INFLOW (amount: ${inflowAmount}).`);
+            }
         }
 
         console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);

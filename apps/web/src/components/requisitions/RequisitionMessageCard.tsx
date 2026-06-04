@@ -597,6 +597,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             return;
         }
 
+        if (isLencoTransfer && wallets.length > 0 && !selectedWalletId) {
+            setDisburseError('Please select a source subwallet for the transfer.');
+            setIsProcessing(false);
+            return;
+        }
+
         setIsProcessing(true);
         setDisburseError(null);
         setDisburseStatusMsg(null);
