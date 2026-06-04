@@ -529,7 +529,7 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
  */
 export const logPublicWalletDepositIntent = async (req: Request, res: Response) => {
     try {
-        const { reference, purpose, amount, walletId } = req.body;
+        const { reference, purpose, amount, walletId, customerName, customerPhone, items } = req.body;
 
         if (!reference || !purpose || !walletId) {
             return res.status(400).json({ error: 'reference, purpose, and walletId are required' });
@@ -560,6 +560,28 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
         });
 
         if (error) throw error;
+
+        // Log pending product sales if present
+        if (items && Array.isArray(items) && items.length > 0) {
+            const salesData = items.map((item: any) => ({
+                organization_id: wallet.organization_id,
+                product_id: item.id,
+                customer_name: customerName || 'Anonymous',
+                customer_phone: customerPhone || 'N/A',
+                quantity: item.quantity,
+                amount_paid: Number(item.price) * Number(item.quantity),
+                reference: reference,
+                status: 'PENDING'
+            }));
+
+            const { error: salesError } = await supabase
+                .from('product_sales')
+                .insert(salesData);
+
+            if (salesError) {
+                console.error('[Lenco Public Intent] Error logging product sales:', salesError);
+            }
+        }
 
         res.json({ message: 'Intent logged successfully' });
     } catch (error: any) {

@@ -75,5 +75,21 @@ export const productService = {
                 Authorization: `Bearer ${session.access_token}`
             }
         });
+    },
+
+    async getProductSales(id: string): Promise<any[]> {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session?.access_token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await axios.get(`${API_URL}/organizations/products/${id}/sales`, {
+            headers: {
+                Authorization: `Bearer ${session.access_token}`
+            }
+        });
+
+        return response.data;
     }
 };

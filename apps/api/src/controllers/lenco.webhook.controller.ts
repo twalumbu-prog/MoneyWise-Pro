@@ -283,6 +283,20 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             }
         }
 
+        // Update product sales status if a reference is provided
+        if (reference) {
+            const { error: salesError } = await supabase
+                .from('product_sales')
+                .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+                .eq('reference', reference);
+
+            if (salesError) {
+                console.error('[Lenco Webhook] Error updating product sales status:', salesError);
+            } else {
+                console.log(`[Lenco Webhook] Successfully updated product sales for reference ${reference} to COMPLETED`);
+            }
+        }
+
         console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);
         return true;
     } catch (error) {

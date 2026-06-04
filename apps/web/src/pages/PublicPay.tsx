@@ -178,7 +178,14 @@ export const PublicPay: React.FC = () => {
                 reference: ref,
                 purpose: `Sale: Products: ${productNarration} | Cust: ${customerPhone}`,
                 amount: subtotal, // Settle the subtotal net amount in ledger
-                walletId: wallet.id
+                walletId: wallet.id,
+                customerName,
+                customerPhone,
+                items: selectedProductsList.map(p => ({
+                    id: p.id,
+                    quantity: selectedQuantities[p.id] || 0,
+                    price: p.price
+                }))
             });
 
             // Start Lenco Payment Gateway Iframe

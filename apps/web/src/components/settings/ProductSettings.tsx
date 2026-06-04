@@ -12,7 +12,8 @@ import {
     DollarSign, 
     Tag, 
     X,
-    Eye
+    Eye,
+    Download
 } from 'lucide-react';
 
 export const ProductSettings: React.FC = () => {
@@ -149,6 +150,60 @@ export const ProductSettings: React.FC = () => {
         }
     };
 
+    const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+    const handleDownloadSalesCSV = async (productId: string, productName: string) => {
+        try {
+            setDownloadingId(productId);
+            setError(null);
+            
+            const sales = await productService.getProductSales(productId);
+            
+            if (!sales || sales.length === 0) {
+                alert(`No sales have been logged yet for product/service "${productName}".`);
+                return;
+            }
+
+            // Define headers
+            const headers = ['Customer Name', 'Payment Date', 'Unique QR Code Number', 'Amount Paid (ZMW)'];
+            
+            // Format rows
+            const rows = sales.map(sale => {
+                const date = new Date(sale.created_at).toLocaleDateString() + ' ' + 
+                             new Date(sale.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const name = `"${sale.customer_name.replace(/"/g, '""')}"`;
+                const ref = `"${sale.reference.replace(/"/g, '""')}"`;
+                const amount = Number(sale.amount_paid).toFixed(2);
+                
+                return [name, date, ref, amount];
+            });
+
+            // Combine CSV
+            const csvContent = [
+                headers.join(','),
+                ...rows.map(row => row.join(','))
+            ].join('\n');
+
+            // Trigger download
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            if (link.download !== undefined) {
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `${productName.toLowerCase().replace(/\s+/g, '_')}_sales.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+        } catch (err: any) {
+            console.error('Failed to download product sales CSV:', err);
+            setError(err.response?.data?.error || err.message || 'Failed to download sales CSV.');
+        } finally {
+            setDownloadingId(null);
+        }
+    };
+
     if (loading && products.length === 0) {
         return (
             <div className="bg-white shadow-sm rounded-xl border border-gray-200 p-12 flex justify-center items-center">
@@ -242,6 +297,18 @@ export const ProductSettings: React.FC = () => {
                                             {isAdmin && (
                                                 <td className="px-6 py-4 text-right whitespace-nowrap">
                                                     <div className="flex justify-end gap-2">
+                                                        <button
+                                                            onClick={() => handleDownloadSalesCSV(product.id, product.name)}
+                                                            disabled={downloadingId === product.id}
+                                                            className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors disabled:opacity-50"
+                                                            title="Download Sales CSV"
+                                                        >
+                                                            {downloadingId === product.id ? (
+                                                                <Loader2 className="h-4 w-4 animate-spin text-green-600" />
+                                                            ) : (
+                                                                <Download className="h-4 w-4" />
+                                                            )}
+                                                        </button>
                                                         <button
                                                             onClick={() => handleOpenEditModal(product)}
                                                             className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"

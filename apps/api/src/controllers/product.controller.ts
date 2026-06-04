@@ -175,3 +175,45 @@ export const deleteProduct = async (req: any, res: Response): Promise<any> => {
         res.status(500).json({ error: 'Failed to delete product', details: error.message });
     }
 };
+
+export const getProductSales = async (req: any, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = req.user.organization_id;
+
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        // Verify product belongs to user's organization
+        const { data: product, error: findError } = await supabase
+            .from('products')
+            .select('organization_id')
+            .eq('id', id)
+            .single();
+
+        if (findError || !product) {
+            return res.status(404).json({ error: 'Product not found' });
+        }
+
+        if (product.organization_id !== organization_id) {
+            return res.status(403).json({ error: 'Permission denied: Product belongs to another organization' });
+        }
+
+        // Fetch completed product sales
+        const { data: sales, error: salesError } = await supabase
+            .from('product_sales')
+            .select('*')
+            .eq('product_id', id)
+            .eq('status', 'COMPLETED')
+            .order('created_at', { ascending: false });
+
+        if (salesError) throw salesError;
+
+        res.json(sales);
+    } catch (error: any) {
+        console.error('[Products] Get sales error:', error);
+        res.status(500).json({ error: 'Failed to fetch product sales', details: error.message });
+    }
+};
+
