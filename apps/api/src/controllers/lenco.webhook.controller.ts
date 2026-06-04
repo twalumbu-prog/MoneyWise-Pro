@@ -247,7 +247,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                                 (actualNarration && (actualNarration.startsWith('Sale:') || actualNarration.startsWith('Revenue:')));
 
             const inflowAmount = isPublicSale
-                ? (pendingEntry?.debit ? Number(pendingEntry.debit) : parseFloat(amount) * 0.99)
+                ? (pendingEntry?.debit ? Number(pendingEntry.debit) : parseFloat(amount) * 0.975)
                 : parseFloat(amount);
 
             // 1. Log the Inflow

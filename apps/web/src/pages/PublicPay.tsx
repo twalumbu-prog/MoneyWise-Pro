@@ -144,8 +144,8 @@ export const PublicPay: React.FC = () => {
     const selectedProductsList = products.filter(p => (selectedQuantities[p.id] || 0) > 0);
     const subtotal = selectedProductsList.reduce((sum, p) => sum + (p.price * (selectedQuantities[p.id] || 0)), 0);
     
-    // Add Lenco fee markup (divided by 0.99 just like cash ledger deposit to settle full net amount)
-    const totalPayable = subtotal > 0 ? subtotal / 0.99 : 0;
+    // Add Lenco fee markup (divided by 0.975 to settle full net amount with 2.5% fee)
+    const totalPayable = subtotal > 0 ? subtotal / 0.975 : 0;
     const processingFee = totalPayable - subtotal;
 
     const handlePay = async () => {
@@ -610,10 +610,9 @@ Status: VERIFIED`;
                                         <span>Subtotal</span>
                                         <span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                     </div>
-                                    <div className="flex justify-between font-semibold text-slate-400 text-[11px]">
+                                    <div className="flex justify-between font-normal text-slate-400 text-[11px]">
                                         <span className="flex items-center gap-1">
-                                            <span>Processing Fee (1%)</span>
-                                            <span className="text-[9px] bg-slate-100 text-slate-400 px-1 py-0.5 rounded-sm">Paid by Client</span>
+                                            <span>Processing fee Paid by client</span>
                                         </span>
                                         <span>K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                     </div>
