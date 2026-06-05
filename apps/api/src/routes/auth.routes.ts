@@ -1,5 +1,14 @@
 import { Router } from 'express';
-import { registerUser, simpleSignup, resolveUsername, completeInvitation, searchOrganizations, joinRequest } from '../controllers/auth.controller';
+import { 
+    registerUser, 
+    simpleSignup, 
+    resolveUsername, 
+    completeInvitation, 
+    searchOrganizations, 
+    joinRequest,
+    getMyOrganizations,
+    switchOrganization
+} from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -14,5 +23,8 @@ router.post('/join-request', joinRequest);
 
 // Protected routes
 router.post('/complete-invitation', requireAuth, completeInvitation);
+router.get('/my-organizations', requireAuth, getMyOrganizations);
+router.post('/switch-organization', requireAuth, switchOrganization);
 
 export default router;
+

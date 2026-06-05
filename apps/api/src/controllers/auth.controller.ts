@@ -53,38 +53,72 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
         }
 
         // Check if employee ID already exists (unlikely with timestamp but good practice)
-        const { data: existingUser, error: checkError } = await supabase
+        const { data: existingEmployee } = await supabase
             .from('users')
             .select('employee_id')
             .eq('employee_id', employeeId)
             .single();
 
-        if (existingUser) {
-            // Retry with different ID if collision (simple retry logic)
-            // For now just return error, highly unlikely
+        if (existingEmployee) {
             return res.status(400).json({
                 error: 'System busy, please try again.',
             });
         }
 
-        // Create user in Supabase Auth with password
-        const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
-            email,
-            password,
-            email_confirm: true, // Auto-confirm email to enable immediate login
-        });
+        const normalizedEmail = email.trim().toLowerCase();
 
-        if (authError) {
-            console.error('Auth error:', authError);
-            return res.status(400).json({
-                error: authError.message || 'Failed to create user account',
-            });
+        // Check if user email already exists (case-insensitive)
+        const { data: existingEmailUser } = await supabase
+            .from('users')
+            .select('id, email')
+            .ilike('email', normalizedEmail)
+            .maybeSingle();
+
+        let userId: string;
+        let isNewUser = false;
+        let matchedUserId = existingEmailUser?.id || null;
+
+        if (!matchedUserId) {
+            // Check auth.users preemptively
+            const { data: listData, error: listError } = await supabase.auth.admin.listUsers();
+            if (!listError && listData?.users) {
+                const matchedAuthUser = listData.users.find(
+                    (u: any) => u.email?.toLowerCase() === normalizedEmail
+                );
+                if (matchedAuthUser) {
+                    matchedUserId = matchedAuthUser.id;
+                    console.log(`[RegisterUser] Preemptively found existing user in auth.users: ${matchedUserId}`);
+                }
+            }
         }
 
-        if (!authData.user) {
-            return res.status(500).json({
-                error: 'User creation failed - no user returned',
+        if (matchedUserId) {
+            // Verify password for existing account by trying to sign in
+            const { data: authSession, error: authSessionError } = await supabase.auth.signInWithPassword({
+                email: normalizedEmail,
+                password
             });
+
+            if (authSessionError || !authSession.user) {
+                return res.status(401).json({ error: 'Invalid password for the existing account' });
+            }
+            userId = authSession.user.id;
+        } else {
+            // Create user in Supabase Auth with password
+            const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
+                email: normalizedEmail,
+                password,
+                email_confirm: true, // Auto-confirm email to enable immediate login
+            });
+
+            if (authError || !authData.user) {
+                console.error('Auth error:', authError);
+                return res.status(400).json({
+                    error: authError?.message || 'Failed to create user account',
+                });
+            }
+            userId = authData.user.id;
+            isNewUser = true;
         }
 
         // Check if organization name already exists
@@ -95,6 +129,11 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             .maybeSingle();
 
         if (existingOrg) {
+            // Rollback auth user if new user
+            if (isNewUser) {
+                await (supabase.auth as any).admin.deleteUser(userId);
+            }
+
             // Generate a suggestion
             let suggestion = '';
             let isUnique = false;
@@ -135,8 +174,10 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             .single();
 
         if (orgError || !orgData) {
-            // Rollback auth user
-            await (supabase.auth as any).admin.deleteUser(authData.user.id);
+            // Rollback auth user if new user
+            if (isNewUser) {
+                await (supabase.auth as any).admin.deleteUser(userId);
+            }
             return res.status(500).json({
                 error: 'Failed to create organization: ' + (orgError?.message || 'Unknown error'),
             });
@@ -155,15 +196,12 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
                 .eq('id', orgData.id);
         } catch (lencoError) {
             console.error('Failed to create Lenco subaccount during registration:', lencoError);
-            // We don't necessarily want to fail the whole registration if Lenco is down,
-            // but for security-locked accounts, we might want to. 
-            // Given the user's request for "locking", it's better to ensure it exists.
-            // For now, let's just log it and maybe we can provision later if it fails.
         }
 
         // UPSERT user record into public.users table with organization_id
         const { error: dbError } = await supabase.from('users').upsert({
-            id: authData.user.id,
+            id: userId,
+            email: normalizedEmail,
             employee_id: employeeId,
             name,
             role,
@@ -175,16 +213,40 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
         if (dbError) {
             console.error('Database error:', dbError);
             // Rollback: delete the auth user and organization if database insert fails
-            await (supabase.auth as any).admin.deleteUser(authData.user.id);
+            if (isNewUser) {
+                await (supabase.auth as any).admin.deleteUser(userId);
+            }
             await supabase.from('organizations').delete().eq('id', orgData.id);
             return res.status(500).json({
                 error: 'Failed to create user profile: ' + dbError.message,
             });
         }
 
+        // Insert into public.user_organizations
+        const { error: uoError } = await supabase.from('user_organizations').insert({
+            user_id: userId,
+            organization_id: orgData.id,
+            role,
+            employee_id: employeeId,
+            status: 'ACTIVE'
+        });
+
+        if (uoError) {
+            console.error('Database user_organizations error:', uoError);
+            // Rollback
+            if (isNewUser) {
+                await (supabase.auth as any).admin.deleteUser(userId);
+                await supabase.from('users').delete().eq('id', userId);
+            }
+            await supabase.from('organizations').delete().eq('id', orgData.id);
+            return res.status(500).json({
+                error: 'Failed to link user to organization: ' + uoError.message,
+            });
+        }
+
         return res.status(201).json({
             message: 'User registered successfully. You can now log in.',
-            userId: authData.user.id,
+            userId: userId,
             organizationId: orgData.id
         });
     } catch (error: any) {
@@ -345,6 +407,113 @@ export const joinRequest = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'Password must be at least 6 characters long' });
         }
 
+        // Verify organization exists
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('id', organizationId)
+            .single();
+
+        if (orgError || !org) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        const finalEmployeeId = employeeId || `EMP-${Date.now().toString().slice(-6)}`;
+
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // Check if user already exists
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('id, email')
+            .ilike('email', normalizedEmail)
+            .maybeSingle();
+
+        let matchedUserId = existingUser?.id || null;
+        let isExistingUser = !!existingUser;
+
+        if (!isExistingUser) {
+            // Check auth.users preemptively
+            const { data: listData, error: listError } = await supabase.auth.admin.listUsers();
+            if (!listError && listData?.users) {
+                const matchedAuthUser = listData.users.find(
+                    (u: any) => u.email?.toLowerCase() === normalizedEmail
+                );
+                if (matchedAuthUser) {
+                    matchedUserId = matchedAuthUser.id;
+                    isExistingUser = true;
+                    console.log(`[JoinRequest] Preemptively found existing user in auth.users: ${matchedUserId}`);
+                }
+            }
+        }
+
+        if (isExistingUser && matchedUserId) {
+            // Verify password by trying to log in
+            const { data: authSession, error: authSessionError } = await supabase.auth.signInWithPassword({
+                email: normalizedEmail,
+                password
+            });
+
+            if (authSessionError || !authSession.user) {
+                return res.status(401).json({ error: 'Invalid password for the existing account' });
+            }
+
+            const existingUserId = authSession.user.id;
+
+            // Ensure they exist in public.users (in case they were only in auth.users)
+            const { error: upsertError } = await supabase.from('users').upsert({
+                id: existingUserId,
+                email: normalizedEmail,
+                name: name || normalizedEmail.split('@')[0],
+                employee_id: finalEmployeeId,
+                organization_id: organizationId, // Link to this org as active
+                username: username || null,
+                status: 'ACTIVE'
+            });
+
+            if (upsertError) {
+                console.error('[JoinRequest] Failed to upsert public profile for existing auth user:', upsertError);
+            }
+
+            // Check if they are already in the organization
+            const { data: existingMember } = await supabase
+                .from('user_organizations')
+                .select('status')
+                .eq('user_id', existingUserId)
+                .eq('organization_id', organizationId)
+                .maybeSingle();
+
+            if (existingMember) {
+                if (existingMember.status === 'ACTIVE') {
+                    return res.status(400).json({ error: 'You are already an active member of this organization' });
+                } else if (existingMember.status === 'PENDING_APPROVAL') {
+                    return res.status(400).json({ error: 'Your request to join this organization is already pending approval' });
+                } else {
+                    return res.status(400).json({ error: `Your membership status is ${existingMember.status}` });
+                }
+            }
+
+            // Create new pending membership
+            const { error: joinError } = await supabase.from('user_organizations').insert({
+                user_id: existingUserId,
+                organization_id: organizationId,
+                role: 'REQUESTOR',
+                employee_id: finalEmployeeId,
+                status: 'PENDING_APPROVAL'
+            });
+
+            if (joinError) {
+                console.error('Error joining org with existing user:', joinError);
+                return res.status(500).json({ error: 'Failed to create join request: ' + joinError.message });
+            }
+
+            return res.status(201).json({
+                message: 'Join request submitted successfully. Please wait for an admin to approve your account.',
+                userId: existingUserId
+            });
+        }
+
+        // New user path:
         // Validate username uniqueness
         if (username) {
             const { data: existingUsername } = await supabase
@@ -358,36 +527,11 @@ export const joinRequest = async (req: any, res: any): Promise<any> => {
             }
         }
 
-        // Verify organization exists
-        const { data: org, error: orgError } = await supabase
-            .from('organizations')
-            .select('id')
-            .eq('id', organizationId)
-            .single();
-
-        if (orgError || !org) {
-            return res.status(404).json({ error: 'Organization not found' });
-        }
-
-        // Generate employee ID if not provided
-        const finalEmployeeId = employeeId || `EMP-${Date.now().toString().slice(-6)}`;
-
-        // Check employee ID uniqueness
-        const { data: existingUser } = await supabase
-            .from('users')
-            .select('employee_id')
-            .eq('employee_id', finalEmployeeId)
-            .single();
-
-        if (existingUser) {
-            return res.status(400).json({ error: 'System busy, please try again.' });
-        }
-
         // Create user in Supabase Auth
         const { data: authData, error: authError } = await (supabase.auth as any).admin.createUser({
-            email,
+            email: normalizedEmail,
             password,
-            email_confirm: true, // Auto-confirm
+            email_confirm: true,
         });
 
         if (authError) {
@@ -402,9 +546,10 @@ export const joinRequest = async (req: any, res: any): Promise<any> => {
         // Insert into public.users with PENDING_APPROVAL status
         const { error: dbError } = await supabase.from('users').upsert({
             id: authData.user.id,
+            email: normalizedEmail,
             employee_id: finalEmployeeId,
             name,
-            role: 'REQUESTOR', // Default role for join requests
+            role: 'REQUESTOR',
             organization_id: organizationId,
             username: username || null,
             status: 'PENDING_APPROVAL'
@@ -412,9 +557,24 @@ export const joinRequest = async (req: any, res: any): Promise<any> => {
 
         if (dbError) {
             console.error('Database error in join request:', dbError);
-            // Rollback auth user
             await (supabase.auth as any).admin.deleteUser(authData.user.id);
             return res.status(500).json({ error: 'Failed to create join request: ' + dbError.message });
+        }
+
+        // Insert into public.user_organizations
+        const { error: uoError } = await supabase.from('user_organizations').insert({
+            user_id: authData.user.id,
+            organization_id: organizationId,
+            role: 'REQUESTOR',
+            employee_id: finalEmployeeId,
+            status: 'PENDING_APPROVAL'
+        });
+
+        if (uoError) {
+            console.error('Database user_organizations error in join request:', uoError);
+            await (supabase.auth as any).admin.deleteUser(authData.user.id);
+            await supabase.from('users').delete().eq('id', authData.user.id);
+            return res.status(500).json({ error: 'Failed to link user to organization: ' + uoError.message });
         }
 
         return res.status(201).json({
@@ -427,3 +587,86 @@ export const joinRequest = async (req: any, res: any): Promise<any> => {
         return res.status(500).json({ error: 'Internal server error: ' + (error.message || 'Unknown error') });
     }
 };
+
+export const getMyOrganizations = async (req: any, res: any): Promise<any> => {
+    try {
+        const userId = req.user.id;
+
+        const { data: memberships, error } = await supabase
+            .from('user_organizations')
+            .select(`
+                role,
+                status,
+                employee_id,
+                organization:organizations (
+                    id,
+                    name,
+                    slug,
+                    logo_url
+                )
+            `)
+            .eq('user_id', userId);
+
+        if (error) throw error;
+
+        res.json(memberships || []);
+    } catch (error: any) {
+        console.error('Error fetching my organizations:', error);
+        res.status(500).json({ error: 'Failed to fetch organizations', details: error.message });
+    }
+};
+
+export const switchOrganization = async (req: any, res: any): Promise<any> => {
+    try {
+        const userId = req.user.id;
+        const { organizationId } = req.body;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'Organization ID is required' });
+        }
+
+        const { data: membership, error: memberError } = await supabase
+            .from('user_organizations')
+            .select('role, employee_id, status')
+            .eq('user_id', userId)
+            .eq('organization_id', organizationId)
+            .maybeSingle();
+
+        if (memberError || !membership) {
+            return res.status(403).json({ error: 'You are not a member of this organization' });
+        }
+
+        if (membership.status !== 'ACTIVE') {
+            return res.status(403).json({ error: `Cannot switch to this organization: membership status is ${membership.status}` });
+        }
+
+        const { error: updateError } = await supabase
+            .from('users')
+            .update({
+                organization_id: organizationId,
+                role: membership.role,
+                employee_id: membership.employee_id,
+                status: 'ACTIVE'
+            })
+            .eq('id', userId);
+
+        if (updateError) throw updateError;
+
+        const { data: updatedUser, error: userError } = await supabase
+            .from('users')
+            .select('id, name, email, role, organization_id, employee_id, status')
+            .eq('id', userId)
+            .single();
+
+        if (userError) throw userError;
+
+        res.json({
+            message: 'Organization switched successfully',
+            user: updatedUser
+        });
+    } catch (error: any) {
+        console.error('Error switching organization:', error);
+        res.status(500).json({ error: 'Failed to switch organization', details: error.message });
+    }
+};
+

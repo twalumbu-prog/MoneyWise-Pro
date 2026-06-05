@@ -23,14 +23,33 @@ export const Login: React.FC = () => {
     const [message, setMessage] = useState('');
     const [suggestion, setSuggestion] = useState('');
     const [loading, setLoading] = useState(false);
-    const { signInWithPassword, signUp, joinOrganization, user, userStatus } = useAuth();
+    const [loadingOrg, setLoadingOrg] = useState<string | null>(null);
+    const [showOrgSelector, setShowOrgSelector] = useState(false);
+    const { signInWithPassword, signUp, joinOrganization, user, userStatus, userOrganizations, switchOrganization, loading: authLoading, signOut } = useAuth();
     const navigate = useNavigate();
 
     useEffect(() => {
-        if (user && userStatus !== 'PENDING_APPROVAL') {
-            navigate('/');
+        if (!authLoading && user && userStatus !== 'PENDING_APPROVAL') {
+            const activeOrgs = userOrganizations.filter(uo => uo.status === 'ACTIVE');
+            if (activeOrgs.length > 1) {
+                setShowOrgSelector(true);
+            } else {
+                navigate('/');
+            }
         }
-    }, [user, userStatus, navigate]);
+    }, [user, userStatus, userOrganizations, authLoading, navigate]);
+
+    const handleSelectOrg = async (orgId: string) => {
+        setLoadingOrg(orgId);
+        try {
+            await switchOrganization(orgId);
+            navigate('/');
+        } catch (err: any) {
+            setMessage('Error switching organization: ' + (err.message || 'Unknown error'));
+        } finally {
+            setLoadingOrg(null);
+        }
+    };
 
     // Debounced Search Effect
     useEffect(() => {
@@ -94,35 +113,105 @@ export const Login: React.FC = () => {
                 await joinOrganization(loginIdentifier, password, name, organizationId, username);
                 setMessage('Join request submitted! An admin must approve your account.');
                 setSuggestion('');
-                // Clear sensitive/specific fields so they don't try to log in immediately and fail
                 setPassword('');
             }
-            // setIsSignup(false); // Can stay on screen to see success message
         } catch (error: any) {
             let errorMsg = error.message || 'Unknown error';
-            
-            // Handle structured error with suggestion
             try {
-                // If the error message is a stringified JSON (common from some fetch wrappers)
                 const parsed = JSON.parse(errorMsg);
                 if (parsed.suggestion) {
                     setSuggestion(parsed.suggestion);
                     errorMsg = parsed.error || errorMsg;
                 }
             } catch (e) {
-                // Not JSON, continue with original errorMsg
+                // Not JSON
             }
-
-            // Fallback: check if the error object itself has the suggestion (if throw by signUp)
             if (error.suggestion) {
                 setSuggestion(error.suggestion);
             }
-
             setMessage('Error signing up: ' + errorMsg);
         } finally {
             setLoading(false);
         }
     };
+
+    if (showOrgSelector) {
+        const activeOrgs = userOrganizations.filter(uo => uo.status === 'ACTIVE');
+        return (
+            <div className="min-h-screen bg-brand-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
+                <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
+                    <div className="flex items-center space-x-3">
+                        <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
+                    </div>
+                </div>
+
+                <div className="sm:mx-auto sm:w-full sm:max-w-md mt-24 sm:mt-8">
+                    <h2 className="text-center text-xl font-bold text-brand-navy mb-2">
+                        Welcome back!
+                    </h2>
+                    <p className="text-center text-sm text-gray-500 mb-8">
+                        Select which organization you want to access today
+                    </p>
+                </div>
+
+                <div className="sm:mx-auto sm:w-full sm:max-w-md">
+                    <div className="bg-white py-10 px-6 rounded-2xl border border-gray-100 sm:px-12 shadow-xl shadow-gray-100">
+                        {message && (
+                            <div className="rounded-xl p-4 flex items-center bg-red-50 text-red-700 border border-red-100 mb-6">
+                                <p className="text-sm font-bold">{message}</p>
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            {activeOrgs.map((uo: any) => (
+                                <button
+                                    key={uo.organization.id}
+                                    type="button"
+                                    onClick={() => handleSelectOrg(uo.organization.id)}
+                                    disabled={loadingOrg !== null}
+                                    className="w-full text-left p-4 border border-gray-200 rounded-2xl hover:border-brand-green hover:bg-brand-green/5 transition-all flex items-center justify-between group transform hover:-translate-y-0.5 active:translate-y-0"
+                                >
+                                    <div className="flex items-center space-x-4">
+                                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center font-bold text-brand-navy group-hover:bg-brand-green group-hover:text-white transition-colors">
+                                            {uo.organization.name.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div>
+                                            <div className="font-bold text-brand-navy group-hover:text-brand-green transition-colors">
+                                                {uo.organization.name}
+                                            </div>
+                                            <div className="text-xs text-gray-400 capitalize">
+                                                Role: {uo.role.toLowerCase()}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="text-gray-400 group-hover:text-brand-green transition-colors">
+                                        {loadingOrg === uo.organization.id ? (
+                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                        ) : (
+                                            <span className="text-sm font-bold">Enter &rarr;</span>
+                                        )}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-gray-100 text-center">
+                            <button
+                                type="button"
+                                onClick={async () => {
+                                    await signOut();
+                                    setShowOrgSelector(false);
+                                }}
+                                className="text-sm font-bold text-gray-500 hover:text-gray-700 transition-colors"
+                            >
+                                Log out of account
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-brand-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">

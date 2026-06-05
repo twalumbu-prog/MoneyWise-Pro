@@ -10,16 +10,33 @@ export const getUsers = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(400).json({ error: 'User does not belong to an organization' });
         }
 
-        const { data: users, error } = await supabase
-            .from('users')
-            .select('*')
+        const { data: userOrgs, error } = await supabase
+            .from('user_organizations')
+            .select(`
+                role,
+                status,
+                employee_id,
+                created_at,
+                user:users (*)
+            `)
             .eq('organization_id', organization_id)
             .order('created_at', { ascending: false });
 
         if (error) throw error;
 
-        // Filter out sensitive data if needed, though supabase client usually returns what's asked
-        res.json(users);
+        // Map memberships to return objects that look like user profiles
+        const formattedUsers = (userOrgs || []).map((uo: any) => {
+            if (!uo.user) return null;
+            return {
+                ...uo.user,
+                role: uo.role,
+                status: uo.status,
+                employee_id: uo.employee_id,
+                created_at: uo.created_at
+            };
+        }).filter(Boolean);
+
+        res.json(formattedUsers);
     } catch (error: any) {
         console.error('Error fetching users:', error);
         res.status(500).json({ error: 'Failed to fetch users', details: error.message });
@@ -114,7 +131,87 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(403).json({ error: 'Only admins can add users' });
         }
 
-        // Validate username uniqueness if provided
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // Check if user already exists in the system by email (case-insensitive)
+        const { data: existingUser } = await supabase
+            .from('users')
+            .select('id, email')
+            .ilike('email', normalizedEmail)
+            .maybeSingle();
+
+        let targetUserId = existingUser?.id || null;
+        let isExistingUser = !!existingUser;
+
+        if (!isExistingUser) {
+            // Preemptively check if they exist in auth.users to avoid "already registered" error
+            const { data: listData, error: listError } = await supabase.auth.admin.listUsers();
+            if (!listError && listData?.users) {
+                const matchedAuthUser = listData.users.find(
+                    (u: any) => u.email?.toLowerCase() === normalizedEmail
+                );
+                if (matchedAuthUser) {
+                    targetUserId = matchedAuthUser.id;
+                    isExistingUser = true;
+                    console.log(`[CreateUser] Preemptively found user in auth.users: ${targetUserId}`);
+                }
+            }
+        }
+
+        if (isExistingUser && targetUserId) {
+            // Check if they are already a member of this organization
+            const { data: existingMember } = await supabase
+                .from('user_organizations')
+                .select('id, status')
+                .eq('user_id', targetUserId)
+                .eq('organization_id', organization_id)
+                .maybeSingle();
+
+            if (existingMember) {
+                return res.status(400).json({ error: 'A user with this email address is already a member of this organization' });
+            }
+
+            const finalEmployeeId = employeeId || `EMP-${Date.now()}`;
+            
+            // Ensure they have a record in public.users (in case they were only in auth.users)
+            const { error: upsertError } = await supabase.from('users').upsert({
+                id: targetUserId,
+                email: normalizedEmail,
+                name: name || normalizedEmail.split('@')[0],
+                role: role || 'REQUESTOR',
+                employee_id: finalEmployeeId,
+                organization_id: organization_id, // link to this organization as active
+                username: username || null,
+                status: 'ACTIVE'
+            });
+
+            if (upsertError) {
+                console.error('[CreateUser] Failed to upsert public profile for existing auth user:', upsertError);
+                throw upsertError;
+            }
+
+            // Link existing user to this organization
+            const { error: uoError } = await supabase.from('user_organizations').insert({
+                user_id: targetUserId,
+                organization_id: organization_id,
+                role: role || 'REQUESTOR',
+                employee_id: finalEmployeeId,
+                status: 'ACTIVE' // Directly active as the admin added them
+            });
+
+            if (uoError) {
+                console.error('[CreateUser] user_organizations insert failed:', uoError);
+                throw uoError;
+            }
+
+            return res.status(201).json({
+                message: 'Existing user added to organization successfully',
+                userId: targetUserId,
+                status: 'ACTIVE'
+            });
+        }
+
+        // Validate username uniqueness if provided and user does not exist
         if (username) {
             const { data: existingUsername } = await supabase
                 .from('users')
@@ -136,7 +233,7 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
         const FRONTEND_URL = getFrontendUrl();
 
         // 1. Invite user via Supabase Auth
-        const { data: authData, error: authError } = await (supabase.auth as any).admin.inviteUserByEmail(email, {
+        const { data: authData, error: authError } = await (supabase.auth as any).admin.inviteUserByEmail(normalizedEmail, {
             data: {
                 name,
                 role,
@@ -161,12 +258,13 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
         // 2. Upsert user record in DB linked to organization with 'INVITED' status
         // Even though the database trigger handles this, we do it explicitly to be sure 
         // and to handle fields the trigger might miss or to override defaults.
+        const finalEmployeeId = employeeId || `EMP-${Date.now()}`;
         const { error: dbError } = await supabase.from('users').upsert({
             id: authData.user.id,
-            email: email,
+            email: normalizedEmail,
             name,
             role,
-            employee_id: employeeId || `EMP-${Date.now()}`,
+            employee_id: finalEmployeeId,
             organization_id: organization_id,
             username: username || null,
             status: 'INVITED'
@@ -175,6 +273,20 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
         if (dbError) {
             console.error('[CreateUser] DB upsert failed:', dbError);
             throw dbError;
+        }
+
+        // Insert into public.user_organizations
+        const { error: uoError } = await supabase.from('user_organizations').insert({
+            user_id: authData.user.id,
+            organization_id: organization_id,
+            role,
+            employee_id: finalEmployeeId,
+            status: 'INVITED'
+        });
+
+        if (uoError) {
+            console.error('[CreateUser] user_organizations insert failed:', uoError);
+            throw uoError;
         }
 
         res.status(201).json({
@@ -212,17 +324,41 @@ export const updateUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(404).json({ error: 'User not found in organization' });
         }
 
-        const updates: any = {};
-        if (role) updates.role = role;
-        if (status) updates.status = status;
-        if (name) updates.name = name;
+        // Update user_organizations first
+        const uoUpdates: any = {};
+        if (role) uoUpdates.role = role;
+        if (status) uoUpdates.status = status;
 
-        const { error } = await supabase
+        if (Object.keys(uoUpdates).length > 0) {
+            const { error: uoError } = await supabase
+                .from('user_organizations')
+                .update(uoUpdates)
+                .eq('user_id', id)
+                .eq('organization_id', organization_id);
+            if (uoError) throw uoError;
+        }
+
+        // Check if the modified organization is the user's active one
+        const { data: curUser } = await supabase
             .from('users')
-            .update(updates)
-            .eq('id', id);
+            .select('organization_id')
+            .eq('id', id)
+            .single();
 
-        if (error) throw error;
+        const userUpdates: any = {};
+        if (name) userUpdates.name = name;
+        if (curUser && curUser.organization_id === organization_id) {
+            if (role) userUpdates.role = role;
+            if (status) userUpdates.status = status;
+        }
+
+        if (Object.keys(userUpdates).length > 0) {
+            const { error: userError } = await supabase
+                .from('users')
+                .update(userUpdates)
+                .eq('id', id);
+            if (userError) throw userError;
+        }
 
         res.json({ message: 'User updated successfully' });
 
@@ -254,49 +390,73 @@ export const deleteUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(404).json({ error: 'User not found in organization' });
         }
 
-        if (targetUser.status === 'INVITED') {
-            // Hard Delete Strategy for INVITED users:
-            // Completely remove from auth and public to allow re-invitation
+        // Delete membership from user_organizations
+        const { error: uoDeleteError } = await supabase
+            .from('user_organizations')
+            .delete()
+            .eq('user_id', id)
+            .eq('organization_id', organization_id);
+        if (uoDeleteError) throw uoDeleteError;
 
-            // Note: Since we have a trigger, deleting from auth.users might automatically delete from public.users via ON DELETE CASCADE (if configured),
-            // but we explicitly delete from public.users first to be safe, or just delete from auth.users.
-            // Our schema doesn't seem to have CASCADE on users table from auth.users, so we delete both.
+        // Check remaining memberships
+        const { data: remainingOrgs } = await supabase
+            .from('user_organizations')
+            .select('organization_id, role, status, employee_id')
+            .eq('user_id', id);
 
-            const { error: dbError } = await supabase.from('users').delete().eq('id', id);
-            if (dbError) throw dbError;
+        if (!remainingOrgs || remainingOrgs.length === 0) {
+            // No remaining orgs: do hard delete of invitation or soft delete of active/disabled user
+            if (targetUser.status === 'INVITED') {
+                const { error: dbError } = await supabase.from('users').delete().eq('id', id);
+                if (dbError) throw dbError;
 
-            const { error: authError } = await (supabase.auth as any).admin.deleteUser(id);
-            if (authError) {
-                console.error('[DeleteUser] Auth hard delete failed:', authError);
-                // Even if auth fails, the DB record is gone, allowing re-invitation to potentially succeed if auth record was already gone
+                const { error: authError } = await (supabase.auth as any).admin.deleteUser(id);
+                if (authError) {
+                    console.error('[DeleteUser] Auth hard delete failed:', authError);
+                }
+
+                return res.json({ message: 'Invitation cancelled and user removed successfully' });
+            } else {
+                const { error: authError } = await (supabase.auth as any).admin.updateUserById(id, {
+                    ban_duration: '876000h' // Effectively ban forever
+                });
+
+                if (authError) {
+                    console.error('[DeleteUser] Auth ban failed:', authError);
+                }
+
+                const { error: dbError } = await supabase
+                    .from('users')
+                    .update({ status: 'DISABLED' })
+                    .eq('id', id);
+
+                if (dbError) throw dbError;
+
+                return res.json({ message: 'User deactivated successfully' });
+            }
+        } else {
+            // Has other orgs: if the deleted org was active, switch active org to the first remaining one
+            const { data: curUser } = await supabase
+                .from('users')
+                .select('organization_id')
+                .eq('id', id)
+                .single();
+
+            if (curUser && curUser.organization_id === organization_id) {
+                const nextOrg = remainingOrgs[0];
+                await supabase
+                    .from('users')
+                    .update({
+                        organization_id: nextOrg.organization_id,
+                        role: nextOrg.role,
+                        status: nextOrg.status,
+                        employee_id: nextOrg.employee_id
+                    })
+                    .eq('id', id);
             }
 
-            return res.json({ message: 'Invitation cancelled and user removed successfully' });
+            return res.json({ message: 'User removed from organization successfully' });
         }
-
-        // Soft Delete Strategy for ACTIVE/DISABLED users:
-        // 1. Update status in Auth to prevent login (Banning)
-        // This keeps the user record in auth.users so foreign keys don't break,
-        // but prevents them from accessing the system.
-        const { error: authError } = await (supabase.auth as any).admin.updateUserById(id, {
-            ban_duration: '876000h' // Effectively ban forever
-        });
-
-        if (authError) {
-            console.error('[DeleteUser] Auth ban failed:', authError);
-            // We continue even if auth fails, as they might already be deleted from Auth 
-            // but left in DB due to a previous partial failure.
-        }
-
-        // 2. Update status in our DB to DISABLED
-        const { error: dbError } = await supabase
-            .from('users')
-            .update({ status: 'DISABLED' })
-            .eq('id', id);
-
-        if (dbError) throw dbError;
-
-        res.json({ message: 'User deactivated successfully' });
 
     } catch (error: any) {
         console.error('Error deactivating user:', error);
@@ -342,6 +502,9 @@ export const resendInvite = async (req: AuthRequest, res: any): Promise<any> => 
         // Delete the existing INVITED user completely and create a new invite.
 
         // 1. Hard Delete
+        const { error: uoDeleteError } = await supabase.from('user_organizations').delete().eq('user_id', id).eq('organization_id', organization_id);
+        if (uoDeleteError) throw uoDeleteError;
+
         const { error: dbDeleteError } = await supabase.from('users').delete().eq('id', id);
         if (dbDeleteError) throw dbDeleteError;
 

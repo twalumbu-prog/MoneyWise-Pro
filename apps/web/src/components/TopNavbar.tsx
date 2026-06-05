@@ -3,8 +3,9 @@ import { useAuth } from '../context/AuthContext';
 import { User, LogOut, ChevronDown } from 'lucide-react';
 
 export const TopNavbar: React.FC = () => {
-    const { userName, userRole, organizationName, signOut } = useAuth();
+    const { userName, userRole, organizationName, signOut, userOrganizations, switchOrganization, organizationId } = useAuth();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
 
     // Format role to be more user-friendly for "Position"
     const getPosition = (role: string | null) => {
@@ -18,6 +19,8 @@ export const TopNavbar: React.FC = () => {
         }
     };
 
+    const activeOrgs = userOrganizations.filter((uo: any) => uo.status === 'ACTIVE');
+
     return (
         <nav className="h-16 bg-white border-b border-gray-100 z-30 sticky top-0">
             <div className="max-w-[1440px] mx-auto px-12 h-full flex items-center justify-between">
@@ -30,7 +33,57 @@ export const TopNavbar: React.FC = () => {
                     {organizationName && (
                         <>
                             <div className="h-6 w-[1px] bg-gray-200 mx-2" />
-                            <span className="text-sm font-medium text-gray-400">{organizationName}</span>
+                            {activeOrgs.length > 1 ? (
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsOrgMenuOpen(!isOrgMenuOpen)}
+                                        className="flex items-center space-x-1 text-sm font-bold text-gray-500 hover:text-brand-navy p-1.5 rounded-xl hover:bg-gray-55/80 transition-all border border-transparent hover:border-gray-100"
+                                    >
+                                        <span>{organizationName}</span>
+                                        <ChevronDown size={14} className={`transition-transform duration-205 ${isOrgMenuOpen ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    
+                                    {isOrgMenuOpen && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setIsOrgMenuOpen(false)}></div>
+                                            <div className="absolute left-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 overflow-hidden py-2 transform origin-top-left animate-in fade-in slide-in-from-top-1">
+                                                <div className="px-4 py-2 border-b border-gray-50 text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">
+                                                    Switch Organization
+                                                </div>
+                                                {activeOrgs.map((uo: any) => {
+                                                    const isCurrent = uo.organization.id === organizationId;
+                                                    return (
+                                                        <button
+                                                            key={uo.organization.id}
+                                                            type="button"
+                                                            disabled={isCurrent}
+                                                            onClick={async () => {
+                                                                setIsOrgMenuOpen(false);
+                                                                try {
+                                                                    await switchOrganization(uo.organization.id);
+                                                                } catch (err) {
+                                                                    console.error(err);
+                                                                }
+                                                            }}
+                                                            className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors flex items-center justify-between ${
+                                                                isCurrent 
+                                                                    ? 'text-brand-green bg-brand-green/5 cursor-default font-bold' 
+                                                                    : 'text-gray-600 hover:bg-gray-50 hover:text-brand-navy'
+                                                            }`}
+                                                        >
+                                                            <span>{uo.organization.name}</span>
+                                                            {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-brand-green"></span>}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            ) : (
+                                <span className="text-sm font-medium text-gray-400">{organizationName}</span>
+                            )}
                         </>
                     )}
                 </div>

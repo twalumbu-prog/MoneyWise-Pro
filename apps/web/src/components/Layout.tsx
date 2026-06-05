@@ -49,7 +49,7 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title }) => {
-    const { user, userRole, signOut } = useAuth();
+    const { user, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId } = useAuth();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
@@ -60,6 +60,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
     };
 
     const isRequestor = userRole === 'REQUESTOR';
+    const activeOrgs = userOrganizations.filter((uo: any) => uo.status === 'ACTIVE');
 
     const getPageTitle = () => {
         if (title) return title;
@@ -93,6 +94,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                         {getPageTitle()}
                     </h1>
                     <button
+                        type="button"
                         onClick={() => setIsProfileOpen(!isProfileOpen)}
                         className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm active:scale-95 transition-all"
                     >
@@ -109,14 +111,58 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                         />
                         <div className="fixed top-18 right-6 z-[160] w-64 bg-white rounded-3xl shadow-xl border border-gray-100 p-5 animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="pb-3 border-b border-gray-50 mb-3">
-                                <p className="text-sm font-black text-brand-navy truncate">{user?.email}</p>
-                                <div className="flex items-center mt-1">
+                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1">
+                                    Organization
+                                </p>
+                                <p className="text-sm font-black text-brand-navy truncate mb-3">{organizationName || 'No Organization'}</p>
+                                
+                                <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1">
+                                    Profile
+                                </p>
+                                <p className="text-xs font-medium text-gray-500 truncate mb-1">{user?.email}</p>
+                                <div className="flex items-center">
                                     <div className="h-1.5 w-1.5 rounded-full bg-brand-green mr-1.5"></div>
                                     <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest">
                                         {userRole}
                                     </p>
                                 </div>
                             </div>
+                            
+                            {activeOrgs.length > 1 && (
+                                <div className="pb-3 border-b border-gray-50 mb-3">
+                                    <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest mb-1.5">
+                                        Quick Switch Org
+                                    </p>
+                                    <div className="space-y-1 max-h-36 overflow-y-auto">
+                                        {activeOrgs.map((uo: any) => {
+                                            const isCurrent = uo.organization.id === organizationId;
+                                            return (
+                                                <button
+                                                    key={uo.organization.id}
+                                                    type="button"
+                                                    disabled={isCurrent}
+                                                    onClick={async () => {
+                                                        setIsProfileOpen(false);
+                                                        try {
+                                                            await switchOrganization(uo.organization.id);
+                                                        } catch (err) {
+                                                            console.error('Failed to switch org on mobile:', err);
+                                                        }
+                                                    }}
+                                                    className={`w-full text-left px-2.5 py-2 text-xs rounded-lg transition-colors flex items-center justify-between ${
+                                                        isCurrent
+                                                            ? 'text-brand-green bg-brand-green/5 font-bold'
+                                                            : 'text-gray-500 hover:text-brand-navy hover:bg-gray-50'
+                                                    }`}
+                                                >
+                                                    <span className="truncate">{uo.organization.name}</span>
+                                                    {isCurrent && <span className="w-1.5 h-1.5 rounded-full bg-brand-green flex-shrink-0 ml-1"></span>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
                             <button
                                 onClick={() => {
                                     setIsProfileOpen(false);

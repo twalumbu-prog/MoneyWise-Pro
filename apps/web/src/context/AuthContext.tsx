@@ -21,6 +21,9 @@ interface AuthContextType {
     loading: boolean;
     notificationCounts: NotificationCounts;
     refreshNotifications: () => Promise<void>;
+    userOrganizations: any[];
+    refreshUserOrganizations: () => Promise<void>;
+    switchOrganization: (organizationId: string) => Promise<void>;
     signIn: (email: string) => Promise<void>;
     signInWithPassword: (email: string, password: string) => Promise<void>;
     signUpWithPassword: (email: string, password: string) => Promise<void>;
@@ -40,6 +43,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [organizationName, setOrganizationName] = useState<string | null>(null);
     const [userName, setUserName] = useState<string | null>(null);
+    const [userOrganizations, setUserOrganizations] = useState<any[]>([]);
     const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({
         requisitions: 0, approvals: 0, vouchers: 0, disbursements: 0, settings: 0
     });
@@ -84,6 +88,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setOrganizationId(userData.organization_id);
                 setOrganizationName(userData.organizations?.name || null);
                 refreshNotifications();
+                refreshUserOrganizations();
             }
         };
 
@@ -235,6 +240,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return data;
     };
 
+    const refreshUserOrganizations = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+            const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+            const response = await fetch(`${apiUrl}/auth/my-organizations`, {
+                headers: { 'Authorization': `Bearer ${session.access_token}` }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                setUserOrganizations(data || []);
+            }
+        } catch (error) {
+            console.error('Failed to fetch user organizations:', error);
+        }
+    };
+
+    const switchOrganization = async (orgId: string) => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error('No active session');
+            const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+            const response = await fetch(`${apiUrl}/auth/switch-organization`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ organizationId: orgId })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.error || 'Failed to switch organization');
+            }
+
+            const data = await response.json();
+            setUserRole(data.user.role);
+            setUserStatus(data.user.status);
+            setOrganizationId(data.user.organization_id);
+            
+            // Find name of switched organization
+            const targetOrg = userOrganizations.find(uo => uo.organization?.id === orgId);
+            setOrganizationName(targetOrg?.organization?.name || 'Selected Organization');
+            
+            await refreshNotifications();
+        } catch (error) {
+            console.error('Error switching organization:', error);
+            throw error;
+        }
+    };
+
     const signOut = async () => {
         await supabase.auth.signOut();
         setUser(null);
@@ -242,12 +300,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserRole(null);
         setOrganizationId(null);
         setOrganizationName(null);
+        setUserOrganizations([]);
     };
 
     return (
         <AuthContext.Provider value={{
             user, userName, session, userRole, userStatus, organizationId, organizationName, loading,
             notificationCounts, refreshNotifications,
+            userOrganizations, refreshUserOrganizations, switchOrganization,
             signIn, signInWithPassword, signUpWithPassword, joinOrganization, signUp, signOut
         }}>
             {children}
