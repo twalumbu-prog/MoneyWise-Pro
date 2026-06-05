@@ -314,7 +314,11 @@ const port = process.env.PORT || 3000;
 // Security Middleware
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({
+    verify: (req: any, res, buf) => {
+        req.rawBody = buf;
+    }
+}));
 
 // Routes
 app.use('/auth', authRoutes);

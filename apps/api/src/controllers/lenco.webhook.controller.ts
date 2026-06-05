@@ -24,8 +24,10 @@ export const handleLencoWebhook = async (req: Request, res: Response) => {
     const apiToken = process.env.LENCO_SECRET_KEY;
     if (apiToken) {
         const webhookHashKey = crypto.createHash("sha256").update(apiToken).digest("hex");
-        const bodyString = JSON.stringify(req.body);
-        const expectedSignature = crypto.createHmac('sha512', webhookHashKey).update(bodyString).digest('hex');
+        const rawBody = (req as any).rawBody;
+        const expectedSignature = crypto.createHmac('sha512', webhookHashKey)
+            .update(rawBody || JSON.stringify(req.body))
+            .digest('hex');
 
         if (signature !== expectedSignature) {
             console.warn('[Lenco Webhook] REJECTED: Invalid signature');
