@@ -12,7 +12,9 @@ import {
     resolveMobileMoney,
     getPublicWalletContext,
     logPublicWalletDepositIntent,
-    getSaleReceiptDetails
+    getSaleReceiptDetails,
+    getPublicSalesByPhone,
+    getPublicSaleReceiptDetails
 } from '../controllers/lenco.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -25,6 +27,8 @@ router.post('/webhook', handleLencoWebhook);
 router.get('/public-verify-status/:reference', verifyCollectionStatus);
 router.get('/public-context/:wallet_id', getPublicWalletContext);
 router.post('/public-wallet-deposit-intent', logPublicWalletDepositIntent);
+router.get('/public-sales/by-phone/:phone', getPublicSalesByPhone);
+router.get('/public-sale-receipt/:reference', getPublicSaleReceiptDetails);
 
 // Protected routes
 router.use(requireAuth);

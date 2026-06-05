@@ -710,3 +710,185 @@ export const getSaleReceiptDetails = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
+
+/**
+ * Public endpoint to fetch completed receipts for a phone number under a specific wallet
+ */
+export const getPublicSalesByPhone = async (req: Request, res: Response) => {
+    try {
+        const { phone } = req.params;
+        const { walletId } = req.query;
+
+        if (!walletId) {
+            return res.status(400).json({ error: 'walletId parameter is required' });
+        }
+
+        // Find organization linked to the wallet
+        const { data: wallet, error: walletError } = await supabase
+            .from('organization_wallets')
+            .select('organization_id')
+            .eq('id', walletId)
+            .single();
+
+        if (walletError || !wallet) {
+            return res.status(404).json({ error: 'Wallet not found' });
+        }
+
+        const organizationId = wallet.organization_id;
+
+        // Clean/normalize the input phone number
+        const cleanPhone = phone.replace(/[^0-9]/g, '');
+        if (!cleanPhone) {
+            return res.status(400).json({ error: 'Invalid phone number format' });
+        }
+
+        // Search by raw match or suffix (last 9 digits) to handle international/national formatting
+        const phoneSuffix = cleanPhone.length >= 9 ? cleanPhone.substring(cleanPhone.length - 9) : cleanPhone;
+
+        const { data: sales, error: salesError } = await supabase
+            .from('product_sales')
+            .select(`
+                id,
+                customer_name,
+                customer_phone,
+                amount_paid,
+                quantity,
+                reference,
+                created_at,
+                products (
+                    name
+                )
+            `)
+            .eq('organization_id', organizationId)
+            .eq('status', 'COMPLETED')
+            .or(`customer_phone.like.%${phoneSuffix}%,customer_phone.eq.${cleanPhone}`);
+
+        if (salesError) {
+            return res.status(500).json({ error: 'Failed to fetch receipts', details: salesError.message });
+        }
+
+        if (!sales || sales.length === 0) {
+            return res.json([]);
+        }
+
+        // Group sales by reference (since a single purchase reference can have multiple items)
+        const groupedMap: Record<string, any> = {};
+        sales.forEach((sale: any) => {
+            const ref = sale.reference;
+            if (!groupedMap[ref]) {
+                groupedMap[ref] = {
+                    reference: ref,
+                    date: sale.created_at,
+                    customerName: sale.customer_name,
+                    customerPhone: sale.customer_phone,
+                    items: [],
+                    totalPaid: 0
+                };
+            }
+            groupedMap[ref].items.push(`${sale.products?.name || 'Product'} (x${sale.quantity})`);
+            groupedMap[ref].totalPaid += Number(sale.amount_paid);
+        });
+
+        // Convert to array, add 2.5% processing fee, and sort by date descending
+        const receiptsList = Object.values(groupedMap).map((receipt: any) => {
+            const subtotal = receipt.totalPaid;
+            const fee = subtotal * 0.025;
+            receipt.totalPaid = subtotal + fee;
+            receipt.itemsText = receipt.items.join(', ');
+            return receipt;
+        }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+        res.json(receiptsList);
+    } catch (error: any) {
+        console.error('Error in getPublicSalesByPhone:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/**
+ * Public endpoint to fetch receipt details by payment reference
+ */
+export const getPublicSaleReceiptDetails = async (req: Request, res: Response) => {
+    try {
+        const { reference } = req.params;
+
+        if (!reference) {
+            return res.status(400).json({ error: 'Reference parameter is required' });
+        }
+
+        // 1. Fetch completed product sales with this reference
+        const { data: sales, error: salesError } = await supabase
+            .from('product_sales')
+            .select(`
+                *,
+                products (
+                    name,
+                    price
+                )
+            `)
+            .eq('reference', reference)
+            .eq('status', 'COMPLETED');
+
+        if (salesError) {
+            return res.status(500).json({ error: 'Failed to fetch product sales details', details: salesError.message });
+        }
+
+        if (!sales || sales.length === 0) {
+            return res.status(404).json({ error: 'Receipt not found or payment not completed' });
+        }
+
+        const organizationId = sales[0].organization_id;
+
+        // 2. Fetch cashbook entry to retrieve sequence reference number and date
+        const { data: entry } = await supabase
+            .from('cashbook_entries')
+            .select('reference_number, created_at, date')
+            .like('description', `%${reference}%`)
+            .maybeSingle();
+
+        // 3. Fetch organization details
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('name, logo_url')
+            .eq('id', organizationId)
+            .single();
+
+        if (orgError || !org) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        const customerName = sales[0].customer_name || 'Anonymous';
+        const customerPhone = sales[0].customer_phone || 'N/A';
+
+        const items = sales.map((sale: any) => ({
+            id: sale.product_id,
+            name: sale.products?.name || 'Unknown Product',
+            price: Number(sale.products?.price) || Number(sale.amount_paid) / Number(sale.quantity),
+            quantity: sale.quantity,
+            total: Number(sale.amount_paid)
+        }));
+
+        const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+        const processingFee = subtotal * 0.025;
+        const totalPaid = subtotal + processingFee;
+
+        res.json({
+            org: {
+                name: org.name,
+                logo_url: org.logo_url
+            },
+            receiptNumber: (entry && entry.reference_number) || reference.replace('-PUB', ''),
+            date: (entry && (entry.created_at || entry.date)) || sales[0].created_at,
+            reference: reference,
+            customerName,
+            customerPhone,
+            subtotal,
+            processingFee,
+            totalPaid,
+            items
+        });
+    } catch (error: any) {
+        console.error('Error in getPublicSaleReceiptDetails:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};

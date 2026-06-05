@@ -15,7 +15,8 @@ import {
     ArrowLeft, 
     Building2,
     ShieldCheck,
-    Download
+    Download,
+    Search
 } from 'lucide-react';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -78,6 +79,14 @@ export const PublicPay: React.FC = () => {
     
     // Global errors
     const [error, setError] = useState<string | null>(null);
+
+    // Receipt Retrieval states
+    const [showRetrievePortal, setShowRetrievePortal] = useState(false);
+    const [retrievePhone, setRetrievePhone] = useState('');
+    const [retrievedReceipts, setRetrievedReceipts] = useState<any[]>([]);
+    const [isRetrieving, setIsRetrieving] = useState(false);
+    const [retrieveError, setRetrieveError] = useState<string | null>(null);
+    const [downloadingReference, setDownloadingReference] = useState<string | null>(null);
 
     // Fetch context on load
     useEffect(() => {
@@ -467,6 +476,175 @@ Status: VERIFIED`;
         }
     };
 
+    const handleSearchReceipts = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!retrievePhone.trim() || !wallet_id) return;
+
+        setIsRetrieving(true);
+        setRetrieveError(null);
+        try {
+            const res = await axios.get(`${API_URL}/lenco/public-sales/by-phone/${encodeURIComponent(retrievePhone.trim())}?walletId=${wallet_id}`);
+            setRetrievedReceipts(res.data);
+            if (res.data.length === 0) {
+                setRetrieveError('No completed receipts found for this phone number.');
+            }
+        } catch (err: any) {
+            console.error('Failed to search receipts:', err);
+            setRetrieveError(err.response?.data?.error || 'Failed to search receipts. Please try again.');
+        } finally {
+            setIsRetrieving(false);
+        }
+    };
+
+    const handleDownloadPublicReceipt = async (reference: string) => {
+        setDownloadingReference(reference);
+        try {
+            const res = await axios.get(`${API_URL}/lenco/public-sale-receipt/${reference}`);
+            const details = res.data;
+
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            const primaryColor = '#1e293b'; // slate-800
+            const accentColor = '#2563eb'; // blue-600
+
+            // 1. Draw branding header
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(20);
+            doc.setTextColor(primaryColor);
+            doc.text(details.org.name.toUpperCase(), 20, 25);
+
+            doc.setFontSize(9);
+            doc.setFont('Helvetica', 'normal');
+            doc.setTextColor('#64748b'); // slate-500
+            doc.text('Official Payment Receipt', 20, 31);
+
+            // Right-aligned title
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(accentColor);
+            doc.text('RECEIPT', 190, 25, { align: 'right' });
+
+            // Divider
+            doc.setDrawColor('#e2e8f0'); // slate-200
+            doc.setLineWidth(0.5);
+            doc.line(20, 36, 190, 36);
+
+            // 2. Receipt metadata
+            doc.setFont('Helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor('#334155'); // slate-700
+            doc.text(`Receipt No: #${details.receiptNumber}`, 20, 46);
+            doc.text(`Date: ${new Date(details.date).toLocaleString()}`, 20, 52);
+            doc.text(`Payment Method: Lenco (Card/Mobile Money)`, 20, 58);
+
+            doc.text(`Bill To:`, 120, 46);
+            doc.setFont('Helvetica', 'bold');
+            doc.text(details.customerName, 120, 52);
+            doc.setFont('Helvetica', 'normal');
+            doc.text(`Phone: ${details.customerPhone}`, 120, 58);
+
+            // Divider
+            doc.line(20, 65, 190, 65);
+
+            // 3. Products Table Header
+            doc.setFillColor('#f8fafc'); // slate-50
+            doc.rect(20, 72, 170, 8, 'F');
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor('#475569'); // slate-600
+            doc.text('Item Description', 24, 77);
+            doc.text('Qty', 110, 77, { align: 'center' });
+            doc.text('Unit Price (K)', 145, 77, { align: 'right' });
+            doc.text('Total (K)', 186, 77, { align: 'right' });
+
+            let y = 86;
+            doc.setFont('Helvetica', 'normal');
+            doc.setTextColor('#334155');
+
+            details.items.forEach((item: any) => {
+                doc.text(item.name, 24, y);
+                doc.text(item.quantity.toString(), 110, y, { align: 'center' });
+                doc.text(Number(item.price).toFixed(2), 145, y, { align: 'right' });
+                doc.text(Number(item.total).toFixed(2), 186, y, { align: 'right' });
+
+                // Underline for items
+                doc.setDrawColor('#f1f5f9');
+                doc.line(20, y + 3, 190, y + 3);
+                y += 10;
+            });
+
+            // 4. Financial Calculations
+            const calculationsStartY = y + 5;
+            y += 5;
+            doc.setFont('Helvetica', 'normal');
+            doc.text('Subtotal:', 140, y, { align: 'right' });
+            doc.text(`K ${Number(details.subtotal).toFixed(2)}`, 186, y, { align: 'right' });
+
+            y += 6;
+            doc.text('Processing Fee (2.5%):', 140, y, { align: 'right' });
+            doc.text(`K ${Number(details.processingFee).toFixed(2)}`, 186, y, { align: 'right' });
+
+            y += 8;
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(primaryColor);
+            doc.text('Total Paid:', 140, y, { align: 'right' });
+            doc.text(`K ${Number(details.totalPaid).toFixed(2)}`, 186, y, { align: 'right' });
+
+            // Generate and draw QR code on the left side of calculations
+            try {
+                const qrText = `Receipt Verification
+Merchant: ${details.org.name}
+Receipt No: #${details.receiptNumber}
+Client: ${details.customerName}
+Phone: ${details.customerPhone}
+Amount: ZMW ${Number(details.subtotal).toFixed(2)}
+Total Paid: ZMW ${Number(details.totalPaid).toFixed(2)}
+Date: ${new Date(details.date).toLocaleString()}
+Status: VERIFIED`;
+
+                const qrCodeDataUrl = await getQRCodeDataUrl(qrText);
+                doc.addImage(qrCodeDataUrl, 'PNG', 20, calculationsStartY - 2, 28, 28);
+
+                // Add small helper label
+                doc.setFont('Helvetica', 'normal');
+                doc.setFontSize(6.5);
+                doc.setTextColor('#94a3b8');
+                doc.text('SCAN TO VERIFY RECEIPT', 34, calculationsStartY + 29, { align: 'center' });
+            } catch (qrErr) {
+                console.error('Failed to add QR code to PDF:', qrErr);
+            }
+
+            // Divider
+            y += 10;
+            doc.setDrawColor('#e2e8f0');
+            doc.line(20, y, 190, y);
+
+            // 5. Footer
+            y += 12;
+            doc.setFont('Helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.setTextColor('#94a3b8');
+            doc.text('Thank you for your payment!', 105, y, { align: 'center' });
+
+            y += 5;
+            doc.setFont('Helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.text('Secured by MoneyWise Ledger Gateway', 105, y, { align: 'center' });
+
+            doc.save(`receipt-${details.receiptNumber}.pdf`);
+        } catch (err: any) {
+            console.error('Failed to download public receipt:', err);
+            alert(err.message || 'Failed to download receipt');
+        } finally {
+            setDownloadingReference(null);
+        }
+    };
+
     // Helper to render Organization Logo / Initial
     const renderLogo = (sizeClass = "w-20 h-20", textClass = "text-3xl") => {
         if (!org) return null;
@@ -488,7 +666,120 @@ Status: VERIFIED`;
         <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30 flex flex-col justify-between py-10 px-4">
             <div className="max-w-md w-full mx-auto my-auto bg-white/70 backdrop-blur-xl rounded-[32px] border border-slate-100 shadow-2xl overflow-hidden flex flex-col justify-between transition-all duration-300">
                 
-                {/* 1. Loading Step */}
+                {showRetrievePortal ? (
+                    <div className="flex flex-col min-h-[500px]">
+                        {/* Retrieval Header */}
+                        <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
+                            <div className="flex items-center space-x-3">
+                                {renderLogo("w-10 h-10", "text-sm")}
+                                <div>
+                                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{org?.name}</h4>
+                                    <p className="text-[10px] font-semibold text-slate-400">Receipt Retrieval</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => {
+                                    setShowRetrievePortal(false);
+                                    setRetrievePhone('');
+                                    setRetrievedReceipts([]);
+                                    setRetrieveError(null);
+                                }}
+                                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100/50 transition-all"
+                                title="Back to Payment"
+                            >
+                                <ArrowLeft size={16} />
+                            </button>
+                        </div>
+
+                        {/* Retrieval Body */}
+                        <div className="p-6 flex-1 overflow-y-auto max-h-[350px] flex flex-col">
+                            <form onSubmit={handleSearchReceipts} className="space-y-4">
+                                <div>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Search by Phone Number</label>
+                                    <div className="relative">
+                                        <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input
+                                            type="tel"
+                                            value={retrievePhone}
+                                            onChange={(e) => setRetrievePhone(e.target.value)}
+                                            placeholder="e.g. 097XXXXXXXX"
+                                            className="w-full pl-12 pr-4 py-4 bg-slate-50 border-none rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 placeholder:text-slate-400 font-bold"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={isRetrieving}
+                                    className="w-full flex items-center justify-center space-x-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-600/50 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-md active:scale-98"
+                                >
+                                    {isRetrieving ? (
+                                        <Loader2 size={14} className="animate-spin" />
+                                    ) : (
+                                        <Search size={14} />
+                                    )}
+                                    <span>{isRetrieving ? 'Searching...' : 'Find Receipts'}</span>
+                                </button>
+                            </form>
+
+                            {retrieveError && (
+                                <div className="mt-4 p-4 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-start space-x-2.5 animate-in fade-in slide-in-from-top-1">
+                                    <AlertCircle size={14} className="mt-0.5 flex-shrink-0" />
+                                    <span className="text-[11px] font-semibold leading-normal">{retrieveError}</span>
+                                </div>
+                            )}
+
+                            {/* Search Results */}
+                            <div className="mt-6 flex-1 space-y-3.5">
+                                {retrievedReceipts.length > 0 && (
+                                    <>
+                                        <h5 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Completed Purchases</h5>
+                                        {retrievedReceipts.map((receipt) => (
+                                            <div key={receipt.reference} className="p-4 rounded-2xl border border-slate-100 bg-white flex justify-between items-center transition-all hover:border-slate-200">
+                                                <div className="flex-1 min-w-0 pr-4">
+                                                    <h6 className="text-[11px] font-black text-slate-800 uppercase tracking-wide truncate">{receipt.itemsText}</h6>
+                                                    <p className="text-[9px] font-semibold text-slate-400 mt-1">Paid on {new Date(receipt.date).toLocaleDateString()}</p>
+                                                    <p className="text-xs font-black text-slate-800 mt-1.5">
+                                                        K{receipt.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </p>
+                                                </div>
+                                                <button
+                                                    onClick={() => handleDownloadPublicReceipt(receipt.reference)}
+                                                    disabled={downloadingReference === receipt.reference}
+                                                    className="p-3 bg-slate-950 hover:bg-slate-900 text-white rounded-xl shadow-sm hover:shadow-md transition-all active:scale-95 disabled:opacity-50"
+                                                    title="Download Receipt"
+                                                >
+                                                    {downloadingReference === receipt.reference ? (
+                                                        <Loader2 size={14} className="animate-spin" />
+                                                    ) : (
+                                                        <Download size={14} />
+                                                    )}
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Retrieval Footer */}
+                        <div className="p-6 border-t border-slate-100 bg-slate-50/50 flex justify-center text-center">
+                            <button
+                                onClick={() => {
+                                    setShowRetrievePortal(false);
+                                    setRetrievePhone('');
+                                    setRetrievedReceipts([]);
+                                    setRetrieveError(null);
+                                }}
+                                className="text-xs font-bold text-blue-600 hover:text-blue-700 uppercase tracking-wider transition-colors"
+                            >
+                                Back to Checkout
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        {/* 1. Loading Step */}
                 {step === 'LOADING' && (
                     <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
                         <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl animate-spin mb-4">
@@ -551,6 +842,15 @@ Status: VERIFIED`;
                                 <span>Enter Portal</span>
                                 <ArrowRight size={14} />
                             </button>
+                            <div className="pt-4 text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowRetrievePortal(true)}
+                                    className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider"
+                                >
+                                    Already Paid? Find your receipt
+                                </button>
+                            </div>
                         </form>
                     </div>
                 )}
@@ -673,6 +973,15 @@ Status: VERIFIED`;
                                 <ShieldCheck size={14} />
                                 <span>Pay with Lenco</span>
                             </button>
+                            <div className="pt-4 text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowRetrievePortal(true)}
+                                    className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider"
+                                >
+                                    Already Paid? Find your receipt
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -813,6 +1122,8 @@ Status: VERIFIED`;
                             Return to Login
                         </button>
                     </div>
+                )}
+                </>
                 )}
 
             </div>
