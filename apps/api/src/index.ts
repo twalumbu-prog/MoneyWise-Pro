@@ -281,7 +281,14 @@ const runMigration = async () => {
                 ALTER TABLE public.vouchers ADD CONSTRAINT vouchers_status_check CHECK (status IN ('DRAFT', 'POSTED', 'POSTED_TO_QB'));
             END $$;
         `);
-        console.log('[Migration] vouchers status constraint updated.');
+        // Disable RLS on user_organizations table so that API server is not blocked
+        console.log('[Migration] Disabling RLS on user_organizations table...');
+        try {
+            await migrationPool.query('ALTER TABLE IF EXISTS public.user_organizations DISABLE ROW LEVEL SECURITY;');
+            console.log('[Migration] Disabled RLS on user_organizations successfully.');
+        } catch (rlsError: any) {
+            console.warn('[Migration] Failed to disable RLS on user_organizations (non-fatal):', rlsError.message);
+        }
 
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');

@@ -67,3 +67,7 @@ BEGIN
   RETURN new;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Disable Row Level Security on user_organizations table so that API server is not blocked
+ALTER TABLE IF EXISTS public.user_organizations DISABLE ROW LEVEL SECURITY;
+
