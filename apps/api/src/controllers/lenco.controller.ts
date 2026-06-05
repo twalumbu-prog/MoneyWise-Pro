@@ -229,46 +229,62 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
 
         // 3. Fallback to Collection Status
         console.log(`[Lenco Verify] Falling back to collection status check for ref: ${reference}`);
-        const lencoStatus = await LencoService.getCollectionStatus(reference, secretKey);
-        
-        // Robust null-check
-        if (!lencoStatus) throw new Error('Empty collection status response from Lenco');
-        
-        console.log(`[Lenco Verify] Collection status: ${lencoStatus.status || 'N/A'}`);
+        try {
+            const lencoStatus = await LencoService.getCollectionStatus(reference, secretKey);
+            
+            // Robust null-check
+            if (!lencoStatus) throw new Error('Empty collection status response from Lenco');
+            
+            console.log(`[Lenco Verify] Collection status: ${lencoStatus.status || 'N/A'}`);
 
-        if (lencoStatus.status === 'successful') {
-            try {
-                console.log(`[Lenco Verify] Triggering ledger entry via ref. Forced Org: ${organizationId || 'None'}`);
-                const success = await handleCollectionSuccessful(lencoStatus, organizationId);
-                
-                if (success) {
-                    // Fetch the created reference number
-                    const { data: createdEntry } = await supabase
-                        .from('cashbook_entries')
-                        .select('reference_number')
-                        .like('description', `%${reference}%`)
-                        .maybeSingle();
+            if (lencoStatus.status === 'successful') {
+                try {
+                    console.log(`[Lenco Verify] Triggering ledger entry via ref. Forced Org: ${organizationId || 'None'}`);
+                    const success = await handleCollectionSuccessful(lencoStatus, organizationId);
+                    
+                    if (success) {
+                        // Fetch the created reference number
+                        const { data: createdEntry } = await supabase
+                            .from('cashbook_entries')
+                            .select('reference_number')
+                            .like('description', `%${reference}%`)
+                            .maybeSingle();
 
-                    return res.json({ 
-                        verified: true, 
-                        source: 'lenco_collection_api',
-                        status: 'COMPLETED',
-                        stage: 'PROCESSED_VIA_COLLECTION_REF',
-                        referenceNumber: createdEntry?.reference_number || null
-                    });
+                        return res.json({ 
+                            verified: true, 
+                            source: 'lenco_collection_api',
+                            status: 'COMPLETED',
+                            stage: 'PROCESSED_VIA_COLLECTION_REF',
+                            referenceNumber: createdEntry?.reference_number || null
+                        });
+                    }
+                } catch (procError: any) {
+                    console.error('[Lenco Verify] Error triggering processing:', procError);
+                    return res.status(500).json({ error: 'Transaction found but failed to record in ledger' });
                 }
-            } catch (procError: any) {
-                console.error('[Lenco Verify] Error triggering processing:', procError);
-                return res.status(500).json({ error: 'Transaction found but failed to record in ledger' });
+            } else {
+                return res.json({
+                    verified: false,
+                    status: lencoStatus.status || 'pending',
+                    message: 'Transaction is not successful yet on Lenco.'
+                });
             }
+        } catch (lencoError: any) {
+            console.warn(`[Lenco Verify] Collection check failed:`, lencoError.message);
+            // If the error indicates that the transaction was not found/generated on Lenco:
+            const errMsg = lencoError.message || '';
+            if (errMsg.toLowerCase().includes('not found') || errMsg.toLowerCase().includes('invalid') || errMsg.toLowerCase().includes('404')) {
+                console.log(`[Lenco Verify] Transaction not found on Lenco for reference ${reference}. Cleaning up pending entries.`);
+                await supabase.from('cashbook_entries').delete().like('description', `%${reference}%`);
+                await supabase.from('product_sales').delete().eq('reference', reference);
+                return res.json({
+                    verified: false,
+                    status: 'DELETED',
+                    message: 'Payment intent was not generated on Lenco. Cleaned up pending entries.'
+                });
+            }
+            throw lencoError;
         }
-
-        return res.json({ 
-            verified: false, 
-            status: (lencoStatus && lencoStatus.status) || 'pending',
-            stage: (lencoStatus && lencoStatus.status === 'successful') ? 'RECORDING_FAILED' : 'NOT_FOUND_ON_LENCO',
-            message: 'Transaction is still pending or was not successfully recorded in the ledger.'
-        });
 
     } catch (error: any) {
         console.error('[Lenco Verify] Critical error during verification:', error);
@@ -587,5 +603,110 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
     } catch (error: any) {
         console.error('[Lenco Public Intent] Error:', error);
         res.status(500).json({ error: 'Failed to log wallet deposit intent', details: error.message });
+    }
+};
+
+/**
+ * Fetch details of a completed product sale to regenerate a receipt
+ */
+export const getSaleReceiptDetails = async (req: Request, res: Response) => {
+    try {
+        const { entryId } = req.params;
+        const organizationId = (req as any).user.organization_id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        // 1. Fetch cashbook entry
+        const { data: entry, error: entryError } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('id', entryId)
+            .eq('organization_id', organizationId)
+            .single();
+
+        if (entryError || !entry) {
+            return res.status(404).json({ error: 'Cashbook entry not found' });
+        }
+
+        // 2. Parse reference from unsanitized description
+        // Standard format is: "... | Ref: TKT-MPZZEJOS"
+        const refMatch = entry.description.match(/\|\s*Ref:\s*([^\s|]+)/i) || entry.description.match(/Ref:\s*([^\s|]+)/i);
+        const reference = refMatch ? refMatch[1].trim() : null;
+
+        if (!reference) {
+            return res.status(400).json({ error: 'No transaction reference found in this entry description' });
+        }
+
+        // 3. Fetch product sales with this reference
+        const { data: sales, error: salesError } = await supabase
+            .from('product_sales')
+            .select(`
+                *,
+                products (
+                    name,
+                    price
+                )
+            `)
+            .eq('reference', reference)
+            .eq('organization_id', organizationId);
+
+        if (salesError) {
+            return res.status(500).json({ error: 'Failed to fetch product sales details', details: salesError.message });
+        }
+
+        if (!sales || sales.length === 0) {
+            return res.status(404).json({ error: 'No matching product sales found for this reference' });
+        }
+
+        // 4. Fetch organization details
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('name, logo_url')
+            .eq('id', organizationId)
+            .single();
+
+        if (orgError || !org) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        // Extract customer info (from the first sale item)
+        const customerName = sales[0].customer_name || 'Anonymous';
+        const customerPhone = sales[0].customer_phone || 'N/A';
+
+        // Format items list
+        const items = sales.map((sale: any) => ({
+            id: sale.product_id,
+            name: sale.products?.name || 'Unknown Product',
+            price: Number(sale.products?.price) || Number(sale.amount_paid) / Number(sale.quantity),
+            quantity: sale.quantity,
+            total: Number(sale.amount_paid)
+        }));
+
+        // Calculate subtotal from products
+        const subtotal = items.reduce((sum, item) => sum + item.total, 0);
+        // Processing fee (2.5%) paid by client
+        const processingFee = subtotal * 0.025;
+        const totalPaid = subtotal + processingFee;
+
+        res.json({
+            org: {
+                name: org.name,
+                logo_url: org.logo_url
+            },
+            receiptNumber: entry.reference_number || reference.replace('-PUB', ''),
+            date: entry.created_at || entry.date,
+            reference: reference,
+            customerName,
+            customerPhone,
+            subtotal,
+            processingFee,
+            totalPaid,
+            items
+        });
+    } catch (error: any) {
+        console.error('Error in getSaleReceiptDetails:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };

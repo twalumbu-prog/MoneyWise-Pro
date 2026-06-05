@@ -1,0 +1,295 @@
+Subaccount ID: 2af6bb1a-626c-474e-a9de-b9414967ddd0
+Fetching Lenco page 1...
+Fetching Lenco page 2...
+Fetching Lenco page 3...
+Total transactions fetched: 290
+[0] Date: 2025-12-18T23:56:34.327Z | Type: credit | Amt: 1.01 | Bal: 1.01 | Narration: Stephen Kapambwe MP251219.0156.H04088
+[1] Date: 2025-12-18T23:58:34.310Z | Type: credit | Amt: 1.01 | Bal: 2.02 | Narration: Stephen Kapambwe MP251219.0158.H04110
+[2] Date: 2025-12-22T10:10:46.968Z | Type: credit | Amt: 1.01 | Bal: 3.03 | Narration: Stephen Kapambwe MP251222.1210.H17502
+[3] Date: 2025-12-22T10:25:42.743Z | Type: credit | Amt: 15.00 | Bal: 18.03 | Narration: Stephen Kapambwe MP251222.1225.A19367
+[4] Date: 2025-12-22T10:32:25.234Z | Type: credit | Amt: 10.20 | Bal: 28.23 | Narration: Stephen Kapambwe MP251222.1231.N19403
+[5] Date: 2025-12-22T10:36:40.036Z | Type: debit | Amt: 19.00 | Bal: 0.73 | Narration: send k15 / 2535604468
+[6] Date: 2026-01-02T11:21:10.699Z | Type: credit | Amt: 51.00 | Bal: 51.73 | Narration: Stephen Kapambwe MP260102.1320.J12506
+[7] Date: 2026-01-03T09:16:52.707Z | Type: debit | Amt: 40.00 | Bal: 3.23 | Narration: Fuel / 2600303424
+[8] Date: 2026-01-06T13:25:31.887Z | Type: credit | Amt: 163.20 | Bal: 166.43 | Narration: CHARLES SIWALE MP260106.1525.L69208
+[9] Date: 2026-01-07T11:35:35.680Z | Type: credit | Amt: 1.02 | Bal: 167.45 | Narration: CHARLES SIWALE MP260107.1335.O33374
+[10] Date: 2026-01-08T16:11:09.376Z | Type: credit | Amt: 1.02 | Bal: 168.47 | Narration: CHARLES SIWALE MP260108.1810.N32886
+[11] Date: 2026-01-09T03:34:37.522Z | Type: credit | Amt: 2.04 | Bal: 170.51 | Narration: CHARLES SIWALE MP260109.0534.N86008
+[12] Date: 2026-01-09T20:19:33.431Z | Type: credit | Amt: 2.04 | Bal: 172.55 | Narration: CHARLES SIWALE MP260109.2219.O54693
+[13] Date: 2026-01-09T20:39:05.233Z | Type: credit | Amt: 3.06 | Bal: 175.61 | Narration: CHARLES SIWALE MP260109.2238.U56001
+[14] Date: 2026-01-09T21:01:09.178Z | Type: credit | Amt: 3.17 | Bal: 178.78 | Narration: CHARLES SIWALE MP260109.2300.R57342
+[15] Date: 2026-01-09T21:07:17.674Z | Type: credit | Amt: 1.53 | Bal: 180.31 | Narration: CHARLES SIWALE MP260109.2306.Y18014
+[16] Date: 2026-01-10T05:21:42.815Z | Type: debit | Amt: 100.00 | Bal: 71.81 | Narration: Testing payments / 2601001506
+[17] Date: 2026-01-12T05:52:16.195Z | Type: credit | Amt: 10.00 | Bal: 81.81 | Narration: m / 2601201630
+[18] Date: 2026-01-12T05:54:17.090Z | Type: debit | Amt: 72.00 | Bal: 1.31 | Narration: test / 2601201649
+[19] Date: 2026-01-12T15:20:15.955Z | Type: credit | Amt: 2.04 | Bal: 3.35 | Narration: CHARLES SIWALE MP260112.1719.Y77296
+[20] Date: 2026-01-12T17:32:35.217Z | Type: credit | Amt: 1.02 | Bal: 4.37 | Narration: CHARLES SIWALE MP260112.1932.K99136
+[21] Date: 2026-01-13T01:38:07.856Z | Type: credit | Amt: 4.08 | Bal: 8.45 | Narration: CHARLES SIWALE MP260113.0337.D34700
+[22] Date: 2026-01-13T06:28:43.696Z | Type: credit | Amt: 7.14 | Bal: 15.59 | Narration: Stephen Kapambwe MP260113.0828.E47250
+[23] Date: 2026-01-14T02:19:43.829Z | Type: debit | Amt: 7.00 | Bal: 0.09 | Narration: Withdrawal for undefined / 260140712
+[24] Date: 2026-01-14T13:20:31.827Z | Type: credit | Amt: 20.40 | Bal: 20.49 | Narration: CHARLES SIWALE MP260114.1520.I32988
+[25] Date: 2026-01-14T17:22:10.205Z | Type: debit | Amt: 10.00 | Bal: 1.99 | Narration: Withdrawal for undefined / 2601409154
+[26] Date: 2026-01-14T23:35:31.097Z | Type: credit | Amt: 5.10 | Bal: 7.09 | Narration: CHARLES SIWALE MP260115.0135.Y00218
+[27] Date: 2026-01-15T09:36:51.001Z | Type: debit | Amt: 0.23 | Bal: 6.86 | Narration: Revenue transfer from Twalumbu Education Centre / 2601503577
+[28] Date: 2026-01-15T14:11:43.869Z | Type: debit | Amt: 0.40 | Bal: 6.46 | Narration: Revenue transfer from Twalumbu Education Centre / 2601505530
+[29] Date: 2026-01-28T08:06:32.382Z | Type: credit | Amt: 1030.00 | Bal: 1036.46 | Narration: NYUNDO GRACE MP260128.1006.B30167
+[30] Date: 2026-01-28T08:09:33.546Z | Type: credit | Amt: 1030.00 | Bal: 2066.46 | Narration: NYUNDO GRACE MP260128.1009.B30586
+[31] Date: 2026-01-28T08:14:31.335Z | Type: credit | Amt: 1030.00 | Bal: 3096.46 | Narration: NYUNDO GRACE MP260128.1014.C31021
+[32] Date: 2026-01-28T08:18:01.661Z | Type: credit | Amt: 1030.00 | Bal: 4126.46 | Narration: NYUNDO GRACE MP260128.1017.U16090
+[33] Date: 2026-01-31T05:59:04.917Z | Type: credit | Amt: 3.09 | Bal: 4129.55 | Narration: CHARLES SIWALE MP260131.0758.Y90955
+[34] Date: 2026-01-31T06:13:33.870Z | Type: credit | Amt: 4.12 | Bal: 4133.67 | Narration: CHARLES SIWALE MP260131.0813.A93121
+[35] Date: 2026-01-31T07:17:03.124Z | Type: credit | Amt: 2.06 | Bal: 4135.73 | Narration: CHARLES SIWALE MP260131.0916.Y00693
+[36] Date: 2026-01-31T08:42:32.027Z | Type: credit | Amt: 1.03 | Bal: 4136.76 | Narration: CHARLES SIWALE MP260131.1042.F58192
+[37] Date: 2026-01-31T09:04:33.427Z | Type: credit | Amt: 1.03 | Bal: 4137.79 | Narration: CHARLES SIWALE MP260131.1104.A15335
+[38] Date: 2026-01-31T09:09:32.942Z | Type: credit | Amt: 1.03 | Bal: 4138.82 | Narration: CHARLES SIWALE MP260131.1109.A15964
+[39] Date: 2026-01-31T09:39:31.935Z | Type: credit | Amt: 1.03 | Bal: 4139.85 | Narration: CHARLES SIWALE MP260131.1139.E19201
+[40] Date: 2026-01-31T10:19:07.422Z | Type: credit | Amt: 1.03 | Bal: 4140.88 | Narration: CHARLES SIWALE MP260131.1218.T02925
+[41] Date: 2026-02-03T08:06:33.577Z | Type: credit | Amt: 103.00 | Bal: 4243.88 | Narration: BERIANER MULENGA MP260203.1006.R73315
+[42] Date: 2026-02-03T08:14:03.328Z | Type: credit | Amt: 412.00 | Bal: 4655.88 | Narration: PRISCA CHOMBA MP260203.1013.X21466
+[43] Date: 2026-02-03T08:25:33.210Z | Type: credit | Amt: 412.00 | Bal: 5067.88 | Narration: PRISCA CHOMBA MP260203.1025.N40454
+[44] Date: 2026-02-03T08:30:13.864Z | Type: credit | Amt: 103.00 | Bal: 5170.88 | Narration: PRISCA CHOMBA MP260203.1029.R75401
+[45] Date: 2026-02-03T08:33:01.706Z | Type: credit | Amt: 103.00 | Bal: 5273.88 | Narration: PRISCA CHOMBA MP260203.1033.H42154
+[46] Date: 2026-02-03T09:28:33.351Z | Type: credit | Amt: 278.10 | Bal: 5551.98 | Narration: PRISCA CHOMBA MP260203.1128.J49009
+[47] Date: 2026-02-10T08:10:40.984Z | Type: credit | Amt: 144.20 | Bal: 5696.18 | Narration: BOSTONE HANSENDE MP260210.1010.D55634
+[48] Date: 2026-02-13T05:58:50.461Z | Type: debit | Amt: 2500.00 | Bal: 3196.18 | Narration: Changing the api for this business / 2604401657
+[49] Date: 2026-02-13T07:42:46.459Z | Type: debit | Amt: 170.00 | Bal: 3026.18 | Narration: master-fees revenue / 2604402406
+[50] Date: 2026-02-14T12:14:49.509Z | Type: debit | Amt: 150.00 | Bal: 2867.68 | Narration: Test withdraw to be moved to new Twalumbu account / 2604507650
+[51] Date: 2026-02-14T12:20:49.705Z | Type: debit | Amt: 200.00 | Bal: 2667.68 | Narration: Transfer / 2604507757
+[52] Date: 2026-02-14T13:18:29.259Z | Type: debit | Amt: 50.00 | Bal: 2617.68 | Narration: Transfer / 2604508905
+[53] Date: 2026-02-16T15:51:35.944Z | Type: debit | Amt: 50.00 | Bal: 2567.68 | Narration: Test move / 2604708608
+[54] Date: 2026-02-18T12:00:59.696Z | Type: debit | Amt: 50.00 | Bal: 2517.68 | Narration: Withdraw / 2604905697
+[55] Date: 2026-02-18T12:01:58.678Z | Type: debit | Amt: 15.00 | Bal: 2502.68 | Narration: Send / 2604905709
+[56] Date: 2026-02-19T21:49:51.320Z | Type: debit | Amt: 55.00 | Bal: 2439.18 | Narration: Dash board Transfer test / 26050013430
+[57] Date: 2026-02-20T15:36:11.544Z | Type: debit | Amt: 200.00 | Bal: 2229.18 | Narration: Lenoc / 2605108457
+[58] Date: 2026-02-20T16:33:04.241Z | Type: debit | Amt: 200.00 | Bal: 2029.18 | Narration: Tranfer / 2605109273
+[59] Date: 2026-02-20T17:17:05.885Z | Type: debit | Amt: 50.00 | Bal: 1970.68 | Narration: Transfer / 2605109944
+[60] Date: 2026-02-20T17:19:16.065Z | Type: credit | Amt: 20.00 | Bal: 1990.68 | Narration: CHARLES SIWALE MP260220.1919.V24861
+[61] Date: 2026-02-20T17:19:16.401Z | Type: debit | Amt: 0.60 | Bal: 1990.08 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2605109973
+[62] Date: 2026-02-21T22:02:36.419Z | Type: debit | Amt: 350.00 | Bal: 1629.08 | Narration: Transfer / 260530015
+[63] Date: 2026-02-24T12:03:56.054Z | Type: credit | Amt: 600.00 | Bal: 2229.08 | Narration: CHARLES SIWALE MP260224.1403.L36980
+[64] Date: 2026-02-24T12:03:56.319Z | Type: debit | Amt: 18.00 | Bal: 2211.08 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2605504278
+[65] Date: 2026-02-26T12:54:37.457Z | Type: debit | Amt: 200.00 | Bal: 2001.08 | Narration: Transfer / 2605708133
+[66] Date: 2026-03-13T14:30:22.816Z | Type: credit | Amt: 89.00 | Bal: 2090.08 | Narration: Transfer / 2607217267
+[67] Date: 2026-03-13T14:30:26.922Z | Type: debit | Amt: 2.67 | Bal: 2087.41 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2607207272
+[68] Date: 2026-03-13T14:31:55.721Z | Type: debit | Amt: 2000.00 | Bal: 72.41 | Narration: Transfer / 2607207283
+[69] Date: 2026-03-14T13:40:27.398Z | Type: credit | Amt: 4.00 | Bal: 76.41 | Narration: Tranfer / 2607309211
+[70] Date: 2026-03-14T13:40:34.042Z | Type: debit | Amt: 0.12 | Bal: 76.29 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2607309212
+[71] Date: 2026-03-14T13:40:58.252Z | Type: credit | Amt: 2.00 | Bal: 78.29 | Narration: Transfer / 2607309221
+[72] Date: 2026-03-14T13:40:59.195Z | Type: debit | Amt: 0.06 | Bal: 78.23 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2607309222
+[73] Date: 2026-03-14T13:41:47.561Z | Type: credit | Amt: 1.00 | Bal: 79.23 | Narration: Test / 2607309231
+[74] Date: 2026-03-14T13:41:48.189Z | Type: debit | Amt: 0.03 | Bal: 79.20 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2607309232
+[75] Date: 2026-03-14T13:42:53.410Z | Type: debit | Amt: 70.00 | Bal: 0.70 | Narration: Transfer / 2607309250
+[76] Date: 2026-03-18T13:31:45.858Z | Type: credit | Amt: 9900.00 | Bal: 9900.70 | Narration: Money deposited for Twalumbu into the wrong account / 2607707563
+[77] Date: 2026-03-18T13:31:46.298Z | Type: debit | Amt: 99.00 | Bal: 9801.70 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2607707564
+[78] Date: 2026-03-19T07:27:25.449Z | Type: debit | Amt: 920.00 | Bal: 8869.70 | Narration: Disbursement for Requisition #73cb9d5c / 2607802035
+[79] Date: 2026-03-19T09:51:13.411Z | Type: debit | Amt: 1600.00 | Bal: 7254.70 | Narration: Disbursement for Requisition #84375f29 / 2607803351
+[80] Date: 2026-03-19T09:54:44.011Z | Type: debit | Amt: 820.00 | Bal: 6422.70 | Narration: Disbursement for Requisition #1e3ee504 / 2607803410
+[81] Date: 2026-03-19T11:05:28.418Z | Type: debit | Amt: 1520.00 | Bal: 4887.70 | Narration: Disbursement for Requisition #8880575f / 2607804347
+[82] Date: 2026-03-19T11:06:24.511Z | Type: debit | Amt: 824.00 | Bal: 4051.70 | Narration: Disbursement for Requisition #4aad4b68 / 2607804355
+[83] Date: 2026-03-19T12:48:48.527Z | Type: debit | Amt: 550.00 | Bal: 3489.70 | Narration: Disbursement for Requisition #b77d3bb7 / 2607805715
+[84] Date: 2026-03-20T09:15:39.704Z | Type: debit | Amt: 180.00 | Bal: 3299.70 | Narration: Disbursement for Requisition #774d4025 / 2607905206
+[85] Date: 2026-03-20T10:24:22.711Z | Type: credit | Amt: 101.00 | Bal: 3400.70 | Narration: Refunding missing funds / 2607906058
+[86] Date: 2026-03-20T10:24:23.273Z | Type: debit | Amt: 1.01 | Bal: 3399.69 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2607906059
+[87] Date: 2026-03-20T10:24:42.382Z | Type: debit | Amt: 1420.00 | Bal: 1964.69 | Narration: Disbursement for Requisition #cdbb23ac / 2607906064
+[88] Date: 2026-03-20T17:09:10.547Z | Type: credit | Amt: 3000.00 | Bal: 4964.69 | Narration: Refund of Actual Lenco funds / 26079011626
+[89] Date: 2026-03-20T17:09:11.123Z | Type: debit | Amt: 30.00 | Bal: 4934.69 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 26079011627
+[90] Date: 2026-03-21T04:06:25.871Z | Type: debit | Amt: 2000.00 | Bal: 2919.69 | Narration: Disbursement for Requisition #21210b09 / 2608001548
+[91] Date: 2026-03-21T04:10:18.296Z | Type: debit | Amt: 2000.00 | Bal: 904.69 | Narration: Disbursement for Requisition #c32fa343 / 2608001563
+[92] Date: 2026-03-23T14:33:34.188Z | Type: credit | Amt: 10.00 | Bal: 914.69 | Narration: Stephen Kapambwe MP260323.1633.B06236
+[93] Date: 2026-03-23T14:33:34.598Z | Type: debit | Amt: 0.10 | Bal: 914.59 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 26082010071
+[94] Date: 2026-03-24T12:22:05.370Z | Type: credit | Amt: 630.00 | Bal: 1544.59 | Narration: LILLIAN MUBIANA MP260324.1421.J37260
+[95] Date: 2026-03-24T12:22:05.864Z | Type: debit | Amt: 6.30 | Bal: 1538.29 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608306156
+[96] Date: 2026-03-25T05:58:33.653Z | Type: credit | Amt: 4565.00 | Bal: 6103.29 | Narration: LILLIAN MUBIANA MP260325.0758.J37890
+[97] Date: 2026-03-25T05:58:34.168Z | Type: debit | Amt: 45.65 | Bal: 6057.64 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608401902
+[98] Date: 2026-03-25T06:02:32.705Z | Type: credit | Amt: 5000.00 | Bal: 11057.64 | Narration: LILLIAN MUBIANA MP260325.0802.J38340
+[99] Date: 2026-03-25T06:02:33.167Z | Type: debit | Amt: 50.00 | Bal: 11007.64 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608401928
+[100] Date: 2026-03-25T06:50:53.443Z | Type: debit | Amt: 700.00 | Bal: 10295.64 | Narration: Disbursement for Requisition #9a5bb89c / 2608402411
+[101] Date: 2026-03-25T06:52:26.728Z | Type: debit | Amt: 120.00 | Bal: 10167.14 | Narration: Disbursement for Requisition #7dd79704 / 2608402437
+[102] Date: 2026-03-25T09:19:15.444Z | Type: debit | Amt: 48.00 | Bal: 10110.64 | Narration: Disbursement for Requisition #fab8e582 / 2608404263
+[103] Date: 2026-03-26T07:11:28.871Z | Type: debit | Amt: 8862.00 | Bal: 1228.64 | Narration: Disbursement for Requisition #aff7c61b / 2608503601
+[104] Date: 2026-03-26T08:43:45.653Z | Type: debit | Amt: 195.00 | Bal: 1023.64 | Narration: Disbursement for Requisition #38513996 / 2608504892
+[105] Date: 2026-03-27T04:08:54.464Z | Type: debit | Amt: 110.00 | Bal: 905.14 | Narration: Disbursement for Requisition #107405e6 / 2608601712
+[106] Date: 2026-03-27T08:28:57.141Z | Type: debit | Amt: 305.00 | Bal: 589.14 | Narration: Disbursement for Requisition #547ab7fe / 2608614482
+[107] Date: 2026-03-27T11:42:33.388Z | Type: credit | Amt: 930.00 | Bal: 1519.14 | Narration: LILLIAN MUBIANA MP260327.1342.D67963
+[108] Date: 2026-03-27T11:42:33.769Z | Type: debit | Amt: 9.30 | Bal: 1509.84 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608607178
+[109] Date: 2026-03-27T11:45:28.101Z | Type: credit | Amt: 630.00 | Bal: 2139.84 | Narration: LILLIAN MUBIANA MP260327.1344.D68314
+[110] Date: 2026-03-27T11:45:28.479Z | Type: debit | Amt: 6.30 | Bal: 2133.54 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608607202
+[111] Date: 2026-03-27T11:51:55.372Z | Type: credit | Amt: 9900.00 | Bal: 12033.54 | Narration: LILLIAN MUBIANA MP260327.1351.L68991
+[112] Date: 2026-03-27T11:51:55.715Z | Type: debit | Amt: 99.00 | Bal: 11934.54 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608607282
+[113] Date: 2026-03-27T12:37:30.799Z | Type: credit | Amt: 9900.00 | Bal: 21834.54 | Narration: Moses Chibale MP260327.1437.A76172
+[114] Date: 2026-03-27T12:37:31.591Z | Type: debit | Amt: 99.00 | Bal: 21735.54 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608608022
+[115] Date: 2026-03-27T13:04:34.463Z | Type: debit | Amt: 1700.00 | Bal: 20020.54 | Narration: Disbursement for Requisition #3de403ef / 2608608458
+[116] Date: 2026-03-27T13:06:35.683Z | Type: debit | Amt: 2000.00 | Bal: 18005.54 | Narration: Disbursement for Requisition #8777774d / 2608608487
+[117] Date: 2026-03-27T13:07:22.602Z | Type: debit | Amt: 3500.00 | Bal: 14487.54 | Narration: Disbursement for Requisition #af202de3 / 2608608517
+[118] Date: 2026-03-27T13:08:07.871Z | Type: debit | Amt: 2500.00 | Bal: 11972.54 | Narration: Disbursement for Requisition #f5290c60 / 2608608527
+[119] Date: 2026-03-27T13:08:51.375Z | Type: debit | Amt: 3200.00 | Bal: 8754.54 | Narration: Disbursement for Requisition #7cdcce2a / 2608608539
+[120] Date: 2026-03-27T13:09:34.120Z | Type: debit | Amt: 3500.00 | Bal: 5236.54 | Narration: Disbursement for Requisition #d3a68129 / 2608608545
+[121] Date: 2026-03-27T13:10:47.956Z | Type: debit | Amt: 500.00 | Bal: 4725.54 | Narration: Disbursement for Requisition #8eab92f4 / 2608608563
+[122] Date: 2026-03-27T13:11:30.565Z | Type: debit | Amt: 2700.00 | Bal: 2010.54 | Narration: Disbursement for Requisition #abe95d76 / 2608608567
+[123] Date: 2026-03-27T13:12:32.575Z | Type: debit | Amt: 1200.00 | Bal: 795.54 | Narration: Disbursement for Requisition #dbe8ca3b / 2608608581
+[124] Date: 2026-03-27T13:13:26.289Z | Type: debit | Amt: 50.00 | Bal: 737.04 | Narration: Disbursement for Requisition #61405890 / 2608608592
+[125] Date: 2026-03-27T13:19:39.652Z | Type: credit | Amt: 1900.00 | Bal: 2637.04 | Narration: Moses Chibale MP260327.1519.D83008
+[126] Date: 2026-03-27T13:19:39.889Z | Type: debit | Amt: 19.00 | Bal: 2618.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2608608671
+[127] Date: 2026-03-30T08:17:33.151Z | Type: debit | Amt: 350.00 | Bal: 2257.04 | Narration: Disbursement for Requisition #53bc7e0d / 2608903751
+[128] Date: 2026-03-31T07:41:33.214Z | Type: credit | Amt: 3030.30 | Bal: 5287.34 | Narration: LILLIAN MUBIANA MP260331.0941.A17259
+[129] Date: 2026-03-31T07:41:33.577Z | Type: debit | Amt: 30.30 | Bal: 5257.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2609003582
+[130] Date: 2026-04-01T06:08:52.979Z | Type: debit | Amt: 2650.00 | Bal: 2592.04 | Narration: Disbursement for Requisition #a2554811 / 2609102776
+[131] Date: 2026-04-01T09:22:47.825Z | Type: debit | Amt: 2200.00 | Bal: 377.04 | Narration: Disbursement for Requisition #38c38b81 / 2609105044
+[132] Date: 2026-04-02T09:22:22.508Z | Type: debit | Amt: 275.00 | Bal: 92.04 | Narration: Disbursement for Requisition #60653208 / 2609203925
+[133] Date: 2026-04-07T10:32:05.606Z | Type: credit | Amt: 9898.99 | Bal: 9991.03 | Narration: LILLIAN MUBIANA MP260407.1231.K45896
+[134] Date: 2026-04-07T10:32:06.272Z | Type: debit | Amt: 98.99 | Bal: 9892.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2609704463
+[135] Date: 2026-04-07T10:35:17.908Z | Type: debit | Amt: 9665.00 | Bal: 207.04 | Narration: Disbursement for Requisition #9a657c3e / 2609704496
+[136] Date: 2026-04-07T12:01:16.960Z | Type: debit | Amt: 100.00 | Bal: 98.54 | Narration: Disbursement for Requisition #6bd118cc / 2609705566
+[137] Date: 2026-04-08T07:22:09.364Z | Type: credit | Amt: 9898.99 | Bal: 9997.53 | Narration: LILLIAN MUBIANA MP260408.0921.D68752
+[138] Date: 2026-04-08T07:22:09.743Z | Type: debit | Amt: 98.99 | Bal: 9898.54 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2609803207
+[139] Date: 2026-04-08T07:57:18.792Z | Type: debit | Amt: 9265.00 | Bal: 613.54 | Narration: Disbursement for Requisition #8786a055 / 2609803654
+[140] Date: 2026-04-08T08:08:34.034Z | Type: debit | Amt: 200.00 | Bal: 403.54 | Narration: Disbursement for Requisition #06f65ea5 / 2609803842
+[141] Date: 2026-04-08T09:10:46.625Z | Type: debit | Amt: 150.00 | Bal: 245.04 | Narration: Disbursement for Requisition #69a928a0 / 2609804746
+[142] Date: 2026-04-08T10:15:14.131Z | Type: credit | Amt: 1515.15 | Bal: 1760.19 | Narration: LILLIAN MUBIANA MP260408.1214.P14828
+[143] Date: 2026-04-08T10:15:14.872Z | Type: debit | Amt: 15.15 | Bal: 1745.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2609805609
+[144] Date: 2026-04-08T10:22:31.381Z | Type: debit | Amt: 150.00 | Bal: 1586.54 | Narration: Disbursement for Requisition #29c2139d / 2609805718
+[145] Date: 2026-04-08T10:23:59.824Z | Type: debit | Amt: 300.00 | Bal: 1276.54 | Narration: Disbursement for Requisition #de5c0d36 / 2609805744
+[146] Date: 2026-04-08T12:57:51.194Z | Type: debit | Amt: 400.00 | Bal: 865.54 | Narration: Disbursement for Requisition #4fd01d9c / 2609807862
+[147] Date: 2026-04-08T14:39:44.480Z | Type: debit | Amt: 450.00 | Bal: 404.54 | Narration: Disbursement for Requisition #c2e27160 / 2609809291
+[148] Date: 2026-04-09T06:46:37.733Z | Type: credit | Amt: 9090.91 | Bal: 9495.45 | Narration: LILLIAN MUBIANA MP260409.0846.Y08675
+[149] Date: 2026-04-09T06:46:38.229Z | Type: debit | Amt: 90.91 | Bal: 9404.54 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2609901941
+[150] Date: 2026-04-09T07:29:33.149Z | Type: debit | Amt: 5780.00 | Bal: 3604.54 | Narration: Disbursement for Requisition #89c3ca41 / 2609902271
+[151] Date: 2026-04-09T07:36:06.100Z | Type: debit | Amt: 340.00 | Bal: 3253.54 | Narration: Disbursement for Requisition #1fe6be9f / 2609902320
+[152] Date: 2026-04-09T07:41:21.152Z | Type: debit | Amt: 700.00 | Bal: 2541.54 | Narration: Disbursement for Requisition #b3670dd7 / 2609912356
+[153] Date: 2026-04-09T07:45:22.978Z | Type: debit | Amt: 1795.00 | Bal: 731.54 | Narration: Disbursement for Requisition #288a8436 / 2609902380
+[154] Date: 2026-04-09T10:42:45.660Z | Type: credit | Amt: 2474.75 | Bal: 3206.29 | Narration: LILLIAN MUBIANA MP260409.1242.J39640
+[155] Date: 2026-04-09T10:42:46.361Z | Type: debit | Amt: 24.75 | Bal: 3181.54 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2609903913
+[156] Date: 2026-04-09T10:59:02.245Z | Type: debit | Amt: 1102.00 | Bal: 2064.54 | Narration: Disbursement for Requisition #4ac378ae / 2609904051
+[157] Date: 2026-04-09T13:18:42.281Z | Type: debit | Amt: 100.00 | Bal: 1956.04 | Narration: Disbursement for Requisition #8f6365bb / 2609905477
+[158] Date: 2026-04-09T14:56:05.303Z | Type: debit | Amt: 485.00 | Bal: 1460.04 | Narration: Disbursement for Requisition #097f41d5 / 2609906337
+[159] Date: 2026-04-10T14:18:40.971Z | Type: credit | Amt: 9898.99 | Bal: 11359.03 | Narration: LILLIAN MUBIANA MP260410.1618.U09687
+[160] Date: 2026-04-10T14:18:41.320Z | Type: debit | Amt: 98.99 | Bal: 11260.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2610005278
+[161] Date: 2026-04-11T14:28:16.323Z | Type: debit | Amt: 7600.00 | Bal: 3640.04 | Narration: Disbursement for Requisition #58bfb529 / 2610118709
+[162] Date: 2026-04-13T07:19:42.818Z | Type: credit | Amt: 9898.99 | Bal: 13539.03 | Narration: Moses Kalunga 9215265388
+[163] Date: 2026-04-13T07:19:53.917Z | Type: debit | Amt: 98.99 | Bal: 13440.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2610301623
+[164] Date: 2026-04-13T07:28:28.561Z | Type: debit | Amt: 3615.00 | Bal: 9807.04 | Narration: Disbursement for Requisition #f69eb3c2 / 2610301700
+[165] Date: 2026-04-13T08:00:34.084Z | Type: debit | Amt: 195.00 | Bal: 9602.04 | Narration: Disbursement for Requisition #181eb3a9 / 2610301927
+[166] Date: 2026-04-13T08:05:46.122Z | Type: debit | Amt: 100.00 | Bal: 9493.54 | Narration: Disbursement for Requisition #92633c0a / 2610301967
+[167] Date: 2026-04-13T11:03:46.508Z | Type: debit | Amt: 50.00 | Bal: 9435.04 | Narration: Disbursement for Requisition #ee3c0093 / 2610303457
+[168] Date: 2026-04-13T13:48:46.730Z | Type: debit | Amt: 300.00 | Bal: 9125.04 | Narration: Disbursement for Requisition #8a0882ff / 2610304849
+[169] Date: 2026-04-13T13:53:42.028Z | Type: debit | Amt: 350.00 | Bal: 8764.04 | Narration: Disbursement for Requisition #5310ce20 / 2610304894
+[170] Date: 2026-04-14T07:51:38.396Z | Type: debit | Amt: 500.00 | Bal: 8253.04 | Narration: Disbursement for Requisition #838f3acc / 2610402659
+[171] Date: 2026-04-16T06:33:09.312Z | Type: credit | Amt: 9898.99 | Bal: 18152.03 | Narration: LILLIAN MUBIANA MP260416.0832.W79354
+[172] Date: 2026-04-16T06:33:14.069Z | Type: debit | Amt: 98.99 | Bal: 18053.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2610611769
+[173] Date: 2026-04-16T09:37:40.857Z | Type: debit | Amt: 6000.00 | Bal: 12033.04 | Narration: Disbursement for Requisition #e540c1e6 / 2610613452
+[174] Date: 2026-04-16T09:39:33.621Z | Type: debit | Amt: 4700.00 | Bal: 7315.04 | Narration: Disbursement for Requisition #3184aa9e / 2610603470
+[175] Date: 2026-04-16T09:41:41.755Z | Type: debit | Amt: 1550.00 | Bal: 5750.04 | Narration: Disbursement for Requisition #d1499607 / 2610603492
+[176] Date: 2026-04-16T15:43:39.010Z | Type: debit | Amt: 1255.00 | Bal: 4480.04 | Narration: Disbursement for Requisition #8d7cfb0a / 2610607269
+[177] Date: 2026-04-17T04:05:04.803Z | Type: debit | Amt: 110.00 | Bal: 4361.54 | Narration: Disbursement for Requisition #bfd74ce6 / 261071954
+[178] Date: 2026-04-17T06:05:34.043Z | Type: debit | Amt: 450.00 | Bal: 3900.54 | Narration: Disbursement for Requisition #a2794ba6 / 2610701616
+[179] Date: 2026-04-17T08:45:38.309Z | Type: debit | Amt: 1000.00 | Bal: 2888.54 | Narration: Disbursement for Requisition #807e3f7d / 2610713126
+[180] Date: 2026-04-17T11:32:09.455Z | Type: debit | Amt: 2500.00 | Bal: 373.54 | Narration: Disbursement for Requisition #f479a283 / 2610704661
+[181] Date: 2026-04-17T12:19:13.822Z | Type: credit | Amt: 2020.20 | Bal: 2393.74 | Narration: LILLIAN MUBIANA MP260417.1418.R15121
+[182] Date: 2026-04-17T12:19:15.680Z | Type: debit | Amt: 20.20 | Bal: 2373.54 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2610705138
+[183] Date: 2026-04-17T12:34:14.524Z | Type: debit | Amt: 1935.00 | Bal: 423.54 | Narration: Disbursement for Requisition #7091d2d3 / 2610705328
+[184] Date: 2026-04-20T09:32:12.355Z | Type: debit | Amt: 152.50 | Bal: 261.04 | Narration: Disbursement for Requisition #f0bcb359 / 2611002976
+[185] Date: 2026-04-23T11:47:05.192Z | Type: credit | Amt: 9898.99 | Bal: 10160.03 | Narration: LILLIAN MUBIANA MP260423.1346.E06075
+[186] Date: 2026-04-23T11:47:05.406Z | Type: debit | Amt: 98.99 | Bal: 10061.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2611303833
+[187] Date: 2026-04-23T12:10:53.914Z | Type: debit | Amt: 7180.00 | Bal: 2861.04 | Narration: Disbursement for Requisition #2f0fa90e / 2611304034
+[188] Date: 2026-04-24T04:15:33.387Z | Type: credit | Amt: 9797.98 | Bal: 12659.02 | Narration: LILLIAN MUBIANA MP260424.0615.Z33071
+[189] Date: 2026-04-24T04:15:33.779Z | Type: debit | Amt: 97.98 | Bal: 12561.04 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2611401066
+[190] Date: 2026-04-24T04:22:55.710Z | Type: debit | Amt: 6345.00 | Bal: 6196.04 | Narration: Disbursement for Requisition #9da11f4a / 2611401088
+[191] Date: 2026-04-24T06:14:45.853Z | Type: debit | Amt: 35.00 | Bal: 6152.54 | Narration: Disbursement for Requisition #378f6b2a / 2611401652
+[192] Date: 2026-04-24T06:15:34.394Z | Type: debit | Amt: 1480.00 | Bal: 4657.54 | Narration: Disbursement for Requisition #a44cafeb / 2611401655
+[193] Date: 2026-04-24T10:25:17.739Z | Type: debit | Amt: 3917.00 | Bal: 722.54 | Narration: Disbursement for Requisition #0495e9c0 / 2611403947
+[194] Date: 2026-04-24T12:40:18.012Z | Type: credit | Amt: 17.09 | Bal: 739.63 | Narration: Stephen Kapambwe MP260424.1439.A22762
+[195] Date: 2026-04-24T12:40:18.793Z | Type: debit | Amt: 0.17 | Bal: 739.46 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2611405333
+[196] Date: 2026-04-27T06:07:10.487Z | Type: debit | Amt: 200.00 | Bal: 529.46 | Narration: Disbursement for Requisition #387b3106 / 2611701456
+[197] Date: 2026-04-27T14:02:52.133Z | Type: debit | Amt: 50.00 | Bal: 470.96 | Narration: Disbursement for Requisition #d3025dd2 / 2611705599
+[198] Date: 2026-04-27T14:40:55.551Z | Type: debit | Amt: 400.00 | Bal: 59.96 | Narration: Disbursement for Requisition #1d8bf140 / 2611705987
+[199] Date: 2026-04-28T21:53:48.868Z | Type: debit | Amt: 59.00 | Bal: 0.96 | Narration: Transaction fee / 26118012029
+[200] Date: 2026-04-29T11:19:33.877Z | Type: credit | Amt: 909.09 | Bal: 910.05 | Narration: LILLIAN MUBIANA MP260429.1319.D81108
+[201] Date: 2026-04-29T11:19:34.087Z | Type: debit | Amt: 9.09 | Bal: 900.96 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2611914741
+[202] Date: 2026-04-29T12:12:17.624Z | Type: debit | Amt: 50.00 | Bal: 842.46 | Narration: Test Disburse / 2611905314
+[203] Date: 2026-04-29T12:19:04.221Z | Type: debit | Amt: 660.00 | Bal: 170.46 | Narration: Disbursement for Requisition #da6c57e3 / 2611905409
+[204] Date: 2026-04-29T12:34:01.493Z | Type: debit | Amt: 50.00 | Bal: 111.96 | Narration: Disbursement for Requisition #5885a3dc / 2611905567
+[205] Date: 2026-04-30T08:06:35.588Z | Type: credit | Amt: 9898.99 | Bal: 10010.95 | Narration: LILLIAN MUBIANA MP260430.1006.K56458
+[206] Date: 2026-04-30T08:06:36.008Z | Type: debit | Amt: 98.99 | Bal: 9911.96 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2612002861
+[207] Date: 2026-04-30T08:08:34.163Z | Type: credit | Amt: 9898.99 | Bal: 19810.95 | Narration: LILLIAN MUBIANA MP260430.1008.K56837
+[208] Date: 2026-04-30T08:08:34.481Z | Type: debit | Amt: 98.99 | Bal: 19711.96 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2612002893
+[209] Date: 2026-04-30T12:50:30.062Z | Type: debit | Amt: 2650.00 | Bal: 17046.96 | Narration: Disbursement for Requisition #d597f950 / 2612006350
+[210] Date: 2026-04-30T13:20:19.293Z | Type: debit | Amt: 2500.00 | Bal: 14531.96 | Narration: Disbursement for Requisition #4326db78 / 2612006292
+[211] Date: 2026-04-30T13:25:39.085Z | Type: debit | Amt: 1000.00 | Bal: 13519.96 | Narration: Disbursement for Requisition #9bea3bac / 2612006327
+[212] Date: 2026-04-30T13:30:26.815Z | Type: debit | Amt: 1700.00 | Bal: 11804.96 | Narration: Disbursement for Requisition #83229056 / 2612006427
+[213] Date: 2026-04-30T13:55:22.807Z | Type: debit | Amt: 2371.67 | Bal: 9418.29 | Narration: Disbursement for Requisition #ff02057b / 2612006202
+[214] Date: 2026-04-30T13:55:26.716Z | Type: debit | Amt: 3300.00 | Bal: 6100.29 | Narration: Disbursement for Requisition #8a06d950 / 2612006262
+[215] Date: 2026-04-30T14:05:04.604Z | Type: debit | Amt: 1750.00 | Bal: 4335.29 | Narration: Disbursement for Requisition #8425111e / 2612006400
+[216] Date: 2026-04-30T14:43:46.186Z | Type: debit | Amt: 1200.00 | Bal: 3120.29 | Narration: Disbursement for Requisition #0f5aee42 / 2612007602
+[217] Date: 2026-04-30T14:55:06.385Z | Type: debit | Amt: 3000.00 | Bal: 105.29 | Narration: Disbursement for Requisition #37015703 / 2612006151
+[218] Date: 2026-05-03T06:40:32.377Z | Type: credit | Amt: 4949.49 | Bal: 5054.78 | Narration: LILLIAN MUBIANA MP260503.0840.B91401
+[219] Date: 2026-05-03T06:40:32.780Z | Type: debit | Amt: 49.49 | Bal: 5005.28 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2612301799
+[220] Date: 2026-05-03T06:42:04.459Z | Type: debit | Amt: 3415.00 | Bal: 1572.28 | Narration: Disbursement for Requisition #2f8d9291 / 2612301823
+[221] Date: 2026-05-03T08:21:19.132Z | Type: credit | Amt: 505.05 | Bal: 2077.33 | Narration: LILLIAN MUBIANA MP260503.1020.D10068
+[222] Date: 2026-05-03T08:21:19.367Z | Type: debit | Amt: 5.05 | Bal: 2072.28 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2612302755
+[223] Date: 2026-05-03T08:33:44.632Z | Type: debit | Amt: 1700.00 | Bal: 357.28 | Narration: Disbursement for Requisition #1dbe51ad / 2612312884
+[224] Date: 2026-05-03T12:34:58.785Z | Type: debit | Amt: 200.00 | Bal: 147.28 | Narration: Disbursement for Requisition #6fb7c7ab / 2612305887
+[225] Date: 2026-05-04T10:41:04.540Z | Type: credit | Amt: 9898.99 | Bal: 10046.27 | Narration: LILLIAN MUBIANA MP260504.1240.F36299
+[226] Date: 2026-05-04T10:41:04.973Z | Type: debit | Amt: 98.99 | Bal: 9947.28 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2612403930
+[227] Date: 2026-05-04T10:52:54.834Z | Type: debit | Amt: 8900.00 | Bal: 1027.28 | Narration: Disbursement for Requisition #6ac78d37 / 2612404085
+[228] Date: 2026-05-04T10:55:48.139Z | Type: debit | Amt: 300.00 | Bal: 717.28 | Narration: Disbursement for Requisition #c57d481f / 2612404114
+[229] Date: 2026-05-05T06:35:16.924Z | Type: debit | Amt: 350.00 | Bal: 356.28 | Narration: Disbursement for Requisition #c5286cf7 / 2612501749
+[230] Date: 2026-05-05T06:41:34.657Z | Type: credit | Amt: 9898.99 | Bal: 10255.27 | Narration: LILLIAN MUBIANA MP260505.0841.Y26755
+[231] Date: 2026-05-05T06:41:35.944Z | Type: debit | Amt: 98.99 | Bal: 10156.28 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2612501796
+[232] Date: 2026-05-05T07:10:16.865Z | Type: debit | Amt: 3100.00 | Bal: 7038.28 | Narration: Disbursement for Requisition #1dcc2052 / 2612502050
+[233] Date: 2026-05-05T16:06:06.987Z | Type: debit | Amt: 1450.00 | Bal: 5573.28 | Narration: Disbursement for Requisition #712b8b46 / 2612507019
+[234] Date: 2026-05-06T11:51:53.552Z | Type: debit | Amt: 516.00 | Bal: 5045.28 | Narration: Disbursement for Requisition #ca8b2fba / 2612604419
+[235] Date: 2026-05-07T07:13:35.814Z | Type: credit | Amt: 1010.10 | Bal: 6055.38 | Narration: LILLIAN MUBIANA MP260507.0913.H30243
+[236] Date: 2026-05-07T07:13:35.987Z | Type: debit | Amt: 10.10 | Bal: 6045.28 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2612701594
+[237] Date: 2026-05-08T06:36:22.417Z | Type: debit | Amt: 720.00 | Bal: 5313.28 | Narration: Disbursement for Requisition #25e2afcc / 2612801573
+[238] Date: 2026-05-09T11:49:26.724Z | Type: debit | Amt: 5000.00 | Bal: 295.28 | Narration: Disbursement for Requisition #23f7ffc0 / 2612905969
+[239] Date: 2026-05-11T05:56:03.157Z | Type: credit | Amt: 9898.99 | Bal: 10194.27 | Narration: LILLIAN MUBIANA MP260511.0755.K59397
+[240] Date: 2026-05-11T05:56:03.359Z | Type: debit | Amt: 98.99 | Bal: 10095.28 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2613101181
+[241] Date: 2026-05-11T14:21:48.643Z | Type: credit | Amt: 9898.99 | Bal: 19994.27 | Narration: LILLIAN MUBIANA MP260511.1621.J52026
+[242] Date: 2026-05-11T14:21:48.785Z | Type: debit | Amt: 98.99 | Bal: 19895.28 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2613104715
+[243] Date: 2026-05-11T14:23:22.430Z | Type: debit | Amt: 300.00 | Bal: 19585.28 | Narration: Disbursement for Requisition #8c267756 / 2613104742
+[244] Date: 2026-05-12T06:57:08.707Z | Type: debit | Amt: 750.00 | Bal: 18823.28 | Narration: Disbursement for Requisition #a34c5fa5 / 2613201731
+[245] Date: 2026-05-12T11:49:10.127Z | Type: debit | Amt: 4356.60 | Bal: 14448.68 | Narration: Disbursement for Requisition #27489325 / 2613204533
+[246] Date: 2026-05-12T11:50:02.368Z | Type: debit | Amt: 4357.00 | Bal: 10073.68 | Narration: Disbursement for Requisition #5af08404 / 2613204536
+[247] Date: 2026-05-12T11:51:14.400Z | Type: debit | Amt: 4357.00 | Bal: 5698.68 | Narration: Disbursement for Requisition #17cf6acb / 2613204548
+[248] Date: 2026-05-12T11:52:03.659Z | Type: debit | Amt: 2295.00 | Bal: 3388.68 | Narration: Disbursement for Requisition #e4a5e4e5 / 2613204561
+[249] Date: 2026-05-14T04:51:07.554Z | Type: debit | Amt: 145.00 | Bal: 3235.18 | Narration: Disbursement for Requisition #1078898d / 2613401077
+[250] Date: 2026-05-14T06:19:07.488Z | Type: debit | Amt: 1000.00 | Bal: 2223.18 | Narration: Disbursement for Requisition #f1ccb4c1 / 2613401578
+[251] Date: 2026-05-14T06:29:31.449Z | Type: credit | Amt: 9898.99 | Bal: 12122.17 | Narration: LILLIAN MUBIANA MP260514.0829.N22183
+[252] Date: 2026-05-14T06:29:31.616Z | Type: debit | Amt: 98.99 | Bal: 12023.18 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2613401635
+[253] Date: 2026-05-14T06:33:29.668Z | Type: debit | Amt: 7185.00 | Bal: 4818.18 | Narration: Disbursement for Requisition #775c839f / 2613401660
+[254] Date: 2026-05-14T06:43:46.275Z | Type: debit | Amt: 2710.00 | Bal: 2093.18 | Narration: Disbursement for Requisition #fe06b379 / 2613401740
+[255] Date: 2026-05-14T06:48:04.034Z | Type: debit | Amt: 50.00 | Bal: 2034.68 | Narration: Disbursement for Requisition #143422c9 / 2613401783
+[256] Date: 2026-05-14T19:17:32.064Z | Type: debit | Amt: 450.00 | Bal: 1573.68 | Narration: Disbursement for Requisition #f9bbcd60 / 2613409951
+[257] Date: 2026-05-15T06:04:28.222Z | Type: debit | Amt: 300.00 | Bal: 1263.68 | Narration: Disbursement for Requisition #c059adf4 / 2613501203
+[258] Date: 2026-05-16T06:37:05.764Z | Type: debit | Amt: 100.00 | Bal: 1155.18 | Narration: Disbursement for Requisition #73da493f / 2613601794
+[259] Date: 2026-05-16T06:40:43.324Z | Type: debit | Amt: 350.00 | Bal: 794.18 | Narration: Disbursement for Requisition #5daca5ba / 2613601823
+[260] Date: 2026-05-17T14:03:13.289Z | Type: debit | Amt: 360.00 | Bal: 423.18 | Narration: Disbursement for Requisition #5c41fb59 / 2613707016
+[261] Date: 2026-05-17T19:19:40.730Z | Type: credit | Amt: 5.00 | Bal: 428.18 | Narration: Stephen Kapambwe MP260517.2119.Y82410
+[262] Date: 2026-05-17T19:19:40.860Z | Type: debit | Amt: 0.05 | Bal: 428.13 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 26137010966
+[263] Date: 2026-05-19T06:39:31.493Z | Type: credit | Amt: 9898.99 | Bal: 10327.12 | Narration: LILLIAN MUBIANA MP260519.0839.G20941
+[264] Date: 2026-05-19T06:39:31.726Z | Type: debit | Amt: 98.99 | Bal: 10228.13 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2613901484
+[265] Date: 2026-05-19T07:31:01.830Z | Type: debit | Amt: 3000.00 | Bal: 7213.13 | Narration: Disbursement for Requisition #6855d352 / 2613901930
+[266] Date: 2026-05-19T07:38:56.695Z | Type: debit | Amt: 2382.00 | Bal: 4816.13 | Narration: Disbursement for Requisition #7da85d05 / 2613901981
+[267] Date: 2026-05-19T09:40:07.096Z | Type: debit | Amt: 1750.00 | Bal: 3051.13 | Narration: Disbursement for Requisition #15f838ad / 2613903224
+[268] Date: 2026-05-20T06:16:39.222Z | Type: debit | Amt: 365.00 | Bal: 2675.13 | Narration: Disbursement for Requisition #267c9fc7 / 2614001206
+[269] Date: 2026-05-20T07:44:38.156Z | Type: debit | Amt: 400.00 | Bal: 2264.13 | Narration: Disbursement for Requisition #50b36406 / 2614001867
+[270] Date: 2026-05-20T09:51:37.459Z | Type: credit | Amt: 9898.99 | Bal: 12163.12 | Narration: LILLIAN MUBIANA MP260520.1150.B49988
+[271] Date: 2026-05-20T09:51:37.630Z | Type: debit | Amt: 98.99 | Bal: 12064.13 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2614003247
+[272] Date: 2026-05-20T09:52:34.385Z | Type: credit | Amt: 10000.00 | Bal: 22064.13 | Narration: Funding moneywise from masterfees / 2614003272
+[273] Date: 2026-05-20T09:52:34.623Z | Type: debit | Amt: 100.00 | Bal: 21964.13 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2614003273
+[274] Date: 2026-05-20T09:57:18.650Z | Type: debit | Amt: 4110.00 | Bal: 17836.13 | Narration: Disbursement for Requisition #da71773c / 2614003319
+[275] Date: 2026-05-20T10:06:42.493Z | Type: debit | Amt: 6275.00 | Bal: 11541.13 | Narration: Disbursement for Requisition #d7d3fd6f / 2614003402
+[276] Date: 2026-05-20T10:50:34.516Z | Type: debit | Amt: 175.00 | Bal: 11356.13 | Narration: Disbursement for Requisition #4731592a / 2614003898
+[277] Date: 2026-05-20T11:54:10.618Z | Type: debit | Amt: 3000.00 | Bal: 8341.13 | Narration: Disbursement for Requisition #ba809161 / 2614004634
+[278] Date: 2026-05-20T12:20:03.666Z | Type: credit | Amt: 15000.00 | Bal: 23341.13 | Narration: Projects Twalumbu / 2614004874
+[279] Date: 2026-05-20T12:20:04.683Z | Type: debit | Amt: 150.00 | Bal: 23191.13 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2614004875
+[280] Date: 2026-05-20T12:21:16.182Z | Type: debit | Amt: 10000.00 | Bal: 13171.13 | Narration: Projects Twalumbu Pitch / 2614004881
+[281] Date: 2026-05-21T12:20:25.729Z | Type: debit | Amt: 500.00 | Bal: 12660.13 | Narration: Disbursement for Requisition #01d609af / 2614104525
+[282] Date: 2026-05-22T06:47:23.773Z | Type: debit | Amt: 511.00 | Bal: 12137.13 | Narration: Disbursement for Requisition #3620c044 / 2614201404
+[283] Date: 2026-05-22T09:47:53.060Z | Type: debit | Amt: 7000.00 | Bal: 5117.13 | Narration: Disbursement for Requisition #fc6b2a3d / 2614202994
+[284] Date: 2026-05-22T09:56:08.426Z | Type: debit | Amt: 100.00 | Bal: 5008.63 | Narration: Disbursement for Requisition #afdb8d5b / 2614203071
+[285] Date: 2026-05-22T10:10:11.057Z | Type: credit | Amt: 15000.00 | Bal: 20008.63 | Narration: Transfering money to moneywise for Mrs Acheta's loan / 2614203215
+[286] Date: 2026-05-22T10:10:11.838Z | Type: debit | Amt: 150.00 | Bal: 19858.63 | Narration: To Blue Opus Software Technology / Split-Inflow Payment - 2614203216
+[287] Date: 2026-05-22T10:13:58.414Z | Type: debit | Amt: 15000.00 | Bal: 4833.63 | Narration: Loan to Mrs Carol Acheta / 2614203239
+[288] Date: 2026-05-23T08:10:00.966Z | Type: debit | Amt: 150.00 | Bal: 4675.13 | Narration: Disbursement for Requisition #8bb21098 / 2614303233
+[289] Date: 2026-05-24T15:53:23.627Z | Type: debit | Amt: 308.00 | Bal: 4356.13 | Narration: Excess Disbursement for Req #da71773c / 2614409156

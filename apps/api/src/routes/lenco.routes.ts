@@ -11,7 +11,8 @@ import {
     resolveBankAccount,
     resolveMobileMoney,
     getPublicWalletContext,
-    logPublicWalletDepositIntent
+    logPublicWalletDepositIntent,
+    getSaleReceiptDetails
 } from '../controllers/lenco.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -36,5 +37,6 @@ router.get('/reconcile/:organizationId', getReconciliationSummary);
 router.get('/banks', getBanks);
 router.post('/resolve-bank', resolveBankAccount);
 router.post('/resolve-momo', resolveMobileMoney);
+router.get('/sale-receipt/:entryId', getSaleReceiptDetails);
 
 export default router;

@@ -202,6 +202,8 @@ const CashLedger: React.FC = () => {
     const [shareWalletId, setShareWalletId] = useState<string | null>(null);
     const [externalBalances, setExternalBalances] = useState<Record<string, number>>({ CASH: 0, AIRTEL_MONEY: 0, BANK: 0 });
     const [verifyingEntryId, setVerifyingEntryId] = useState<string | null>(null);
+    const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null);
+    const [showPendingIntents, setShowPendingIntents] = useState(false);
 
     const { userRole } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
@@ -396,8 +398,17 @@ const CashLedger: React.FC = () => {
 
     // Processed Data (Search, Filter, Sort)
     const processedEntries = React.useMemo(() => {
-        if (!Array.isArray(entries)) return [];
-        let result = [...entries];
+        let result = Array.isArray(entries) ? [...entries] : [];
+
+        // Filter out pending checkouts/intents by default unless toggled
+        if (!showPendingIntents) {
+            result = result.filter(entry => {
+                const isPendingIntent = entry.status === 'PENDING' && 
+                    entry.entry_type === 'INFLOW' && 
+                    (entry.description?.startsWith('PENDING_INTENT:') || entry.description?.includes('PENDING_INTENT:'));
+                return !isPendingIntent;
+            });
+        }
 
         // 1. Dropdown Filters
         if (filterDepartment !== 'ALL') {
@@ -454,7 +465,7 @@ const CashLedger: React.FC = () => {
 
         return result;
 
-    }, [entries, searchQuery, filterDepartment, filterAccount, filterStatus, sortBy]);
+    }, [entries, searchQuery, filterDepartment, filterAccount, filterStatus, sortBy, showPendingIntents]);
 
     const groupedEntries = React.useMemo(() => {
         const groups: { month: string, entries: CashbookEntry[] }[] = [];
@@ -823,6 +834,9 @@ const CashLedger: React.FC = () => {
             if (res.verified) {
                 alert('Transaction verified successfully! The ledger has been updated.');
                 loadData();
+            } else if (res.status === 'DELETED') {
+                alert('This payment intent was never successfully generated on Lenco (it was abandoned/cancelled). We have cleaned up and removed this pending intent from the ledger.');
+                loadData();
             } else {
                 alert(`Transaction status check returned: ${res.status || 'pending'}. The payment gateway hasn't reported this transaction as successful yet.`);
             }
@@ -831,6 +845,176 @@ const CashLedger: React.FC = () => {
             alert('Failed to verify transaction status: ' + error.message);
         } finally {
             setVerifyingEntryId(null);
+        }
+    };
+
+    const handleDownloadReceipt = async (entryId: string) => {
+        try {
+            setGeneratingReceiptId(entryId);
+            const details = await lencoService.getSaleReceiptDetails(entryId);
+
+            const { jsPDF } = await import('jspdf');
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+
+            // Color Palette
+            const primaryColor = '#0f172a'; // slate-900
+            const accentColor = '#2563eb'; // blue-600
+
+            // 1. Draw branding header
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(20);
+            doc.setTextColor(primaryColor);
+            doc.text(details.org.name.toUpperCase(), 20, 25);
+
+            doc.setFontSize(9);
+            doc.setFont('Helvetica', 'normal');
+            doc.setTextColor('#64748b'); // slate-500
+            doc.text('Official Payment Receipt', 20, 31);
+
+            // Right-aligned title
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(11);
+            doc.setTextColor(accentColor);
+            doc.text('RECEIPT', 190, 25, { align: 'right' });
+
+            // Divider
+            doc.setDrawColor('#e2e8f0'); // slate-200
+            doc.setLineWidth(0.5);
+            doc.line(20, 36, 190, 36);
+
+            // 2. Receipt metadata
+            doc.setFont('Helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.setTextColor('#334155'); // slate-700
+            doc.text(`Receipt No: #${details.receiptNumber}`, 20, 46);
+            doc.text(`Date: ${new Date(details.date).toLocaleString()}`, 20, 52);
+            doc.text(`Payment Method: Lenco (Card/Mobile Money)`, 20, 58);
+
+            doc.text(`Bill To:`, 120, 46);
+            doc.setFont('Helvetica', 'bold');
+            doc.text(details.customerName, 120, 52);
+            doc.setFont('Helvetica', 'normal');
+            doc.text(`Phone: ${details.customerPhone}`, 120, 58);
+
+            // Divider
+            doc.line(20, 65, 190, 65);
+
+            // 3. Products Table Header
+            doc.setFillColor('#f8fafc'); // slate-50
+            doc.rect(20, 72, 170, 8, 'F');
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.setTextColor('#475569'); // slate-600
+            doc.text('Item Description', 24, 77);
+            doc.text('Qty', 110, 77, { align: 'center' });
+            doc.text('Unit Price (K)', 145, 77, { align: 'right' });
+            doc.text('Total (K)', 186, 77, { align: 'right' });
+
+            let y = 86;
+            doc.setFont('Helvetica', 'normal');
+            doc.setTextColor('#334155');
+
+            details.items.forEach((item: any) => {
+                doc.text(item.name, 24, y);
+                doc.text(item.quantity.toString(), 110, y, { align: 'center' });
+                doc.text(Number(item.price).toFixed(2), 145, y, { align: 'right' });
+                doc.text(Number(item.total).toFixed(2), 186, y, { align: 'right' });
+
+                // Underline for items
+                doc.setDrawColor('#f1f5f9');
+                doc.line(20, y + 3, 190, y + 3);
+                y += 10;
+            });
+
+            // 4. Financial Calculations
+            const calculationsStartY = y + 5;
+            y += 5;
+            doc.setFont('Helvetica', 'normal');
+            doc.text('Subtotal:', 140, y, { align: 'right' });
+            doc.text(`K ${Number(details.subtotal).toFixed(2)}`, 186, y, { align: 'right' });
+
+            y += 6;
+            doc.text('Processing Fee (2.5%):', 140, y, { align: 'right' });
+            doc.text(`K ${Number(details.processingFee).toFixed(2)}`, 186, y, { align: 'right' });
+
+            y += 8;
+            doc.setFont('Helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.setTextColor(primaryColor);
+            doc.text('Total Paid:', 140, y, { align: 'right' });
+            doc.text(`K ${Number(details.totalPaid).toFixed(2)}`, 186, y, { align: 'right' });
+
+            // Generate and draw QR code on the left side of calculations
+            try {
+                const qrText = `Receipt Verification
+Merchant: ${details.org.name}
+Receipt No: #${details.receiptNumber}
+Client: ${details.customerName}
+Phone: ${details.customerPhone}
+Amount: ZMW ${Number(details.subtotal).toFixed(2)}
+Total Paid: ZMW ${Number(details.totalPaid).toFixed(2)}
+Date: ${new Date(details.date).toLocaleString()}
+Status: VERIFIED`;
+
+                // inline helper function for QR code URL fetching
+                const qrCodeDataUrl = await new Promise<string>((resolve, reject) => {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrText)}`;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        const ctx = canvas.getContext('2d');
+                        if (ctx) {
+                            ctx.drawImage(img, 0, 0);
+                            resolve(canvas.toDataURL('image/png'));
+                        } else {
+                            reject(new Error('Failed to get 2D context'));
+                        }
+                    };
+                    img.onerror = (e) => reject(e);
+                });
+
+                doc.addImage(qrCodeDataUrl, 'PNG', 20, calculationsStartY - 2, 28, 28);
+
+                // Add small helper label
+                doc.setFont('Helvetica', 'normal');
+                doc.setFontSize(6.5);
+                doc.setTextColor('#94a3b8'); // slate-400
+                doc.text('SCAN TO VERIFY RECEIPT', 34, calculationsStartY + 29, { align: 'center' });
+            } catch (qrErr) {
+                console.error('Failed to add QR code to PDF:', qrErr);
+            }
+
+            // Divider
+            y += 10;
+            doc.setDrawColor('#e2e8f0');
+            doc.line(20, y, 190, y);
+
+            // 5. Footer
+            y += 12;
+            doc.setFont('Helvetica', 'italic');
+            doc.setFontSize(9);
+            doc.setTextColor('#94a3b8'); // slate-400
+            doc.text('Thank you for your payment!', 105, y, { align: 'center' });
+
+            y += 5;
+            doc.setFont('Helvetica', 'normal');
+            doc.setFontSize(8);
+            doc.text('Secured by MoneyWise Ledger Gateway', 105, y, { align: 'center' });
+
+            // Save PDF
+            doc.save(`receipt-${details.receiptNumber}.pdf`);
+        } catch (err: any) {
+            console.error('Failed to generate receipt PDF:', err);
+            alert(err.message || 'Failed to download receipt');
+        } finally {
+            setGeneratingReceiptId(null);
         }
     };
 
@@ -1111,6 +1295,31 @@ const CashLedger: React.FC = () => {
                                     <CheckCircle2 size={14} className="mr-2" />
                                     Posted to QuickBooks
                                 </div>
+                            )}
+
+                            {(entry.status === 'COMPLETED' || entry.status === 'ACCOUNTED') && 
+                             entry.entry_type === 'INFLOW' && 
+                             (entry.description?.startsWith('Sale:') || entry.description?.includes('Sale: Products') || entry.description?.includes('Revenue: Products')) && (
+                                <button 
+                                    onClick={async (e) => {
+                                        e.stopPropagation();
+                                        handleDownloadReceipt(entry.id);
+                                    }}
+                                    disabled={generatingReceiptId === entry.id}
+                                    className="flex items-center px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest disabled:opacity-50"
+                                >
+                                    {generatingReceiptId === entry.id ? (
+                                        <>
+                                            <Loader2 size={14} className="mr-2 animate-spin" />
+                                            Generating PDF...
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Download size={14} className="mr-2" />
+                                            Download Receipt
+                                        </>
+                                    )}
+                                </button>
                             )}
                         </div>
 
@@ -1534,6 +1743,17 @@ const CashLedger: React.FC = () => {
                                 <option value="ALL">All Statuses</option>
                                 {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
                             </select>
+                        </div>
+                        <div className="flex items-center gap-2 py-1 ml-0.5">
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={showPendingIntents}
+                                    onChange={(e) => setShowPendingIntents(e.target.checked)}
+                                    className="rounded border-gray-300 text-[#006AFF] focus:ring-[#006AFF] w-4 h-4 cursor-pointer"
+                                />
+                                <span className="text-xs font-bold text-gray-600">Show Pending Checkout Intents</span>
+                            </label>
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="flex flex-col">
@@ -1976,6 +2196,17 @@ const CashLedger: React.FC = () => {
                                 <option value="ALL">All Statuses</option>
                                 {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
                             </select>
+                        </div>
+                        <div className="flex items-center mt-4 h-full pl-2">
+                            <label className="flex items-center gap-2 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={showPendingIntents}
+                                    onChange={(e) => setShowPendingIntents(e.target.checked)}
+                                    className="rounded border-gray-300 text-[#006AFF] focus:ring-[#006AFF] w-4 h-4 cursor-pointer"
+                                />
+                                <span className="text-xs font-bold text-gray-600">Show Pending Checkout Intents</span>
+                            </label>
                         </div>
                         <button 
                             onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}

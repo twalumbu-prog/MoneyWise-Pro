@@ -1,0 +1,14 @@
+
+========================================
+[Step 11] Source: MODEL | Type: MCP_TOOL
+========================================
+Created At: 2026-05-24T16:05:48Z
+Completed At: 2026-05-24T16:05:48Z
+Encountered error in step execution: error executing cascade step: CORTEX_STEP_TYPE_MCP_TOOL: {"error":{"name":"ZodError","message":"[\n  {\n    \"expected\": \"string\",\n    \"code\": \"invalid_type\",\n    \"path\": [\n      \"project_id\"\n    ],\n    \"message\": \"Invalid input: expected string, received undefined\"\n  }\n]"}}
+
+========================================
+[Step 14] Source: MODEL | Type: MCP_TOOL
+========================================
+Created At: 2026-05-24T16:05:53Z
+Completed At: 2026-05-24T16:06:09Z
+Encountered error in step execution: error executing cascade step: CORTEX_STEP_TYPE_MCP_TOOL: {"error":{"name":"Error","message":"Unauthorized. Please provide a valid access token to the MCP server via the --access-token flag or SUPABASE_ACCESS_TOKEN."}}

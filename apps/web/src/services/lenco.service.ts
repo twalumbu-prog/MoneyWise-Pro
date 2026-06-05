@@ -208,6 +208,24 @@ export const lencoService = {
         return response.json();
     },
 
+    async getSaleReceiptDetails(entryId: string) {
+        const { data: session } = await supabase.auth.getSession();
+        const token = session.session?.access_token;
+
+        const response = await fetch(`${API_URL}/lenco/sale-receipt/${entryId}`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to fetch sale receipt details');
+        }
+
+        return response.json();
+    },
+
     /**
      * Calculate estimated payout fee based on Zambian tariff tiers
      */
