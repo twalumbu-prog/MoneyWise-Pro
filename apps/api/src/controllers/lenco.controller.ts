@@ -3,6 +3,7 @@ import { LencoService } from '../services/lenco.service';
 import { supabase } from '../lib/supabase';
 import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
+import { cashbookService } from '../services/cashbook.service';
 
 export const listLencoAccounts = async (req: Request, res: Response) => {
     try {
@@ -890,5 +891,323 @@ export const getPublicSaleReceiptDetails = async (req: Request, res: Response) =
     } catch (error: any) {
         console.error('Error in getPublicSaleReceiptDetails:', error);
         res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/**
+ * Syncs Lenco transactions for all organizations that have a linked Lenco subaccount.
+ */
+export const syncAllLencoTransactions = async (req: Request, res: Response) => {
+    console.log('[Lenco Sync] Background synchronization triggered');
+
+    const authHeader = req.headers['authorization'];
+    const syncSecret = process.env.LENCO_SYNC_SECRET;
+
+    if (syncSecret && authHeader !== `Bearer ${syncSecret}`) {
+        console.warn('[Lenco Sync] Unauthorized attempt to trigger sync');
+        return res.status(401).json({ error: 'Unauthorized: Invalid sync secret' });
+    }
+
+    try {
+        // 1. Fetch all organizations with a linked Lenco subaccount
+        const { data: orgs, error: orgsError } = await supabase
+            .from('organizations')
+            .select('id, name, lenco_subaccount_id, lenco_secret_key')
+            .not('lenco_subaccount_id', 'is', null);
+
+        if (orgsError) {
+            console.error('[Lenco Sync] Error fetching organizations:', orgsError);
+            return res.status(500).json({ error: 'Failed to fetch organizations' });
+        }
+
+        if (!orgs || orgs.length === 0) {
+            console.log('[Lenco Sync] No organizations with linked Lenco subaccounts found.');
+            return res.json({ success: true, processed: 0, message: 'No organizations to sync' });
+        }
+
+        console.log(`[Lenco Sync] Found ${orgs.length} organizations to process.`);
+        const syncResults: any[] = [];
+
+        for (const org of orgs) {
+            const orgId = org.id;
+            const subaccountId = org.lenco_subaccount_id;
+            const secretKey = org.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+
+            if (!subaccountId) continue;
+            if (!secretKey) {
+                console.warn(`[Lenco Sync] Missing API key for organization ${org.name} (${orgId}). Skipping.`);
+                continue;
+            }
+
+            console.log(`[Lenco Sync] Processing organization: ${org.name} (${orgId}) | Subaccount: ${subaccountId}`);
+
+            // Fetch main wallet for this organization
+            const { data: mainWallet, error: walletError } = await supabase
+                .from('organization_wallets')
+                .select('id')
+                .eq('organization_id', orgId)
+                .eq('is_main', true)
+                .maybeSingle();
+
+            if (walletError || !mainWallet) {
+                console.error(`[Lenco Sync] Main wallet not found for org ${org.name}. Skipping.`);
+                continue;
+            }
+
+            const walletId = mainWallet.id;
+
+            // Fetch latest transactions from Lenco API (Page 1 is enough for periodic sync)
+            let txns: any[] = [];
+            try {
+                const resp = await LencoService.getAccountTransactions(subaccountId, { page: 1 }, secretKey);
+                txns = resp?.data || resp?.transactions || resp || [];
+            } catch (err: any) {
+                console.error(`[Lenco Sync] Failed to fetch Lenco transactions for org ${org.name}:`, err.message);
+                syncResults.push({ orgId, orgName: org.name, success: false, error: err.message });
+                continue;
+            }
+
+            if (!Array.isArray(txns) || txns.length === 0) {
+                console.log(`[Lenco Sync] No transactions found on Lenco for org ${org.name}.`);
+                syncResults.push({ orgId, orgName: org.name, success: true, syncedCount: 0 });
+                continue;
+            }
+
+            // Sort chronologically (oldest first) so that running balance is calculated correctly
+            txns.sort((a, b) => new Date(a.datetime || 0).getTime() - new Date(b.datetime || 0).getTime());
+
+            // Build a lookup map of all disbursements for this org to pair matching transactions
+            const { data: disbursements, error: disbError } = await supabase
+                .from('disbursements')
+                .select('requisition_id, external_reference, cashier_id, payment_method, requisitions(status, estimated_total, actual_total)')
+                .eq('requisitions.organization_id', orgId);
+
+            const refToDisb = new Map<string, any>();
+            const reqIdToDisb = new Map<string, any>();
+
+            if (!disbError && disbursements) {
+                for (const d of disbursements) {
+                    if (d.external_reference) {
+                        refToDisb.set(d.external_reference.trim().toLowerCase(), d);
+                    }
+                    if (d.requisition_id) {
+                        reqIdToDisb.set(d.requisition_id.slice(0, 8).toLowerCase(), d);
+                    }
+                }
+            }
+
+            let newEntriesCount = 0;
+            let finalizedCount = 0;
+
+            for (const txn of txns) {
+                const txnId = txn.id || txn.transactionId;
+                const txnRef = (txn.reference || txn.clientReference || '').trim();
+                const txnType = (txn.type || '').toLowerCase(); // 'credit' or 'debit'
+                const txnDesc = txn.remarks || txn.narration || txn.description || '';
+                const txnStatus = (txn.status || '').toLowerCase();
+                const txnAmount = parseFloat(txn.amount || '0');
+
+                if (!txnId || txnStatus === 'failed' || txnStatus === 'reversed') {
+                    continue;
+                }
+
+                // Skip split-inflow debit transactions to avoid double-logging fees
+                const descLower = txnDesc.toLowerCase();
+                if (txnType === 'debit' && (
+                    descLower.includes('split-inflow') || 
+                    descLower.includes('split-inflow payment') || 
+                    descLower.includes('to blue opus software')
+                )) {
+                    continue;
+                }
+
+                // Check if cashbook entry already exists for this transaction
+                const refQuery = supabase
+                    .from('cashbook_entries')
+                    .select('id, status, description, wallet_id, debit, credit')
+                    .eq('organization_id', orgId)
+                    .eq('account_type', 'MONEYWISE_WALLET');
+
+                // Try to find by external_reference = txnId, external_reference = txnRef, or description LIKE txnRef
+                let existingQuery = refQuery.eq('external_reference', txnId);
+                let { data: existingEntry } = await existingQuery.maybeSingle();
+
+                if (!existingEntry && txnRef) {
+                    existingEntry = (await supabase
+                        .from('cashbook_entries')
+                        .select('id, status, description, wallet_id, debit, credit')
+                        .eq('organization_id', orgId)
+                        .eq('account_type', 'MONEYWISE_WALLET')
+                        .eq('external_reference', txnRef)
+                        .maybeSingle()).data;
+                }
+
+                if (!existingEntry && txnRef) {
+                    existingEntry = (await supabase
+                        .from('cashbook_entries')
+                        .select('id, status, description, wallet_id, debit, credit')
+                        .eq('organization_id', orgId)
+                        .eq('account_type', 'MONEYWISE_WALLET')
+                        .like('description', `%${txnRef}%`)
+                        .maybeSingle()).data;
+                }
+
+                if (existingEntry) {
+                    // Entry already exists. If it's PENDING, let's finalize it.
+                    if (existingEntry.status === 'PENDING') {
+                        if (txnType === 'credit') {
+                            // Finalize PENDING inflow (remove intent and create entry)
+                            console.log(`[Lenco Sync] Finalizing pending inflow intent ${existingEntry.id} for ref ${txnRef}`);
+                            await supabase.from('cashbook_entries').delete().eq('id', existingEntry.id);
+                            
+                            const isPublicSale = txnRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
+                            const inflowAmount = isPublicSale ? txnAmount * 0.975 : txnAmount;
+                            
+                            await cashbookService.createEntry(orgId, {
+                                date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                description: txnDesc || `Wallet Deposit | Ref: ${txnRef}`,
+                                debit: inflowAmount,
+                                credit: 0,
+                                entry_type: 'INFLOW',
+                                account_type: 'MONEYWISE_WALLET',
+                                status: 'COMPLETED',
+                                wallet_id: walletId,
+                                external_reference: txnId
+                            } as any);
+
+                            if (!isPublicSale) {
+                                await cashbookService.createEntry(orgId, {
+                                    date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                    description: `MoneyWise Charge`,
+                                    debit: 0,
+                                    credit: txnAmount * 0.01,
+                                    entry_type: 'ADJUSTMENT',
+                                    account_type: 'MONEYWISE_WALLET',
+                                    status: 'COMPLETED',
+                                    wallet_id: walletId,
+                                    external_reference: `${txnId}-fee`
+                                } as any);
+                            }
+                            finalizedCount++;
+                        }
+                    }
+                    continue; // Skip already completed/disbursed entries
+                }
+
+                // If not found, log it as a new transaction!
+                if (txnType === 'credit') {
+                    // New Inflow
+                    console.log(`[Lenco Sync] Logging new inflow transaction: ID=${txnId}, Amt=K${txnAmount}`);
+                    const isPublicSale = txnRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
+                    const inflowAmount = isPublicSale ? txnAmount * 0.975 : txnAmount;
+
+                    await cashbookService.createEntry(orgId, {
+                        date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                        description: txnDesc || `Wallet Deposit | Ref: ${txnRef}`,
+                        debit: inflowAmount,
+                        credit: 0,
+                        entry_type: 'INFLOW',
+                        account_type: 'MONEYWISE_WALLET',
+                        status: 'UNACCOUNTED',
+                        wallet_id: walletId,
+                        external_reference: txnId
+                    } as any);
+
+                    // Create 1% charge for standard deposits
+                    if (!isPublicSale) {
+                        await cashbookService.createEntry(orgId, {
+                            date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                            description: `MoneyWise Charge`,
+                            debit: 0,
+                            credit: txnAmount * 0.01,
+                            entry_type: 'ADJUSTMENT',
+                            account_type: 'MONEYWISE_WALLET',
+                            status: 'COMPLETED',
+                            wallet_id: walletId,
+                            external_reference: `${txnId}-fee`
+                        } as any);
+                    }
+                    newEntriesCount++;
+
+                } else if (txnType === 'debit') {
+                    // New Outflow (Debit)
+                    console.log(`[Lenco Sync] Logging new debit transaction: ID=${txnId}, Amt=K${txnAmount}`);
+                    
+                    // Match to an existing requisition / disbursement
+                    let matchedDisb: any = null;
+                    const refLower = txnRef.toLowerCase();
+                    
+                    if (refLower && refToDisb.has(refLower)) {
+                        matchedDisb = refToDisb.get(refLower);
+                    }
+                    
+                    if (!matchedDisb && refLower) {
+                        for (const [key, disb] of refToDisb.entries()) {
+                            if (key && (refLower.includes(key) || key.includes(refLower))) {
+                                matchedDisb = disb;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (!matchedDisb) {
+                        const reqMatch = txnDesc.match(/#([a-f0-9]{8})/i);
+                        if (reqMatch) {
+                            const shortId = reqMatch[1].toLowerCase();
+                            matchedDisb = reqIdToDisb.get(shortId);
+                        }
+                    }
+
+                    const requisitionId = matchedDisb?.requisition_id || null;
+
+                    if (requisitionId) {
+                        // Check if ledger entry already exists for this requisition
+                        const { data: existingLedger } = await supabase
+                            .from('cashbook_entries')
+                            .select('id')
+                            .eq('requisition_id', requisitionId)
+                            .eq('status', 'DISBURSED')
+                            .maybeSingle();
+
+                        if (!existingLedger) {
+                            console.log(`[Lenco Sync] Finalizing ledger for matched requisition ${requisitionId}`);
+                            await cashbookService.finalizeWalletDisbursementLedger(requisitionId);
+                            finalizedCount++;
+                        }
+                    } else {
+                        // Unmatched Outflow -> Create unaccounted expense entry
+                        await cashbookService.createEntry(orgId, {
+                            date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                            description: txnDesc || `Wallet Outflow | Ref: ${txnRef}`,
+                            debit: 0,
+                            credit: txnAmount,
+                            entry_type: 'EXPENSE',
+                            account_type: 'MONEYWISE_WALLET',
+                            status: 'UNACCOUNTED',
+                            wallet_id: walletId,
+                            external_reference: txnId
+                        } as any);
+                        newEntriesCount++;
+                    }
+                }
+            }
+
+            syncResults.push({
+                orgId,
+                orgName: org.name,
+                success: true,
+                syncedCount: newEntriesCount,
+                finalizedCount: finalizedCount
+            });
+        }
+
+        return res.json({
+            success: true,
+            results: syncResults
+        });
+
+    } catch (error: any) {
+        console.error('[Lenco Sync] Critical sync error:', error);
+        return res.status(500).json({ error: 'Internal server error during synchronization', details: error.message });
     }
 };

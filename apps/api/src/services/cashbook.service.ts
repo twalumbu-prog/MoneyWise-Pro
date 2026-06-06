@@ -28,6 +28,7 @@ export interface CashbookEntry {
     qb_expense_id?: string;
     qb_deposit_id?: string;
     wallet_id?: string;
+    external_reference?: string | null;
 }
 
 export const cashbookService = {

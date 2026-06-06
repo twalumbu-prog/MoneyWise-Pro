@@ -261,7 +261,8 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 entry_type: 'INFLOW',
                 account_type: 'MONEYWISE_WALLET',
                 status: pendingEntry ? 'COMPLETED' : 'UNACCOUNTED',
-                wallet_id: walletId
+                wallet_id: walletId,
+                external_reference: reference || null
             } as any);
 
             // 2. Log the 1% Transaction Charge (only for standard/internal deposits)

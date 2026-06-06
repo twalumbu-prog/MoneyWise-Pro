@@ -136,7 +136,7 @@ export class RequisitionMessageService {
         }
 
         // Stage 5: EXPENSE_SUMMARY & AI_REVIEW (If RECEIVED or further)
-        if (['RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status)) {
+        if (['EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'].includes(req.status) || (req.status === 'RECEIVED' && req.actual_total !== null && Number(req.actual_total) > 0)) {
             const actualTotal = req.actual_total || req.line_items?.reduce((sum: number, i: any) => sum + (i.actual_amount || 0), 0) || 0;
             const change = req.estimated_total - actualTotal;
 

@@ -14,7 +14,8 @@ import {
     logPublicWalletDepositIntent,
     getSaleReceiptDetails,
     getPublicSalesByPhone,
-    getPublicSaleReceiptDetails
+    getPublicSaleReceiptDetails,
+    syncAllLencoTransactions
 } from '../controllers/lenco.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -29,6 +30,9 @@ router.get('/public-context/:wallet_id', getPublicWalletContext);
 router.post('/public-wallet-deposit-intent', logPublicWalletDepositIntent);
 router.get('/public-sales/by-phone/:phone', getPublicSalesByPhone);
 router.get('/public-sale-receipt/:reference', getPublicSaleReceiptDetails);
+
+// Cron sync endpoint (secured inside the handler via LENCO_SYNC_SECRET)
+router.post('/sync', syncAllLencoTransactions);
 
 // Protected routes
 router.use(requireAuth);
