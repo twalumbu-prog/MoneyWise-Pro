@@ -47,7 +47,17 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
         const contentType = response.headers.get('content-type');
         if (contentType && contentType.includes('application/json')) {
             const errorData = await response.json();
-            throw new Error(errorData.error || errorData.message || `API Error: ${response.status}`);
+            let errorMsg = '';
+            const rawError = errorData.error || errorData.message;
+            if (rawError && typeof rawError === 'object') {
+                errorMsg = rawError.Fault?.Error?.[0]?.Detail 
+                    || rawError.Fault?.Error?.[0]?.Message 
+                    || rawError.message 
+                    || JSON.stringify(rawError);
+            } else {
+                errorMsg = rawError || `API Error: ${response.status}`;
+            }
+            throw new Error(errorMsg);
         } else {
             const text = await response.text();
             console.error('[API Client] Non-JSON error response:', text.slice(0, 500));

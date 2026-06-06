@@ -14,14 +14,8 @@ async function testInternalTransfer() {
             headers: { Authorization: `Bearer ${secretKey}` }
         });
         
-        console.log('Accounts Object structure (first account):');
-        console.log(JSON.stringify(accountsRes.data.data[0], null, 2));
-
-        console.log('\nAll Accounts List:');
-        for (const acc of accountsRes.data.data) {
-            console.log(`- Name: ${acc.accountName || acc.name} | NUBAN: ${acc.accountNumber} | ID: ${acc.id} | Bal: ${acc.availableBalance}`);
-        }
-        
+        console.log('\nAll Accounts Details:');
+        console.log(JSON.stringify(accountsRes.data.data, null, 2));
     } catch (err: any) {
         console.error('API Error:', err.response?.data || err.message);
     }

@@ -522,6 +522,17 @@ export const requisitionService = {
             throw new Error(data.error || data.message || 'Failed to update line item details');
         }
         return data;
+    },
+
+    async delete(id: string) {
+        const response = await apiFetch(`/requisitions/${id}`, {
+            method: 'DELETE',
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Failed to delete requisition');
+        }
+        return data;
     }
 };
 

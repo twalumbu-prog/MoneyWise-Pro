@@ -1827,7 +1827,12 @@ export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise
             id, user_id, organization_id, payment_account_id, payment_account_name
         );
 
-        if (!qbResult.success) throw new Error(qbResult.error as string);
+        if (!qbResult.success) {
+            const errorMsg = typeof qbResult.error === 'object'
+                ? (qbResult.error?.Fault?.Error?.[0]?.Detail || qbResult.error?.Fault?.Error?.[0]?.Message || JSON.stringify(qbResult.error))
+                : String(qbResult.error);
+            throw new Error(errorMsg);
+        }
 
         const now = new Date().toISOString();
         await supabase.from('requisitions').update({ 
@@ -2458,5 +2463,102 @@ export const backfillAuditScores = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('[AuditBackfill] Error:', error);
         res.status(500).json({ error: 'Failed to backfill audit scores' });
+    }
+};
+
+export const deleteRequisition = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const userId = (req as any).user.id;
+        const userRole = (req as any).user.role;
+
+        // 1. Fetch requisition to verify permissions and status
+        const { data: requisition, error: fetchError } = await supabase
+            .from('requisitions')
+            .select('id, requestor_id, status, organization_id')
+            .eq('id', id)
+            .single();
+
+        if (fetchError || !requisition) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+
+        // 2. Authorization check: Only the requestor or a privileged user (ADMIN, ACCOUNTANT, MANAGER) can delete it
+        const isPrivileged = ['ADMIN', 'ACCOUNTANT', 'MANAGER'].includes(userRole);
+        if (requisition.requestor_id !== userId && !isPrivileged) {
+            return res.status(403).json({ error: 'Permission denied. Only the requestor, an admin, an accountant, or a manager can delete this requisition.' });
+        }
+
+        // 3. Status check: Only unapproved requisitions (draft, pending approval, rejected, returned) can be deleted
+        const deletableStatuses = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'];
+        if (!deletableStatuses.includes(requisition.status)) {
+            return res.status(400).json({ error: `Cannot delete requisition. Only requisitions in status ${deletableStatuses.join(', ')} can be deleted.` });
+        }
+
+        console.log(`[Delete Requisition] Deleting requisition ${id}...`);
+
+        // 4. Delete related records
+        // 4.1 Delete related vouchers & voucher lines to avoid foreign key constraints
+        const { data: relatedVouchers } = await supabase
+            .from('vouchers')
+            .select('id')
+            .eq('requisition_id', id);
+
+        if (relatedVouchers && relatedVouchers.length > 0) {
+            const voucherIds = relatedVouchers.map(v => v.id);
+            await supabase
+                .from('voucher_lines')
+                .delete()
+                .in('voucher_id', voucherIds);
+            
+            await supabase
+                .from('vouchers')
+                .delete()
+                .in('id', voucherIds);
+        }
+
+        // 4.2 Delete messages
+        await supabase
+            .from('requisition_messages')
+            .delete()
+            .eq('requisition_id', id);
+
+        // 4.3 Delete disbursements
+        await supabase
+            .from('disbursements')
+            .delete()
+            .eq('requisition_id', id);
+
+        // 4.4 Delete line items
+        await supabase
+            .from('line_items')
+            .delete()
+            .eq('requisition_id', id);
+
+        // 4.5 Delete audit logs
+        await supabase
+            .from('audit_logs')
+            .delete()
+            .eq('entity_id', id);
+
+        // 4.6 Delete cashbook entries
+        await supabase
+            .from('cashbook_entries')
+            .delete()
+            .eq('requisition_id', id);
+
+        // 5. Delete requisition
+        const { error: deleteError } = await supabase
+            .from('requisitions')
+            .delete()
+            .eq('id', id);
+
+        if (deleteError) throw deleteError;
+
+        console.log(`[Delete Requisition] Requisition ${id} deleted successfully.`);
+        res.json({ success: true, message: 'Requisition deleted successfully' });
+    } catch (error: any) {
+        console.error('[Delete Requisition] Error:', error);
+        res.status(500).json({ error: 'Failed to delete requisition', details: error.message });
     }
 };

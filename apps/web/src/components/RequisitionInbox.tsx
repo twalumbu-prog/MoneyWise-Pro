@@ -1,5 +1,5 @@
-import React from 'react';
-import { Search, Check, Clock, AlertCircle, CheckCircle2, RotateCcw, MoreVertical } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Search, Check, Clock, AlertCircle, CheckCircle2, RotateCcw, MoreVertical, Trash2 } from 'lucide-react';
 import { getStatusConfig } from '../services/requisition.service';
 
 interface Requisition {
@@ -17,11 +17,24 @@ interface Requisition {
 interface RequisitionInboxProps {
     requisitions: Requisition[];
     onRowClick: (id: string) => void;
+    onDelete?: (id: string) => void;
 }
 
 
 
-export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions, onRowClick }) => {
+export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions, onRowClick, onDelete }) => {
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const menuRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+                setOpenMenuId(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const getStatusIcon = (status: string) => {
         const config = getStatusConfig(status);
@@ -107,10 +120,41 @@ export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions
                                 </td>
 
                                 {/* OPTIONS MENU */}
-                                <td className="py-6 px-6 w-[80px] text-center">
-                                    <button className="p-2 text-gray-200 hover:text-gray-400 transition-colors rounded-lg hover:bg-gray-50 active:scale-95">
+                                <td className="py-6 px-6 w-[80px] text-center relative">
+                                    <button 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setOpenMenuId(openMenuId === req.id ? null : req.id);
+                                        }}
+                                        className="p-2 text-gray-200 hover:text-gray-400 transition-colors rounded-lg hover:bg-gray-50 active:scale-95"
+                                    >
                                         <MoreVertical size={18} />
                                     </button>
+
+                                    {openMenuId === req.id && (
+                                        <div 
+                                            ref={menuRef}
+                                            className="absolute right-6 mt-1 w-48 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1"
+                                            onClick={(e) => e.stopPropagation()}
+                                        >
+                                            {['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'].includes(req.status) ? (
+                                                <button
+                                                    onClick={() => {
+                                                        setOpenMenuId(null);
+                                                        if (onDelete) onDelete(req.id);
+                                                    }}
+                                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-650 hover:bg-red-50 transition-colors flex items-center"
+                                                >
+                                                    <Trash2 size={14} className="mr-2 text-red-500" />
+                                                    Delete Requisition
+                                                </button>
+                                            ) : (
+                                                <div className="px-4 py-2 text-xs text-gray-400 font-medium text-left">
+                                                    No actions available
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                 </td>
                             </tr>
                         ))}

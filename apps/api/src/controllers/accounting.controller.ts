@@ -75,7 +75,10 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
         );
 
         if (!qbResult.success) {
-            throw new Error(qbResult.error as string);
+            const errorMsg = typeof qbResult.error === 'object'
+                ? (qbResult.error?.Fault?.Error?.[0]?.Detail || qbResult.error?.Fault?.Error?.[0]?.Message || JSON.stringify(qbResult.error))
+                : String(qbResult.error);
+            throw new Error(errorMsg);
         }
 
         // ── Stage 7: SAFE LEARNING GATE ──

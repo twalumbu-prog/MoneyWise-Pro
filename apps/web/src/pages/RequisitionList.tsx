@@ -486,6 +486,16 @@ export const RequisitionList: React.FC = () => {
                                             console.error('Failed to fetch requisition details:', err);
                                         }
                                     }}
+                                    onDelete={async (id) => {
+                                        if (window.confirm('Are you sure you want to delete this requisition? This action cannot be undone.')) {
+                                            try {
+                                                await requisitionService.delete(id);
+                                                await loadRequisitions();
+                                            } catch (err: any) {
+                                                alert(err.message || 'Failed to delete requisition');
+                                            }
+                                        }
+                                    }}
                                 />
                             </div>
                         </>

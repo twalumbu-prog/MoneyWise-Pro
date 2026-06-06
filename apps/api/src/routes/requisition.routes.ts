@@ -23,7 +23,8 @@ import {
     revertToDraft,
     getAuditReport,
     backfillAuditScores,
-    updateLineItemDetails
+    updateLineItemDetails,
+    deleteRequisition
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -84,5 +85,6 @@ router.post('/:id/mark-read', markRequisitionRead);
 router.get('/', getRequisitions);
 router.get('/:id', getRequisitionById);
 router.put('/:id', updateRequisition);
+router.delete('/:id', deleteRequisition);
 
 export default router;

@@ -300,7 +300,7 @@ export class QuickBooksService {
                 const qbAccountId = item.qb_account_id || item.accounts?.qb_account_id;
 
                 if (!qbAccountId) {
-                    console.warn(`[QB Purchase] Line item ${item.id} has no qb_account_id`);
+                    throw new Error(`Line item "${item.description}" has no QuickBooks account mapped. Please categorise all items before posting.`);
                 }
 
                 return {
