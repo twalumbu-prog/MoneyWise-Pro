@@ -43,7 +43,9 @@ export const GeneralSettings: React.FC = () => {
         phone: '',
         address: '',
         tax_id: '',
-        website: ''
+        website: '',
+        lenco_public_key: '',
+        lenco_secret_key: ''
     });
 
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
@@ -70,7 +72,9 @@ export const GeneralSettings: React.FC = () => {
                 phone: data.phone || '',
                 address: data.address || '',
                 tax_id: data.tax_id || '',
-                website: data.website || ''
+                website: data.website || '',
+                lenco_public_key: data.lenco_public_key || '',
+                lenco_secret_key: data.lenco_secret_key || ''
             });
             setLencoSubaccountId(data.lenco_subaccount_id || null);
             setLogoUrl(data.logo_url || null);
@@ -500,6 +504,38 @@ export const GeneralSettings: React.FC = () => {
                                     <p className="text-xs text-brand-navy/60 mb-6 font-brand-family">
                                         For security, each organization's wallet is automatically provisioned and locked. This prevents unauthorized fund transfers between organization wallets.
                                     </p>
+
+                                    {/* Lenco API Credentials Inputs */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 pt-4 border-t border-brand-pink/10">
+                                        <div>
+                                            <label className="block text-[10px] font-black text-brand-pink uppercase tracking-widest mb-1.5">
+                                                Lenco Public Key
+                                            </label>
+                                            <input
+                                                type="text"
+                                                name="lenco_public_key"
+                                                value={formData.lenco_public_key}
+                                                onChange={handleChange}
+                                                disabled={!isAdmin || saving}
+                                                className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-pink/20 focus:border-brand-pink outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                                placeholder="e.g. pub-..."
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-black text-brand-pink uppercase tracking-widest mb-1.5">
+                                                Lenco Secret Key
+                                            </label>
+                                            <input
+                                                type="password"
+                                                name="lenco_secret_key"
+                                                value={formData.lenco_secret_key}
+                                                onChange={handleChange}
+                                                disabled={!isAdmin || saving}
+                                                className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-pink/20 focus:border-brand-pink outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                                placeholder="e.g. 64636..."
+                                            />
+                                        </div>
+                                    </div>
 
                                     {lencoSubaccountId ? (
                                         <div className="bg-white/80 rounded-xl p-4 border border-brand-pink/20 flex items-center justify-between">

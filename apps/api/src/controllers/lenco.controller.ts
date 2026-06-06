@@ -7,7 +7,20 @@ import { cashbookService } from '../services/cashbook.service';
 
 export const listLencoAccounts = async (req: Request, res: Response) => {
     try {
-        const accounts = await LencoService.listAccounts();
+        const organizationId = (req as any).user?.organization_id;
+        let secretKey: string | undefined = undefined;
+        if (organizationId) {
+            const { data: orgData } = await supabase
+                .from('organizations')
+                .select('lenco_secret_key')
+                .eq('id', organizationId)
+                .single();
+            if (orgData?.lenco_secret_key) {
+                secretKey = orgData.lenco_secret_key;
+            }
+        }
+
+        const accounts = await LencoService.listAccounts(secretKey);
         res.json(accounts);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
@@ -22,7 +35,7 @@ export const provisionOrganizationLencoAccount = async (req: Request, res: Respo
         // 1. Get organization
         const { data: org, error: orgError } = await supabase
             .from('organizations')
-            .select('name, lenco_subaccount_id')
+            .select('name, lenco_subaccount_id, lenco_secret_key')
             .eq('id', id)
             .single();
 
@@ -39,7 +52,7 @@ export const provisionOrganizationLencoAccount = async (req: Request, res: Respo
         console.log(`[Lenco] Attempting to create Lenco account for: ${org.name}`);
         let lencoAccount;
         try {
-            lencoAccount = await LencoService.createAccount(org.name);
+            lencoAccount = await LencoService.createAccount(org.name, 'ZMW', org.lenco_secret_key || undefined);
         } catch (lencoError: any) {
             console.error('[Lenco] Account creation failed:', lencoError.message);
             return res.status(502).json({ 
@@ -66,8 +79,21 @@ export const provisionOrganizationLencoAccount = async (req: Request, res: Respo
 
 export const listAvailableAccounts = async (req: Request, res: Response) => {
     try {
+        const organizationId = (req as any).user?.organization_id;
+        let secretKey: string | undefined = undefined;
+        if (organizationId) {
+            const { data: orgData } = await supabase
+                .from('organizations')
+                .select('lenco_secret_key')
+                .eq('id', organizationId)
+                .single();
+            if (orgData?.lenco_secret_key) {
+                secretKey = orgData.lenco_secret_key;
+            }
+        }
+
         // 1. Get all Lenco accounts
-        const allAccounts = await LencoService.listAccounts();
+        const allAccounts = await LencoService.listAccounts(secretKey);
 
         // 2. Get all currently linked account IDs from our DB
         const { data: linkedOrgs, error: dbError } = await supabase
