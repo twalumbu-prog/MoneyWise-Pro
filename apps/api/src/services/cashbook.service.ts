@@ -76,90 +76,25 @@ export const cashbookService = {
     },
 
     async recalculateBalancesFrom(organizationId: string, targetDate: string, targetCreatedAt: string, accountType: string = 'CASH', walletId?: string) {
-        console.log(`[Ledger] Recalculating balances for Org ${organizationId.slice(0, 8)}, Account ${accountType}${walletId ? `, Wallet ${walletId.slice(0, 8)}` : ''} from ${targetDate} ${targetCreatedAt.slice(11, 19)}`);
+        console.log(`[Ledger] Recalculating balances for Org ${organizationId.slice(0, 8)}, Account ${accountType}${walletId ? `, Wallet ${walletId.slice(0, 8)}` : ''} from ${targetDate} ${targetCreatedAt.slice(11, 19)} using RPC`);
 
-        // 1. Find the entry immediately BEFORE the target (logical temporal predecessor)
-        let prevQuery = supabase
-            .from('cashbook_entries')
-            .select('balance_after')
-            .eq('organization_id', organizationId)
-            .eq('account_type', accountType)
-            .neq('status', 'PENDING')
-            .or(`date.lt.${targetDate},and(date.eq.${targetDate},created_at.lt.${targetCreatedAt})`);
+        try {
+            const { error } = await supabase.rpc('recalculate_cashbook_balances', {
+                p_organization_id: organizationId,
+                p_target_date: targetDate,
+                p_target_created_at: targetCreatedAt,
+                p_account_type: accountType,
+                p_wallet_id: walletId || null
+            });
 
-        if (walletId) {
-            prevQuery = prevQuery.eq('wallet_id', walletId);
-        } else if (accountType === 'MONEYWISE_WALLET') {
-            prevQuery = prevQuery.is('wallet_id', null);
-        }
-
-        const { data: prevEntry } = await prevQuery
-            .order('date', { ascending: false })
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-        let runningBalance = prevEntry ? parseFloat(prevEntry.balance_after || '0') : 0;
-        console.log(`[Ledger] Previous balance found: ${runningBalance}`);
-
-        // 2. Fetch all entries from the target point forward (inclusive of the target)
-        // We use the same temporal logic: today's remaining entries + all future entries
-        let query = supabase
-            .from('cashbook_entries')
-            .select('*')
-            .eq('organization_id', organizationId)
-            .eq('account_type', accountType)
-            .or(`date.gt.${targetDate},and(date.eq.${targetDate},created_at.gte.${targetCreatedAt})`);
-
-        if (walletId) {
-            query = query.eq('wallet_id', walletId);
-        } else if (accountType === 'MONEYWISE_WALLET') {
-            query = query.is('wallet_id', null);
-        }
-
-        const { data: entries, error } = await query
-            .order('date', { ascending: true })
-            .order('created_at', { ascending: true });
-
-        if (error) {
-            console.error(`[Ledger] Error fetching entries for recalculation:`, error);
-            return;
-        }
-
-        if (!entries || entries.length === 0) {
-            console.warn(`[Ledger] No entries found for recalculation at or after ${targetDate} ${targetCreatedAt}`);
-            return;
-        }
-
-        console.log(`[Ledger] Updating ${entries.length} entries...`);
-
-        for (const entry of entries) {
-            if (entry.status === 'PENDING') {
-                const { error: updateError } = await supabase
-                    .from('cashbook_entries')
-                    .update({ balance_after: 0 })
-                    .eq('id', entry.id);
-                if (updateError) {
-                    console.error(`[Ledger] Failed to clear balance for pending entry ${entry.id}:`, updateError);
-                }
-                continue;
+            if (error) {
+                console.error(`[Ledger] RPC Error recalculating balances:`, error);
+                throw error;
             }
-            const debit = parseFloat(entry.debit || '0');
-            const credit = parseFloat(entry.credit || '0');
-            const newBalance = runningBalance + debit - credit;
-            
-            const { error: updateError } = await supabase
-                .from('cashbook_entries')
-                .update({ balance_after: newBalance })
-                .eq('id', entry.id);
-
-            if (updateError) {
-                console.error(`[Ledger] Failed to update balance for entry ${entry.id}:`, updateError);
-            }
-            
-            runningBalance = newBalance;
+            console.log(`[Ledger] Finished recalculating via RPC.`);
+        } catch (err: any) {
+            console.error(`[Ledger] Failed to recalculate balances:`, err.message);
         }
-        console.log(`[Ledger] Finished recalculating. Final balance: ${runningBalance}`);
     },
 
     /**

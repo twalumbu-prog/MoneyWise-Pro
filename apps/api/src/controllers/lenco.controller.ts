@@ -1005,7 +1005,7 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
             // Build a lookup map of all disbursements for this org to pair matching transactions
             const { data: disbursements, error: disbError } = await supabase
                 .from('disbursements')
-                .select('requisition_id, external_reference, cashier_id, payment_method, requisitions(status, estimated_total, actual_total)')
+                .select('requisition_id, external_reference, cashier_id, payment_method, requisitions!inner(status, estimated_total, actual_total)')
                 .eq('requisitions.organization_id', orgId);
 
             const refToDisb = new Map<string, any>();
