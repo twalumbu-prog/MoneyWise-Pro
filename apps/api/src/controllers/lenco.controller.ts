@@ -1022,12 +1022,40 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                 }
             }
 
+            // ─────────────────────────────────────────────────────────────────
+            // KEY FIX: Build a settlement-ID → merchant-reference map
+            // ─────────────────────────────────────────────────────────────────
+            // The /transactions API returns only the raw bank transaction UUID and
+            // the narration (payer name). It does NOT include the DEP-... merchant
+            // reference that our webhook saves to external_reference.
+            //
+            // The /collections API returns objects with BOTH:
+            //   - reference     (e.g. "DEP-...") — what the webhook stores
+            //   - settlement.id (e.g. "db47b07b-...") — the bank transaction UUID
+            //
+            // By mapping settlement.id → reference, we can resolve the correct
+            // merchant reference for each bank credit transaction before doing
+            // the dedup check against our cashbook_entries table.
+            const settlementToRef = new Map<string, string>();
+            try {
+                const collectionsResp = await LencoService.getCollections({ page: 1 }, secretKey);
+                const collections: any[] = collectionsResp?.data || [];
+                for (const col of collections) {
+                    if (col.settlement?.id && col.reference) {
+                        settlementToRef.set(col.settlement.id, col.reference);
+                    }
+                }
+                console.log(`[Lenco Sync] Built settlement→ref map with ${settlementToRef.size} entries for org ${org.name}`);
+            } catch (err: any) {
+                // Non-fatal: we can still sync, just with less deduplication accuracy
+                console.warn(`[Lenco Sync] Could not fetch collections for org ${org.name}: ${err.message}. Proceeding without settlement map.`);
+            }
+
             let newEntriesCount = 0;
             let finalizedCount = 0;
 
             for (const txn of txns) {
                 const txnId = txn.id || txn.transactionId;
-                const txnRef = (txn.reference || txn.clientReference || '').trim();
                 const txnType = (txn.type || '').toLowerCase(); // 'credit' or 'debit'
                 const txnDesc = txn.remarks || txn.narration || txn.description || '';
                 const txnStatus = (txn.status || '').toLowerCase();
@@ -1047,35 +1075,54 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     continue;
                 }
 
-                // Check if cashbook entry already exists for this transaction
-                const refQuery = supabase
+                // Resolve merchant reference:
+                // For credit transactions, look up the DEP-... reference via the
+                // settlement map. Fall back to any reference the API gives us.
+                let resolvedRef = (txn.reference || txn.clientReference || '').trim();
+                if (txnType === 'credit' && !resolvedRef && settlementToRef.has(txnId)) {
+                    resolvedRef = settlementToRef.get(txnId)!;
+                    console.log(`[Lenco Sync] Resolved merchant ref for txn ${txnId}: ${resolvedRef}`);
+                }
+
+                // ─── Check if cashbook entry already exists for this transaction ───
+                // Use fresh, independent query builders (not chained) to avoid
+                // Supabase query builder mutation bugs where chained .eq() calls
+                // on a shared builder variable would compound filters incorrectly.
+
+                let existingEntry: any = null;
+
+                // 1. Check by the bank transaction UUID (txnId)
+                const { data: byTxnId } = await supabase
                     .from('cashbook_entries')
                     .select('id, status, description, wallet_id, debit, credit')
                     .eq('organization_id', orgId)
-                    .eq('account_type', 'MONEYWISE_WALLET');
+                    .eq('account_type', 'MONEYWISE_WALLET')
+                    .eq('external_reference', txnId)
+                    .maybeSingle();
+                existingEntry = byTxnId;
 
-                // Try to find by external_reference = txnId, external_reference = txnRef, or description LIKE txnRef
-                let existingQuery = refQuery.eq('external_reference', txnId);
-                let { data: existingEntry } = await existingQuery.maybeSingle();
-
-                if (!existingEntry && txnRef) {
-                    existingEntry = (await supabase
+                // 2. Check by the resolved merchant reference (e.g. DEP-...)
+                if (!existingEntry && resolvedRef) {
+                    const { data: byRef } = await supabase
                         .from('cashbook_entries')
                         .select('id, status, description, wallet_id, debit, credit')
                         .eq('organization_id', orgId)
                         .eq('account_type', 'MONEYWISE_WALLET')
-                        .eq('external_reference', txnRef)
-                        .maybeSingle()).data;
+                        .eq('external_reference', resolvedRef)
+                        .maybeSingle();
+                    existingEntry = byRef;
                 }
 
-                if (!existingEntry && txnRef) {
-                    existingEntry = (await supabase
+                // 3. Fallback: check by merchant reference substring in description
+                if (!existingEntry && resolvedRef) {
+                    const { data: byDesc } = await supabase
                         .from('cashbook_entries')
                         .select('id, status, description, wallet_id, debit, credit')
                         .eq('organization_id', orgId)
                         .eq('account_type', 'MONEYWISE_WALLET')
-                        .like('description', `%${txnRef}%`)
-                        .maybeSingle()).data;
+                        .like('description', `%${resolvedRef}%`)
+                        .maybeSingle();
+                    existingEntry = byDesc;
                 }
 
                 if (existingEntry) {
@@ -1083,22 +1130,22 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     if (existingEntry.status === 'PENDING') {
                         if (txnType === 'credit') {
                             // Finalize PENDING inflow (remove intent and create entry)
-                            console.log(`[Lenco Sync] Finalizing pending inflow intent ${existingEntry.id} for ref ${txnRef}`);
+                            console.log(`[Lenco Sync] Finalizing pending inflow intent ${existingEntry.id} for ref ${resolvedRef || txnId}`);
                             await supabase.from('cashbook_entries').delete().eq('id', existingEntry.id);
                             
-                            const isPublicSale = txnRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
+                            const isPublicSale = resolvedRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
                             const inflowAmount = isPublicSale ? txnAmount * 0.975 : txnAmount;
                             
                             await cashbookService.createEntry(orgId, {
                                 date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                description: txnDesc || `Wallet Deposit | Ref: ${txnRef}`,
+                                description: txnDesc || `Wallet Deposit | Ref: ${resolvedRef || txnId}`,
                                 debit: inflowAmount,
                                 credit: 0,
                                 entry_type: 'INFLOW',
                                 account_type: 'MONEYWISE_WALLET',
                                 status: 'COMPLETED',
                                 wallet_id: walletId,
-                                external_reference: txnId
+                                external_reference: resolvedRef || txnId
                             } as any);
 
                             if (!isPublicSale) {
@@ -1111,7 +1158,7 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                     account_type: 'MONEYWISE_WALLET',
                                     status: 'COMPLETED',
                                     wallet_id: walletId,
-                                    external_reference: `${txnId}-fee`
+                                    external_reference: `${resolvedRef || txnId}-fee`
                                 } as any);
                             }
                             finalizedCount++;
@@ -1124,19 +1171,23 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                 if (txnType === 'credit') {
                     // New Inflow
                     console.log(`[Lenco Sync] Logging new inflow transaction: ID=${txnId}, Amt=K${txnAmount}`);
-                    const isPublicSale = txnRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
+                    const isPublicSale = resolvedRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
                     const inflowAmount = isPublicSale ? txnAmount * 0.975 : txnAmount;
+                    // Use the merchant reference as external_reference if available so that
+                    // the unique index (uniq_cashbook_inflow_per_reference) matches what the
+                    // webhook would have stored, preventing future duplicates.
+                    const entryExternalRef = resolvedRef || txnId;
 
                     await cashbookService.createEntry(orgId, {
                         date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                        description: txnDesc || `Wallet Deposit | Ref: ${txnRef}`,
+                        description: txnDesc || `Wallet Deposit | Ref: ${entryExternalRef}`,
                         debit: inflowAmount,
                         credit: 0,
                         entry_type: 'INFLOW',
                         account_type: 'MONEYWISE_WALLET',
                         status: 'UNACCOUNTED',
                         wallet_id: walletId,
-                        external_reference: txnId
+                        external_reference: entryExternalRef
                     } as any);
 
                     // Create 1% charge for standard deposits
@@ -1150,7 +1201,7 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             account_type: 'MONEYWISE_WALLET',
                             status: 'COMPLETED',
                             wallet_id: walletId,
-                            external_reference: `${txnId}-fee`
+                            external_reference: `${entryExternalRef}-fee`
                         } as any);
                     }
                     newEntriesCount++;
@@ -1161,7 +1212,7 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     
                     // Match to an existing requisition / disbursement
                     let matchedDisb: any = null;
-                    const refLower = txnRef.toLowerCase();
+                    const refLower = resolvedRef.toLowerCase();
                     
                     if (refLower && refToDisb.has(refLower)) {
                         matchedDisb = refToDisb.get(refLower);
@@ -1204,13 +1255,11 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                         // Unmatched Outflow -> Create unaccounted expense entry
                         await cashbookService.createEntry(orgId, {
                             date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                            description: txnDesc || `Wallet Outflow | Ref: ${txnRef}`,
+                            description: txnDesc || `Wallet Outflow | Ref: ${resolvedRef || txnId}`,
                             debit: 0,
                             credit: txnAmount,
                             entry_type: 'EXPENSE',
                             account_type: 'MONEYWISE_WALLET',
-                            status: 'UNACCOUNTED',
-                            wallet_id: walletId,
                             external_reference: txnId
                         } as any);
                         newEntriesCount++;

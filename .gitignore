@@ -64,3 +64,10 @@ temp
 
 .cursor/mcp.json
 scripts/supabase-mcp.sh
+
+# Scratch / diagnostic scripts (dev-only)
+apps/api/scratch/
+apps/api/scripts/
+scratch/
+apps/api/check_*.js
+apps/api/inspect_*.js

@@ -310,6 +310,23 @@ export class LencoService {
     }
 
     /**
+     * List merchant collections from Lenco API
+     */
+    static async getCollections(params: { reference?: string; status?: string; page?: number } = {}, secretKey?: string) {
+        try {
+            const response = await axios.get(`${this.BASE_URL}/collections`, {
+                headers: this.getHeaders(secretKey),
+                params
+            });
+            return response.data;
+        } catch (error: any) {
+            console.error('Lenco collections list failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to list collections');
+        }
+    }
+
+
+    /**
      * List all Lenco accounts (Subaccounts)
      */
     static async listAccounts(secretKey?: string) {

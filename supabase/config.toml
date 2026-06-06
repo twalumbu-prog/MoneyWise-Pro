@@ -1,0 +1,2 @@
+[functions.sync-lenco-transactions]
+verify_jwt = false
