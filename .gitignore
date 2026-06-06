@@ -61,3 +61,6 @@ Thumbs.db
 .cache
 .temp
 temp
+
+.cursor/mcp.json
+scripts/supabase-mcp.sh
