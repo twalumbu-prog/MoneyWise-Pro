@@ -1038,12 +1038,18 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
             // the dedup check against our cashbook_entries table.
             const settlementToRef = new Map<string, string>();
             try {
-                const collectionsResp = await LencoService.getCollections({ page: 1 }, secretKey);
-                const collections: any[] = collectionsResp?.data || [];
-                for (const col of collections) {
-                    if (col.settlement?.id && col.reference) {
-                        settlementToRef.set(col.settlement.id, col.reference);
+                let colPage = 1;
+                while (true) {
+                    const collectionsResp = await LencoService.getCollections({ page: colPage }, secretKey);
+                    const collections: any[] = collectionsResp?.data || [];
+                    if (collections.length === 0) break;
+                    for (const col of collections) {
+                        if (col.settlement?.id && col.reference) {
+                            settlementToRef.set(col.settlement.id, col.reference);
+                        }
                     }
+                    if (collections.length < 100) break; // Last page
+                    colPage++;
                 }
                 console.log(`[Lenco Sync] Built settlement→ref map with ${settlementToRef.size} entries for org ${org.name}`);
             } catch (err: any) {
