@@ -467,19 +467,31 @@ export const joinRequest = async (req: any, res: any): Promise<any> => {
 
             const existingUserId = authSession.user.id;
 
-            // Ensure they exist in public.users (in case they were only in auth.users)
-            const { error: upsertError } = await supabase.from('users').upsert({
-                id: existingUserId,
-                email: normalizedEmail,
-                name: name || normalizedEmail.split('@')[0],
-                employee_id: finalEmployeeId,
-                organization_id: organizationId, // Link to this org as active
-                username: username || null,
-                status: 'ACTIVE'
-            });
+            // Only create a public.users row if one doesn't already exist
+            // (e.g. user exists in auth.users but not yet in public.users).
+            // Do NOT overwrite an existing user's organization_id or status —
+            // that would break their current active session.
+            const { data: existingPublicUser } = await supabase
+                .from('users')
+                .select('id')
+                .eq('id', existingUserId)
+                .maybeSingle();
 
-            if (upsertError) {
-                console.error('[JoinRequest] Failed to upsert public profile for existing auth user:', upsertError);
+            if (!existingPublicUser) {
+                const { error: upsertError } = await supabase.from('users').insert({
+                    id: existingUserId,
+                    email: normalizedEmail,
+                    name: name || normalizedEmail.split('@')[0],
+                    employee_id: finalEmployeeId,
+                    organization_id: organizationId,
+                    username: username || null,
+                    status: 'PENDING_APPROVAL'
+                });
+
+                if (upsertError) {
+                    console.error('[JoinRequest] Failed to create public profile for auth-only user:', upsertError);
+                    return res.status(500).json({ error: 'Failed to create user profile: ' + upsertError.message });
+                }
             }
 
             // Check if they are already in the organization

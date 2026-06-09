@@ -313,14 +313,17 @@ export const updateUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(403).json({ error: 'Only admins can update users' });
         }
 
-        // Ensure target user is in same org
-        const { data: targetUser } = await supabase
-            .from('users')
-            .select('organization_id')
-            .eq('id', id)
-            .single();
+        // Ensure target user has a membership record in this org (covers both active
+        // members and pending join requestors whose users.organization_id may still
+        // point to a different org).
+        const { data: membership } = await supabase
+            .from('user_organizations')
+            .select('status')
+            .eq('user_id', id)
+            .eq('organization_id', organization_id)
+            .maybeSingle();
 
-        if (!targetUser || targetUser.organization_id !== organization_id) {
+        if (!membership) {
             return res.status(404).json({ error: 'User not found in organization' });
         }
 
@@ -338,18 +341,27 @@ export const updateUser = async (req: AuthRequest, res: any): Promise<any> => {
             if (uoError) throw uoError;
         }
 
-        // Check if the modified organization is the user's active one
+        // Sync role/status back to users table only when this org is the user's active one,
+        // OR when approving a pending join request (status → ACTIVE) so the user can log in.
         const { data: curUser } = await supabase
             .from('users')
-            .select('organization_id')
+            .select('organization_id, status')
             .eq('id', id)
             .single();
 
         const userUpdates: any = {};
         if (name) userUpdates.name = name;
-        if (curUser && curUser.organization_id === organization_id) {
+
+        const isActiveOrg = curUser && curUser.organization_id === organization_id;
+        const isApproving = status === 'ACTIVE' && membership.status === 'PENDING_APPROVAL';
+
+        if (isActiveOrg || isApproving) {
             if (role) userUpdates.role = role;
             if (status) userUpdates.status = status;
+            // If approving a join request, also set the user's active org to this one
+            if (isApproving && !isActiveOrg) {
+                userUpdates.organization_id = organization_id;
+            }
         }
 
         if (Object.keys(userUpdates).length > 0) {
