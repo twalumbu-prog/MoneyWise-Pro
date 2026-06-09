@@ -265,25 +265,11 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 external_reference: reference || null
             } as any);
 
-            // 2. Log the 1% Transaction Charge (only for standard/internal deposits)
-            if (!isPublicSale) {
-                const feeAmount = parseFloat(amount) * 0.01;
-                const feeDescription = `MoneyWise Charge`;
-                
-                await cashbookService.createEntry(organizationId, {
-                    date: new Date().toISOString().split('T')[0],
-                    description: feeDescription,
-                    debit: 0,
-                    credit: feeAmount,
-                    entry_type: 'ADJUSTMENT',
-                    account_type: 'MONEYWISE_WALLET',
-                    status: 'COMPLETED',
-                    wallet_id: walletId
-                } as any);
-                console.log(`[Lenco Webhook] Standard collection logged as INFLOW + 1% Fee ADJUSTMENT.`);
-            } else {
-                console.log(`[Lenco Webhook] Public product sale logged as single line item INFLOW (amount: ${inflowAmount}).`);
-            }
+            // NOTE: The 1% MoneyWise platform charge is intentionally NOT posted to the wallet
+            // ledger. The wallet must mirror the actual Lenco balance, which is not reduced by
+            // this fee. (Previously an ADJUSTMENT entry was created here, which pushed the wallet
+            // balance below the real bank balance.)
+            console.log(`[Lenco Webhook] ${isPublicSale ? 'Public product sale' : 'Standard collection'} logged as INFLOW (amount: ${inflowAmount}).`);
         }
 
         // Update product sales status if a reference is provided

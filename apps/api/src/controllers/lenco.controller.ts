@@ -982,6 +982,29 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
 
             const walletId = mainWallet.id;
 
+            // ─────────────────────────────────────────────────────────────────
+            // Reconciliation cutoff: if this wallet has an OPENING_BALANCE entry,
+            // its date marks the start of the reconciled ledger. Lenco transactions
+            // dated before that opening balance must NOT be re-logged (they are
+            // already represented by the opening balance figure). Without this, a
+            // periodic sync would keep re-creating historical pre-opening entries
+            // and break a wallet that was reconciled to a fixed opening balance.
+            let syncCutoffDate: string | null = null;
+            const { data: openingEntry } = await supabase
+                .from('cashbook_entries')
+                .select('date')
+                .eq('organization_id', orgId)
+                .eq('wallet_id', walletId)
+                .eq('account_type', 'MONEYWISE_WALLET')
+                .eq('entry_type', 'OPENING_BALANCE')
+                .order('date', { ascending: true })
+                .limit(1)
+                .maybeSingle();
+            if (openingEntry?.date) {
+                syncCutoffDate = openingEntry.date;
+                console.log(`[Lenco Sync] Reconciliation cutoff for ${org.name}: ${syncCutoffDate} — transactions before this date are ignored.`);
+            }
+
             // Fetch latest transactions from Lenco API (Page 1 is enough for periodic sync)
             let txns: any[] = [];
             try {
@@ -1001,6 +1024,20 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
 
             // Sort chronologically (oldest first) so that running balance is calculated correctly
             txns.sort((a, b) => new Date(a.datetime || 0).getTime() - new Date(b.datetime || 0).getTime());
+
+            // Pre-compute the "gross" amount that actually moved the Lenco balance for each
+            // transaction. For debits this is amount + bank fee (the balance drops by more than
+            // the stated amount); for credits it equals the credited amount. The wallet ledger
+            // mirrors the bank, so outflows are logged at this gross figure.
+            for (let i = 0; i < txns.length; i++) {
+                const prevBal = i > 0 && txns[i - 1].balance != null ? parseFloat(txns[i - 1].balance) : null;
+                const curBal = txns[i].balance != null ? parseFloat(txns[i].balance) : null;
+                const amt = parseFloat(txns[i].amount || '0');
+                const isDebit = (txns[i].type || '').toLowerCase() === 'debit';
+                txns[i]._gross = (isDebit && prevBal != null && curBal != null)
+                    ? Math.round((prevBal - curBal) * 100) / 100
+                    : amt;
+            }
 
             // Build a lookup map of all disbursements for this org to pair matching transactions
             const { data: disbursements, error: disbError } = await supabase
@@ -1066,8 +1103,15 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                 const txnDesc = txn.remarks || txn.narration || txn.description || '';
                 const txnStatus = (txn.status || '').toLowerCase();
                 const txnAmount = parseFloat(txn.amount || '0');
+                const txnGross = typeof txn._gross === 'number' ? txn._gross : txnAmount;
 
                 if (!txnId || txnStatus === 'failed' || txnStatus === 'reversed') {
+                    continue;
+                }
+
+                // Skip transactions before the reconciliation cutoff (opening balance date).
+                const txnDate = (txn.datetime || '').split('T')[0];
+                if (syncCutoffDate && txnDate && txnDate < syncCutoffDate) {
                     continue;
                 }
 
@@ -1154,19 +1198,10 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                 external_reference: resolvedRef || txnId
                             } as any);
 
-                            if (!isPublicSale) {
-                                await cashbookService.createEntry(orgId, {
-                                    date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                    description: `MoneyWise Charge`,
-                                    debit: 0,
-                                    credit: txnAmount * 0.01,
-                                    entry_type: 'ADJUSTMENT',
-                                    account_type: 'MONEYWISE_WALLET',
-                                    status: 'COMPLETED',
-                                    wallet_id: walletId,
-                                    external_reference: `${resolvedRef || txnId}-fee`
-                                } as any);
-                            }
+                            // NOTE: The MoneyWise platform charge is intentionally NOT posted to
+                            // the wallet ledger. The wallet must mirror the actual Lenco balance,
+                            // which does not deduct this fee. Any real fee settlement appears as its
+                            // own Lenco debit and is synced as a normal outflow.
                             finalizedCount++;
                         }
                     }
@@ -1196,20 +1231,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                         external_reference: entryExternalRef
                     } as any);
 
-                    // Create 1% charge for standard deposits
-                    if (!isPublicSale) {
-                        await cashbookService.createEntry(orgId, {
-                            date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                            description: `MoneyWise Charge`,
-                            debit: 0,
-                            credit: txnAmount * 0.01,
-                            entry_type: 'ADJUSTMENT',
-                            account_type: 'MONEYWISE_WALLET',
-                            status: 'COMPLETED',
-                            wallet_id: walletId,
-                            external_reference: `${entryExternalRef}-fee`
-                        } as any);
-                    }
+                    // NOTE: The MoneyWise platform charge is intentionally NOT posted to the
+                    // wallet ledger. The wallet must mirror the actual Lenco balance, which does
+                    // not deduct this fee. Any real fee settlement appears as its own Lenco debit.
                     newEntriesCount++;
 
                 } else if (txnType === 'debit') {
@@ -1257,18 +1281,54 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             await cashbookService.finalizeWalletDisbursementLedger(requisitionId);
                             finalizedCount++;
                         }
+
+                        // Tag the requisition's disbursement entry with the Lenco transaction id so
+                        // future syncs dedup against it (preventing a duplicate raw expense entry).
+                        await supabase
+                            .from('cashbook_entries')
+                            .update({ external_reference: txnId })
+                            .eq('requisition_id', requisitionId)
+                            .eq('status', 'DISBURSED')
+                            .is('external_reference', null);
                     } else {
-                        // Unmatched Outflow -> Create unaccounted expense entry
-                        await cashbookService.createEntry(orgId, {
-                            date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                            description: txnDesc || `Wallet Outflow | Ref: ${resolvedRef || txnId}`,
-                            debit: 0,
-                            credit: txnAmount,
-                            entry_type: 'EXPENSE',
-                            account_type: 'MONEYWISE_WALLET',
-                            external_reference: txnId
-                        } as any);
-                        newEntriesCount++;
+                        // Unmatched Outflow. Before creating a new expense, try to ADOPT an existing
+                        // unlinked outflow (e.g. a requisition disbursement created by the payout flow)
+                        // for the same money-out, to avoid duplicate entries. Match on the gross amount
+                        // (payment + bank fee) and date.
+                        const { data: adoptable } = await supabase
+                            .from('cashbook_entries')
+                            .select('id')
+                            .eq('organization_id', orgId)
+                            .eq('wallet_id', walletId)
+                            .eq('account_type', 'MONEYWISE_WALLET')
+                            .is('external_reference', null)
+                            .in('entry_type', ['DISBURSEMENT', 'EXPENSE'])
+                            .eq('date', txnDate)
+                            .gte('credit', txnGross - 0.01)
+                            .lte('credit', txnGross + 0.01)
+                            .limit(1)
+                            .maybeSingle();
+
+                        if (adoptable) {
+                            await supabase
+                                .from('cashbook_entries')
+                                .update({ external_reference: txnId })
+                                .eq('id', adoptable.id);
+                        } else {
+                            // Genuinely new direct outflow -> log at gross so the wallet mirrors Lenco.
+                            await cashbookService.createEntry(orgId, {
+                                date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                description: txnDesc || `Wallet Outflow | Ref: ${resolvedRef || txnId}`,
+                                debit: 0,
+                                credit: txnGross,
+                                entry_type: 'EXPENSE',
+                                account_type: 'MONEYWISE_WALLET',
+                                status: 'COMPLETED',
+                                wallet_id: walletId,
+                                external_reference: txnId
+                            } as any);
+                            newEntriesCount++;
+                        }
                     }
                 }
             }
