@@ -448,8 +448,15 @@ export const joinRequest = async (req: any, res: any): Promise<any> => {
         }
 
         if (isExistingUser && matchedUserId) {
-            // Verify password by trying to log in
-            const { data: authSession, error: authSessionError } = await supabase.auth.signInWithPassword({
+            // Verify password using a separate throw-away client so the shared service-role
+            // client's session is not overwritten (which would cause RLS failures below).
+            const { createClient } = await import('@supabase/supabase-js');
+            const verifyClient = createClient(
+                process.env.SUPABASE_URL!,
+                process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY!,
+                { auth: { persistSession: false } }
+            );
+            const { data: authSession, error: authSessionError } = await verifyClient.auth.signInWithPassword({
                 email: normalizedEmail,
                 password
             });

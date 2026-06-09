@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, Eye, EyeOff } from 'lucide-react';
 
 export const Login: React.FC = () => {
     const [isSignup, setIsSignup] = useState(false);
@@ -25,6 +25,7 @@ export const Login: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [loadingOrg, setLoadingOrg] = useState<string | null>(null);
     const [showOrgSelector, setShowOrgSelector] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const { signInWithPassword, signUp, joinOrganization, user, userStatus, userOrganizations, switchOrganization, loading: authLoading, signOut } = useAuth();
     const navigate = useNavigate();
 
@@ -414,18 +415,26 @@ export const Login: React.FC = () => {
                             <label htmlFor="password" className="block text-sm font-bold text-brand-navy mb-1">
                                 Password
                             </label>
-                            <div className="mt-1">
+                            <div className="mt-1 relative">
                                 <input
                                     id="password"
                                     name="password"
-                                    type="password"
+                                    type={showPassword ? 'text' : 'password'}
                                     autoComplete="current-password"
                                     required
                                     minLength={6}
-                                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                    className="appearance-none block w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(v => !v)}
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600 transition-colors"
+                                    tabIndex={-1}
+                                >
+                                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                </button>
                             </div>
                         </div>
 
