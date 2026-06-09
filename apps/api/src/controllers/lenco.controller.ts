@@ -1291,10 +1291,30 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             .eq('status', 'DISBURSED')
                             .is('external_reference', null);
                     } else {
-                        // Unmatched Outflow. Before creating a new expense, try to ADOPT an existing
-                        // unlinked outflow (e.g. a requisition disbursement created by the payout flow)
-                        // for the same money-out, to avoid duplicate entries. Match on the gross amount
-                        // (payment + bank fee) and date.
+                        // The debit may already be represented by a requisition disbursement whose
+                        // line items reference this Lenco transaction. This covers requisitions paid
+                        // via MULTIPLE Lenco transactions, where a single bundled disbursement entry
+                        // already accounts for this txn's amount (so external_reference on that entry
+                        // can only point at one of the txns). Without this check the other txn(s)
+                        // would be re-logged as duplicate expenses.
+                        const refDigits = (txnDesc.match(/\b(\d{6,})\b/) || [])[1];
+                        if (refDigits) {
+                            const { data: liHit } = await supabase
+                                .from('line_items')
+                                .select('requisition_id, requisitions!inner(organization_id)')
+                                .eq('requisitions.organization_id', orgId)
+                                .ilike('description', `%${refDigits}%`)
+                                .limit(1)
+                                .maybeSingle();
+                            if (liHit) {
+                                console.log(`[Lenco Sync] Debit ${txnId} (ref ${refDigits}) already covered by requisition ${String(liHit.requisition_id).slice(0, 8)} disbursement. Skipping.`);
+                                continue;
+                            }
+                        }
+
+                        // Otherwise, try to ADOPT an existing unlinked outflow (e.g. a requisition
+                        // disbursement created by the payout flow) for the same money-out, to avoid
+                        // duplicate entries. Match on the gross amount (payment + bank fee) and date.
                         const { data: adoptable } = await supabase
                             .from('cashbook_entries')
                             .select('id')
