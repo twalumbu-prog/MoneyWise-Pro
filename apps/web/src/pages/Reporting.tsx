@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import { reportService, ExpenditureAggregation, ExpenditureItem } from '../services/report.service';
 import { budgetService, Budget } from '../services/budget.service';
@@ -6,6 +6,7 @@ import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
 import { ChevronLeft, ChevronRight, BarChart3, ChevronDown, ChevronUp, Loader2, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import budgetBg from '../assets/Frame 24.png';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
@@ -70,6 +71,23 @@ export const Reporting: React.FC = () => {
 
     const [isBudgetModalOpen, setIsBudgetModalOpen] = useState(false);
     const [selectedAccountForBudget, setSelectedAccountForBudget] = useState<{id: string, name: string} | null>(null);
+
+    // Chart view state
+    const [isChartOpen, setIsChartOpen] = useState(false);
+    const [chartClosing, setChartClosing] = useState(false);
+    // Raw expenditures cached per `${mode}|${timeframe}`. A single fetch set per
+    // timeframe serves BOTH report views — P&L and Net Worth are just different
+    // reductions of the same rows — so switching views never refetches, and we
+    // prefetch every timeframe up front so timeframe switches are instant too.
+    const [chartRawCache, setChartRawCache] = useState<Record<string, ExpenditureAggregation[][]>>({});
+    const chartFetchingRef = useRef<Set<string>>(new Set());
+    const [chartStartIdx, setChartStartIdx] = useState(0);
+    const [chartEndIdx, setChartEndIdx] = useState(0);
+    const draggingRef = useRef<'start' | 'end' | null>(null);
+    const chartScrollRef = useRef<HTMLDivElement>(null);
+    const [chartViewHeight, setChartViewHeight] = useState(200);
+    const [chartAreaW, setChartAreaW] = useState(320); // visible viewport width; 4 periods fit, rest scroll
+    const [chartTimeframe, setChartTimeframe] = useState<'1D' | '1W' | '1M' | '3M' | 'YTD'>('1M');
 
     // Date Math
     const periodData = useMemo(() => {
@@ -167,6 +185,112 @@ export const Reporting: React.FC = () => {
         }
     };
 
+    // Build the list of time buckets to plot for the chosen timeframe.
+    const buildChartPeriods = (tf: '1D' | '1W' | '1M' | '3M' | 'YTD') => {
+        const periods: { startDate: string; endDate: string; label: string; shortLabel: string }[] = [];
+        const today = new Date();
+        const iso = (d: Date) => d.toISOString().split('T')[0];
+        if (tf === '1D') {
+            for (let i = 13; i >= 0; i--) {
+                const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+                periods.push({
+                    startDate: iso(d), endDate: iso(d),
+                    label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                    shortLabel: d.toLocaleDateString('en-US', { day: 'numeric' }),
+                });
+            }
+        } else if (tf === '1W') {
+            for (let i = 11; i >= 0; i--) {
+                const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7);
+                const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+                periods.push({
+                    startDate: iso(start), endDate: iso(end),
+                    label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+                    shortLabel: start.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                });
+            }
+        } else if (tf === '3M') {
+            for (let i = 7; i >= 0; i--) {
+                const start = new Date(today.getFullYear(), today.getMonth() - i * 3, 1);
+                const end = new Date(start.getFullYear(), start.getMonth() + 3, 0);
+                periods.push({
+                    startDate: iso(start), endDate: iso(end),
+                    label: start.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+                    shortLabel: start.toLocaleDateString('en-US', { month: 'short' }),
+                });
+            }
+        } else if (tf === 'YTD') {
+            for (let mo = 0; mo <= today.getMonth(); mo++) {
+                const start = new Date(today.getFullYear(), mo, 1);
+                const end = new Date(today.getFullYear(), mo + 1, 0);
+                periods.push({
+                    startDate: iso(start), endDate: iso(end),
+                    label: start.toLocaleDateString('en-US', { month: 'long' }),
+                    shortLabel: start.toLocaleDateString('en-US', { month: 'short' }),
+                });
+            }
+        } else { // 1M → last 12 months
+            for (let i = 11; i >= 0; i--) {
+                const d = new Date();
+                d.setDate(1);
+                d.setMonth(d.getMonth() - i);
+                const start = new Date(d.getFullYear(), d.getMonth(), 1);
+                const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+                periods.push({
+                    startDate: iso(start), endDate: iso(end),
+                    label: start.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+                    shortLabel: start.toLocaleDateString('en-US', { month: 'short' }),
+                });
+            }
+        }
+        return periods;
+    };
+
+    // Fetch (once) and cache the raw expenditures for one timeframe under one mode.
+    const ensureTimeframe = async (tf: '1D' | '1W' | '1M' | '3M' | 'YTD', m: ModeType) => {
+        if (!orgId) return;
+        const key = `${m}|${tf}`;
+        if (chartRawCache[key] || chartFetchingRef.current.has(key)) return;
+        chartFetchingRef.current.add(key);
+        try {
+            const periods = buildChartPeriods(tf);
+            const results = await Promise.all(
+                periods.map(p => reportService.getExpenditures(p.startDate, p.endDate, m))
+            );
+            setChartRawCache(prev => ({ ...prev, [key]: results }));
+        } catch (err) {
+            console.error('Failed to load chart data', err);
+        } finally {
+            chartFetchingRef.current.delete(key);
+        }
+    };
+
+    // Reduce the cached raw rows into plotted points for the *current* view.
+    // Pure derivation → switching report view / timeframe is instant once cached.
+    const chartData = useMemo(() => {
+        const raw = chartRawCache[`${mode}|${chartTimeframe}`];
+        const empty: { label: string; shortLabel: string; value: number; startDate: string; endDate: string }[] = [];
+        if (!raw) return empty;
+        const periods = buildChartPeriods(chartTimeframe);
+        return periods.map((p, i) => {
+            const exps = raw[i] ?? [];
+            let value: number;
+            if (reportView === 'PROFIT_LOSS') {
+                const revenue = exps.filter(e => e.type === 'INCOME').reduce((s, e) => s + e.total_amount, 0);
+                const expenses = exps.filter(e => e.type === 'EXPENSE').reduce((s, e) => s + e.total_amount, 0);
+                value = revenue - expenses;
+            } else {
+                const assets = exps.filter(e => e.type === 'ASSET').reduce((s, e) => s + e.total_amount, 0);
+                const liabilities = exps.filter(e => e.type === 'LIABILITY').reduce((s, e) => s + e.total_amount, 0);
+                value = assets - liabilities;
+            }
+            return { ...p, value };
+        });
+    }, [chartRawCache, mode, chartTimeframe, reportView]);
+
+    // Only show the spinner while the *current* timeframe is still being fetched.
+    const chartLoading = !chartRawCache[`${mode}|${chartTimeframe}`];
+
     useEffect(() => {
         if (orgId) {
             loadData();
@@ -174,6 +298,71 @@ export const Reporting: React.FC = () => {
         setExpandedAccount(null); // Reset expansions on period/mode change
         setSelectedAccounts(new Set()); // Reset selections on period change
     }, [periodData.start, periodData.end, mode, periodType, orgId]);
+
+    useEffect(() => {
+        // Prefetch every timeframe for the current mode in the background so the
+        // chart is ready before it's even opened. Current timeframe goes first.
+        if (!orgId) return;
+        let cancelled = false;
+        (async () => {
+            await ensureTimeframe(chartTimeframe, mode);
+            for (const tf of ['1D', '1W', '1M', '3M', 'YTD'] as const) {
+                if (cancelled) break;
+                ensureTimeframe(tf, mode);
+            }
+        })();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [orgId, mode]);
+
+    useEffect(() => {
+        // Make sure the freshly selected timeframe is fetched (deduped by cache).
+        if (orgId) ensureTimeframe(chartTimeframe, mode);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chartTimeframe, orgId, mode]);
+
+    useEffect(() => {
+        // Reset the analyzed window to a recent span whenever the timeframe (and
+        // therefore the number of points) changes. Switching report view keeps
+        // the same length, so the window — and the user's pins — are preserved.
+        if (chartData.length > 0) {
+            setChartStartIdx(Math.max(0, chartData.length - 4));
+            setChartEndIdx(chartData.length - 1);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chartTimeframe, chartData.length]);
+
+    useEffect(() => {
+        // Always reveal the latest data on the far right. The scroll container
+        // remounts when the chart opens or the timeframe/view changes, so re-pin
+        // it to the end after layout settles.
+        if (chartLoading || chartData.length === 0) return;
+        const raf = requestAnimationFrame(() => {
+            if (chartScrollRef.current) {
+                chartScrollRef.current.scrollLeft = chartScrollRef.current.scrollWidth;
+            }
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [chartLoading, chartData.length, isChartOpen, chartTimeframe, reportView]);
+
+    useEffect(() => {
+        if (isChartOpen) {
+            // Container height = 100vh - 88px (nav bar) - 72px (mobile header).
+            // Inside the chart card, below the SVG sit: slider (44) + months row (18).
+            const containerH = window.innerHeight - 88 - 72;
+            const topElements = 8 + 68 + 64; // pt-2 + toggle+mb-4 + controls+mb-3
+            const deltaCard = 148 + 8; // delta card height + gap-2 separator
+            const chartCardH = containerH - topElements - deltaCard;
+            // Inside the scroll column: SVG + slider(8+34) + months(4+16). Plus card pt-4 + pb-3.
+            const svgH = chartCardH - 16 - 12 - 42 - 20 - 6; // pt-4 + pb-3 + slider + months + slack
+            setChartViewHeight(Math.max(160, svgH));
+            // Visible viewport width — 4 periods fit, the rest scroll horizontally.
+            if (chartScrollRef.current) {
+                const vw = chartScrollRef.current.clientWidth;
+                if (vw > 0) setChartAreaW(vw);
+            }
+        }
+    }, [isChartOpen]);
 
     // Handlers
     const handlePrevPeriod = () => {
@@ -190,6 +379,20 @@ export const Reporting: React.FC = () => {
         if (periodType === 'WEEKLY') d.setDate(d.getDate() + 7);
         if (periodType === 'QUARTERLY') d.setMonth(d.getMonth() + 3);
         setCurrentDate(d);
+    };
+
+    // Chart view open/close with a premium enter/exit transition. On close we
+    // keep the chart mounted long enough to play the exit animation first.
+    const openChart = () => {
+        setChartClosing(false);
+        setIsChartOpen(true);
+    };
+    const closeChart = () => {
+        setChartClosing(true);
+        window.setTimeout(() => {
+            setIsChartOpen(false);
+            setChartClosing(false);
+        }, 340);
     };
 
     const toggleExpand = async (accountId: string) => {
@@ -591,6 +794,87 @@ export const Reporting: React.FC = () => {
 
 
 
+    const chartDelta = useMemo(() => {
+        if (chartData.length === 0) return { endValue: 0, delta: 0, percentStr: '0', isIncrease: true };
+        const startVal = chartData[chartStartIdx]?.value ?? 0;
+        const endVal = chartData[chartEndIdx]?.value ?? 0;
+        const delta = endVal - startVal;
+        const percent = startVal !== 0 ? (delta / Math.abs(startVal)) * 100 : (delta > 0 ? 100 : 0);
+        return { endValue: endVal, delta, percentStr: Math.abs(percent).toFixed(0), isIncrease: delta >= 0 };
+    }, [chartData, chartStartIdx, chartEndIdx]);
+
+    const chartRenderData = useMemo(() => {
+        if (chartData.length === 0) return null;
+        const COL_W = chartAreaW / 4; // 4 periods visible at a time; the rest scroll
+        const SVG_H = chartViewHeight;
+        const PAD_TOP = 44;
+        const PAD_BOTTOM = 18; // room below the baseline so low markers don't clip
+        const CHART_H = SVG_H - PAD_TOP - PAD_BOTTOM;
+        const svgWidth = chartData.length * COL_W;
+
+        // --- "Nice" round-number axis ticks ---------------------------------
+        const dataMax = Math.max(...chartData.map(d => d.value), 1);
+        const dataMin = Math.min(...chartData.map(d => d.value), 0);
+        const niceNum = (range: number, round: boolean) => {
+            const exp = Math.floor(Math.log10(Math.max(range, 1)));
+            const frac = range / Math.pow(10, exp);
+            let nf: number;
+            if (round) nf = frac < 1.5 ? 1 : frac < 3 ? 2 : frac < 7 ? 5 : 10;
+            else nf = frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10;
+            return nf * Math.pow(10, exp);
+        };
+        // Add ~18% headroom above the peak so the line never touches the top.
+        const spanWithHeadroom = (dataMax - dataMin) * 1.18 || 1;
+        const step = niceNum(spanWithHeadroom / 5, true);
+        const minVal = Math.floor(dataMin / step) * step;
+        const maxVal = Math.ceil((dataMax + (dataMax - dataMin) * 0.18) / step) * step;
+        const valRange = Math.max(maxVal - minVal, 1);
+
+        const getX = (i: number) => i * COL_W + COL_W / 2;
+        const getY = (val: number) => PAD_TOP + CHART_H - Math.max(0, Math.min(1, (val - minVal) / valRange)) * CHART_H;
+        const pts = chartData.map((d, i) => ({ x: getX(i), y: getY(d.value), value: d.value }));
+        const buildPath = (segment: { x: number; y: number }[]) =>
+            segment.reduce((acc, p, i) => {
+                if (i === 0) return `M ${p.x},${p.y}`;
+                const prev = segment[i - 1];
+                const cpx = (prev.x + p.x) / 2;
+                return `${acc} C ${cpx},${prev.y} ${cpx},${p.y} ${p.x},${p.y}`;
+            }, '');
+        const linePath = buildPath(pts);
+        const bottomY = PAD_TOP + CHART_H;
+        const peakIdx = chartData.reduce((best, d, i) => d.value > chartData[best].value ? i : best, 0);
+
+        // Tick labels at every nice step from minVal up to maxVal.
+        const yLabels: { value: number; y: number }[] = [];
+        for (let v = minVal; v <= maxVal + step * 0.5; v += step) {
+            yLabels.push({ value: v, y: getY(v) });
+        }
+        return { COL_W, SVG_H, svgWidth, pts, linePath, bottomY, peakIdx, yLabels, buildPath };
+    }, [chartData, chartViewHeight, chartAreaW]);
+
+    const handleMarkerPointerDown = (marker: 'start' | 'end') => (e: React.PointerEvent<HTMLDivElement>) => {
+        draggingRef.current = marker;
+        e.currentTarget.setPointerCapture(e.pointerId);
+    };
+
+    const handleMarkerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+        if (!draggingRef.current || !chartScrollRef.current || chartData.length < 2) return;
+        const COL_W = chartAreaW / 4;
+        const containerRect = chartScrollRef.current.getBoundingClientRect();
+        const scrollLeft = chartScrollRef.current.scrollLeft;
+        const absoluteX = e.clientX - containerRect.left + scrollLeft;
+        const idx = Math.max(0, Math.min(chartData.length - 1, Math.round((absoluteX - COL_W / 2) / COL_W)));
+        if (draggingRef.current === 'start') {
+            setChartStartIdx(Math.min(idx, chartEndIdx));
+        } else {
+            setChartEndIdx(Math.max(idx, chartStartIdx));
+        }
+    };
+
+    const handleMarkerPointerUp = () => {
+        draggingRef.current = null;
+    };
+
     const displayMonthName = useMemo(() => {
         if (periodType === 'MONTHLY') {
             return currentDate.toLocaleDateString('en-US', { month: 'long' });
@@ -616,6 +900,12 @@ export const Reporting: React.FC = () => {
 
 
 
+
+    // Ordering for the animated tab transitions (drives slide direction).
+    const REPORT_VIEW_ORDER: ('NET_WORTH' | 'PROFIT_LOSS')[] = ['NET_WORTH', 'PROFIT_LOSS'];
+    const TIMEFRAME_ORDER: ('1D' | '1W' | '1M' | '3M' | 'YTD')[] = ['1D', '1W', '1M', '3M', 'YTD'];
+    const reportViewIndex = REPORT_VIEW_ORDER.indexOf(reportView);
+    const timeframeIndex = TIMEFRAME_ORDER.indexOf(chartTimeframe);
 
     return (
         <Layout noPadding={true} backgroundColor="bg-white" title="Reports">
@@ -1069,41 +1359,52 @@ export const Reporting: React.FC = () => {
             </div>
 
             {/* Mobile Responsive View */}
-            <div className="md:hidden flex flex-col min-h-screen bg-white pb-28 pt-2">
+            <div
+                className="md:hidden flex flex-col bg-white pt-2 overflow-x-hidden"
+                style={isChartOpen ? {
+                    position: 'fixed',
+                    top: '4.5rem', left: 0, right: 0,
+                    height: 'calc(100dvh - 4.5rem - 88px)',
+                    zIndex: 19,
+                    overflow: 'hidden',
+                } : { minHeight: '100vh', paddingBottom: '7rem' }}
+            >
                 {/* Mobile View Toggle */}
-                <div className="mx-6 mb-4 flex bg-gray-100 p-1 rounded-xl border border-gray-200">
-                    <button
-                        onClick={() => setReportView('NET_WORTH')}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all text-center ${
-                            reportView === 'NET_WORTH' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                    >
-                        Net Worth
-                    </button>
-                    <button
-                        onClick={() => setReportView('PROFIT_LOSS')}
-                        className={`flex-1 py-2 rounded-lg text-xs font-bold transition-all text-center ${
-                            reportView === 'PROFIT_LOSS' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                    >
-                        Profit/Loss
-                    </button>
-                </div>
+                <SegmentedControl
+                    className="mx-6 mb-4"
+                    variant="pill"
+                    value={reportView}
+                    onChange={(v) => setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS')}
+                    options={[
+                        { value: 'NET_WORTH', label: 'Net Worth' },
+                        { value: 'PROFIT_LOSS', label: 'Profit/Loss' },
+                    ]}
+                />
 
-                {/* Total Financials Summary Card */}
+                {!isChartOpen && (
                 <div
                     className="mx-6 mb-6 rounded-[28px] p-6 text-white shadow-lg relative overflow-hidden"
                     style={{
                         backgroundImage: `url(${budgetBg})`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
+                        animation: 'atabs-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
                     }}
                 >
+                    <AnimatedTabContent tabKey={reportView} index={reportViewIndex}>
                     {reportView === 'PROFIT_LOSS' ? (
                         <>
-                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
-                                Total Profit
-                            </p>
+                            <div className="flex items-center justify-between mb-1">
+                                <p className="text-white/60 text-xs font-bold uppercase tracking-wider">
+                                    Total Profit
+                                </p>
+                                <button
+                                    onClick={openChart}
+                                    className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+                                >
+                                    <ChevronDown size={14} className="text-white/60" />
+                                </button>
+                            </div>
                             <div className="flex items-baseline justify-between">
                                 <h2 className="text-[34px] font-black leading-none">
                                     K{totals.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1129,9 +1430,17 @@ export const Reporting: React.FC = () => {
                         </>
                     ) : (
                         <>
-                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
-                                Net Worth
-                            </p>
+                            <div className="flex items-center justify-between mb-1">
+                                <p className="text-white/60 text-xs font-bold uppercase tracking-wider">
+                                    Net Worth
+                                </p>
+                                <button
+                                    onClick={openChart}
+                                    className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+                                >
+                                    <ChevronDown size={14} className="text-white/60" />
+                                </button>
+                            </div>
                             <div className="flex items-baseline justify-between">
                                 <h2 className="text-[34px] font-black leading-none">
                                     K{totals.netWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -1156,20 +1465,30 @@ export const Reporting: React.FC = () => {
                             </div>
                         </>
                     )}
+                    </AnimatedTabContent>
                 </div>
+                )}
 
-                {/* Month Dropdown & Pill Controls Row */}
-                <div className="mx-6 mb-5 flex items-center justify-between relative">
-                    {/* Month selector dropdown trigger */}
+                {/* Month Dropdown / Timeframe Buttons & Pill Controls Row */}
+                <div className={`mx-6 ${isChartOpen ? 'mb-3' : 'mb-5'} flex items-center justify-between relative`}>
+                    {/* In chart view: timeframe selector. Otherwise: month dropdown. */}
+                    {isChartOpen ? (
+                        <SegmentedControl
+                            variant="outline"
+                            value={chartTimeframe}
+                            onChange={(v) => setChartTimeframe(v as '1D' | '1W' | '1M' | '3M' | 'YTD')}
+                            options={TIMEFRAME_ORDER.map((tf) => ({ value: tf, label: tf }))}
+                        />
+                    ) : (
                     <div className="relative">
-                        <button 
+                        <button
                             onClick={() => setIsMonthDropdownOpen(!isMonthDropdownOpen)}
                             className="flex items-center gap-1 text-2xl font-black text-brand-navy tracking-tight focus:outline-none"
                         >
                             <span>{displayMonthName}</span>
                             <ChevronDown size={22} className="text-gray-400 mt-1" />
                         </button>
-                        
+
                         {isMonthDropdownOpen && (
                             <>
                                 <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsMonthDropdownOpen(false)} />
@@ -1198,6 +1517,7 @@ export const Reporting: React.FC = () => {
                             </>
                         )}
                     </div>
+                    )}
 
                     {/* Pill controls */}
                     <div className="flex items-center gap-3">
@@ -1389,7 +1709,225 @@ export const Reporting: React.FC = () => {
                     )}
                 </div>
 
+                {/* Historical Chart View + Delta Card — flex column that fills remaining space */}
+                {isChartOpen && (
+                    <div
+                        className="flex flex-col flex-1 min-h-0"
+                        style={{
+                            animation: chartClosing
+                                ? 'atabs-chart-exit 0.32s cubic-bezier(0.4, 0, 1, 1) forwards'
+                                : 'atabs-chart-enter 0.44s cubic-bezier(0.22, 1, 0.36, 1)',
+                        }}
+                    >
+                    <AnimatedTabContent tabKey={`${reportView}|${chartTimeframe}`} index={timeframeIndex} className="flex flex-col flex-1 min-h-0 mx-6 gap-2">
+                    {/* Clean white chart card */}
+                    <div className="flex-1 min-h-0 rounded-[28px] overflow-hidden flex flex-col bg-white">
+                        {chartLoading ? (
+                            <div className="flex items-center justify-center flex-1">
+                                <Loader2 className="h-7 w-7 animate-spin text-[#2563EB]" />
+                            </div>
+                        ) : chartRenderData ? (
+                            <div className="pt-4 pb-3 flex flex-col flex-1 min-h-0">
+                                {/* Chart row: fixed y-axis + horizontally scrollable chart & months (4 periods visible) */}
+                                <div className="flex flex-1 min-h-0 relative">
+                                    {/* Current value pill — sits on the Y-axis, aligned with the end marker's line */}
+                                    {(() => {
+                                        const ep = chartRenderData.pts[chartEndIdx];
+                                        if (!ep) return null;
+                                        const lbl = ep.value >= 1e6
+                                            ? `${(ep.value / 1e6).toFixed(2)}M`
+                                            : ep.value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+                                        return (
+                                            <div style={{ position: 'absolute', left: 0, top: `${ep.y}px`, transform: 'translateY(-50%)', background: '#0F172A', color: 'white', fontSize: '12px', fontWeight: 700, padding: '3px 9px', borderRadius: '9999px', zIndex: 6, whiteSpace: 'nowrap', lineHeight: 1.2 }}>
+                                                {lbl}
+                                            </div>
+                                        );
+                                    })()}
+                                    {/* Fixed Y-axis — numbers tucked against the left edge */}
+                                    <div className="flex-shrink-0" style={{ width: '46px', paddingLeft: '2px' }}>
+                                        <svg width="44" height={chartRenderData.SVG_H}>
+                                            {chartRenderData.yLabels.map((lbl, i) => (
+                                                <text key={i} x={42} y={lbl.y + 3} textAnchor="end" fill="#9CA3AF" fontSize="9" fontWeight="600">
+                                                    {lbl.value >= 1e6
+                                                        ? `${(lbl.value / 1e6).toFixed(1)}M`
+                                                        : lbl.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                                </text>
+                                            ))}
+                                        </svg>
+                                    </div>
+                                    {/* Scrollable chart + month labels (scroll together, 4 visible at a time) */}
+                                    <div
+                                        ref={chartScrollRef}
+                                        className="flex-1 min-h-0 overflow-x-auto flex flex-col"
+                                        style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' } as React.CSSProperties}
+                                    >
+                                        <svg width={chartRenderData.svgWidth} height={chartRenderData.SVG_H}>
+                                            <defs>
+                                                <linearGradient id="chartAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="0%" stopColor="#3B82F6" stopOpacity="0.20" />
+                                                    <stop offset="80%" stopColor="#3B82F6" stopOpacity="0.04" />
+                                                    <stop offset="100%" stopColor="#3B82F6" stopOpacity="0" />
+                                                </linearGradient>
+                                            </defs>
+
+                                            {/* Range-clipped area fill (only under the selected segment) */}
+                                            {(() => {
+                                                const seg = chartRenderData.pts.slice(chartStartIdx, chartEndIdx + 1);
+                                                if (seg.length < 2) return null;
+                                                const d = `${chartRenderData.buildPath(seg)} L ${seg[seg.length - 1].x},${chartRenderData.bottomY} L ${seg[0].x},${chartRenderData.bottomY} Z`;
+                                                return <path d={d} fill="url(#chartAreaGrad)" />;
+                                            })()}
+
+                                            {/* Dashed horizontal reference lines at the two selected markers */}
+                                            {[chartStartIdx, chartEndIdx].map((idx, i) => {
+                                                const p = chartRenderData.pts[idx];
+                                                if (!p) return null;
+                                                return (
+                                                    <line key={i} x1={0} y1={p.y} x2={chartRenderData.svgWidth} y2={p.y}
+                                                        stroke="#CBD5E1" strokeWidth={1} strokeDasharray="6 6" />
+                                                );
+                                            })}
+
+                                            {/* Dashed vertical lines through the centre of each selected marker */}
+                                            {[chartStartIdx, chartEndIdx].map((idx, i) => {
+                                                const p = chartRenderData.pts[idx];
+                                                if (!p) return null;
+                                                return (
+                                                    <line key={`v-${i}`} x1={p.x} y1={0} x2={p.x} y2={chartRenderData.SVG_H}
+                                                        stroke="#CBD5E1" strokeWidth={1} strokeDasharray="6 6" />
+                                                );
+                                            })}
+
+                                            {/* Main line */}
+                                            <path d={chartRenderData.linePath} fill="none" stroke="#1D4ED8" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+
+                                            {/* Markers at selected indices — small blue ring with a yellow centre */}
+                                            {chartRenderData.pts.map((p, i) => {
+                                                const isMarker = i === chartStartIdx || i === chartEndIdx;
+                                                if (!isMarker) return null;
+                                                return (
+                                                    <g key={i}>
+                                                        <circle cx={p.x} cy={p.y} r={8} fill="white" stroke="#2563EB" strokeWidth={2.5} />
+                                                        <circle cx={p.x} cy={p.y} r={3.5} fill="#FACC15" />
+                                                    </g>
+                                                );
+                                            })}
+
+                                            {/* Trophy at peak — always visible, lifted clear of the marker ring */}
+                                            <text x={chartRenderData.pts[chartRenderData.peakIdx].x} y={chartRenderData.pts[chartRenderData.peakIdx].y - 20} textAnchor="middle" fontSize="16">🏆</text>
+                                        </svg>
+
+                                        {/* Period slider — scrolls with the chart; pins align vertically with the markers above */}
+                                        <div className="relative flex-shrink-0" style={{ height: '34px', width: `${chartRenderData.svgWidth}px`, marginTop: '8px' }}>
+                                            {/* Rounded track spanning the data range (first → last data point) */}
+                                            <div
+                                                className="absolute"
+                                                style={{
+                                                    top: '13px', left: `${chartRenderData.COL_W / 2}px`, right: `${chartRenderData.COL_W / 2}px`,
+                                                    height: '8px', background: '#0055CC', borderRadius: '9999px', overflow: 'hidden',
+                                                }}
+                                            >
+                                                {/* Light-blue overlay = the analyzed window */}
+                                                <div style={{
+                                                    position: 'absolute', top: 0, bottom: 0,
+                                                    left: `${Math.max(0, (chartRenderData.pts[chartStartIdx]?.x ?? 0) - chartRenderData.COL_W / 2)}px`,
+                                                    width: `${Math.max(0, (chartRenderData.pts[chartEndIdx]?.x ?? 0) - (chartRenderData.pts[chartStartIdx]?.x ?? 0))}px`,
+                                                    background: '#D9E9FF',
+                                                }} />
+                                            </div>
+                                            {/* Start pin — vertically under the start marker */}
+                                            <div
+                                                className="absolute touch-none select-none cursor-grab"
+                                                style={{ left: `${chartRenderData.pts[chartStartIdx]?.x ?? 0}px`, top: 0, bottom: 0, width: '28px', transform: 'translateX(-50%)', zIndex: 2 }}
+                                                onPointerDown={handleMarkerPointerDown('start')}
+                                                onPointerMove={handleMarkerPointerMove}
+                                                onPointerUp={handleMarkerPointerUp}
+                                            >
+                                                <div style={{ width: '3px', background: '#0055CC', borderRadius: '9999px', boxShadow: '0 1px 4px rgba(0,85,204,0.35)', position: 'absolute', top: '5px', bottom: '5px', left: '50%', transform: 'translateX(-50%)' }} />
+                                            </div>
+                                            {/* End pin — vertically under the end marker */}
+                                            <div
+                                                className="absolute touch-none select-none cursor-grab"
+                                                style={{ left: `${chartRenderData.pts[chartEndIdx]?.x ?? 0}px`, top: 0, bottom: 0, width: '28px', transform: 'translateX(-50%)', zIndex: 2 }}
+                                                onPointerDown={handleMarkerPointerDown('end')}
+                                                onPointerMove={handleMarkerPointerMove}
+                                                onPointerUp={handleMarkerPointerUp}
+                                            >
+                                                <div style={{ width: '3px', background: '#0055CC', borderRadius: '9999px', boxShadow: '0 1px 4px rgba(0,85,204,0.35)', position: 'absolute', top: '5px', bottom: '5px', left: '50%', transform: 'translateX(-50%)' }} />
+                                            </div>
+                                        </div>
+
+                                        {/* Month labels row — scrolls with the chart, ~4 visible at a time */}
+                                        <div className="relative flex-shrink-0" style={{ height: '16px', width: `${chartRenderData.svgWidth}px`, marginTop: '4px' }}>
+                                            {chartRenderData.pts.map((p, i) => (
+                                                <span
+                                                    key={i}
+                                                    className="absolute"
+                                                    style={{ left: `${p.x}px`, top: '0px', transform: 'translateX(-50%)', fontSize: '8px', fontWeight: 400, color: '#7C8FA2', whiteSpace: 'nowrap' }}
+                                                >
+                                                    {chartData[i].shortLabel}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="flex-1 flex items-center justify-center">
+                                <p className="text-gray-400 text-sm font-bold">No chart data</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Delta card — flex-shrink-0, anchored at bottom of the chart flex column */}
+                    <div
+                        className="flex-shrink-0 rounded-[28px] p-6 text-white shadow-lg overflow-hidden"
+                        style={{
+                            backgroundImage: `url(${budgetBg})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                        }}
+                    >
+                        <div className="flex items-center justify-between mb-1">
+                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider">
+                                {reportView === 'PROFIT_LOSS' ? 'Net Profit' : 'Net Worth'}
+                            </p>
+                            <button
+                                onClick={closeChart}
+                                className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
+                            >
+                                <ChevronUp size={14} className="text-white/60" />
+                            </button>
+                        </div>
+                        <div className="flex items-baseline justify-between">
+                            <h2 className="text-[34px] font-black leading-none">
+                                K{chartDelta.endValue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </h2>
+                            <span className="text-[28px] font-black leading-none">
+                                <span className="text-[#4D9FFF]">{chartDelta.isIncrease ? '+' : '-'}</span>
+                                <span className="text-white">{chartDelta.percentStr}%</span>
+                            </span>
+                        </div>
+                        <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
+                            <div className="flex items-center gap-1.5">
+                                <Link2 size={13} className="text-white/60" />
+                                <span>{chartData[chartStartIdx]?.shortLabel} <strong className="font-extrabold text-white">→</strong> {chartData[chartEndIdx]?.shortLabel}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                                <ArrowUpRight size={14} className={chartDelta.isIncrease ? 'text-[#34D399]' : 'text-red-400'} />
+                                <span className={chartDelta.isIncrease ? 'text-[#34D399]' : 'text-red-400'}>
+                                    {chartDelta.isIncrease ? '+' : '-'}K{Math.abs(chartDelta.delta).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    </AnimatedTabContent>
+                    </div>
+                )}
+
+                {!isChartOpen && (<>
                 {/* Category Group Cards - Separate cards for each group */}
+                <AnimatedTabContent tabKey={reportView} index={reportViewIndex}>
                 {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
                     <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-sm p-6 text-center text-gray-500">
                         <Loader2 className="h-8 w-8 animate-spin text-[#006AFF] mx-auto mb-4" />
@@ -1551,6 +2089,8 @@ export const Reporting: React.FC = () => {
                         })}
                     </div>
                 )}
+                </AnimatedTabContent>
+                </>)}
             </div>
 
             {isBudgetModalOpen && selectedAccountForBudget && (
