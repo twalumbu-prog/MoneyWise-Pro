@@ -339,12 +339,14 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         
         await new Promise(resolve => setTimeout(resolve, 100));
 
+        const lencoStatus = (req as any).lencoStatus;
+        const isAwaitingConfirmation = isDigital && lencoStatus && lencoStatus !== 'successful';
         res.json({
-            message: (req as any).lencoStatus === 'pending' 
-                ? 'Disbursement initiated and is currently being processed by Lenco' 
+            message: isAwaitingConfirmation
+                ? 'Disbursement initiated. The transfer is being processed by Lenco — you will be notified if it fails.'
                 : 'Requisition disbursed successfully',
             disbursement_id: disbursementData.id,
-            lencoStatus: (req as any).lencoStatus || 'successful'
+            lencoStatus: lencoStatus ?? (isDigital ? 'pending' : 'n/a')
         });
 
         // 6. Trigger notification
@@ -738,7 +740,17 @@ async function revertDisbursementAndCleanup(
         }
     }
 
-    // E. Log audit log
+    // E. Notify the user in the requisition chat so the failure is visible
+    await supabase
+        .from('requisition_messages')
+        .insert({
+            requisition_id: requisitionId,
+            content: 'Transfer failed. The Lenco payout could not be confirmed and the disbursement has been automatically reversed. The requisition is back to AUTHORISED — please retry the disbursement.',
+            type: 'SYSTEM',
+            metadata: { stage: 'TRANSFER_FAILED' }
+        });
+
+    // F. Log audit log
     await supabase
         .from('audit_logs')
         .insert({

@@ -18,6 +18,7 @@ import {
     Download,
     Search
 } from 'lucide-react';
+import { calculatePlatformFee } from 'shared';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -156,9 +157,11 @@ export const PublicPay: React.FC = () => {
     const selectedProductsList = products.filter(p => (selectedQuantities[p.id] || 0) > 0);
     const subtotal = selectedProductsList.reduce((sum, p) => sum + (p.price * (selectedQuantities[p.id] || 0)), 0);
     
-    // Add Lenco fee markup (divided by 0.975 to settle full net amount with 2.5% fee)
-    const totalPayable = subtotal > 0 ? subtotal / 0.975 : 0;
-    const processingFee = totalPayable - subtotal;
+    // MoneyWise platform fee (tiered) — additive markup paid by the customer on top
+    // of the subtotal. The merchant settles the net subtotal; the fee is swept to
+    // the MoneyWise settlement account after the collection succeeds.
+    const processingFee = calculatePlatformFee(subtotal);
+    const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
 
     const handlePay = async () => {
         if (subtotal <= 0) {
@@ -416,7 +419,7 @@ export const PublicPay: React.FC = () => {
             doc.text(`K ${subtotal.toFixed(2)}`, 186, y, { align: 'right' });
 
             y += 6;
-            doc.text('Processing Fee (1%):', 140, y, { align: 'right' });
+            doc.text('Processing Fee:', 140, y, { align: 'right' });
             doc.text(`K ${processingFee.toFixed(2)}`, 186, y, { align: 'right' });
 
             y += 8;
@@ -585,7 +588,7 @@ Status: VERIFIED`;
             doc.text(`K ${Number(details.subtotal).toFixed(2)}`, 186, y, { align: 'right' });
 
             y += 6;
-            doc.text('Processing Fee (2.5%):', 140, y, { align: 'right' });
+            doc.text('Processing Fee:', 140, y, { align: 'right' });
             doc.text(`K ${Number(details.processingFee).toFixed(2)}`, 186, y, { align: 'right' });
 
             y += 8;

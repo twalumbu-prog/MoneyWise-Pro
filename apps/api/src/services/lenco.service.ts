@@ -137,6 +137,41 @@ export class LencoService {
     }
 
     /**
+     * Transfer to another Lenco merchant by till/merchant number.
+     *
+     * Used to auto-sweep the MoneyWise platform commission out of the collecting
+     * sub-account into the MoneyWise settlement merchant account (Blue Opus). Both
+     * accounts live under the same master Lenco account, so this is an on-us move.
+     *
+     * POST /transfers/lenco-merchant
+     *   { accountId (source/debit), amount, reference, tillNumber, narration }
+     */
+    static async transferToLencoMerchant(payout: {
+        amount: number,
+        reference: string,
+        tillNumber: string,
+        narration: string
+    }, sourceAccountId: string, secretKey?: string) {
+        try {
+            const body = {
+                accountId: sourceAccountId,
+                amount: payout.amount,
+                reference: payout.reference,
+                tillNumber: payout.tillNumber,
+                narration: payout.narration
+            };
+
+            const response = await axios.post(`${this.BASE_URL}/transfers/lenco-merchant`, body, {
+                headers: this.getHeaders(secretKey)
+            });
+            return response.data.data;
+        } catch (error: any) {
+            console.error('Lenco merchant transfer failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to initiate merchant transfer');
+        }
+    }
+
+    /**
      * Get account balance
      */
     static async getAccountBalance(accountId: string, secretKey?: string) {

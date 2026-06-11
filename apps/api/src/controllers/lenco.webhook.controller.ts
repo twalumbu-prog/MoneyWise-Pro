@@ -4,6 +4,54 @@ import pool from '../db';
 import { LencoService } from '../services/lenco.service';
 import { cashbookService } from '../services/cashbook.service';
 import { supabase } from '../lib/supabase';
+import { ruleEngine } from '../services/ai/rule.engine';
+
+// MoneyWise settlement merchant (Blue Opus Software Technology). The platform
+// commission collected on external payment links is auto-forwarded here.
+const SETTLEMENT_TILL_NUMBER = process.env.MONEYWISE_SETTLEMENT_TILL_NUMBER || '9838830';
+
+/**
+ * Auto-sweep the MoneyWise platform commission out of a collecting sub-account
+ * into the MoneyWise settlement merchant, as a separate "Split payment" transfer.
+ *
+ * The commission is simply the surplus the customer paid on top of the net
+ * subtotal (gross collected − net settled), so it does not depend on re-deriving
+ * the fee tier here. After the sweep the sub-account balance equals the net
+ * subtotal, mirroring what the merchant sees in their ledger.
+ *
+ * Idempotent: the transfer reference is deterministic (`SPLIT-<originalRef>`) and
+ * we skip if a transfer with that reference already exists. Non-fatal: any failure
+ * is logged but never blocks the collection ledger entry.
+ */
+async function sweepPlatformCommission(
+    sourceAccountId: string,
+    secretKey: string,
+    commission: number,
+    originalReference: string
+): Promise<void> {
+    const splitRef = `SPLIT-${originalReference}`;
+    try {
+        // Idempotency guard — don't double-sweep if the webhook / verify poller re-fires.
+        const existing = await LencoService.getTransferStatus(splitRef, secretKey);
+        if (existing) {
+            console.log(`[Lenco Sweep] Commission already forwarded for ${originalReference} (ref: ${splitRef}). Skipping.`);
+            return;
+        }
+
+        await LencoService.transferToLencoMerchant({
+            amount: commission,
+            reference: splitRef,
+            tillNumber: SETTLEMENT_TILL_NUMBER,
+            narration: 'Split payment'
+        }, sourceAccountId, secretKey);
+
+        console.log(`[Lenco Sweep] Forwarded commission K${commission.toFixed(2)} → merchant ${SETTLEMENT_TILL_NUMBER} (ref: ${splitRef}).`);
+    } catch (sweepErr: any) {
+        // Never block the collection on a sweep failure — the surplus stays in the
+        // sub-account and can be reconciled/retried.
+        console.error(`[Lenco Sweep] FAILED to forward commission for ${originalReference}:`, sweepErr?.message || sweepErr);
+    }
+}
 
 /**
  * Handles Lenco webhooks for collections and transfers
@@ -253,7 +301,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 : parseFloat(amount);
 
             // 1. Log the Inflow
-            await cashbookService.createEntry(organizationId, {
+            const newEntry = await cashbookService.createEntry(organizationId, {
                 date: new Date().toISOString().split('T')[0],
                 description: actualNarration,
                 debit: inflowAmount,
@@ -265,11 +313,50 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 external_reference: reference || null
             } as any);
 
-            // NOTE: The 1% MoneyWise platform charge is intentionally NOT posted to the wallet
-            // ledger. The wallet must mirror the actual Lenco balance, which is not reduced by
-            // this fee. (Previously an ADJUSTMENT entry was created here, which pushed the wallet
-            // balance below the real bank balance.)
+            // 2. Auto-classify via rule engine (org-scoped rules take priority)
+            try {
+                await ruleEngine.loadRules();
+                const ruleMatch = ruleEngine.match(actualNarration, inflowAmount, undefined, organizationId);
+                if (ruleMatch.matched && ruleMatch.accountId && newEntry?.id) {
+                    await supabase
+                        .from('cashbook_entries')
+                        .update({ account_id: ruleMatch.accountId, status: 'ACCOUNTED' })
+                        .eq('id', newEntry.id);
+                    console.log(`[Lenco Webhook] Auto-classified inflow "${actualNarration}" → account ${ruleMatch.accountId} (rule: ${ruleMatch.ruleId})`);
+                }
+            } catch (classifyErr) {
+                console.error('[Lenco Webhook] Auto-classify error (non-fatal):', classifyErr);
+            }
+
+            // NOTE: The MoneyWise platform charge is intentionally NOT posted to the wallet
+            // ledger. The wallet must mirror the actual Lenco balance, and the merchant only
+            // ever sees the net subtotal. The surplus the customer paid on top is forwarded
+            // out of the sub-account below, so the real balance also settles to the net.
             console.log(`[Lenco Webhook] ${isPublicSale ? 'Public product sale' : 'Standard collection'} logged as INFLOW (amount: ${inflowAmount}).`);
+
+            // Auto-forward the MoneyWise platform commission for external payment links.
+            // Commission = gross collected − net settled (the fee the customer paid on top).
+            if (isPublicSale && reference) {
+                const grossCollected = parseFloat(amount);
+                const commission = Math.round((grossCollected - inflowAmount) * 100) / 100;
+
+                if (commission > 0) {
+                    const { data: orgCreds } = await supabase
+                        .from('organizations')
+                        .select('lenco_subaccount_id, lenco_secret_key')
+                        .eq('id', organizationId)
+                        .maybeSingle();
+
+                    const sourceAccountId = accountId || orgCreds?.lenco_subaccount_id;
+                    const secretKey = orgCreds?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+
+                    if (sourceAccountId && secretKey) {
+                        await sweepPlatformCommission(sourceAccountId, secretKey, commission, reference);
+                    } else {
+                        console.warn(`[Lenco Sweep] Skipped: missing source account or secret key for org ${organizationId}.`);
+                    }
+                }
+            }
         }
 
         // Update product sales status if a reference is provided
@@ -375,6 +462,16 @@ async function handleTransferFailed(data: any) {
             `, [requisitionId, JSON.stringify({ reference, failure_reason, reverted_to: 'AUTHORISED' })]);
 
             console.log(`[Lenco Webhook] REVERTED: Requisition ${requisitionId} reset to AUTHORISED after transfer failure.`);
+
+            // Notify the user in the requisition chat — this is the only signal they get
+            await supabase
+                .from('requisition_messages')
+                .insert({
+                    requisition_id: requisitionId,
+                    content: `Transfer failed: ${failure_reason || 'Lenco rejected the payout'}. The disbursement has been reversed and the requisition is back to AUTHORISED — please retry.`,
+                    type: 'SYSTEM',
+                    metadata: { stage: 'TRANSFER_FAILED', reference, failure_reason }
+                });
         } else {
             console.warn(`[Lenco Webhook] transfer.failed: No disbursement found for reference ${reference}`);
         }

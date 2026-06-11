@@ -45,6 +45,7 @@ import { Requisition } from '../services/requisition.service';
 import ExportLedgerModal from '../components/ExportLedgerModal';
 import budgetBg from '../assets/Frame 24.png';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
+import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 
 
 const SearchableAccountSelect: React.FC<{
@@ -510,8 +511,8 @@ const CashLedger: React.FC = () => {
     };
 
     const renderMobileBreakdown = (entry: CashbookEntry) => {
-        if (entry.requisition_id && entry.requisitions) {
-            const req = entry.requisitions;
+        if (entry.requisition_id) {
+            const req: any = entry.requisitions || {};
             const items = req.line_items || [];
             const disbursement = req.disbursements?.[0];
 
@@ -530,14 +531,22 @@ const CashLedger: React.FC = () => {
                         <button 
                             onClick={async (e) => {
                                 e.stopPropagation();
-                                setSelectedRequisition({
-                                    id: req.id,
-                                    reference_number: req.reference_number || 'N/A',
-                                    description: req.description || entry.description,
-                                    status: req.status || 'COMPLETED',
-                                    total_amount: req.actual_total || entry.debit || entry.credit || 0
-                                } as any);
+                                const requisitionId = entry.requisition_id || req.id;
+                                // Fetch the full requisition so the modal matches the inbox view.
                                 setIsRequisitionModalOpen(true);
+                                try {
+                                    const fullReq = await requisitionService.getById(requisitionId);
+                                    setSelectedRequisition(fullReq as any);
+                                } catch (err) {
+                                    console.error('Failed to fetch requisition details:', err);
+                                    setSelectedRequisition({
+                                        id: req.id,
+                                        reference_number: req.reference_number || 'N/A',
+                                        description: req.description || entry.description,
+                                        status: req.status || 'COMPLETED',
+                                        total_amount: req.actual_total || entry.debit || entry.credit || 0
+                                    } as any);
+                                }
                             }}
                             className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-slate-900 active:bg-slate-800 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
                         >
@@ -1020,8 +1029,11 @@ Status: VERIFIED`;
 
     const renderBreakdown = (entry: CashbookEntry) => {
         // Case 1: Requisition Breakdown (Expenses)
-        if (entry.requisition_id && entry.requisitions) {
-            const req = entry.requisitions;
+        // Gate on requisition_id only so the breakdown (and the "View Full Details"
+        // button) still render even if the requisitions join wasn't populated for
+        // this entry. `req` is defaulted so downstream optional access can't crash.
+        if (entry.requisition_id) {
+            const req: any = entry.requisitions || {};
             const items = req.line_items || [];
             const disbursement = req.disbursements?.[0];
 
@@ -1035,22 +1047,30 @@ Status: VERIFIED`;
             const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
             const expectedChange = totalPrepared - actualExpenditure;
 
-            const handleViewDetails = (entry: any) => {
+            const handleViewDetails = async (entry: any) => {
                 const requisitionId = entry.requisition_id || entry.requisitions?.id;
-                
+
                 if (!requisitionId) {
                     console.warn('No requisition ID found for this entry');
                     return;
                 }
 
-                setSelectedRequisition({
-                    id: requisitionId,
-                    reference_number: entry.requisitions?.reference_number || 'N/A',
-                    description: entry.requisitions?.description || entry.description,
-                    status: entry.requisitions?.status || 'COMPLETED',
-                    total_amount: entry.requisitions?.actual_total || entry.debit || entry.credit || 0
-                } as any);
+                // Fetch the full requisition (same source the inbox uses) so the modal
+                // shows complete, consistent data instead of a thin partial object.
                 setIsRequisitionModalOpen(true);
+                try {
+                    const fullReq = await requisitionService.getById(requisitionId);
+                    setSelectedRequisition(fullReq as any);
+                } catch (err) {
+                    console.error('Failed to fetch requisition details:', err);
+                    setSelectedRequisition({
+                        id: requisitionId,
+                        reference_number: entry.requisitions?.reference_number || 'N/A',
+                        description: entry.requisitions?.description || entry.description,
+                        status: entry.requisitions?.status || 'COMPLETED',
+                        total_amount: entry.requisitions?.actual_total || entry.debit || entry.credit || 0
+                    } as any);
+                }
             };
 
             return (
@@ -1438,42 +1458,44 @@ Status: VERIFIED`;
         );
     }
 
+    // MoneyWise <-> External toggle, styled & animated like the Reports tabs.
+    const handleCategoryChange = (group: 'MONEYWISE' | 'EXTERNAL') => {
+        setCategoryGroup(group);
+        if (group === 'MONEYWISE') {
+            setSelectedAccountType('MONEYWISE_WALLET');
+            if (wallets.length > 0) {
+                const mainWallet = wallets.find(w => w.is_main) || wallets[0];
+                setSelectedWalletId(mainWallet.id);
+            }
+        } else {
+            setSelectedAccountType('CASH');
+            setSelectedWalletId(undefined);
+        }
+    };
+    const categoryIndex = categoryGroup === 'MONEYWISE' ? 0 : 1;
+    const categoryOptions = [
+        { value: 'MONEYWISE', label: 'MoneyWise Wallets' },
+        { value: 'EXTERNAL', label: 'External Accounts' },
+    ];
+
     return (
         <Layout noPadding={true} backgroundColor="bg-white">
             {/* ============ MOBILE LAYOUT ============ */}
-            <div className="md:hidden flex flex-col min-h-screen bg-white pb-24 pt-4">
+            <div className="md:hidden flex flex-col min-h-screen bg-white pb-24 pt-4 overflow-x-hidden">
 
                 {/* Mobile Category Toggle */}
                 <div className="px-6 mb-6">
-                    <div className="flex bg-gray-50 p-1.5 rounded-2xl border border-gray-100/50 shadow-2xs">
-                        <button
-                            onClick={() => {
-                                setCategoryGroup('MONEYWISE');
-                                setSelectedAccountType('MONEYWISE_WALLET');
-                                if (wallets.length > 0) {
-                                    const mainWallet = wallets.find(w => w.is_main) || wallets[0];
-                                    setSelectedWalletId(mainWallet.id);
-                                }
-                            }}
-                            className={`flex-1 py-3 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${categoryGroup === 'MONEYWISE' ? 'bg-white text-blue-600 shadow-xs' : 'text-gray-400'}`}
-                        >
-                            MoneyWise Wallets
-                        </button>
-                        <button
-                            onClick={() => {
-                                setCategoryGroup('EXTERNAL');
-                                setSelectedAccountType('CASH');
-                                setSelectedWalletId(undefined);
-                            }}
-                            className={`flex-1 py-3 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${categoryGroup === 'EXTERNAL' ? 'bg-white text-slate-800 shadow-xs' : 'text-gray-400'}`}
-                        >
-                            External Accounts
-                        </button>
-                    </div>
+                    <SegmentedControl
+                        variant="pill"
+                        value={categoryGroup}
+                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
+                        options={categoryOptions}
+                    />
                 </div>
 
                 {/* Mobile Wallet Cards - Horizontal Swipeable */}
-                <div className="flex overflow-x-auto no-scrollbar gap-4 pb-6 px-6 scroll-px-6 animate-in fade-in duration-300" style={{ scrollSnapType: 'x mandatory' }}>
+                <AnimatedTabContent tabKey={categoryGroup} index={categoryIndex}>
+                <div className="flex overflow-x-auto no-scrollbar gap-4 pb-6 px-6 scroll-px-6" style={{ scrollSnapType: 'x mandatory' }}>
                     {categoryGroup === 'MONEYWISE' ? (
                         <>
                             {wallets.map((w) => {
@@ -1655,6 +1677,7 @@ Status: VERIFIED`;
                         })
                     )}
                 </div>
+                </AnimatedTabContent>
 
                 {/* Mobile Transactions Header & Control Pill */}
                 <div className="px-6 py-4 flex items-center justify-between">
@@ -1900,45 +1923,21 @@ Status: VERIFIED`;
             </div>
 
             {/* ============ DESKTOP LAYOUT ============ */}
-            <div className="hidden md:block max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8">
+            <div className="hidden md:block max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8 overflow-x-hidden">
             <div className="space-y-8 pb-4">
                 {/* Category Selector Tabs */}
-                <div className="flex border-b border-gray-100 mb-6 bg-slate-50 p-1.5 rounded-2xl w-fit">
-                    <button
-                        onClick={() => {
-                            setCategoryGroup('MONEYWISE');
-                            setSelectedAccountType('MONEYWISE_WALLET');
-                            if (wallets.length > 0) {
-                                const mainWallet = wallets.find(w => w.is_main) || wallets[0];
-                                setSelectedWalletId(mainWallet.id);
-                            }
-                        }}
-                        className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-300 ${
-                            categoryGroup === 'MONEYWISE'
-                                ? 'bg-white text-blue-600 shadow-xs'
-                                : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                    >
-                        MoneyWise Wallets
-                    </button>
-                    <button
-                        onClick={() => {
-                            setCategoryGroup('EXTERNAL');
-                            setSelectedAccountType('CASH');
-                            setSelectedWalletId(undefined);
-                        }}
-                        className={`px-6 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider transition-all duration-300 ${
-                            categoryGroup === 'EXTERNAL'
-                                ? 'bg-white text-slate-800 shadow-xs'
-                                : 'text-gray-400 hover:text-gray-600'
-                        }`}
-                    >
-                        External Accounts
-                    </button>
+                <div className="max-w-sm mb-6">
+                    <SegmentedControl
+                        variant="pill"
+                        value={categoryGroup}
+                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
+                        options={categoryOptions}
+                    />
                 </div>
 
                 {/* Account Selection Cards */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-in fade-in duration-300">
+                <AnimatedTabContent tabKey={categoryGroup} index={categoryIndex}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     {categoryGroup === 'MONEYWISE' ? (
                         <>
                             {wallets.map((w) => {
@@ -2060,6 +2059,7 @@ Status: VERIFIED`;
                         })
                     )}
                 </div>
+                </AnimatedTabContent>
 
                 {/* Minimalist Toolbar */}
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-50">

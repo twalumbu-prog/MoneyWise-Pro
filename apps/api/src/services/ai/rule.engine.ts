@@ -17,6 +17,7 @@ export interface AccountingRule {
     priority: number;
     confidence_score: number;
     target_account_id: string;
+    organization_id?: string | null;
     conditions_json?: {
         min_amount?: number;
         max_amount?: number;
@@ -43,7 +44,7 @@ export class RuleEngine {
         console.log(`[RuleEngine] Loaded ${this.rules.length} active rules.`);
     }
 
-    match(description: string, amount: number, department?: string): RuleMatchResult {
+    match(description: string, amount: number, department?: string, organizationId?: string): RuleMatchResult {
         if (AI_TEST_MODE) {
             const desc = description.toLowerCase();
             console.log(`[AI-TEST-MODE] Rule Match: ${description}`);
@@ -65,7 +66,12 @@ export class RuleEngine {
 
         const normalized = description.toLowerCase().trim();
 
-        for (const rule of this.rules) {
+        // Filter to rules that are global (no org) or match this org specifically
+        const applicableRules = this.rules.filter(r =>
+            !r.organization_id || r.organization_id === organizationId
+        );
+
+        for (const rule of applicableRules) {
             // 1. Regex/Keyword Match
             let isMatch = false;
             try {

@@ -350,7 +350,7 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
                 description: item.description,
                 amount: item.estimated_amount || 0,
                 department: (item.requisition as any).department
-            });
+            }, organizationId);
 
             if (decision.account_code) {
                 const account = accountByCode.get(decision.account_code.toLowerCase());

@@ -17,7 +17,7 @@ export class DecisionRouter {
     private TERMINATION_MEDIUM = 0.70;
     private RISK_HARDENING_THRESHOLD = 0.93;
 
-    async classify(accounts: any[], item: { description: string, amount: number, department?: string }): Promise<DecisionResult> {
+    async classify(accounts: any[], item: { description: string, amount: number, department?: string }, organizationId?: string): Promise<DecisionResult> {
         console.log(`[DecisionRouter] Hardening Pass Classifying: "${item.description}" (K${item.amount})`);
 
         let bestResult: SuggestionResult = {
@@ -58,7 +58,7 @@ export class DecisionRouter {
         }
 
         // --- TIER 2: RULES ---
-        const ruleMatch = ruleEngine.match(item.description, item.amount, item.department);
+        const ruleMatch = ruleEngine.match(item.description, item.amount, item.department, organizationId);
         if (ruleMatch.matched) {
             const normalizedConf = confidenceNormalizer.normalizeRule(ruleMatch.confidence);
             const matchedAccount = accounts.find(a => (a.id || a.Id) === ruleMatch.accountId);

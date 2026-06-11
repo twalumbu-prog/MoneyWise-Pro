@@ -144,7 +144,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                     <div className="bg-gray-100/80 p-1 md:p-0 md:bg-transparent rounded-full md:rounded-none flex items-center md:border-b-0">
                         <button
                             onClick={() => setActiveTab('chat')}
-                            className={`flex-1 md:flex-none px-6 py-2.5 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all relative rounded-full md:rounded-none ${
+                            className={`flex-1 md:flex-none px-3 md:px-6 py-2.5 text-[11px] md:text-[10px] font-bold md:uppercase tracking-normal md:tracking-widest whitespace-nowrap transition-all relative rounded-full md:rounded-none ${
                                 activeTab === 'chat'
                                     ? 'bg-white md:bg-transparent text-gray-900 md:text-[#006AFF] shadow-sm md:shadow-none'
                                     : 'text-gray-400 hover:text-gray-600'
@@ -155,7 +155,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                         </button>
                         <button
                             onClick={() => setActiveTab('attachments')}
-                            className={`flex-1 md:flex-none px-6 py-2.5 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all relative rounded-full md:rounded-none ${
+                            className={`flex-1 md:flex-none px-3 md:px-6 py-2.5 text-[11px] md:text-[10px] font-bold md:uppercase tracking-normal md:tracking-widest whitespace-nowrap transition-all relative rounded-full md:rounded-none ${
                                 activeTab === 'attachments'
                                     ? 'bg-white md:bg-transparent text-gray-900 md:text-[#006AFF] shadow-sm md:shadow-none'
                                     : 'text-gray-400 hover:text-gray-600'
@@ -166,7 +166,7 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                         </button>
                         <button
                             onClick={() => setActiveTab('audit')}
-                            className={`flex-1 md:flex-none px-6 py-2.5 text-[11px] md:text-[10px] font-bold uppercase tracking-widest transition-all relative rounded-full md:rounded-none ${
+                            className={`flex-1 md:flex-none px-3 md:px-6 py-2.5 text-[11px] md:text-[10px] font-bold md:uppercase tracking-normal md:tracking-widest whitespace-nowrap transition-all relative rounded-full md:rounded-none ${
                                 activeTab === 'audit'
                                     ? 'bg-white md:bg-transparent text-gray-900 md:text-[#006AFF] shadow-sm md:shadow-none'
                                     : 'text-gray-400 hover:text-gray-600'

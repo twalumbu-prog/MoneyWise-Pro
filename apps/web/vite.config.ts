@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -43,6 +44,14 @@ export default defineConfig({
             }
         })
     ],
+    resolve: {
+        alias: {
+            // Resolve the shared workspace package to its TS source so Vite compiles
+            // it as ESM (named exports work). The CJS dist/ build is what the API
+            // (CommonJS) consumes; the web app (ESM) needs the source.
+            shared: fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url)),
+        },
+    },
     server: {
         port: 5173,
         strictPort: true,

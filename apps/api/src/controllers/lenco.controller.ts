@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { cashbookService } from '../services/cashbook.service';
+import { calculatePlatformFee } from '../utils/platformFee';
 
 export const listLencoAccounts = async (req: Request, res: Response) => {
     try {
@@ -713,8 +714,8 @@ export const getSaleReceiptDetails = async (req: Request, res: Response) => {
 
         // Calculate subtotal from products
         const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-        // Processing fee (2.5%) paid by client
-        const processingFee = subtotal * 0.025;
+        // Processing fee (tiered platform fee) paid by client
+        const processingFee = calculatePlatformFee(subtotal);
         const totalPaid = subtotal + processingFee;
 
         res.json({
@@ -816,10 +817,10 @@ export const getPublicSalesByPhone = async (req: Request, res: Response) => {
             groupedMap[ref].totalPaid += Number(sale.amount_paid);
         });
 
-        // Convert to array, add 2.5% processing fee, and sort by date descending
+        // Convert to array, add the tiered platform fee, and sort by date descending
         const receiptsList = Object.values(groupedMap).map((receipt: any) => {
             const subtotal = receipt.totalPaid;
-            const fee = subtotal * 0.025;
+            const fee = calculatePlatformFee(subtotal);
             receipt.totalPaid = subtotal + fee;
             receipt.itemsText = receipt.items.join(', ');
             return receipt;
@@ -896,7 +897,7 @@ export const getPublicSaleReceiptDetails = async (req: Request, res: Response) =
         }));
 
         const subtotal = items.reduce((sum, item) => sum + item.total, 0);
-        const processingFee = subtotal * 0.025;
+        const processingFee = calculatePlatformFee(subtotal);
         const totalPaid = subtotal + processingFee;
 
         res.json({
@@ -1115,11 +1116,25 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     continue;
                 }
 
-                // Skip split-inflow debit transactions to avoid double-logging fees
                 const descLower = txnDesc.toLowerCase();
+                const txnRefRaw = (txn.reference || txn.clientReference || '').trim();
+
+                // Skip ONLY the OUTFLOW leg of the MoneyWise platform-fee sweep (the debit
+                // leaving the merchant's collecting sub-account). The merchant wallet already
+                // reflects the NET amount (the fee was never posted there), so logging this
+                // outflow would understate the merchant.
+                //
+                // We intentionally do NOT filter the matching CREDIT into the Blue Opus
+                // settlement account — that inflow is MoneyWise fee revenue and must remain
+                // recorded. Hence this guard is debit-only.
+                //
+                // Covers the per-transaction sweep (narration "Split payment" / reference
+                // "SPLIT-...") and the legacy native split-inflow markers.
                 if (txnType === 'debit' && (
-                    descLower.includes('split-inflow') || 
-                    descLower.includes('split-inflow payment') || 
+                    descLower.includes('split payment') ||
+                    txnRefRaw.toUpperCase().startsWith('SPLIT-') ||
+                    descLower.includes('split-inflow') ||
+                    descLower.includes('split-inflow payment') ||
                     descLower.includes('to blue opus software')
                 )) {
                     continue;
