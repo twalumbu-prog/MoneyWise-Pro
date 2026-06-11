@@ -939,7 +939,7 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
         // 1. Fetch all organizations with a linked Lenco subaccount
         const { data: orgs, error: orgsError } = await supabase
             .from('organizations')
-            .select('id, name, lenco_subaccount_id, lenco_secret_key')
+            .select('id, name, lenco_subaccount_id, lenco_secret_key, lenco_sync_cutoff_date')
             .not('lenco_subaccount_id', 'is', null);
 
         if (orgsError) {
@@ -1004,6 +1004,18 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
             if (openingEntry?.date) {
                 syncCutoffDate = openingEntry.date;
                 console.log(`[Lenco Sync] Reconciliation cutoff for ${org.name}: ${syncCutoffDate} — transactions before this date are ignored.`);
+            }
+
+            // Forward-only override: if this org has an explicit lenco_sync_cutoff_date,
+            // the sync must ignore everything dated before it, even if it post-dates the
+            // opening balance. This freezes a manually-reconciled ledger so the periodic
+            // sync only ingests NEW transactions from that date onward (it never reaches
+            // back and re-creates historical entries we have already balanced by hand).
+            // Date strings are ISO ('YYYY-MM-DD') so lexical comparison is chronological.
+            const cutoffOverride: string | null = (org as any).lenco_sync_cutoff_date || null;
+            if (cutoffOverride && (!syncCutoffDate || cutoffOverride > syncCutoffDate)) {
+                syncCutoffDate = cutoffOverride;
+                console.log(`[Lenco Sync] Forward-only cutoff for ${org.name}: ${syncCutoffDate} — only transactions on/after this date are synced.`);
             }
 
             // Fetch latest transactions from Lenco API (Page 1 is enough for periodic sync)
