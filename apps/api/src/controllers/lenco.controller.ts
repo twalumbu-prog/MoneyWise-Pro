@@ -922,6 +922,31 @@ export const getPublicSaleReceiptDetails = async (req: Request, res: Response) =
 };
 
 /**
+ * For "Split payment" commission-sweep credits (the MoneyWise platform fee
+ * forwarded out of a merchant's collecting sub-account into the settlement
+ * merchant's wallet), auto-categorize the resulting inflow as
+ * "Transaction Service Revenue" if that account exists in the receiving
+ * organization's chart of accounts. This only ever applies to the MoneyWise
+ * settlement merchant (Blue Opus Software), since it's the only org that both
+ * receives "Split payment" credits and has this account.
+ */
+async function categorizeSplitPaymentRevenue(orgId: string, entryId: string) {
+    const { data: account } = await supabase
+        .from('accounts')
+        .select('id')
+        .eq('organization_id', orgId)
+        .ilike('name', 'Transaction Service Revenue')
+        .maybeSingle();
+
+    if (account) {
+        await supabase
+            .from('cashbook_entries')
+            .update({ account_id: account.id, status: 'ACCOUNTED' })
+            .eq('id', entryId);
+    }
+}
+
+/**
  * Syncs Lenco transactions for all organizations that have a linked Lenco subaccount.
  */
 export const syncAllLencoTransactions = async (req: Request, res: Response) => {
@@ -1149,6 +1174,13 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     console.log(`[Lenco Sync] Resolved merchant ref for txn ${txnId}: ${resolvedRef}`);
                 }
 
+                // A "Split payment" commission-sweep credit landing in the settlement
+                // merchant's (Blue Opus) sub-account — see categorizeSplitPaymentRevenue.
+                const isSplitPaymentSweep = txnType === 'credit' && (
+                    descLower.includes('split payment') ||
+                    resolvedRef.toUpperCase().startsWith('SPLIT-')
+                );
+
                 // ─── Check if cashbook entry already exists for this transaction ───
                 // Use fresh, independent query builders (not chained) to avoid
                 // Supabase query builder mutation bugs where chained .eq() calls
@@ -1200,24 +1232,56 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             
                             const isPublicSale = resolvedRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
                             const inflowAmount = isPublicSale ? txnAmount * 0.975 : txnAmount;
-                            
-                            await cashbookService.createEntry(orgId, {
-                                date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                description: txnDesc || `Wallet Deposit | Ref: ${resolvedRef || txnId}`,
-                                debit: inflowAmount,
-                                credit: 0,
-                                entry_type: 'INFLOW',
-                                account_type: 'MONEYWISE_WALLET',
-                                status: 'COMPLETED',
-                                wallet_id: walletId,
-                                external_reference: resolvedRef || txnId
-                            } as any);
 
                             // NOTE: The MoneyWise platform charge is intentionally NOT posted to
                             // the wallet ledger. The wallet must mirror the actual Lenco balance,
                             // which does not deduct this fee. Any real fee settlement appears as its
                             // own Lenco debit and is synced as a normal outflow.
-                            finalizedCount++;
+                            try {
+                                let finalizedEntry;
+                                try {
+                                    finalizedEntry = await cashbookService.createEntry(orgId, {
+                                        date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                        description: txnDesc || `Wallet Deposit | Ref: ${resolvedRef || txnId}`,
+                                        debit: inflowAmount,
+                                        credit: 0,
+                                        entry_type: 'INFLOW',
+                                        account_type: 'MONEYWISE_WALLET',
+                                        status: 'COMPLETED',
+                                        wallet_id: walletId,
+                                        external_reference: resolvedRef || txnId
+                                    } as any);
+                                } catch (createErr: any) {
+                                    // The resolved merchant reference can collide with another
+                                    // organization's INFLOW row under the GLOBAL
+                                    // uniq_cashbook_inflow_per_reference index. Fall back to the
+                                    // bank transaction ID, which is unique by construction.
+                                    if (createErr?.message?.includes('uniq_cashbook_inflow_per_reference') && resolvedRef && resolvedRef !== txnId) {
+                                        console.warn(`[Lenco Sync] external_reference '${resolvedRef}' collided globally; retrying with txnId '${txnId}' for org ${org.name}`);
+                                        finalizedEntry = await cashbookService.createEntry(orgId, {
+                                            date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                            description: txnDesc || `Wallet Deposit | Ref: ${resolvedRef || txnId}`,
+                                            debit: inflowAmount,
+                                            credit: 0,
+                                            entry_type: 'INFLOW',
+                                            account_type: 'MONEYWISE_WALLET',
+                                            status: 'COMPLETED',
+                                            wallet_id: walletId,
+                                            external_reference: txnId
+                                        } as any);
+                                    } else {
+                                        throw createErr;
+                                    }
+                                }
+
+                                if (isSplitPaymentSweep && finalizedEntry?.id) {
+                                    await categorizeSplitPaymentRevenue(orgId, finalizedEntry.id);
+                                }
+
+                                finalizedCount++;
+                            } catch (entryErr: any) {
+                                console.error(`[Lenco Sync] Failed to finalize pending inflow ${existingEntry.id} for org ${org.name}:`, entryErr.message);
+                            }
                         }
                     }
                     continue; // Skip already completed/disbursed entries
@@ -1234,27 +1298,61 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     // webhook would have stored, preventing future duplicates.
                     const entryExternalRef = resolvedRef || txnId;
 
-                    await cashbookService.createEntry(orgId, {
-                        date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                        description: txnDesc || `Wallet Deposit | Ref: ${entryExternalRef}`,
-                        debit: inflowAmount,
-                        credit: 0,
-                        entry_type: 'INFLOW',
-                        account_type: 'MONEYWISE_WALLET',
-                        status: 'UNACCOUNTED',
-                        wallet_id: walletId,
-                        external_reference: entryExternalRef
-                    } as any);
-
                     // NOTE: The MoneyWise platform charge is intentionally NOT posted to the
                     // wallet ledger. The wallet must mirror the actual Lenco balance, which does
                     // not deduct this fee. Any real fee settlement appears as its own Lenco debit.
-                    newEntriesCount++;
+                    try {
+                        let newEntry;
+                        try {
+                            newEntry = await cashbookService.createEntry(orgId, {
+                                date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                description: txnDesc || `Wallet Deposit | Ref: ${entryExternalRef}`,
+                                debit: inflowAmount,
+                                credit: 0,
+                                entry_type: 'INFLOW',
+                                account_type: 'MONEYWISE_WALLET',
+                                status: 'UNACCOUNTED',
+                                wallet_id: walletId,
+                                external_reference: entryExternalRef
+                            } as any);
+                        } catch (createErr: any) {
+                            // The resolved merchant reference can collide with another
+                            // organization's INFLOW row under the GLOBAL
+                            // uniq_cashbook_inflow_per_reference index (e.g. a "Split payment"
+                            // sweep credit resolving to the originating org's own DEP-... ref).
+                            // Fall back to the bank transaction ID, which is unique by construction.
+                            if (createErr?.message?.includes('uniq_cashbook_inflow_per_reference') && entryExternalRef !== txnId) {
+                                console.warn(`[Lenco Sync] external_reference '${entryExternalRef}' collided globally; retrying with txnId '${txnId}' for org ${org.name}`);
+                                newEntry = await cashbookService.createEntry(orgId, {
+                                    date: (txn.datetime || new Date().toISOString()).split('T')[0],
+                                    description: txnDesc || `Wallet Deposit | Ref: ${entryExternalRef}`,
+                                    debit: inflowAmount,
+                                    credit: 0,
+                                    entry_type: 'INFLOW',
+                                    account_type: 'MONEYWISE_WALLET',
+                                    status: 'UNACCOUNTED',
+                                    wallet_id: walletId,
+                                    external_reference: txnId
+                                } as any);
+                            } else {
+                                throw createErr;
+                            }
+                        }
+
+                        if (isSplitPaymentSweep && newEntry?.id) {
+                            await categorizeSplitPaymentRevenue(orgId, newEntry.id);
+                        }
+
+                        newEntriesCount++;
+                    } catch (entryErr: any) {
+                        console.error(`[Lenco Sync] Failed to log new inflow ${txnId} for org ${org.name}:`, entryErr.message);
+                    }
 
                 } else if (txnType === 'debit') {
+                  try {
                     // New Outflow (Debit)
                     console.log(`[Lenco Sync] Logging new debit transaction: ID=${txnId}, Amt=K${txnAmount}`);
-                    
+
                     // Match to an existing requisition / disbursement
                     let matchedDisb: any = null;
                     const refLower = resolvedRef.toLowerCase();
@@ -1365,6 +1463,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             newEntriesCount++;
                         }
                     }
+                  } catch (debitErr: any) {
+                      console.error(`[Lenco Sync] Failed to process debit transaction ${txnId} for org ${org.name}:`, debitErr.message);
+                  }
                 }
             }
 
