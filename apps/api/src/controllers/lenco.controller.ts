@@ -1161,6 +1161,30 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     console.log(`[Lenco Sync] Resolved merchant ref for txn ${txnId}: ${resolvedRef}`);
                 }
 
+                // ─── Change-return deposits (CHG-...) must NOT be logged as standalone inflows ───
+                // When a requestor submits change via the wallet, the deposit comes back as a real
+                // Lenco credit whose reference is the requisition's change_external_reference
+                // (CHG-<ts>-<reqId>). It is pure netting against the requisition's disbursement, NOT
+                // new income. Mirror the webhook's CHG- branch (handleCollectionSuccessful): record
+                // the change on the disbursement so it nets into the original outflow, and skip the
+                // ledger entry entirely. Without this, the periodic sync re-creates the change as an
+                // "Unaccounted" inflow and the wallet balance is overstated/double-counted.
+                if (txnType === 'credit') {
+                    const chgRef = (txnRefRaw || resolvedRef || '').trim();
+                    if (chgRef.toUpperCase().startsWith('CHG-')) {
+                        const parts = chgRef.split('-');
+                        // Formats: CHG-<ts>-<uuid> (7 parts) or CHG-<ts>-<uuid>-<shortId> (8 parts)
+                        const reqIdToUse = parts.length >= 8 ? parts[parts.length - 1] : parts.slice(2).join('-');
+                        try {
+                            await cashbookService.updateDisbursementForChange(orgId, reqIdToUse, txnAmount, chgRef);
+                            console.log(`[Lenco Sync] Change return ${chgRef} netted into requisition ${reqIdToUse}; no standalone inflow logged.`);
+                        } catch (chgErr) {
+                            console.error(`[Lenco Sync] Failed to net change return ${chgRef}:`, chgErr);
+                        }
+                        continue;
+                    }
+                }
+
                 // ─── Check if cashbook entry already exists for this transaction ───
                 // Use fresh, independent query builders (not chained) to avoid
                 // Supabase query builder mutation bugs where chained .eq() calls

@@ -404,12 +404,20 @@ const CashLedger: React.FC = () => {
         // Filter out pending checkouts/intents by default unless toggled
         if (!showPendingIntents) {
             result = result.filter(entry => {
-                const isPendingIntent = entry.status === 'PENDING' && 
-                    entry.entry_type === 'INFLOW' && 
+                const isPendingIntent = entry.status === 'PENDING' &&
+                    entry.entry_type === 'INFLOW' &&
                     (entry.description?.startsWith('PENDING_INTENT:') || entry.description?.includes('PENDING_INTENT:'));
                 return !isPendingIntent;
             });
         }
+
+        // Always hide net-zero reconciliation entries (kept in DB for sync dedup, not user-facing)
+        result = result.filter(entry => {
+            const isNetZeroReconciliation = Number(entry.debit) === 0 &&
+                Number(entry.credit) === 0 &&
+                entry.description?.includes('[Reconciled:');
+            return !isNetZeroReconciliation;
+        });
 
         // 1. Dropdown Filters
         if (filterDepartment !== 'ALL') {

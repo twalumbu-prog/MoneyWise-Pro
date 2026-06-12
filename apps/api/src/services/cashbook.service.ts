@@ -493,54 +493,70 @@ export const cashbookService = {
             .single();
 
         if (findError || !originalEntry) {
-            console.warn(`Original disbursement entry not found for requisition ${requisitionId}. Creating new entry...`);
+            // No DISBURSEMENT cashbook entry is linked to this requisition. This happens when the
+            // ledger was rebuilt from the bank source-of-truth (Lenco reconcile), where the real
+            // outflow is recorded as a raw bank expense with requisition_id = null. The money has
+            // ALREADY left the wallet, so creating a brand-new DISBURSEMENT here would double-count
+            // it — that was the cause of the negative-balance bug (a phantom "Net Effect" outflow).
+            //
+            // Never fabricate an outflow. Instead try to ADOPT the matching unlinked wallet outflow
+            // (matched on the gross prepared amount) and net the change into it. If none matches,
+            // leave the ledger untouched and flag for manual reconciliation.
+            console.warn(`[finalizeDisbursement] No linked disbursement entry for requisition ${requisitionId}; attempting to adopt an existing unlinked outflow instead of creating one.`);
 
-            const { data: disb } = await supabase
+            const { data: disbursement } = await supabase
                 .from('disbursements')
-                .select('cashier_id')
+                .select('total_prepared')
                 .eq('requisition_id', requisitionId)
                 .single();
 
             const { data: req } = await supabase
                 .from('requisitions')
-                .select('description, requestor_id, wallet_id')
+                .select('wallet_id')
                 .eq('id', requisitionId)
                 .single();
 
-            const createdBy = disb?.cashier_id || req?.requestor_id;
             const walletId = req?.wallet_id || null;
+            const grossDisbursed = Number(disbursement?.total_prepared || 0);
 
-        // 1.5 Fetch disbursement to get confirmed change for the description
-        const { data: disbursement } = await supabase
-            .from('disbursements')
-            .select('confirmed_change_amount, change_submission_method, total_prepared')
-            .eq('requisition_id', requisitionId)
-            .single();
+            let adoptable: any = null;
+            if (walletId && grossDisbursed > 0) {
+                const { data } = await supabase
+                    .from('cashbook_entries')
+                    .select('id, date, created_at, account_type, wallet_id')
+                    .eq('organization_id', organizationId)
+                    .eq('wallet_id', walletId)
+                    .is('requisition_id', null)
+                    .in('entry_type', ['DISBURSEMENT', 'EXPENSE'])
+                    .gte('credit', grossDisbursed - 0.01)
+                    .lte('credit', grossDisbursed + 0.01)
+                    .order('date', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+                adoptable = data;
+            }
 
-        const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
-        const changeMethod = disbursement?.change_submission_method || 'CASH';
-        
-        let newDescription = discrepancy !== 0
-            ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
-            : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
+            if (adoptable) {
+                const newDescription = discrepancy !== 0
+                    ? `Voucher ${voucherNumber || ''} (Exp: K${actualExpenditure.toFixed(2)}, Disc: K${discrepancy.toFixed(2)})`
+                    : `Voucher ${voucherNumber || ''} (Actual for Req #${requisitionId.slice(0, 8)})`;
 
-        if (confirmedChange > 0) {
-            newDescription += ` | Net Effect - Change of K${confirmedChange.toFixed(2)} returned via ${changeMethod}`;
-        }
+                console.warn(`[finalizeDisbursement] Adopting unlinked outflow ${adoptable.id} for requisition ${requisitionId}; netting change into it (new amount K${(actualExpenditure + discrepancy).toFixed(2)}).`);
+                await supabase
+                    .from('cashbook_entries')
+                    .update({
+                        requisition_id: requisitionId,
+                        credit: actualExpenditure + discrepancy,
+                        description: newDescription,
+                        status: 'COMPLETED',
+                        voucher_id: voucherId
+                    })
+                    .eq('id', adoptable.id);
 
-            await this.createEntry(organizationId, {
-                entry_type: 'DISBURSEMENT',
-                description: newDescription,
-                debit: 0,
-                credit: actualExpenditure + discrepancy,
-                date: new Date().toISOString().split('T')[0],
-                requisition_id: requisitionId,
-                created_by: createdBy,
-                status: 'COMPLETED',
-                voucher_id: voucherId,
-                account_type: walletId ? 'MONEYWISE_WALLET' : 'CASH',
-                wallet_id: walletId
-            } as any);
+                await this.recalculateBalancesFrom(organizationId, adoptable.date, adoptable.created_at, adoptable.account_type || 'CASH', adoptable.wallet_id);
+            } else {
+                console.error(`[finalizeDisbursement] No disbursement ledger entry found for requisition ${requisitionId} and no unlinked outflow (gross K${grossDisbursed.toFixed(2)}) to adopt. Skipping ledger write to avoid double-counting — manual reconciliation required.`);
+            }
             return;
         }
 
