@@ -1197,12 +1197,19 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
             // collection status without an extra API call per intent.
             const refToCollection = new Map<string, any>();
             try {
+                // Lenco's collections page size is NOT 100 (observed ~50). The old
+                // `length < 100` break stopped after page 1, so the map only covered
+                // the newest page — older same-day payments became unresolvable and
+                // the sync re-logged them as duplicate raw inflows (CR-2026-0085/0086
+                // on 2026-06-12). Page until no new references appear, hard-capped.
                 let colPage = 1;
-                while (true) {
+                while (colPage <= 40) {
                     const collectionsResp = await LencoService.getCollections({ page: colPage }, secretKey);
                     const collections: any[] = collectionsResp?.data || [];
                     if (collections.length === 0) break;
+                    let newRefs = 0;
                     for (const col of collections) {
+                        if (col.reference && !refToCollection.has(col.reference)) newRefs++;
                         if (col.settlement?.id && col.reference) {
                             settlementToRef.set(col.settlement.id, col.reference);
                         }
@@ -1210,10 +1217,10 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             refToCollection.set(col.reference, col);
                         }
                     }
-                    if (collections.length < 100) break; // Last page
+                    if (newRefs === 0) break; // page param ignored or repeating data
                     colPage++;
                 }
-                console.log(`[Lenco Sync] Built settlement→ref map with ${settlementToRef.size} entries for org ${org.name}`);
+                console.log(`[Lenco Sync] Built settlement→ref map with ${settlementToRef.size} entries (${colPage} page(s)) for org ${org.name}`);
             } catch (err: any) {
                 // Non-fatal: we can still sync, just with less deduplication accuracy
                 console.warn(`[Lenco Sync] Could not fetch collections for org ${org.name}: ${err.message}. Proceeding without settlement map.`);
