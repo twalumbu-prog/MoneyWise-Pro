@@ -153,6 +153,136 @@ export const cashbookService = {
     },
 
     /**
+     * Finalize a PENDING wallet-deposit intent IN PLACE (no delete-then-recreate).
+     *
+     * The legacy finalize flow deleted the intent row and inserted a fresh entry; if
+     * the insert failed (unique-index collision, reference RPC hiccup) the intent was
+     * already destroyed and the payment vanished from the ledger until the periodic
+     * sync re-logged it as a raw, unmatched inflow. Updating the existing row is
+     * atomic: on any failure the intent survives as PENDING and the next webhook
+     * retry / sync cycle can try again.
+     *
+     * Keeps the row's original created_at so its ledger position stays stable.
+     */
+    async finalizePendingIntent(
+        organizationId: string,
+        intentId: string,
+        opts: {
+            description: string;
+            debit: number;
+            externalReference: string;
+            date?: string; // payment date; defaults to the intent's own date
+            // Retried on a cross-org unique-index collision (the inflow reference
+            // index is global); typically the bank transaction UUID.
+            fallbackExternalReference?: string;
+        }
+    ): Promise<CashbookEntry> {
+        const { data: intent, error: intentError } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('id', intentId)
+            .eq('organization_id', organizationId)
+            .single();
+
+        if (intentError || !intent) {
+            throw new Error(`Pending intent ${intentId} not found for finalization: ${intentError?.message || 'no row'}`);
+        }
+
+        if (intent.status !== 'PENDING') {
+            // Already finalized by a concurrent webhook/sync run — idempotent success.
+            return intent;
+        }
+
+        const prefix = (opts.description.startsWith('Sale:') || opts.description.startsWith('Revenue:')) ? 'REC' : 'CR';
+        const { data: refNum, error: refError } = await supabase.rpc('generate_sequential_reference', {
+            p_org_id: organizationId,
+            p_entity_type: 'INFLOW',
+            p_prefix: prefix
+        });
+        if (refError) {
+            throw new Error(`Failed to generate reference number for intent ${intentId}: ${refError.message}`);
+        }
+
+        const newDate = opts.date || intent.date;
+
+        const applyUpdate = (externalReference: string) => supabase
+            .from('cashbook_entries')
+            .update({
+                description: opts.description,
+                debit: opts.debit,
+                credit: 0,
+                status: 'COMPLETED',
+                external_reference: externalReference,
+                reference_number: refNum,
+                date: newDate
+            })
+            .eq('id', intentId)
+            .eq('status', 'PENDING') // guard against concurrent finalization
+            .select()
+            .maybeSingle();
+
+        let { data: updated, error: updateError } = await applyUpdate(opts.externalReference);
+
+        if (updateError?.message?.includes('uniq_cashbook_inflow_per_reference')) {
+            // The inflow-reference index is GLOBAL across organizations.
+            const { data: winner } = await supabase
+                .from('cashbook_entries')
+                .select('*')
+                .eq('external_reference', opts.externalReference)
+                .eq('entry_type', 'INFLOW')
+                .neq('id', intentId)
+                .limit(1)
+                .maybeSingle();
+
+            if (winner && winner.organization_id === organizationId && winner.status !== 'PENDING') {
+                // Same-org finalized entry already holds this reference (webhook raced
+                // the sync): this intent is a redundant twin — remove it, return winner.
+                await supabase.from('cashbook_entries').delete().eq('id', intentId).eq('status', 'PENDING');
+                return winner;
+            }
+
+            if (opts.fallbackExternalReference && opts.fallbackExternalReference !== opts.externalReference) {
+                // Cross-org collision (e.g. a commission-sweep credit resolving to the
+                // originating org's reference): keep OUR intent, retry with a reference
+                // that is unique by construction.
+                ({ data: updated, error: updateError } = await applyUpdate(opts.fallbackExternalReference));
+            }
+        }
+
+        if (updateError) {
+            throw new Error(`Failed to finalize intent ${intentId}: ${updateError.message}`);
+        }
+
+        if (!updated) {
+            // Status guard hit: another process finalized it between our read and update.
+            const { data: current } = await supabase
+                .from('cashbook_entries')
+                .select('*')
+                .eq('id', intentId)
+                .single();
+            return current || intent;
+        }
+
+        // Recalculate from the earlier of the old/new ledger position.
+        const recalcDate = newDate < intent.date ? newDate : intent.date;
+        await this.recalculateBalancesFrom(
+            organizationId,
+            recalcDate,
+            intent.created_at,
+            intent.account_type || 'MONEYWISE_WALLET',
+            intent.wallet_id
+        );
+
+        const { data: fresh } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('id', intentId)
+            .single();
+
+        return fresh || updated;
+    },
+
+    /**
      * Log cash disbursement
      */
     async logDisbursement(

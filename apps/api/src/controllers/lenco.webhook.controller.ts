@@ -132,49 +132,6 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         return false;
     }
 
-    // FIX (Issue 10): Deduplicate collections based on Lenco reference.
-    // Strategy 1: Try external_reference column (available after migration)
-    // Strategy 2: Fallback to description-based LIKE check (always works)
-    let pendingEntry = null;
-    if (reference) {
-        try {
-            const { data: existingByRef, error: refError } = await supabase
-                .from('cashbook_entries')
-                .select('id, status, description, wallet_id, debit')
-                .eq('external_reference', reference)
-                .maybeSingle();
-            
-            if (!refError && existingByRef) {
-                if (existingByRef.status === 'PENDING') {
-                    pendingEntry = existingByRef;
-                } else {
-                    console.log(`[Lenco Webhook] DUPLICATE IGNORED (by ref): Collection ${reference} already logged.`);
-                    return true;
-                }
-            }
-        } catch (_) {
-            // Column may not exist yet — fall through to description-based check
-        }
-
-        if (!pendingEntry) {
-            // Fallback: description-based dedup (works before migration)
-            const { data: existingByDesc } = await supabase
-                .from('cashbook_entries')
-                .select('id, status, description, wallet_id, debit')
-                .like('description', `%${reference}%`)
-                .maybeSingle();
-
-            if (existingByDesc) {
-                if (existingByDesc.status === 'PENDING') {
-                    pendingEntry = existingByDesc;
-                } else {
-                    console.log(`[Lenco Webhook] DUPLICATE IGNORED (by desc): Collection ${reference} already logged.`);
-                    return true;
-                }
-            }
-        }
-    }
-
     // 1. Try to extract organization ID from reference using regex (Primary Source of Truth)
     if (!organizationId && reference) {
         const uuidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
@@ -228,9 +185,55 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
         return false;
     }
 
+    // Deduplicate against the org's ledger by Lenco reference. Multi-row-safe:
+    // .maybeSingle() errors out (data=null) when >1 row matches — e.g. a finalized
+    // entry plus a stale PENDING twin — which previously read as "no match" and
+    // produced duplicate raw inflows. Fetch candidates and pick explicitly instead.
+    let pendingEntry: any = null;
+    let finalizedDuplicate: any = null;
+    if (reference) {
+        const { data: byRef } = await supabase
+            .from('cashbook_entries')
+            .select('id, status, description, wallet_id, debit, date, account_type')
+            .eq('organization_id', organizationId)
+            .eq('external_reference', reference)
+            .limit(5);
+        let candidates: any[] = byRef || [];
+        if (candidates.length === 0) {
+            // Legacy intents carry the reference only inside the description.
+            const { data: byDesc } = await supabase
+                .from('cashbook_entries')
+                .select('id, status, description, wallet_id, debit, date, account_type')
+                .eq('organization_id', organizationId)
+                .like('description', `%${reference}%`)
+                .limit(5);
+            candidates = byDesc || [];
+        }
+        finalizedDuplicate = candidates.find((c: any) => c.status !== 'PENDING') || null;
+        pendingEntry = candidates.find((c: any) => c.status === 'PENDING') || null;
+    }
+
+    if (finalizedDuplicate) {
+        console.log(`[Lenco Webhook] DUPLICATE IGNORED: Collection ${reference} already logged as ${finalizedDuplicate.id}.`);
+        // Heal partial prior runs: a leftover PENDING twin is redundant once a
+        // finalized entry exists, and the sale may still be stuck PENDING if the
+        // earlier run died between the ledger write and the sale update.
+        if (pendingEntry) {
+            await supabase.from('cashbook_entries').delete().eq('id', pendingEntry.id).eq('status', 'PENDING');
+        }
+        if (reference) {
+            await supabase
+                .from('product_sales')
+                .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+                .eq('reference', reference)
+                .eq('status', 'PENDING');
+        }
+        return true;
+    }
+
     try {
         console.log(`[Lenco Webhook] Identification successful: ${identificationStage} -> ${organizationId}`);
-        
+
         const formattedAmount = Number(amount).toLocaleString();
 
         if (reference && reference.startsWith('CHG-')) {
@@ -288,30 +291,36 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 }
             }
 
-            if (pendingEntry) {
-                // Delete the pending intent before recreating the finalized entry so we don't mess up balances
-                await supabase.from('cashbook_entries').delete().eq('id', pendingEntry.id);
-            }
-            
-            const isPublicSale = (reference && reference.endsWith('-PUB')) || 
+            const isPublicSale = (reference && reference.endsWith('-PUB')) ||
                                 (actualNarration && (actualNarration.startsWith('Sale:') || actualNarration.startsWith('Revenue:')));
 
             const inflowAmount = isPublicSale
                 ? (pendingEntry?.debit ? Number(pendingEntry.debit) : parseFloat(amount) * 0.975)
                 : parseFloat(amount);
 
-            // 1. Log the Inflow
-            const newEntry = await cashbookService.createEntry(organizationId, {
-                date: new Date().toISOString().split('T')[0],
-                description: actualNarration,
-                debit: inflowAmount,
-                credit: 0,
-                entry_type: 'INFLOW',
-                account_type: 'MONEYWISE_WALLET',
-                status: pendingEntry ? 'COMPLETED' : 'UNACCOUNTED',
-                wallet_id: walletId,
-                external_reference: reference || null
-            } as any);
+            // 1. Log the Inflow — finalize the intent IN PLACE when one exists.
+            // (Delete-then-recreate destroyed the intent when the recreate failed.)
+            let newEntry: any;
+            if (pendingEntry) {
+                newEntry = await cashbookService.finalizePendingIntent(organizationId, pendingEntry.id, {
+                    description: actualNarration,
+                    debit: inflowAmount,
+                    externalReference: reference,
+                    date: new Date().toISOString().split('T')[0]
+                });
+            } else {
+                newEntry = await cashbookService.createEntry(organizationId, {
+                    date: new Date().toISOString().split('T')[0],
+                    description: actualNarration,
+                    debit: inflowAmount,
+                    credit: 0,
+                    entry_type: 'INFLOW',
+                    account_type: 'MONEYWISE_WALLET',
+                    status: 'UNACCOUNTED',
+                    wallet_id: walletId,
+                    external_reference: reference || null
+                } as any);
+            }
 
             // 2. Auto-classify via rule engine (org-scoped rules take priority)
             try {

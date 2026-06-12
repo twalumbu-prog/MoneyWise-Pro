@@ -194,14 +194,20 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
     }
 
     try {
-        // 1. Check if the entry already exists and is finalized in our database
-        const { data: existingEntry, error: dbError } = await supabase
+        // 1. Check if the entry already exists and is finalized in our database.
+        // Multi-row-safe: a finalized entry can coexist with a stale PENDING twin,
+        // and .maybeSingle() errors out on >1 match. Prefer the finalized row.
+        const { data: existingRows, error: dbError } = await supabase
             .from('cashbook_entries')
             .select('id, status, reference_number')
-            .like('description', `%${reference}%`)
-            .maybeSingle();
+            .or(`external_reference.eq.${reference},description.like.%${reference}%`)
+            .limit(5);
 
         if (dbError) throw dbError;
+
+        const existingEntry = (existingRows || []).find(r => r.status !== 'PENDING')
+            || (existingRows || [])[0]
+            || null;
 
         if (existingEntry && existingEntry.status !== 'PENDING') {
             console.log(`[Lenco Verify] Found in local DB and finalized: ${existingEntry.id}`);
@@ -302,13 +308,41 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
             // If the error indicates that the transaction was not found/generated on Lenco:
             const errMsg = lencoError.message || '';
             if (errMsg.toLowerCase().includes('not found') || errMsg.toLowerCase().includes('invalid') || errMsg.toLowerCase().includes('404')) {
-                console.log(`[Lenco Verify] Transaction not found on Lenco for reference ${reference}. Cleaning up pending entries.`);
-                await supabase.from('cashbook_entries').delete().like('description', `%${reference}%`);
-                await supabase.from('product_sales').delete().eq('reference', reference);
+                // "Not found" can be transient: right after initiation the collection
+                // record may not have propagated on Lenco's side yet, while the customer
+                // is still authorizing on their phone. Deleting here used to destroy
+                // intents for payments that succeeded seconds later — the money then
+                // resurfaced as an unmatched raw inflow via the periodic sync. Only
+                // clean up PENDING rows, and only after a grace window.
+                const GRACE_MINUTES = 15;
+                const { data: intents } = await supabase
+                    .from('cashbook_entries')
+                    .select('id, created_at')
+                    .eq('status', 'PENDING')
+                    .or(`external_reference.eq.${reference},description.like.%${reference}%`)
+                    .limit(5);
+
+                const cutoffMs = Date.now() - GRACE_MINUTES * 60 * 1000;
+                const stale = (intents || []).filter(i => new Date(i.created_at).getTime() < cutoffMs);
+
+                if (!intents || intents.length === 0 || stale.length === intents.length) {
+                    console.log(`[Lenco Verify] Reference ${reference} not found on Lenco and intents are stale. Cleaning up pending entries.`);
+                    for (const i of stale) {
+                        await supabase.from('cashbook_entries').delete().eq('id', i.id).eq('status', 'PENDING');
+                    }
+                    await supabase.from('product_sales').delete().eq('reference', reference).eq('status', 'PENDING');
+                    return res.json({
+                        verified: false,
+                        status: 'DELETED',
+                        message: 'Payment intent was not generated on Lenco. Cleaned up pending entries.'
+                    });
+                }
+
+                console.log(`[Lenco Verify] Reference ${reference} not found on Lenco yet, but intent is < ${GRACE_MINUTES}min old. Keeping it (payment may still be authorizing).`);
                 return res.json({
                     verified: false,
-                    status: 'DELETED',
-                    message: 'Payment intent was not generated on Lenco. Cleaned up pending entries.'
+                    status: 'pending',
+                    message: 'Payment not visible on Lenco yet. Intent kept pending.'
                 });
             }
             throw lencoError;
@@ -600,10 +634,20 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
             balance_after: 0,
             date: new Date().toISOString().split('T')[0],
             status: 'PENDING',
-            wallet_id: walletId
+            wallet_id: walletId,
+            // Store the merchant reference on the indexed column so the webhook and
+            // periodic sync match this intent directly instead of via description LIKE.
+            external_reference: reference
         });
 
-        if (error) throw error;
+        if (error) {
+            // Unique index uniq_cashbook_inflow_per_reference: a retried initiation
+            // with the same reference means the intent is already logged — idempotent.
+            if (error.message?.includes('uniq_cashbook_inflow_per_reference')) {
+                return res.json({ message: 'Intent already logged' });
+            }
+            throw error;
+        }
 
         // Log pending product sales if present
         if (items && Array.isArray(items) && items.length > 0) {
@@ -949,6 +993,43 @@ async function categorizeSplitPaymentRevenue(orgId: string, entryId: string) {
 /**
  * Syncs Lenco transactions for all organizations that have a linked Lenco subaccount.
  */
+/**
+ * Reconstruct the sale ledger description + face amount for a merchant reference
+ * from product_sales. Lets the sync recover the full "Sale: Products: ..." entry
+ * (product, customer, receipt-compatible format) even when the pending intent was
+ * lost, instead of logging the raw bank narration.
+ */
+async function buildSaleFinalization(orgId: string, reference: string): Promise<{ description: string; amount: number } | null> {
+    const { data: sales } = await supabase
+        .from('product_sales')
+        .select('quantity, amount_paid, customer_name, customer_phone, products(name)')
+        .eq('organization_id', orgId)
+        .eq('reference', reference);
+
+    if (!sales || sales.length === 0) return null;
+
+    const itemsText = sales.map((s: any) => `${s.products?.name || 'Product'} (x${s.quantity})`).join(', ');
+    const customer = (sales[0].customer_name || '').trim() || sales[0].customer_phone || 'Anonymous';
+    const total = sales.reduce((sum: number, s: any) => sum + Number(s.amount_paid || 0), 0);
+
+    return {
+        description: `Sale: Products: ${itemsText} | Cust: ${customer} | Ref: ${reference}`,
+        amount: Math.round(total * 100) / 100
+    };
+}
+
+async function completeSalesForReference(orgId: string, reference: string): Promise<void> {
+    const { error } = await supabase
+        .from('product_sales')
+        .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+        .eq('organization_id', orgId)
+        .eq('reference', reference)
+        .eq('status', 'PENDING');
+    if (error) {
+        console.error(`[Lenco Sync] Failed to complete product_sales for ref ${reference}:`, error.message);
+    }
+}
+
 export const syncAllLencoTransactions = async (req: Request, res: Response) => {
     console.log('[Lenco Sync] Background synchronization triggered');
 
@@ -1112,6 +1193,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
             // merchant reference for each bank credit transaction before doing
             // the dedup check against our cashbook_entries table.
             const settlementToRef = new Map<string, string>();
+            // reference → collection object; lets the stale-intent janitor below check
+            // collection status without an extra API call per intent.
+            const refToCollection = new Map<string, any>();
             try {
                 let colPage = 1;
                 while (true) {
@@ -1121,6 +1205,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     for (const col of collections) {
                         if (col.settlement?.id && col.reference) {
                             settlementToRef.set(col.settlement.id, col.reference);
+                        }
+                        if (col.reference) {
+                            refToCollection.set(col.reference, col);
                         }
                     }
                     if (collections.length < 100) break; // Last page
@@ -1147,9 +1234,14 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     continue;
                 }
 
-                // Skip transactions before the reconciliation cutoff (opening balance date).
+                // Transactions before the reconciliation cutoff must never CREATE new
+                // ledger entries (that history is frozen). But a pre-cutoff CREDIT may
+                // still need to FINALIZE an existing PENDING intent — skipping outright
+                // left intents stuck forever whenever the webhook missed the payment.
+                // Defer the decision for credits; debits remain fully skipped.
                 const txnDate = (txn.datetime || '').split('T')[0];
-                if (syncCutoffDate && txnDate && txnDate < syncCutoffDate) {
+                const isPreCutoff = !!(syncCutoffDate && txnDate && txnDate < syncCutoffDate);
+                if (isPreCutoff && txnType !== 'credit') {
                     continue;
                 }
 
@@ -1218,117 +1310,138 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                 );
 
                 // ─── Check if cashbook entry already exists for this transaction ───
-                // Use fresh, independent query builders (not chained) to avoid
-                // Supabase query builder mutation bugs where chained .eq() calls
-                // on a shared builder variable would compound filters incorrectly.
-
-                let existingEntry: any = null;
+                // Multi-row-safe: .maybeSingle() errors out (data=null) when more than
+                // one row matches — e.g. a finalized entry plus a stale PENDING twin —
+                // which previously read as "no match" and created duplicate raw inflows.
+                // Collect candidates and pick explicitly instead.
+                let candidates: any[] = [];
 
                 // 1. Check by the bank transaction UUID (txnId)
                 const { data: byTxnId } = await supabase
                     .from('cashbook_entries')
-                    .select('id, status, description, wallet_id, debit, credit')
+                    .select('id, status, description, wallet_id, debit, credit, date')
                     .eq('organization_id', orgId)
                     .eq('account_type', 'MONEYWISE_WALLET')
                     .eq('external_reference', txnId)
-                    .maybeSingle();
-                existingEntry = byTxnId;
+                    .limit(5);
+                candidates = byTxnId || [];
 
                 // 2. Check by the resolved merchant reference (e.g. DEP-...)
-                if (!existingEntry && resolvedRef) {
+                if (resolvedRef) {
                     const { data: byRef } = await supabase
                         .from('cashbook_entries')
-                        .select('id, status, description, wallet_id, debit, credit')
+                        .select('id, status, description, wallet_id, debit, credit, date')
                         .eq('organization_id', orgId)
                         .eq('account_type', 'MONEYWISE_WALLET')
                         .eq('external_reference', resolvedRef)
-                        .maybeSingle();
-                    existingEntry = byRef;
+                        .limit(5);
+                    for (const row of byRef || []) {
+                        if (!candidates.some((c) => c.id === row.id)) candidates.push(row);
+                    }
+
+                    // 3. Fallback: merchant reference substring in description (legacy
+                    // intents created before external_reference was set at intent time)
+                    if (candidates.length === 0) {
+                        const { data: byDesc } = await supabase
+                            .from('cashbook_entries')
+                            .select('id, status, description, wallet_id, debit, credit, date')
+                            .eq('organization_id', orgId)
+                            .eq('account_type', 'MONEYWISE_WALLET')
+                            .like('description', `%${resolvedRef}%`)
+                            .limit(5);
+                        candidates = byDesc || [];
+                    }
                 }
 
-                // 3. Fallback: check by merchant reference substring in description
-                if (!existingEntry && resolvedRef) {
-                    const { data: byDesc } = await supabase
-                        .from('cashbook_entries')
-                        .select('id, status, description, wallet_id, debit, credit')
-                        .eq('organization_id', orgId)
-                        .eq('account_type', 'MONEYWISE_WALLET')
-                        .like('description', `%${resolvedRef}%`)
-                        .maybeSingle();
-                    existingEntry = byDesc;
+                const finalizedExisting = candidates.find((c) => c.status !== 'PENDING') || null;
+                const pendingIntent = candidates.find((c) => c.status === 'PENDING') || null;
+
+                if (finalizedExisting) {
+                    // Already in the ledger. Heal partial prior runs: drop a redundant
+                    // PENDING twin and make sure the sale isn't stuck PENDING.
+                    if (pendingIntent) {
+                        await supabase.from('cashbook_entries').delete().eq('id', pendingIntent.id).eq('status', 'PENDING');
+                        console.log(`[Lenco Sync] Removed stale duplicate intent ${pendingIntent.id} (ref ${resolvedRef || txnId}).`);
+                    }
+                    if (txnType === 'credit' && resolvedRef) {
+                        await completeSalesForReference(orgId, resolvedRef);
+                    }
+                    continue;
                 }
 
-                if (existingEntry) {
-                    // Entry already exists. If it's PENDING, let's finalize it.
-                    if (existingEntry.status === 'PENDING') {
-                        if (txnType === 'credit') {
-                            // Finalize PENDING inflow (remove intent and create entry)
-                            console.log(`[Lenco Sync] Finalizing pending inflow intent ${existingEntry.id} for ref ${resolvedRef || txnId}`);
-                            await supabase.from('cashbook_entries').delete().eq('id', existingEntry.id);
-                            
-                            const isPublicSale = resolvedRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
-                            const inflowAmount = isPublicSale ? txnAmount * 0.975 : txnAmount;
+                if (pendingIntent) {
+                    if (txnType === 'credit') {
+                        // Finalize the intent IN PLACE, preserving its sale description.
+                        // (The old flow deleted the intent and recreated the entry from the
+                        // raw bank narration — losing the product/customer detail, breaking
+                        // receipt generation, and orphaning the payment entirely whenever
+                        // the recreate failed.)
+                        //
+                        // NOTE: The MoneyWise platform charge is intentionally NOT posted to
+                        // the wallet ledger. The wallet must mirror the actual Lenco balance.
+                        try {
+                            const sale = resolvedRef ? await buildSaleFinalization(orgId, resolvedRef) : null;
+                            const intentDesc = (pendingIntent.description || '')
+                                .replace('PENDING_INTENT: ', '')
+                                .replace('PENDING_INTENT:', '')
+                                .trim();
+                            const finalDescription = sale?.description
+                                || intentDesc
+                                || txnDesc
+                                || `Wallet Deposit | Ref: ${resolvedRef || txnId}`;
 
-                            // NOTE: The MoneyWise platform charge is intentionally NOT posted to
-                            // the wallet ledger. The wallet must mirror the actual Lenco balance,
-                            // which does not deduct this fee. Any real fee settlement appears as its
-                            // own Lenco debit and is synced as a normal outflow.
-                            try {
-                                let finalizedEntry;
-                                try {
-                                    finalizedEntry = await cashbookService.createEntry(orgId, {
-                                        date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                        description: txnDesc || `Wallet Deposit | Ref: ${resolvedRef || txnId}`,
-                                        debit: inflowAmount,
-                                        credit: 0,
-                                        entry_type: 'INFLOW',
-                                        account_type: 'MONEYWISE_WALLET',
-                                        status: 'COMPLETED',
-                                        wallet_id: walletId,
-                                        external_reference: resolvedRef || txnId
-                                    } as any);
-                                } catch (createErr: any) {
-                                    // The resolved merchant reference can collide with another
-                                    // organization's INFLOW row under the GLOBAL
-                                    // uniq_cashbook_inflow_per_reference index. Fall back to the
-                                    // bank transaction ID, which is unique by construction.
-                                    if (createErr?.message?.includes('uniq_cashbook_inflow_per_reference') && resolvedRef && resolvedRef !== txnId) {
-                                        console.warn(`[Lenco Sync] external_reference '${resolvedRef}' collided globally; retrying with txnId '${txnId}' for org ${org.name}`);
-                                        finalizedEntry = await cashbookService.createEntry(orgId, {
-                                            date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                            description: txnDesc || `Wallet Deposit | Ref: ${resolvedRef || txnId}`,
-                                            debit: inflowAmount,
-                                            credit: 0,
-                                            entry_type: 'INFLOW',
-                                            account_type: 'MONEYWISE_WALLET',
-                                            status: 'COMPLETED',
-                                            wallet_id: walletId,
-                                            external_reference: txnId
-                                        } as any);
-                                    } else {
-                                        throw createErr;
-                                    }
-                                }
+                            const isPublicSale = !!sale || resolvedRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
+                            const inflowAmount = sale ? sale.amount
+                                : (Number(pendingIntent.debit) > 0 ? Number(pendingIntent.debit)
+                                : (isPublicSale ? Math.round(txnAmount * 0.975 * 100) / 100 : txnAmount));
 
-                                if (isSplitPaymentSweep && finalizedEntry?.id) {
-                                    await categorizeSplitPaymentRevenue(orgId, finalizedEntry.id);
-                                }
+                            const finalizedEntry = await cashbookService.finalizePendingIntent(orgId, pendingIntent.id, {
+                                description: finalDescription,
+                                debit: inflowAmount,
+                                externalReference: resolvedRef || txnId,
+                                fallbackExternalReference: txnId,
+                                date: txnDate || undefined
+                            });
 
-                                finalizedCount++;
-                            } catch (entryErr: any) {
-                                console.error(`[Lenco Sync] Failed to finalize pending inflow ${existingEntry.id} for org ${org.name}:`, entryErr.message);
+                            if (resolvedRef) {
+                                await completeSalesForReference(orgId, resolvedRef);
                             }
+                            if (isSplitPaymentSweep && finalizedEntry?.id) {
+                                await categorizeSplitPaymentRevenue(orgId, finalizedEntry.id);
+                            }
+
+                            finalizedCount++;
+                            console.log(`[Lenco Sync] Finalized pending inflow intent ${pendingIntent.id} for ref ${resolvedRef || txnId}`);
+                        } catch (entryErr: any) {
+                            console.error(`[Lenco Sync] Failed to finalize pending inflow ${pendingIntent.id} for org ${org.name}:`, entryErr.message);
                         }
                     }
-                    continue; // Skip already completed/disbursed entries
+                    continue;
+                }
+
+                // No trace of this transaction in the ledger. Past the cutoff, history
+                // is frozen: finalizing an existing intent (above) is allowed, creating
+                // brand-new entries is not.
+                if (isPreCutoff) {
+                    continue;
                 }
 
                 // If not found, log it as a new transaction!
                 if (txnType === 'credit') {
                     // New Inflow
                     console.log(`[Lenco Sync] Logging new inflow transaction: ID=${txnId}, Amt=K${txnAmount}`);
+
+                    // Recover the sale from product_sales when the merchant reference
+                    // resolves to one. The intent may have been lost (cleanup race,
+                    // failed prior finalize), but the sale row still tells us the
+                    // product, customer, and face amount — log a proper receiptable
+                    // "Sale:" entry instead of the raw bank narration.
+                    const sale = resolvedRef ? await buildSaleFinalization(orgId, resolvedRef) : null;
+
                     const isPublicSale = resolvedRef.endsWith('-PUB') || descLower.startsWith('sale:') || descLower.startsWith('revenue:');
-                    const inflowAmount = isPublicSale ? txnAmount * 0.975 : txnAmount;
+                    const inflowAmount = sale ? sale.amount : (isPublicSale ? txnAmount * 0.975 : txnAmount);
+                    const entryDescription = sale?.description || txnDesc || `Wallet Deposit | Ref: ${resolvedRef || txnId}`;
+                    const entryStatus = sale ? 'COMPLETED' : 'UNACCOUNTED';
                     // Use the merchant reference as external_reference if available so that
                     // the unique index (uniq_cashbook_inflow_per_reference) matches what the
                     // webhook would have stored, preventing future duplicates.
@@ -1342,12 +1455,12 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                         try {
                             newEntry = await cashbookService.createEntry(orgId, {
                                 date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                description: txnDesc || `Wallet Deposit | Ref: ${entryExternalRef}`,
+                                description: entryDescription,
                                 debit: inflowAmount,
                                 credit: 0,
                                 entry_type: 'INFLOW',
                                 account_type: 'MONEYWISE_WALLET',
-                                status: 'UNACCOUNTED',
+                                status: entryStatus,
                                 wallet_id: walletId,
                                 external_reference: entryExternalRef
                             } as any);
@@ -1361,12 +1474,12 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                 console.warn(`[Lenco Sync] external_reference '${entryExternalRef}' collided globally; retrying with txnId '${txnId}' for org ${org.name}`);
                                 newEntry = await cashbookService.createEntry(orgId, {
                                     date: (txn.datetime || new Date().toISOString()).split('T')[0],
-                                    description: txnDesc || `Wallet Deposit | Ref: ${entryExternalRef}`,
+                                    description: entryDescription,
                                     debit: inflowAmount,
                                     credit: 0,
                                     entry_type: 'INFLOW',
                                     account_type: 'MONEYWISE_WALLET',
-                                    status: 'UNACCOUNTED',
+                                    status: entryStatus,
                                     wallet_id: walletId,
                                     external_reference: txnId
                                 } as any);
@@ -1375,6 +1488,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             }
                         }
 
+                        if (sale && resolvedRef) {
+                            await completeSalesForReference(orgId, resolvedRef);
+                        }
                         if (isSplitPaymentSweep && newEntry?.id) {
                             await categorizeSplitPaymentRevenue(orgId, newEntry.id);
                         }
@@ -1503,6 +1619,96 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                       console.error(`[Lenco Sync] Failed to process debit transaction ${txnId} for org ${org.name}:`, debitErr.message);
                   }
                 }
+            }
+
+            // ─── Stale-intent janitor (redundancy layer) ─────────────────────
+            // The webhook can miss a payment AND the transaction-matching above can
+            // miss it too (settlement not yet listed, page-1 window passed, txn dated
+            // before the cutoff). A paid intent must still never stay PENDING forever:
+            // re-check old intents directly against Lenco collections by reference.
+            //   successful            → finalize (description/amount from the sale)
+            //   failed / never-found  → after 24h, remove the dead intent and mark
+            //                           its sale FAILED (no money ever moved)
+            //   anything ambiguous    → leave for the next cycle
+            try {
+                const JANITOR_MIN_AGE_MS = 30 * 60 * 1000;        // ignore in-flight payments
+                const JANITOR_DELETE_AGE_MS = 24 * 60 * 60 * 1000; // only declare dead after a day
+
+                const { data: staleIntents } = await supabase
+                    .from('cashbook_entries')
+                    .select('id, description, debit, date, created_at, external_reference')
+                    .eq('organization_id', orgId)
+                    .eq('account_type', 'MONEYWISE_WALLET')
+                    .eq('entry_type', 'INFLOW')
+                    .eq('status', 'PENDING')
+                    .lt('created_at', new Date(Date.now() - JANITOR_MIN_AGE_MS).toISOString())
+                    .order('created_at', { ascending: true })
+                    .limit(20);
+
+                for (const intent of staleIntents || []) {
+                    const refMatch = (intent.description || '').match(/\|\s*Ref:\s*([^\s|]+)/i);
+                    const intentRef = (intent.external_reference || (refMatch ? refMatch[1] : '') || '').trim();
+                    if (!intentRef || intentRef.toUpperCase().startsWith('CHG-')) continue;
+
+                    let collection: any = refToCollection.get(intentRef) || null;
+                    let definitiveNotFound = false;
+                    if (!collection) {
+                        try {
+                            collection = await LencoService.getCollectionStatus(intentRef, secretKey);
+                        } catch (statusErr: any) {
+                            const msg = (statusErr?.message || '').toLowerCase();
+                            if (msg.includes('not found') || msg.includes('invalid') || msg.includes('404')) {
+                                definitiveNotFound = true;
+                            } else {
+                                continue; // transient error — retry next cycle
+                            }
+                        }
+                    }
+
+                    const colStatus = (collection?.status || '').toLowerCase();
+
+                    if (collection && (colStatus === 'successful' || colStatus === 'settled')) {
+                        try {
+                            const sale = await buildSaleFinalization(orgId, intentRef);
+                            const intentDesc = (intent.description || '')
+                                .replace('PENDING_INTENT: ', '')
+                                .replace('PENDING_INTENT:', '')
+                                .trim();
+                            const description = sale?.description || intentDesc || `Wallet Deposit | Ref: ${intentRef}`;
+
+                            const grossAmount = parseFloat(collection.amount || '0');
+                            const isPub = intentRef.endsWith('-PUB') || description.startsWith('Sale:') || description.startsWith('Revenue:');
+                            const amount = sale ? sale.amount
+                                : (Number(intent.debit) > 0 ? Number(intent.debit)
+                                : (isPub ? Math.round(grossAmount * 0.975 * 100) / 100 : grossAmount));
+
+                            await cashbookService.finalizePendingIntent(orgId, intent.id, {
+                                description,
+                                debit: amount,
+                                externalReference: intentRef
+                            });
+                            await completeSalesForReference(orgId, intentRef);
+                            finalizedCount++;
+                            console.log(`[Lenco Sync][Janitor] Finalized stale PAID intent ${intent.id} (ref ${intentRef}).`);
+                        } catch (finalizeErr: any) {
+                            console.error(`[Lenco Sync][Janitor] Failed to finalize stale intent ${intent.id}:`, finalizeErr.message);
+                        }
+                    } else if (
+                        (definitiveNotFound || colStatus === 'failed' || colStatus === 'expired' || colStatus === 'cancelled') &&
+                        (Date.now() - new Date(intent.created_at).getTime()) > JANITOR_DELETE_AGE_MS
+                    ) {
+                        await supabase.from('cashbook_entries').delete().eq('id', intent.id).eq('status', 'PENDING');
+                        await supabase
+                            .from('product_sales')
+                            .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+                            .eq('organization_id', orgId)
+                            .eq('reference', intentRef)
+                            .eq('status', 'PENDING');
+                        console.log(`[Lenco Sync][Janitor] Removed dead intent ${intent.id} (ref ${intentRef}, lenco status: ${definitiveNotFound ? 'not-found' : colStatus}).`);
+                    }
+                }
+            } catch (janitorErr: any) {
+                console.error(`[Lenco Sync][Janitor] Error for org ${org.name}:`, janitorErr.message);
             }
 
             syncResults.push({

@@ -251,10 +251,20 @@ export const logWalletDepositIntent = async (req: any, res: any): Promise<any> =
             balance_after: 0,
             date: new Date().toISOString().split('T')[0],
             status: 'PENDING',
-            wallet_id: walletId || null
+            wallet_id: walletId || null,
+            // Store the merchant reference on the indexed column so the webhook and
+            // periodic sync match this intent directly instead of via description LIKE.
+            external_reference: reference
         });
 
-        if (error) throw error;
+        if (error) {
+            // Unique index uniq_cashbook_inflow_per_reference: a retried initiation
+            // with the same reference means the intent is already logged — idempotent.
+            if (error.message?.includes('uniq_cashbook_inflow_per_reference')) {
+                return res.json({ message: 'Intent already logged' });
+            }
+            throw error;
+        }
 
         res.json({ message: 'Intent logged successfully' });
     } catch (error: any) {
