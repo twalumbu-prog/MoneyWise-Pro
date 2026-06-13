@@ -386,7 +386,7 @@ const CashLedger: React.FC = () => {
         if (Array.isArray(entries)) {
             entries.forEach(entry => {
                 let status = '';
-                if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+                if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || entry.entry_type === 'EXPENSE') {
                     status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
                 } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
                     status = entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
@@ -434,7 +434,7 @@ const CashLedger: React.FC = () => {
         if (filterStatus !== 'ALL') {
             result = result.filter(entry => {
                 let status = '';
-                if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+                if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || entry.entry_type === 'EXPENSE') {
                     status = entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
                 } else if (entry.entry_type === 'DISBURSEMENT' && entry.requisitions) {
                     status = entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
@@ -651,7 +651,7 @@ const CashLedger: React.FC = () => {
               );
           }
 
-          if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || (entry.entry_type === 'DISBURSEMENT' && !entry.requisition_id)) {
+          if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) {
               return (
                   <div className="flex flex-col gap-4 text-left">
                       <div className="flex flex-col gap-1.5">
@@ -701,7 +701,7 @@ const CashLedger: React.FC = () => {
     const getResolvedStatus = (entry: CashbookEntry): string => {
         if (entry.entry_type === 'CLOSING_BALANCE') return 'CLOSED';
         if (entry.entry_type === 'OPENING_BALANCE') return 'OPENING';
-        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || entry.entry_type === 'EXPENSE') {
             return entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.status || 'PENDING';
         } else if (entry.requisitions) {
             return entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED' ? 'ACCOUNTED' : entry.requisitions.status;
@@ -1271,7 +1271,7 @@ Status: VERIFIED`;
         }
 
         // Case 2: Inflow, Adjustment, or Non-Requisition Disbursement
-        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || (entry.entry_type === 'DISBURSEMENT' && !entry.requisition_id)) {
+        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) {
 
             return (
                 <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
@@ -1856,7 +1856,7 @@ Status: VERIFIED`;
                                                 className={`px-5 py-[22px] flex items-start justify-between active:bg-gray-50 transition-colors ${
                                                     expandedRows[entry.id] ? 'bg-slate-50/50' : ''
                                                 }`}
-                                                onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && toggleRow(entry.id)}
+                                                onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && toggleRow(entry.id)}
                                             >
                                                 {/* Left Side: Description + Flag + Ref */}
                                                 <div className="flex-1 mr-4">
@@ -1916,7 +1916,7 @@ Status: VERIFIED`;
                                             </div>
                                             
                                             {/* Mobile Breakdown Drawer */}
-                                            {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
+                                            {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                 <div className="bg-slate-50/45 border-t border-slate-50 px-5 py-5 animate-in fade-in slide-in-from-top-2 duration-200">
                                                     {renderMobileBreakdown(entry)}
                                                 </div>
@@ -2311,12 +2311,12 @@ Status: VERIFIED`;
                                                         </span>
                                                     </td>
                                                     <td className="p-6 w-12 text-center">
-                                                        {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
+                                                        {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                             <ChevronRight size={16} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${expandedRows[entry.id] ? 'rotate-90' : ''}`} strokeWidth={2.5} />
                                                         )}
                                                     </td>
                                                 </tr>
-                                                 {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
+                                                 {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
                                                     <tr className="bg-gray-50/80">
                                                         <td colSpan={6} className="p-0">
                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">

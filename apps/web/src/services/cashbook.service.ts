@@ -7,7 +7,7 @@ export interface CashbookEntry {
     debit: number;
     credit: number;
     balance_after: number;
-    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE' | 'INFLOW';
+    entry_type: 'DISBURSEMENT' | 'RETURN' | 'ADJUSTMENT' | 'OPENING_BALANCE' | 'CLOSING_BALANCE' | 'INFLOW' | 'EXPENSE';
     account_type: 'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET';
     requisition_id?: string;
     created_by?: string;
