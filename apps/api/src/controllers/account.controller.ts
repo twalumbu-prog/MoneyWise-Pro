@@ -35,13 +35,30 @@ export const getAccounts = async (req: AuthRequest, res: any): Promise<any> => {
     }
 };
 
+const VALID_ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'INCOME', 'EXPENSE'];
+
 export const createAccount = async (req: AuthRequest, res: any): Promise<any> => {
     try {
-        const { code, name, type, subtype, description } = req.body;
         const organization_id = (req as any).user.organization_id;
 
         if (!organization_id) {
             return res.status(400).json({ error: 'User not in organization' });
+        }
+
+        // Normalize inputs: trim strings, coerce empty optionals to null.
+        const code = typeof req.body.code === 'string' ? req.body.code.trim() : req.body.code;
+        const name = typeof req.body.name === 'string' ? req.body.name.trim() : req.body.name;
+        const type = typeof req.body.type === 'string' ? req.body.type.trim().toUpperCase() : req.body.type;
+        const subtype = req.body.subtype?.trim() || null;
+        const description = req.body.description?.trim() || null;
+
+        // Validate required fields up front so the DB NOT NULL / CHECK constraints
+        // never surface to the user as an opaque 500.
+        if (!code || !name) {
+            return res.status(400).json({ error: 'Account code and name are required.' });
+        }
+        if (!VALID_ACCOUNT_TYPES.includes(type)) {
+            return res.status(400).json({ error: `Account type must be one of: ${VALID_ACCOUNT_TYPES.join(', ')}.` });
         }
 
         const { data, error } = await supabase
@@ -58,7 +75,14 @@ export const createAccount = async (req: AuthRequest, res: any): Promise<any> =>
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            // 23505 = unique_violation on (code, organization_id). Surface a clear,
+            // actionable message instead of a generic 500.
+            if (error.code === '23505') {
+                return res.status(409).json({ error: `An account with code "${code}" already exists. Please use a unique code.` });
+            }
+            throw error;
+        }
         res.status(201).json(data);
     } catch (error: any) {
         console.error('Error creating account:', error);
@@ -98,7 +122,12 @@ export const updateAccount = async (req: AuthRequest, res: any): Promise<any> =>
             .select()
             .single();
 
-        if (error) throw error;
+        if (error) {
+            if (error.code === '23505') {
+                return res.status(409).json({ error: `An account with code "${code}" already exists. Please use a unique code.` });
+            }
+            throw error;
+        }
         res.json(data);
     } catch (error: any) {
         console.error('Error updating account:', error);

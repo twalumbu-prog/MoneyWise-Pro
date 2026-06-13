@@ -46,7 +46,10 @@ export const accountService = {
             body: JSON.stringify(data)
         });
 
-        if (!response.ok) throw new Error('Failed to create account');
+        if (!response.ok) {
+            const body = await response.json().catch(() => null);
+            throw new Error(body?.error || body?.details || 'Failed to create account');
+        }
         return response.json();
     },
 
@@ -63,7 +66,10 @@ export const accountService = {
             body: JSON.stringify(data)
         });
 
-        if (!response.ok) throw new Error('Failed to update account');
+        if (!response.ok) {
+            const body = await response.json().catch(() => null);
+            throw new Error(body?.error || body?.details || 'Failed to update account');
+        }
     },
 
     async importFromQuickBooks() {
