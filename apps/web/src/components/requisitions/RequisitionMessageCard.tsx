@@ -360,29 +360,40 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
         if (requisitionData && isDisbursal && !hasInitializedForm.current) {
             hasInitializedForm.current = true;
-            
+
+            const rawCode = requisitionData.recipient_bank_code;
+            const upperCode = (rawCode || '').toUpperCase();
+            const isMomoCode = ['AIRTEL', 'MTN', 'ZAMTEL'].includes(upperCode);
+            const upperMethod = (requisitionData.payment_method || '').toUpperCase();
+            const isMomoMethod = ['AIRTEL', 'MTN', 'ZAMTEL', 'MOBILE_MONEY'].includes(upperMethod);
+
+            // Pre-fill the recipient phone number / account that the requestor
+            // entered at creation time so the disburser doesn't re-enter it.
             if (!recipientValue && requisitionData.recipient_account) {
                 setRecipientValue(requisitionData.recipient_account);
             }
-            
-            if (!recipientProvider && requisitionData.recipient_bank_code) {
-                const provider = requisitionData.recipient_bank_code.toUpperCase();
-                setRecipientProvider(provider);
-                
-                if (['AIRTEL', 'MTN', 'ZAMTEL'].includes(provider)) {
-                    setPaymentType('MOBILE_MONEY');
-                } else {
-                    setPaymentType('BANK');
-                }
+
+            if (!recipientProvider && rawCode) {
+                // Mobile money operators are matched case-insensitively, but bank
+                // codes/ids must keep their original casing so the bank <select>
+                // (whose option values are the raw bank ids) matches correctly.
+                setRecipientProvider(isMomoCode ? upperCode : rawCode);
             }
-            
-            if (!activeMethod && requisitionData.payment_method) {
-                const method = requisitionData.payment_method === 'WALLET' ? 'MONEYWISE_WALLET' : requisitionData.payment_method;
-                setActiveMethod(method);
-            } else if (!activeMethod && isDisbursal) {
+
+            // Derive the destination payment type from the saved details.
+            if (isMomoCode || isMomoMethod) {
+                setPaymentType('MOBILE_MONEY');
+            } else if (rawCode || upperMethod === 'BANK' || upperMethod === 'BANK_TRANSFER') {
+                setPaymentType('BANK');
+            }
+
+            // Always default to electronic disbursal (MoneyWise Wallet) so the
+            // pre-filled recipient details are shown and editable. The disburser
+            // can still switch to a manual method via the "Back" button.
+            if (!activeMethod) {
                 setActiveMethod('MONEYWISE_WALLET');
             }
-            
+
             if (!lookupName && requisitionData.recipient_name) {
                 setLookupName(requisitionData.recipient_name);
             }

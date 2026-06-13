@@ -32,7 +32,8 @@ interface PaymentInfo {
 const DEPARTMENTS = ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
 
 type WizardTab = 'basic' | 'buy' | 'order';
-type Stage = 1 | 2 | 3 | 4;
+// Stages: 1 = basic, 2 = expense list, 3 = payment method, 4 = review, 5 = manual amount (when no expense list)
+type Stage = 1 | 2 | 3 | 4 | 5;
 
 const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
     <div className="flex flex-col items-center justify-center h-64 text-center px-8">
@@ -59,6 +60,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [lineItems, setLineItems] = useState<LineItem[]>([
         { id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }
     ]);
+
+    // Stage 5: Manual amount (used when the user opts out of an expense list)
+    const [manualAmount, setManualAmount] = useState('');
 
     // Stage 3: Payment Method
     const [paymentMethod, setPaymentMethod] = useState<'mobile' | 'bank'>('mobile');
@@ -87,6 +91,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             setUseMyAccount(true);
             setMakeExpenseList(true);
             setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
+            setManualAmount('');
             setPaymentMethod('mobile');
             setBankId('');
             setAccountNumber('');
@@ -174,7 +179,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         }
     }, [paymentMethod]);
 
-    const getTotal = () => lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0);
+    const getTotal = () => makeExpenseList
+        ? lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0)
+        : (Number(manualAmount) || 0);
 
     const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
         setLineItems(prev => prev.map(item => {
@@ -199,35 +206,38 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         setLineItems(prev => prev.filter(i => i.id !== id));
     };
 
+    // Build the ordered list of stages for the current toggle selections.
+    // When an expense list is created we use stage 2; otherwise we insert
+    // stage 5 so the user can enter the requested amount directly.
+    const getStageSequence = (): Stage[] => {
+        const seq: Stage[] = [1];
+        seq.push(makeExpenseList ? 2 : 5);
+        if (!useMyAccount) seq.push(3);
+        seq.push(4);
+        return seq;
+    };
+
     const handleProceed = () => {
         setError(null);
         if (stage === 1) {
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (!department) { setError('Please select a department.'); return; }
-            if (makeExpenseList) setStage(2);
-            else if (!useMyAccount) setStage(3);
-            else setStage(4);
-        } else if (stage === 2) {
-            if (!useMyAccount) setStage(3);
-            else setStage(4);
+        } else if (stage === 5) {
+            if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
             if (!resolvedName || resolvedName === 'Name not confirmed') { setError('Please verify the recipient details.'); return; }
-            setStage(4);
         }
+
+        const seq = getStageSequence();
+        const idx = seq.indexOf(stage);
+        if (idx !== -1 && idx < seq.length - 1) setStage(seq[idx + 1]);
     };
 
     const handleBack = () => {
         setError(null);
-        if (stage === 4) {
-            if (!useMyAccount) setStage(3);
-            else if (makeExpenseList) setStage(2);
-            else setStage(1);
-        } else if (stage === 3) {
-            if (makeExpenseList) setStage(2);
-            else setStage(1);
-        } else if (stage === 2) {
-            setStage(1);
-        }
+        const seq = getStageSequence();
+        const idx = seq.indexOf(stage);
+        if (idx > 0) setStage(seq[idx - 1]);
     };
 
     const handleSubmit = async () => {
@@ -446,6 +456,30 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                             </div>
                         )}
 
+                        {stage === 5 && (
+                            <div className="space-y-6">
+                                <div className="space-y-1">
+                                    <h2 className="text-[20px] font-bold text-brand-navy">Amount Requested</h2>
+                                    <p className="text-sm text-gray-400">Enter the total amount you are requesting.</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Amount (ZMW)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-gray-400 text-xl">K</span>
+                                        <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            value={manualAmount}
+                                            onChange={e => setManualAmount(e.target.value)}
+                                            placeholder="0.00"
+                                            autoFocus
+                                            className="w-full h-16 bg-gray-50 border border-gray-100 rounded-2xl pl-11 pr-5 text-2xl font-black text-brand-navy placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {stage === 3 && (
                             <div className="space-y-6">
                                 <h2 className="text-[20px] font-bold text-brand-navy">Payment Method</h2>
@@ -585,21 +619,23 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 </div>
 
                                 {/* Expense Items Card */}
-                                <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-4">
-                                    <div className="space-y-3">
-                                        {lineItems.filter(i => i.description).map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-center text-sm">
-                                                <span className="text-gray-600 font-medium">{item.description}</span>
-                                                <span className="text-black font-bold">K{Number(item.estimated_amount).toLocaleString()}</span>
-                                            </div>
-                                        ))}
+                                {makeExpenseList && (
+                                    <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-4">
+                                        <div className="space-y-3">
+                                            {lineItems.filter(i => i.description).map((item, idx) => (
+                                                <div key={idx} className="flex justify-between items-center text-sm">
+                                                    <span className="text-gray-600 font-medium">{item.description}</span>
+                                                    <span className="text-black font-bold">K{Number(item.estimated_amount).toLocaleString()}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
+                                            <span className="text-sm font-bold text-black">Requisition Total</span>
+                                            <span className="text-sm font-bold text-black">K{getTotal().toLocaleString()}</span>
+                                        </div>
                                     </div>
-                                    
-                                    <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
-                                        <span className="text-sm font-bold text-black">Requisition Total</span>
-                                        <span className="text-sm font-bold text-black">K{getTotal().toLocaleString()}</span>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -609,7 +645,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             {/* Bottom Navigation Area */}
             {activeTab === 'basic' && (
                 <div className="shrink-0 p-6 pb-8 border-t border-gray-50 bg-white">
-                    {stage < 4 ? (
+                    {stage !== 4 ? (
                         <div className="flex justify-end">
                             <button
                                 onClick={handleProceed}
