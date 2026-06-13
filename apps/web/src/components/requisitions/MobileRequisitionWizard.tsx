@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail } from 'lucide-react';
+import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
+import { cashbookService } from '../../services/cashbook.service';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
@@ -46,7 +47,7 @@ const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
 );
 
 export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = ({ isOpen, onClose, onSuccess }) => {
-    const { user, userName } = useAuth();
+    const { user, userName, userRole } = useAuth();
     const [activeTab, setActiveTab] = useState<WizardTab>('basic');
     const [stage, setStage] = useState<Stage>(1);
 
@@ -75,6 +76,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [momoOperator, setMomoOperator] = useState('AIRTEL');
     const [resolvedName, setResolvedName] = useState('');
     const [confirmingName, setConfirmingName] = useState(false);
+    // Admin-only: approve & disburse instantly on submit
+    const [autoAuthorize, setAutoAuthorize] = useState(false);
+    const [wallets, setWallets] = useState<any[]>([]);
+    const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
     // Common
     const [submitting, setSubmitting] = useState(false);
@@ -97,13 +102,31 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             setAccountNumber('');
             setPhoneNumber('');
             setResolvedName('');
+            setAutoAuthorize(false);
+            setWallets([]);
+            setSelectedWalletId(null);
             setError(null);
             setActiveRequisitionId(null);
             
             fetchBanks();
             fetchPaymentInfo();
+            fetchWallets();
         }
     }, [isOpen]);
+
+    const fetchWallets = async () => {
+        try {
+            const data = await cashbookService.getWallets();
+            const list = Array.isArray(data) ? data : (data?.data || []);
+            setWallets(list);
+            if (list.length > 0) {
+                const main = list.find((w: any) => w.is_main) || list[0];
+                setSelectedWalletId(main.id);
+            }
+        } catch (err) {
+            console.error('Failed to load wallets:', err);
+        }
+    };
 
     const fetchPaymentInfo = async () => {
         try {
@@ -268,7 +291,53 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                     ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
                     : resolvedName
             };
-            await requisitionService.create(data);
+            const created = await requisitionService.create(data);
+
+            // Admin auto-authorize: immediately approve and disburse via Lenco,
+            // mirroring the approve → disburse flow in the requisition modal.
+            // Only applies when a recipient was entered manually (stage 3).
+            if (autoAuthorize && userRole === 'ADMIN' && !useMyAccount) {
+                try {
+                    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+                    const normalizedPhone = cleanPhone.startsWith('260') ? '0' + cleanPhone.substring(3) : cleanPhone;
+                    const recipientAccount = paymentMethod === 'mobile' ? normalizedPhone : accountNumber;
+                    const recipientBankCode = (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
+
+                    // 1. Authorize — creates the disbursal stage and approves the items.
+                    await requisitionService.updateStatus(created.id, 'AUTHORISED');
+
+                    // 2. Disburse electronically through the MoneyWise Wallet (Lenco).
+                    const result = await requisitionService.disburse(created.id, {
+                        payment_method: 'MONEYWISE_WALLET',
+                        total_prepared: getTotal(),
+                        recipient_account: recipientAccount,
+                        recipient_bank_code: recipientBankCode,
+                        recipient_account_name: resolvedName || undefined,
+                        wallet_id: selectedWalletId || undefined,
+                    });
+
+                    // 3. Poll for Lenco confirmation if the transfer is still pending.
+                    if (result.lencoStatus === 'pending') {
+                        for (let attempt = 0; attempt < 8; attempt++) {
+                            await new Promise(r => setTimeout(r, 4000));
+                            const poll = await requisitionService.verifyDisbursement(created.id);
+                            if (poll.status === 'successful') break;
+                            if (poll.status === 'failed') {
+                                throw new Error(poll.error || poll.details?.reasonForFailure || 'The transfer was rejected by Lenco.');
+                            }
+                        }
+                    }
+                } catch (disbErr: any) {
+                    // The requisition was created (and likely reset to Authorised by the
+                    // backend on failure) — let the admin open it and disburse manually.
+                    console.error('Auto-authorize disbursal failed:', disbErr);
+                    setActiveRequisitionId(created.id);
+                    setError(`${disbErr.message || 'Disbursement failed.'} The requisition was created — open it to disburse manually.`);
+                    setSubmitting(false);
+                    return;
+                }
+            }
+
             onSuccess();
             onClose();
         } catch (err: any) {
@@ -580,6 +649,31 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Admin-only: approve & disburse instantly on submit */}
+                                    {userRole === 'ADMIN' && (
+                                        <div className="pt-2">
+                                            <button
+                                                onClick={() => setAutoAuthorize(!autoAuthorize)}
+                                                className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all"
+                                            >
+                                                <div className="flex items-center gap-3 text-left">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${autoAuthorize ? 'bg-[#006AFF]/10 text-[#006AFF]' : 'bg-gray-200 text-gray-400'}`}><Zap size={20} /></div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-brand-navy">Auto-authorize &amp; send</p>
+                                                        <p className="text-[11px] text-gray-400">Approve and disburse instantly on submit</p>
+                                                    </div>
+                                                </div>
+                                                <div className={`w-12 h-6 rounded-full transition-all relative ${autoAuthorize ? 'bg-[#006AFF]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoAuthorize ? 'right-1' : 'left-1'}`} /></div>
+                                            </button>
+                                            {autoAuthorize && (
+                                                <p className="text-[11px] text-amber-600 font-medium mt-2 ml-1 flex items-start gap-1.5">
+                                                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                                                    <span>Funds will be sent immediately via Lenco when you tap Send. This cannot be undone.</span>
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -617,6 +711,27 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                         <span className="font-bold text-black">{useMyAccount ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || 'My Account') : (resolvedName || 'Stephen Kapambwe')}</span>
                                     </div>
                                 </div>
+
+                                {/* Source Wallet (shown only when auto-authorizing and more than one wallet exists) */}
+                                {autoAuthorize && !useMyAccount && wallets.length > 1 && (
+                                    <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-3">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Send From Wallet</label>
+                                        <div className="relative">
+                                            <select
+                                                value={selectedWalletId || ''}
+                                                onChange={e => setSelectedWalletId(e.target.value)}
+                                                className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy font-bold focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all appearance-none"
+                                            >
+                                                {wallets.map((w: any) => (
+                                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                <ArrowRight size={16} className="rotate-90" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Expense Items Card */}
                                 {makeExpenseList && (
@@ -670,11 +785,11 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 {submitting ? (
                                     <>
                                         <RotateCcw size={18} className="animate-spin" />
-                                        <span>Processing...</span>
+                                        <span>{autoAuthorize && !useMyAccount ? 'Sending...' : 'Processing...'}</span>
                                     </>
                                 ) : (
                                     <>
-                                        <span>Submit Request</span>
+                                        <span>{autoAuthorize && !useMyAccount ? 'Send' : 'Submit Request'}</span>
                                         <ArrowRight size={20} />
                                     </>
                                 )}
