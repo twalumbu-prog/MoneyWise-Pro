@@ -1,6 +1,96 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
+/**
+ * An org reads its reports from the double-entry GL only once its history is fully
+ * posted (no cashbook entry is missing a journal entry). Until then it stays on the
+ * legacy per-type computation, so partially-backfilled orgs never show a wrong
+ * balance sheet. Backfilling an org flips it onto the GL automatically.
+ */
+async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
+    const { data: gaps, error } = await supabase.rpc('cashbook_entries_missing_journal', {
+        p_organization_id: organizationId
+    });
+    if (error) {
+        console.error('[Report] missing-journal check failed; using legacy path:', error.message);
+        return false;
+    }
+    if ((gaps?.length ?? 0) > 0) return false;
+    const { count } = await supabase
+        .from('journal_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId);
+    return (count ?? 0) > 0;
+}
+
+/**
+ * Build the report rows from the GL trial balance, keeping the legacy response shape
+ * ({account_id, account_name, total_amount, transaction_count, type}).
+ *   - INCOME/EXPENSE: period [startDate, endDate] (P&L view)
+ *   - ASSET/LIABILITY/EQUITY: cumulative <= endDate (balance sheet)
+ *   - Retained Earnings: cumulative (income - expense) injected onto the equity row,
+ *     so Assets - Liabilities == Total Equity always holds.
+ */
+async function buildFinancialsFromGL(organizationId: string, startDate: string, endDate: string) {
+    const { data: rows, error } = await supabase.rpc('report_account_balances', {
+        p_org: organizationId,
+        p_start: startDate,
+        p_end: endDate
+    });
+    if (error) throw error;
+
+    let cumIncome = 0;
+    let cumExpense = 0;
+    for (const r of rows || []) {
+        const cd = Number(r.cumulative_debit || 0);
+        const cc = Number(r.cumulative_credit || 0);
+        if (r.type === 'INCOME') cumIncome += cc - cd;
+        else if (r.type === 'EXPENSE') cumExpense += cd - cc;
+    }
+    const retainedEarnings = cumIncome - cumExpense;
+
+    let retainedSeen = false;
+    const financials = (rows || []).map((r: any) => {
+        const pd = Number(r.period_debit || 0);
+        const pc = Number(r.period_credit || 0);
+        const cd = Number(r.cumulative_debit || 0);
+        const cc = Number(r.cumulative_credit || 0);
+        let total = 0;
+        let count = 0;
+        switch (r.type) {
+            case 'INCOME':    total = pc - pd; count = Number(r.period_n || 0); break;
+            case 'EXPENSE':   total = pd - pc; count = Number(r.period_n || 0); break;
+            case 'ASSET':     total = cd - cc; count = Number(r.cumulative_n || 0); break;
+            case 'LIABILITY': total = cc - cd; count = Number(r.cumulative_n || 0); break;
+            case 'EQUITY':
+                total = cc - cd; count = Number(r.cumulative_n || 0);
+                if (r.code === 'QB-73') { total += retainedEarnings; retainedSeen = true; }
+                break;
+        }
+        return {
+            account_id: r.account_id,
+            account_name: r.account_name,
+            total_amount: total,
+            transaction_count: count,
+            type: r.type
+        };
+    });
+
+    // If the org has no Retained Earnings account, surface the figure as a synthetic row
+    // so the balance sheet still balances.
+    if (!retainedSeen && Math.abs(retainedEarnings) > 0.005) {
+        financials.push({
+            account_id: 'RETAINED_EARNINGS',
+            account_name: 'Retained Earnings',
+            total_amount: retainedEarnings,
+            transaction_count: 0,
+            type: 'EQUITY'
+        });
+    }
+
+    return financials;
+}
+
 export const getExpenditure = async (req: any, res: any): Promise<any> => {
     try {
         const organization_id = (req as any).user.organization_id;
@@ -12,6 +102,13 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'start_date and end_date are required' });
+        }
+
+        // Double-entry GL path — used once an org's history is fully posted; otherwise
+        // we fall through to the legacy per-type computation below (no regression).
+        if (await isOrgFullyPosted(organization_id)) {
+            const financials = await buildFinancialsFromGL(organization_id, startDate, endDate);
+            return res.json(financials);
         }
 
         // 1. Fetch all active accounts for the organization

@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
+import { ledgerService } from '../services/ledger.service';
 import { emailService } from '../services/email.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { ocrService } from '../services/ai/ocr.service';
@@ -742,6 +743,10 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
             console.log(`[OCR] All items processed in ${totalDuration}s`);
         }
+
+        // Re-post the GL so the expense split reflects the submitted actual amounts.
+        ledgerService.repostForRequisition(id)
+            .catch(err => console.error(`[Ledger] repost after expense submission failed for req ${id}:`, err?.message));
 
         res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
         
