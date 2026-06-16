@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { cashbookService } from '../services/cashbook.service';
+import { ledgerService } from '../services/ledger.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 
 export const listLencoAccounts = async (req: Request, res: Response) => {
@@ -1716,6 +1717,15 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                 }
             } catch (janitorErr: any) {
                 console.error(`[Lenco Sync][Janitor] Error for org ${org.name}:`, janitorErr.message);
+            }
+
+            // GL reconciliation safety net: re-post any cashbook entries whose journal is
+            // missing or stale (e.g. line items recategorized, or a path that skipped the
+            // live hooks). Idempotent and a no-op when everything is already posted.
+            try {
+                await ledgerService.runSweep(orgId);
+            } catch (sweepErr: any) {
+                console.error(`[Lenco Sync][Ledger Sweep] Error for org ${org.name}:`, sweepErr.message);
             }
 
             syncResults.push({

@@ -4,6 +4,7 @@ import { cashbookService } from '../services/cashbook.service';
 import { decisionRouter } from '../services/ai/decision.router';
 import { supabase } from '../lib/supabase';
 import { QuickBooksService } from '../services/quickbooks.service';
+import { ledgerService } from '../services/ledger.service';
 
 /**
  * Get all cashbook entries with optional filters
@@ -395,6 +396,14 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
 
         if (updates.length > 0) {
             await Promise.all(updates);
+
+            // Re-post the GL for each affected requisition so the new categorizations
+            // move out of Suspense into the proper expense/asset accounts in real time.
+            const affectedReqIds = [...new Set(items.map((i: any) => (i.requisition as any).id))];
+            for (const reqId of affectedReqIds) {
+                ledgerService.repostForRequisition(reqId as string)
+                    .catch(err => console.error(`[Ledger] repost after bulk classify failed for req ${reqId}:`, err?.message));
+            }
         }
 
         res.json({
@@ -490,6 +499,11 @@ export const updateEntryAccount = async (req: any, res: any): Promise<any> => {
         }
 
         console.log(`[Ledger] ✅ Successfully updated entry account. Data:`, data);
+
+        // Re-post the GL so this categorization moves out of Suspense in real time.
+        ledgerService.repostForCashbookEntry(entryId)
+            .catch(err => console.error(`[Ledger] repost after categorization failed for ${entryId}:`, err?.message));
+
         res.json({ success: true, data: sanitizeEntry(data?.[0]) });
     } catch (error: any) {
         console.error('Error updating entry account:', error);
@@ -531,6 +545,10 @@ export const narrateEntry = async (req: any, res: any): Promise<any> => {
             console.error('[Ledger] ❌ Error accounting entry:', error);
             throw error;
         }
+
+        // Re-post the GL so the new categorization (or de-categorization) reflects immediately.
+        ledgerService.repostForCashbookEntry(entryId)
+            .catch(err => console.error(`[Ledger] repost after narrate failed for ${entryId}:`, err?.message));
 
         res.json({ success: true, data: sanitizeEntry(data?.[0]) });
     } catch (error: any) {

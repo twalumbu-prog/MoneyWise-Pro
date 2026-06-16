@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Layout } from '../components/Layout';
 import { reportService, ExpenditureAggregation, ExpenditureItem } from '../services/report.service';
 import { budgetService, Budget } from '../services/budget.service';
@@ -88,6 +88,18 @@ export const Reporting: React.FC = () => {
     const [chartViewHeight, setChartViewHeight] = useState(200);
     const [chartAreaW, setChartAreaW] = useState(320); // visible viewport width; 4 periods fit, rest scroll
     const [chartTimeframe, setChartTimeframe] = useState<'1D' | '1W' | '1M' | '3M' | 'YTD'>('1M');
+    // Pinch-to-zoom: number of periods visible in the chart viewport at once. Fewer =
+    // zoomed in (wider columns, more detail); more = zoomed out (see more of the trend).
+    // Kept as a continuous value so pinch gestures scale smoothly.
+    const CHART_ZOOM_MIN = 2;
+    const CHART_ZOOM_MAX = 8;
+    const [chartZoom, setChartZoom] = useState(4);
+    const chartZoomRef = useRef(chartZoom);
+    chartZoomRef.current = chartZoom;
+    // Live pinch gesture: distance between the two fingers + zoom when the pinch began.
+    const pinchRef = useRef<{ active: boolean; startDist: number; startZoom: number }>({ active: false, startDist: 0, startZoom: 4 });
+    // After a zoom change, re-anchor the scroll so the spot under the fingers stays put.
+    const zoomAnchorRef = useRef<{ fraction: number; focalX: number } | null>(null);
 
     // Date Math
     const periodData = useMemo(() => {
@@ -344,6 +356,56 @@ export const Reporting: React.FC = () => {
         });
         return () => cancelAnimationFrame(raf);
     }, [chartLoading, chartData.length, isChartOpen, chartTimeframe, reportView]);
+
+    // Pinch-to-zoom on the scrollable chart. We bind native, non-passive touch
+    // listeners so we can preventDefault and stop the browser's own page zoom while
+    // two fingers are down. A single finger still scrolls the chart normally.
+    useEffect(() => {
+        const el = chartScrollRef.current;
+        if (!el || !isChartOpen) return;
+        const dist = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+        const onTouchStart = (e: TouchEvent) => {
+            if (e.touches.length !== 2) return;
+            pinchRef.current = { active: true, startDist: dist(e.touches), startZoom: chartZoomRef.current };
+            e.preventDefault();
+        };
+        const onTouchMove = (e: TouchEvent) => {
+            if (!pinchRef.current.active || e.touches.length !== 2) return;
+            e.preventDefault();
+            const ratio = dist(e.touches) / (pinchRef.current.startDist || 1);
+            // Fingers apart (ratio > 1) → fewer periods visible → zoomed in.
+            const next = Math.min(CHART_ZOOM_MAX, Math.max(CHART_ZOOM_MIN, pinchRef.current.startZoom / ratio));
+            // Anchor the zoom on the midpoint between the fingers so it stays under them.
+            const rect = el.getBoundingClientRect();
+            const focalX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+            zoomAnchorRef.current = { fraction: (el.scrollLeft + focalX) / (el.scrollWidth || 1), focalX };
+            setChartZoom(next);
+        };
+        const onTouchEnd = (e: TouchEvent) => {
+            if (e.touches.length < 2) pinchRef.current.active = false;
+        };
+
+        el.addEventListener('touchstart', onTouchStart, { passive: false });
+        el.addEventListener('touchmove', onTouchMove, { passive: false });
+        el.addEventListener('touchend', onTouchEnd);
+        el.addEventListener('touchcancel', onTouchEnd);
+        return () => {
+            el.removeEventListener('touchstart', onTouchStart);
+            el.removeEventListener('touchmove', onTouchMove);
+            el.removeEventListener('touchend', onTouchEnd);
+            el.removeEventListener('touchcancel', onTouchEnd);
+        };
+    }, [isChartOpen]);
+
+    // Keep the pinch focal point fixed on screen after the zoom re-lays out the chart.
+    useLayoutEffect(() => {
+        const a = zoomAnchorRef.current;
+        const el = chartScrollRef.current;
+        if (!a || !el) return;
+        zoomAnchorRef.current = null;
+        el.scrollLeft = Math.max(0, a.fraction * el.scrollWidth - a.focalX);
+    }, [chartZoom]);
 
     useEffect(() => {
         if (isChartOpen) {
@@ -805,7 +867,7 @@ export const Reporting: React.FC = () => {
 
     const chartRenderData = useMemo(() => {
         if (chartData.length === 0) return null;
-        const COL_W = chartAreaW / 4; // 4 periods visible at a time; the rest scroll
+        const COL_W = chartAreaW / chartZoom; // `chartZoom` periods visible at a time; the rest scroll
         const SVG_H = chartViewHeight;
         const PAD_TOP = 44;
         const PAD_BOTTOM = 18; // room below the baseline so low markers don't clip
@@ -850,7 +912,7 @@ export const Reporting: React.FC = () => {
             yLabels.push({ value: v, y: getY(v) });
         }
         return { COL_W, SVG_H, svgWidth, pts, linePath, bottomY, peakIdx, yLabels, buildPath };
-    }, [chartData, chartViewHeight, chartAreaW]);
+    }, [chartData, chartViewHeight, chartAreaW, chartZoom]);
 
     const handleMarkerPointerDown = (marker: 'start' | 'end') => (e: React.PointerEvent<HTMLDivElement>) => {
         draggingRef.current = marker;
@@ -859,7 +921,7 @@ export const Reporting: React.FC = () => {
 
     const handleMarkerPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
         if (!draggingRef.current || !chartScrollRef.current || chartData.length < 2) return;
-        const COL_W = chartAreaW / 4;
+        const COL_W = chartAreaW / chartZoom;
         const containerRect = chartScrollRef.current.getBoundingClientRect();
         const scrollLeft = chartScrollRef.current.scrollLeft;
         const absoluteX = e.clientX - containerRect.left + scrollLeft;

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail } from 'lucide-react';
+import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
+import { cashbookService } from '../../services/cashbook.service';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
@@ -32,7 +33,8 @@ interface PaymentInfo {
 const DEPARTMENTS = ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
 
 type WizardTab = 'basic' | 'buy' | 'order';
-type Stage = 1 | 2 | 3 | 4;
+// Stages: 1 = basic, 2 = expense list, 3 = payment method, 4 = review, 5 = manual amount (when no expense list)
+type Stage = 1 | 2 | 3 | 4 | 5;
 
 const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
     <div className="flex flex-col items-center justify-center h-64 text-center px-8">
@@ -45,7 +47,7 @@ const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
 );
 
 export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = ({ isOpen, onClose, onSuccess }) => {
-    const { user, userName } = useAuth();
+    const { user, userName, userRole } = useAuth();
     const [activeTab, setActiveTab] = useState<WizardTab>('basic');
     const [stage, setStage] = useState<Stage>(1);
 
@@ -60,6 +62,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         { id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }
     ]);
 
+    // Stage 5: Manual amount (used when the user opts out of an expense list)
+    const [manualAmount, setManualAmount] = useState('');
+
     // Stage 3: Payment Method
     const [paymentMethod, setPaymentMethod] = useState<'mobile' | 'bank'>('mobile');
     const [banks, setBanks] = useState<any[]>([]);
@@ -71,6 +76,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [momoOperator, setMomoOperator] = useState('AIRTEL');
     const [resolvedName, setResolvedName] = useState('');
     const [confirmingName, setConfirmingName] = useState(false);
+    // Admin-only: approve & disburse instantly on submit
+    const [autoAuthorize, setAutoAuthorize] = useState(false);
+    const [wallets, setWallets] = useState<any[]>([]);
+    const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
     // Common
     const [submitting, setSubmitting] = useState(false);
@@ -87,18 +96,37 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             setUseMyAccount(true);
             setMakeExpenseList(true);
             setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
+            setManualAmount('');
             setPaymentMethod('mobile');
             setBankId('');
             setAccountNumber('');
             setPhoneNumber('');
             setResolvedName('');
+            setAutoAuthorize(false);
+            setWallets([]);
+            setSelectedWalletId(null);
             setError(null);
             setActiveRequisitionId(null);
             
             fetchBanks();
             fetchPaymentInfo();
+            fetchWallets();
         }
     }, [isOpen]);
+
+    const fetchWallets = async () => {
+        try {
+            const data = await cashbookService.getWallets();
+            const list = Array.isArray(data) ? data : (data?.data || []);
+            setWallets(list);
+            if (list.length > 0) {
+                const main = list.find((w: any) => w.is_main) || list[0];
+                setSelectedWalletId(main.id);
+            }
+        } catch (err) {
+            console.error('Failed to load wallets:', err);
+        }
+    };
 
     const fetchPaymentInfo = async () => {
         try {
@@ -174,7 +202,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         }
     }, [paymentMethod]);
 
-    const getTotal = () => lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0);
+    const getTotal = () => makeExpenseList
+        ? lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0)
+        : (Number(manualAmount) || 0);
 
     const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
         setLineItems(prev => prev.map(item => {
@@ -199,35 +229,38 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         setLineItems(prev => prev.filter(i => i.id !== id));
     };
 
+    // Build the ordered list of stages for the current toggle selections.
+    // When an expense list is created we use stage 2; otherwise we insert
+    // stage 5 so the user can enter the requested amount directly.
+    const getStageSequence = (): Stage[] => {
+        const seq: Stage[] = [1];
+        seq.push(makeExpenseList ? 2 : 5);
+        if (!useMyAccount) seq.push(3);
+        seq.push(4);
+        return seq;
+    };
+
     const handleProceed = () => {
         setError(null);
         if (stage === 1) {
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
             if (!department) { setError('Please select a department.'); return; }
-            if (makeExpenseList) setStage(2);
-            else if (!useMyAccount) setStage(3);
-            else setStage(4);
-        } else if (stage === 2) {
-            if (!useMyAccount) setStage(3);
-            else setStage(4);
+        } else if (stage === 5) {
+            if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
             if (!resolvedName || resolvedName === 'Name not confirmed') { setError('Please verify the recipient details.'); return; }
-            setStage(4);
         }
+
+        const seq = getStageSequence();
+        const idx = seq.indexOf(stage);
+        if (idx !== -1 && idx < seq.length - 1) setStage(seq[idx + 1]);
     };
 
     const handleBack = () => {
         setError(null);
-        if (stage === 4) {
-            if (!useMyAccount) setStage(3);
-            else if (makeExpenseList) setStage(2);
-            else setStage(1);
-        } else if (stage === 3) {
-            if (makeExpenseList) setStage(2);
-            else setStage(1);
-        } else if (stage === 2) {
-            setStage(1);
-        }
+        const seq = getStageSequence();
+        const idx = seq.indexOf(stage);
+        if (idx > 0) setStage(seq[idx - 1]);
     };
 
     const handleSubmit = async () => {
@@ -258,7 +291,53 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                     ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
                     : resolvedName
             };
-            await requisitionService.create(data);
+            const created = await requisitionService.create(data);
+
+            // Admin auto-authorize: immediately approve and disburse via Lenco,
+            // mirroring the approve → disburse flow in the requisition modal.
+            // Only applies when a recipient was entered manually (stage 3).
+            if (autoAuthorize && userRole === 'ADMIN' && !useMyAccount) {
+                try {
+                    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+                    const normalizedPhone = cleanPhone.startsWith('260') ? '0' + cleanPhone.substring(3) : cleanPhone;
+                    const recipientAccount = paymentMethod === 'mobile' ? normalizedPhone : accountNumber;
+                    const recipientBankCode = (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
+
+                    // 1. Authorize — creates the disbursal stage and approves the items.
+                    await requisitionService.updateStatus(created.id, 'AUTHORISED');
+
+                    // 2. Disburse electronically through the MoneyWise Wallet (Lenco).
+                    const result = await requisitionService.disburse(created.id, {
+                        payment_method: 'MONEYWISE_WALLET',
+                        total_prepared: getTotal(),
+                        recipient_account: recipientAccount,
+                        recipient_bank_code: recipientBankCode,
+                        recipient_account_name: resolvedName || undefined,
+                        wallet_id: selectedWalletId || undefined,
+                    });
+
+                    // 3. Poll for Lenco confirmation if the transfer is still pending.
+                    if (result.lencoStatus === 'pending') {
+                        for (let attempt = 0; attempt < 8; attempt++) {
+                            await new Promise(r => setTimeout(r, 4000));
+                            const poll = await requisitionService.verifyDisbursement(created.id);
+                            if (poll.status === 'successful') break;
+                            if (poll.status === 'failed') {
+                                throw new Error(poll.error || poll.details?.reasonForFailure || 'The transfer was rejected by Lenco.');
+                            }
+                        }
+                    }
+                } catch (disbErr: any) {
+                    // The requisition was created (and likely reset to Authorised by the
+                    // backend on failure) — let the admin open it and disburse manually.
+                    console.error('Auto-authorize disbursal failed:', disbErr);
+                    setActiveRequisitionId(created.id);
+                    setError(`${disbErr.message || 'Disbursement failed.'} The requisition was created — open it to disburse manually.`);
+                    setSubmitting(false);
+                    return;
+                }
+            }
+
             onSuccess();
             onClose();
         } catch (err: any) {
@@ -446,6 +525,30 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                             </div>
                         )}
 
+                        {stage === 5 && (
+                            <div className="space-y-6">
+                                <div className="space-y-1">
+                                    <h2 className="text-[20px] font-bold text-brand-navy">Amount Requested</h2>
+                                    <p className="text-sm text-gray-400">Enter the total amount you are requesting.</p>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Amount (ZMW)</label>
+                                    <div className="relative">
+                                        <span className="absolute left-5 top-1/2 -translate-y-1/2 font-bold text-gray-400 text-xl">K</span>
+                                        <input
+                                            type="number"
+                                            inputMode="decimal"
+                                            value={manualAmount}
+                                            onChange={e => setManualAmount(e.target.value)}
+                                            placeholder="0.00"
+                                            autoFocus
+                                            className="w-full h-16 bg-gray-50 border border-gray-100 rounded-2xl pl-11 pr-5 text-2xl font-black text-brand-navy placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         {stage === 3 && (
                             <div className="space-y-6">
                                 <h2 className="text-[20px] font-bold text-brand-navy">Payment Method</h2>
@@ -546,6 +649,31 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                             </div>
                                         </div>
                                     )}
+
+                                    {/* Admin-only: approve & disburse instantly on submit */}
+                                    {userRole === 'ADMIN' && (
+                                        <div className="pt-2">
+                                            <button
+                                                onClick={() => setAutoAuthorize(!autoAuthorize)}
+                                                className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all"
+                                            >
+                                                <div className="flex items-center gap-3 text-left">
+                                                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${autoAuthorize ? 'bg-[#006AFF]/10 text-[#006AFF]' : 'bg-gray-200 text-gray-400'}`}><Zap size={20} /></div>
+                                                    <div>
+                                                        <p className="text-sm font-bold text-brand-navy">Auto-authorize &amp; send</p>
+                                                        <p className="text-[11px] text-gray-400">Approve and disburse instantly on submit</p>
+                                                    </div>
+                                                </div>
+                                                <div className={`w-12 h-6 rounded-full transition-all relative ${autoAuthorize ? 'bg-[#006AFF]' : 'bg-gray-300'}`}><div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${autoAuthorize ? 'right-1' : 'left-1'}`} /></div>
+                                            </button>
+                                            {autoAuthorize && (
+                                                <p className="text-[11px] text-amber-600 font-medium mt-2 ml-1 flex items-start gap-1.5">
+                                                    <AlertCircle size={13} className="mt-0.5 shrink-0" />
+                                                    <span>Funds will be sent immediately via Lenco when you tap Send. This cannot be undone.</span>
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -584,22 +712,45 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                     </div>
                                 </div>
 
-                                {/* Expense Items Card */}
-                                <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-4">
-                                    <div className="space-y-3">
-                                        {lineItems.filter(i => i.description).map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-center text-sm">
-                                                <span className="text-gray-600 font-medium">{item.description}</span>
-                                                <span className="text-black font-bold">K{Number(item.estimated_amount).toLocaleString()}</span>
+                                {/* Source Wallet (shown only when auto-authorizing and more than one wallet exists) */}
+                                {autoAuthorize && !useMyAccount && wallets.length > 1 && (
+                                    <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-3">
+                                        <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Send From Wallet</label>
+                                        <div className="relative">
+                                            <select
+                                                value={selectedWalletId || ''}
+                                                onChange={e => setSelectedWalletId(e.target.value)}
+                                                className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy font-bold focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all appearance-none"
+                                            >
+                                                {wallets.map((w: any) => (
+                                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                                ))}
+                                            </select>
+                                            <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
+                                                <ArrowRight size={16} className="rotate-90" />
                                             </div>
-                                        ))}
+                                        </div>
                                     </div>
-                                    
-                                    <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
-                                        <span className="text-sm font-bold text-black">Requisition Total</span>
-                                        <span className="text-sm font-bold text-black">K{getTotal().toLocaleString()}</span>
+                                )}
+
+                                {/* Expense Items Card */}
+                                {makeExpenseList && (
+                                    <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-4">
+                                        <div className="space-y-3">
+                                            {lineItems.filter(i => i.description).map((item, idx) => (
+                                                <div key={idx} className="flex justify-between items-center text-sm">
+                                                    <span className="text-gray-600 font-medium">{item.description}</span>
+                                                    <span className="text-black font-bold">K{Number(item.estimated_amount).toLocaleString()}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="pt-4 border-t border-gray-100 flex justify-between items-center">
+                                            <span className="text-sm font-bold text-black">Requisition Total</span>
+                                            <span className="text-sm font-bold text-black">K{getTotal().toLocaleString()}</span>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         )}
                     </div>
@@ -609,7 +760,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             {/* Bottom Navigation Area */}
             {activeTab === 'basic' && (
                 <div className="shrink-0 p-6 pb-8 border-t border-gray-50 bg-white">
-                    {stage < 4 ? (
+                    {stage !== 4 ? (
                         <div className="flex justify-end">
                             <button
                                 onClick={handleProceed}
@@ -634,11 +785,11 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 {submitting ? (
                                     <>
                                         <RotateCcw size={18} className="animate-spin" />
-                                        <span>Processing...</span>
+                                        <span>{autoAuthorize && !useMyAccount ? 'Sending...' : 'Processing...'}</span>
                                     </>
                                 ) : (
                                     <>
-                                        <span>Submit Request</span>
+                                        <span>{autoAuthorize && !useMyAccount ? 'Send' : 'Submit Request'}</span>
                                         <ArrowRight size={20} />
                                     </>
                                 )}

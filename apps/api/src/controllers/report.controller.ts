@@ -1,6 +1,96 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
+/**
+ * An org reads its reports from the double-entry GL only once its history is fully
+ * posted (no cashbook entry is missing a journal entry). Until then it stays on the
+ * legacy per-type computation, so partially-backfilled orgs never show a wrong
+ * balance sheet. Backfilling an org flips it onto the GL automatically.
+ */
+async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
+    const { data: gaps, error } = await supabase.rpc('cashbook_entries_missing_journal', {
+        p_organization_id: organizationId
+    });
+    if (error) {
+        console.error('[Report] missing-journal check failed; using legacy path:', error.message);
+        return false;
+    }
+    if ((gaps?.length ?? 0) > 0) return false;
+    const { count } = await supabase
+        .from('journal_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId);
+    return (count ?? 0) > 0;
+}
+
+/**
+ * Build the report rows from the GL trial balance, keeping the legacy response shape
+ * ({account_id, account_name, total_amount, transaction_count, type}).
+ *   - INCOME/EXPENSE: period [startDate, endDate] (P&L view)
+ *   - ASSET/LIABILITY/EQUITY: cumulative <= endDate (balance sheet)
+ *   - Retained Earnings: cumulative (income - expense) injected onto the equity row,
+ *     so Assets - Liabilities == Total Equity always holds.
+ */
+async function buildFinancialsFromGL(organizationId: string, startDate: string, endDate: string) {
+    const { data: rows, error } = await supabase.rpc('report_account_balances', {
+        p_org: organizationId,
+        p_start: startDate,
+        p_end: endDate
+    });
+    if (error) throw error;
+
+    let cumIncome = 0;
+    let cumExpense = 0;
+    for (const r of rows || []) {
+        const cd = Number(r.cumulative_debit || 0);
+        const cc = Number(r.cumulative_credit || 0);
+        if (r.type === 'INCOME') cumIncome += cc - cd;
+        else if (r.type === 'EXPENSE') cumExpense += cd - cc;
+    }
+    const retainedEarnings = cumIncome - cumExpense;
+
+    let retainedSeen = false;
+    const financials = (rows || []).map((r: any) => {
+        const pd = Number(r.period_debit || 0);
+        const pc = Number(r.period_credit || 0);
+        const cd = Number(r.cumulative_debit || 0);
+        const cc = Number(r.cumulative_credit || 0);
+        let total = 0;
+        let count = 0;
+        switch (r.type) {
+            case 'INCOME':    total = pc - pd; count = Number(r.period_n || 0); break;
+            case 'EXPENSE':   total = pd - pc; count = Number(r.period_n || 0); break;
+            case 'ASSET':     total = cd - cc; count = Number(r.cumulative_n || 0); break;
+            case 'LIABILITY': total = cc - cd; count = Number(r.cumulative_n || 0); break;
+            case 'EQUITY':
+                total = cc - cd; count = Number(r.cumulative_n || 0);
+                if (r.code === 'QB-73') { total += retainedEarnings; retainedSeen = true; }
+                break;
+        }
+        return {
+            account_id: r.account_id,
+            account_name: r.account_name,
+            total_amount: total,
+            transaction_count: count,
+            type: r.type
+        };
+    });
+
+    // If the org has no Retained Earnings account, surface the figure as a synthetic row
+    // so the balance sheet still balances.
+    if (!retainedSeen && Math.abs(retainedEarnings) > 0.005) {
+        financials.push({
+            account_id: 'RETAINED_EARNINGS',
+            account_name: 'Retained Earnings',
+            total_amount: retainedEarnings,
+            transaction_count: 0,
+            type: 'EQUITY'
+        });
+    }
+
+    return financials;
+}
+
 export const getExpenditure = async (req: any, res: any): Promise<any> => {
     try {
         const organization_id = (req as any).user.organization_id;
@@ -12,6 +102,13 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
 
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'start_date and end_date are required' });
+        }
+
+        // Double-entry GL path — used once an org's history is fully posted; otherwise
+        // we fall through to the legacy per-type computation below (no regression).
+        if (await isOrgFullyPosted(organization_id)) {
+            const financials = await buildFinancialsFromGL(organization_id, startDate, endDate);
+            return res.json(financials);
         }
 
         // 1. Fetch all active accounts for the organization
@@ -179,6 +276,82 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
     }
 };
 
+/**
+ * Drill-down items for one account read from the GL (used for fully-posted orgs).
+ * Mirrors the GL reporting windows: INCOME/EXPENSE over [start,end], balance-sheet
+ * accounts cumulative <= end. The synthetic Retained Earnings row expands into the
+ * underlying income/expense postings that compose it.
+ */
+async function buildItemsFromGL(
+    organizationId: string,
+    accountId: string,
+    account: any,
+    startDate: string,
+    endDate: string
+) {
+    const isRetained = accountId === 'RETAINED_EARNINGS' || account?.code === 'QB-73';
+
+    // Which accounts' postings to list, and the date window.
+    let accountIds: string[] = [];
+    let periodWindow = false; // true => [start,end], false => cumulative <= end
+    let signMode: 'DEBIT_NORMAL' | 'CREDIT_NORMAL' = 'DEBIT_NORMAL';
+
+    if (isRetained) {
+        const { data: pnlAccts } = await supabase
+            .from('accounts')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .in('type', ['INCOME', 'EXPENSE']);
+        accountIds = (pnlAccts || []).map((a: any) => a.id);
+        periodWindow = false;      // balance-sheet RE is cumulative
+        signMode = 'CREDIT_NORMAL'; // income(credit-debit) + (-(expense)) both = credit-debit
+    } else {
+        if (!account) return [];
+        accountIds = [accountId];
+        periodWindow = account.type === 'INCOME' || account.type === 'EXPENSE';
+        signMode = (account.type === 'ASSET' || account.type === 'EXPENSE') ? 'DEBIT_NORMAL' : 'CREDIT_NORMAL';
+    }
+
+    if (accountIds.length === 0) return [];
+
+    let q = supabase
+        .from('journal_lines')
+        .select(`
+            id, debit, credit,
+            journal_entries!inner ( organization_id, entry_date, description, reference_number, created_by )
+        `)
+        .in('account_id', accountIds)
+        .eq('journal_entries.organization_id', organizationId)
+        .lte('journal_entries.entry_date', endDate);
+
+    if (periodWindow && startDate) {
+        q = q.gte('journal_entries.entry_date', startDate);
+    }
+
+    const { data: lines, error } = await q;
+    if (error) throw error;
+
+    const items = (lines || []).map((l: any) => {
+        const je = l.journal_entries;
+        const debit = Number(l.debit || 0);
+        const credit = Number(l.credit || 0);
+        const amount = signMode === 'DEBIT_NORMAL' ? debit - credit : credit - debit;
+        return {
+            id: l.id,
+            description: je.description || 'Ledger posting',
+            amount,
+            date: je.entry_date,
+            requisition_id: null,
+            requisition_ref: je.reference_number || 'LEDGER',
+            requisition_desc: je.description || '',
+            requestor_name: 'Ledger'
+        };
+    });
+
+    items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return items;
+}
+
 export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
     try {
         const organization_id = (req as any).user.organization_id;
@@ -198,6 +371,13 @@ export const getExpenditureItems = async (req: any, res: any): Promise<any> => {
                 .eq('id', accountId)
                 .single();
             account = acc;
+        }
+
+        // GL drill-down for fully-posted orgs (mirrors the GL reporting path). Covers the
+        // new equity rows (Suspense, Retained Earnings) and every other account.
+        if (accountId !== 'UNCATEGORIZED' && await isOrgFullyPosted(organization_id)) {
+            const glItems = await buildItemsFromGL(organization_id, accountId, account, String(startDate || ''), String(endDate || ''));
+            return res.json(glItems);
         }
 
         const accountType = account?.type || 'EXPENSE';
