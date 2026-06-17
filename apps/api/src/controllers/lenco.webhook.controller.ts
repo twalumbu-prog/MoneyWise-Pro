@@ -298,9 +298,14 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             const isPublicSale = (reference && reference.endsWith('-PUB')) ||
                                 (actualNarration && (actualNarration.startsWith('Sale:') || actualNarration.startsWith('Revenue:')));
 
-            const inflowAmount = isPublicSale
-                ? (pendingEntry?.debit ? Number(pendingEntry.debit) : parseFloat(amount) * 0.975)
-                : parseFloat(amount);
+            // Always use the stored net amount from the pending intent when available —
+            // this covers both internal (CashInflowModal) and public deposits, where the
+            // intent debit is always set to the net subtotal before fees.
+            const inflowAmount = pendingEntry?.debit
+                ? Number(pendingEntry.debit)
+                : isPublicSale
+                    ? parseFloat(amount) * 0.975
+                    : parseFloat(amount);
 
             // 1. Log the Inflow — finalize the intent IN PLACE when one exists.
             // (Delete-then-recreate destroyed the intent when the recreate failed.)

@@ -295,25 +295,23 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 }
             });
 
-        /* 
-        // Consolidate into a single summary message - REMOVED per user request
+        // Create DISBURSAL_SUCCESS message BEFORE EXPENSE_TRACKING to guarantee correct chat ordering.
         await RequisitionMessageService.createMessage({
             requisitionId: id,
             userId: cashier_id,
-            content: `Funds Disbursed: K${totalDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nMethod: ${payment_method || 'CASH'}\nRef: ${lencoReference || 'N/A'}\nStatus: ${ (req as any).lencoStatus === 'failed' ? 'FAILED' : ((req as any).lencoStatus === 'pending' ? 'PENDING' : 'SUCCESS') }`,
-            type: 'CHAT',
-            metadata: { 
-                isSummary: true, 
+            content: `Funds Disbursed: K${totalDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nMethod: ${payment_method || 'CASH'}\nRef: ${lencoReference || 'N/A'}\nStatus: SUCCESS`,
+            type: 'SYSTEM',
+            metadata: {
+                isSummary: true,
                 stage: 'DISBURSAL_SUCCESS',
                 disbursement_id: disbursementData.id,
-                payment_method
+                payment_method,
+                amount: totalDeduction
             }
         });
-        */
 
-        // Increase artificial delay to 1000ms to guarantee strict database chronological ordering 
-        // between the CHAT summary and the SYSTEM expense tracking prompt
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Brief gap so DB timestamps are strictly ordered before EXPENSE_TRACKING is written.
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Trigger the EXPENSE_TRACKING prompt IMMEDIATELY after any disbursement.
         // We no longer wait for manual "acknowledgement" since the transaction is confirmed.

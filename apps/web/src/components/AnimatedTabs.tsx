@@ -35,8 +35,8 @@ interface SegmentedControlProps {
     options: SegOption[];
     value: string;
     onChange: (value: string) => void;
-    /** 'pill' = filled white chip on a gray track; 'outline' = blue-outlined chip on transparent track. */
-    variant?: 'pill' | 'outline';
+    /** 'pill' = filled white chip on a gray track; 'outline' = blue-outlined chip on transparent track; 'capsule' = fully-rounded pill on a rounded-full track. */
+    variant?: 'pill' | 'outline' | 'capsule';
     className?: string;
 }
 
@@ -87,13 +87,18 @@ export function SegmentedControl({
     }, []);
 
     const isPill = variant === 'pill';
+    const isCapsule = variant === 'capsule';
 
     const trackClass = isPill
         ? 'relative flex bg-gray-100 p-1 rounded-xl border border-gray-200'
+        : isCapsule
+        ? 'relative flex bg-gray-100/80 p-0.5 rounded-[80px]'
         : 'relative flex items-center gap-1.5';
 
     const highlightClass = isPill
         ? 'bg-white shadow-sm rounded-lg'
+        : isCapsule
+        ? 'bg-white rounded-[80px] shadow-[0px_3px_1px_0px_rgba(0,0,0,0.04),0px_3px_8px_0px_rgba(0,0,0,0.12)] outline outline-[0.5px] outline-black/5'
         : 'bg-white rounded-xl border-[1.5px] border-[#006AFF]';
 
     return (
@@ -117,6 +122,10 @@ export function SegmentedControl({
                 const baseClass = isPill
                     ? `relative z-10 flex-1 py-2 rounded-lg text-xs text-center transition-colors duration-200 ${
                           active ? 'text-brand-navy font-extrabold' : 'text-gray-500 font-bold hover:text-gray-900'
+                      }`
+                    : isCapsule
+                    ? `relative z-10 flex-1 py-2 px-2.5 text-xs text-center leading-4 transition-colors duration-200 ${
+                          active ? 'text-gray-900' : 'text-gray-400'
                       }`
                     : `relative z-10 px-3 py-1.5 rounded-xl text-sm transition-colors duration-200 ${
                           active ? 'text-[#006AFF] font-bold' : 'text-[#7C8FA2] font-normal'

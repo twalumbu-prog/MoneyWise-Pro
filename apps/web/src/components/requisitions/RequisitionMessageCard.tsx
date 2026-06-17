@@ -33,7 +33,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const isRejected = currentStatus === 'REJECTED';
 
     const { userRole, user: currentUser } = useAuth();
-    const [isExpanded, setIsExpanded] = useState(isInitial || window.innerWidth < 768);
+    const [isExpanded, setIsExpanded] = useState(isInitial);
     useEffect(() => {
         if (isInitial && window.innerWidth < 768) {
             setIsExpanded(true);
@@ -1122,16 +1122,16 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                             </div>
                         </div>
 
-                        <div 
-                            className="px-6 pb-4 flex items-center justify-between cursor-pointer md:cursor-pointer group"
-                            onClick={() => window.innerWidth >= 768 && setIsExpanded(!isExpanded)}
+                        <div
+                            className="px-6 pb-4 flex items-center justify-between cursor-pointer group"
+                            onClick={() => setIsExpanded(!isExpanded)}
                         >
                             <h3 className="text-[14px] md:text-[15px] font-normal md:font-bold text-gray-900 leading-tight flex-1 pr-4 transition-colors">
                                 {requisitionData?.description || 'Purchase Requisition'}
                             </h3>
                             <div className="flex items-center space-x-3">
                                 {(isRejected || currentStatus === 'AUTHORISED') && isPrivileged && !requisitionData?.disbursements?.length && (
-                                    <button 
+                                    <button
                                         onClick={async (e) => {
                                             e.stopPropagation();
                                             if (confirm('Reverting to draft will allow editing. Proceed?')) {
@@ -1152,11 +1152,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                 <span className="text-[15px] md:text-[16px] font-normal md:font-black text-gray-900 tracking-tight">
                                     K{requisitionData?.estimated_total?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </span>
-                                <div className={`hidden md:flex p-0.5 rounded-full transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-gray-50' : 'bg-transparent group-hover:bg-gray-50'}`}>
+                                <div className={`flex p-0.5 rounded-full transition-transform duration-300 ${isExpanded ? 'rotate-180 bg-gray-50' : 'bg-transparent group-hover:bg-gray-50'}`}>
                                     <ChevronDown size={18} className="text-gray-400 group-hover:text-gray-900" />
                                 </div>
                             </div>
                         </div>
+
 
                         {isExpanded && (
                             <div className="px-6 pb-6 animate-in fade-in slide-in-from-top-2 duration-400">
@@ -1481,6 +1482,10 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     </div>
                 );
             }
+
+            // After a successful disbursal the DISBURSAL_SUCCESS "Funds Disbursed" card
+            // already confirms the transaction — hide this duplicate card.
+            if (isPastDisbursal && !isRejected) return null;
 
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
@@ -2903,6 +2908,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         // 6. DISBURSAL SUMMARY (Success Message)
         else if (content?.startsWith('Funds Disbursed:')) {
             const meta = message.metadata || {};
+            const disbursement = requisitionData?.disbursements?.[0];
             // Parse details from content
             const lines = content.split('\n');
             const amountLine = lines.find(l => l.includes('Disbursed:')) || lines.find(l => l.includes('Amount:'));
@@ -2910,10 +2916,13 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             const refLine = lines.find(l => l.includes('Ref:'));
             const statusLine = lines.find(l => l.includes('Status:'));
 
-            const amount = amountLine?.split(':')[1]?.trim() || `K${Number(meta.amount || 0).toLocaleString()}`;
-            const method = methodLine?.split(':')[1]?.trim() || meta.payment_method || 'N/A';
-            const ref = refLine?.split(':')[1]?.trim() || meta.external_reference || 'N/A';
+            const amount = amountLine?.split(':')[1]?.trim() || `K${Number(meta.amount || disbursement?.total_prepared || 0).toLocaleString()}`;
+            const method = methodLine?.split(':')[1]?.trim() || meta.payment_method || disbursement?.payment_method || 'N/A';
+            const ref = refLine?.split(':')[1]?.trim() || meta.external_reference || disbursement?.external_reference || 'N/A';
             const status = statusLine?.split(':')[1]?.trim() || 'SUCCESS';
+            const recipientName = disbursement?.recipient_account_name || meta.recipient || null;
+            const recipientAccount = disbursement?.recipient_account || null;
+            const recipientBank = disbursement?.recipient_bank_code || null;
 
             return (
                 <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
@@ -2956,10 +2965,22 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Reference</span>
                                             <span className="text-[12px] font-mono font-bold text-gray-600">{ref}</span>
                                         </div>
-                                        {meta.recipient && (
+                                        {recipientName && (
                                             <div className="flex justify-between items-center">
-                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recipient</span>
-                                                <span className="text-[12px] font-bold text-gray-900">{meta.recipient}</span>
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Recipient Name</span>
+                                                <span className="text-[12px] font-bold text-gray-900">{recipientName}</span>
+                                            </div>
+                                        )}
+                                        {recipientAccount && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Account</span>
+                                                <span className="text-[12px] font-mono font-bold text-gray-600">{recipientAccount}</span>
+                                            </div>
+                                        )}
+                                        {recipientBank && (
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Bank</span>
+                                                <span className="text-[12px] font-bold text-gray-900 uppercase">{recipientBank}</span>
                                             </div>
                                         )}
                                     </div>

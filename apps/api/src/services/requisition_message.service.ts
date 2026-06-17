@@ -305,10 +305,22 @@ export class RequisitionMessageService {
             }
         }
 
-        return data.map((m: any) => ({
+        const mapped = data.map((m: any) => ({
             ...m,
             user_name: m.user?.name || 'System'
         }));
+
+        // Ensure DISBURSAL_SUCCESS always appears before EXPENSE_TRACKING regardless of
+        // which timestamp was written first (repair can create DISBURSAL_SUCCESS after
+        // EXPENSE_TRACKING already existed, producing wrong visual order).
+        const dsIdx = mapped.findIndex((m: any) => m.metadata?.stage === 'DISBURSAL_SUCCESS');
+        const etIdx = mapped.findIndex((m: any) => m.metadata?.stage === 'EXPENSE_TRACKING');
+        if (dsIdx !== -1 && etIdx !== -1 && dsIdx > etIdx) {
+            const [dsMsg] = mapped.splice(dsIdx, 1);
+            mapped.splice(etIdx, 0, dsMsg);
+        }
+
+        return mapped;
     }
 
     static async updateMessage(id: string, params: { content?: string, metadata?: any }) {

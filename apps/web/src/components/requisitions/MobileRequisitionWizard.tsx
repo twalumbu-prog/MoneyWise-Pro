@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { SegmentedControl, AnimatedTabContent } from '../AnimatedTabs';
 import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
@@ -49,6 +50,8 @@ const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
 export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = ({ isOpen, onClose, onSuccess }) => {
     const { user, userName, userRole } = useAuth();
     const [activeTab, setActiveTab] = useState<WizardTab>('basic');
+    const TAB_ORDER: WizardTab[] = ['basic', 'buy', 'order'];
+    const tabIndex = TAB_ORDER.indexOf(activeTab);
     const [stage, setStage] = useState<Stage>(1);
 
     // Stage 1: Basic
@@ -380,20 +383,24 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             </div>
 
             <div className="bg-white border-b border-gray-100 px-6 py-2 shrink-0">
-                <div className="flex items-center justify-between w-full bg-gray-50/50 p-1 rounded-2xl">
-                    {(['basic', 'buy', 'order'] as WizardTab[]).map(tab => (
-                        <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-2 rounded-xl text-[12px] font-black uppercase tracking-widest transition-all ${activeTab === tab ? 'bg-[#EEF4FF] text-[#006AFF] shadow-sm' : 'text-gray-400'}`}>
-                            {tab}
-                        </button>
-                    ))}
-                </div>
+                <SegmentedControl
+                    variant="capsule"
+                    value={activeTab}
+                    onChange={(v) => setActiveTab(v as WizardTab)}
+                    options={[
+                        { value: 'basic', label: 'Send' },
+                        { value: 'buy',   label: 'Buy' },
+                        { value: 'order', label: 'Order' },
+                    ]}
+                />
             </div>
 
             <div className="flex-1 overflow-y-auto px-6 py-6">
+                <AnimatedTabContent tabKey={activeTab} index={tabIndex} className="h-full">
                 {activeTab !== 'basic' ? (
                     <ComingSoonTab name={activeTab} />
                 ) : (
-                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="space-y-8">
                         {error && (
                             <div className="bg-red-50 border border-red-100 rounded-2xl p-4 space-y-3 animate-in fade-in zoom-in duration-300">
                                 <div className="flex items-start gap-3">
@@ -767,6 +774,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                         )}
                     </div>
                 )}
+                </AnimatedTabContent>
             </div>
 
             {/* Bottom Navigation Area */}

@@ -595,9 +595,9 @@ export const RequisitionList: React.FC = () => {
             </div>
         </Layout>
 
-            <RequisitionModal 
-                requisition={selectedRequisition} 
-                isOpen={!!selectedRequisition} 
+            <RequisitionModal
+                requisition={selectedRequisition}
+                isOpen={!!selectedRequisition}
                 onClose={() => {
                     setSelectedRequisition(null);
                     if (searchParams.has('id')) {
@@ -607,6 +607,17 @@ export const RequisitionList: React.FC = () => {
                     }
                 }}
                 onStatusChange={handleStatusChange}
+                onDelete={async (id) => {
+                    if (window.confirm('Are you sure you want to delete this requisition? This action cannot be undone.')) {
+                        try {
+                            await requisitionService.delete(id);
+                            setSelectedRequisition(null);
+                            await loadRequisitions();
+                        } catch (err: any) {
+                            alert(err.message || 'Failed to delete requisition');
+                        }
+                    }
+                }}
             />
 
             {/* Mobile Only UI Elements - Outside Layout for best z-index/fixed behavior */}

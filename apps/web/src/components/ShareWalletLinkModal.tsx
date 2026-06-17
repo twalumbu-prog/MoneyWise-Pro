@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { X, Check, Copy, Link2, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Check, Copy, Link2, ExternalLink, Download } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { organizationService } from '../services/organization.service';
 
 interface ShareWalletLinkModalProps {
     isOpen: boolean;
@@ -15,8 +17,29 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
     shareUrl
 }) => {
     const [copied, setCopied] = useState(false);
+    const [logoUrl, setLogoUrl] = useState<string | null>(null);
+    const qrRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        organizationService.getOrganization()
+            .then(org => setLogoUrl(org.logo_url || null))
+            .catch(() => setLogoUrl(null));
+    }, [isOpen]);
 
     if (!isOpen) return null;
+
+    const handleDownload = () => {
+        const canvas = qrRef.current?.querySelector('canvas');
+        if (!canvas) return;
+        const url = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${walletName.replace(/\s+/g, '-').toLowerCase() || 'wallet'}-payment-qr.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
     const handleCopy = async () => {
         try {
@@ -52,9 +75,33 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
 
                 {/* Content */}
                 <div className="p-6 space-y-4">
-                    <p className="text-xs font-semibold text-slate-500 leading-relaxed">
-                        Share this public payment link with your clients. They can use it to view your products, log in with their phone number, and make direct deposits that automatically settle into this wallet ledger.
-                    </p>
+                    <div className="flex justify-center">
+                        <div className="flex flex-col items-center p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
+                            {logoUrl && (
+                                <img
+                                    src={logoUrl}
+                                    alt="Company logo"
+                                    className="h-10 w-auto max-w-[120px] object-contain mb-3 rounded-xl"
+                                />
+                            )}
+                            <div ref={qrRef}>
+                                <QRCodeCanvas
+                                    value={shareUrl}
+                                    size={180}
+                                    level="M"
+                                    marginSize={0}
+                                    fgColor="#020617"
+                                />
+                            </div>
+                            <button
+                                onClick={handleDownload}
+                                className="mt-4 flex items-center space-x-2 px-4 py-2.5 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-wider text-slate-700 hover:bg-slate-50 transition-all"
+                            >
+                                <Download size={14} strokeWidth={2.5} />
+                                <span>Download QR</span>
+                            </button>
+                        </div>
+                    </div>
 
                     <div className="relative flex items-center">
                         <input

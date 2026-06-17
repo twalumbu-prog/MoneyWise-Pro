@@ -1,16 +1,18 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import RequisitionProgress from './RequisitionProgress';
 import RequisitionChat from './RequisitionChat';
 import { Requisition } from '../../services/requisition.service';
 import { useAuth } from '../../context/AuthContext';
 import RequisitionAttachments from './RequisitionAttachments';
 import { AuditScoreBreakdown } from '../AuditScoreBreakdown';
+import { Trash2 } from 'lucide-react';
 
 interface RequisitionModalProps {
     requisition: Requisition | null;
     isOpen: boolean;
     onClose: () => void;
     onStatusChange?: () => void;
+    onDelete?: (id: string) => void;
 }
 
 // Expand icon (Notion-style: arrows pointing out)
@@ -39,15 +41,30 @@ const CollapseIcon = () => (
     </svg>
 );
 
+const DELETABLE_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'];
+
 const RequisitionModal: React.FC<RequisitionModalProps> = ({
     requisition,
     isOpen,
     onClose,
-    onStatusChange
+    onStatusChange,
+    onDelete
 }) => {
     const [activeTab, setActiveTab] = useState<'chat' | 'attachments' | 'audit'>('chat');
     const [isExpanded, setIsExpanded] = useState(false);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+    const mobileMenuRef = useRef<HTMLDivElement>(null);
     const { userRole } = useAuth();
+
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (mobileMenuRef.current && !mobileMenuRef.current.contains(e.target as Node)) {
+                setMobileMenuOpen(false);
+            }
+        };
+        if (mobileMenuOpen) document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [mobileMenuOpen]);
 
     if (!isOpen || !requisition) return null;
 
@@ -127,12 +144,36 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                     </div>
 
                     {/* Mobile More Button */}
-                    <div className="md:hidden">
-                        <button className="p-1 hover:bg-gray-100 rounded-full">
+                    <div className="md:hidden relative" ref={mobileMenuRef}>
+                        <button
+                            onClick={() => setMobileMenuOpen(prev => !prev)}
+                            className="p-1 hover:bg-gray-100 rounded-full"
+                        >
                             <svg className="w-6 h-6 text-gray-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 5v.01M12 12v.01M12 19v.01" />
                             </svg>
                         </button>
+
+                        {mobileMenuOpen && (
+                            <div className="absolute right-0 mt-1 w-52 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1">
+                                {requisition && DELETABLE_STATUSES.includes(requisition.status) ? (
+                                    <button
+                                        onClick={() => {
+                                            setMobileMenuOpen(false);
+                                            if (onDelete) onDelete(requisition.id);
+                                        }}
+                                        className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-500 hover:bg-red-50 transition-colors flex items-center"
+                                    >
+                                        <Trash2 size={14} className="mr-2" />
+                                        Delete Requisition
+                                    </button>
+                                ) : (
+                                    <div className="px-4 py-2.5 text-xs text-gray-400 font-medium">
+                                        No actions available
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
