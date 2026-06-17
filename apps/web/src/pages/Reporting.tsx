@@ -201,7 +201,12 @@ export const Reporting: React.FC = () => {
     const buildChartPeriods = (tf: '1D' | '1W' | '1M' | '3M' | 'YTD') => {
         const periods: { startDate: string; endDate: string; label: string; shortLabel: string }[] = [];
         const today = new Date();
-        const iso = (d: Date) => d.toISOString().split('T')[0];
+        // Format using the date's LOCAL components. Using toISOString() here would
+        // convert local-midnight dates to UTC and, in timezones east of UTC, shift
+        // every bucket boundary back a day — making "today" resolve to yesterday and
+        // dropping today's transactions from the cumulative net-worth balance.
+        const iso = (d: Date) =>
+            `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         if (tf === '1D') {
             for (let i = 13; i >= 0; i--) {
                 const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
@@ -218,7 +223,10 @@ export const Reporting: React.FC = () => {
                 periods.push({
                     startDate: iso(start), endDate: iso(end),
                     label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
-                    shortLabel: start.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                    // Label by the week's END (the as-of date of the plotted running
+                    // balance) so weekly points line up with the daily chart and the
+                    // latest point reads as today rather than the week's start.
+                    shortLabel: end.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
                 });
             }
         } else if (tf === '3M') {
