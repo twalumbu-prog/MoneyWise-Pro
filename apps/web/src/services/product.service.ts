@@ -3,6 +3,8 @@ import axios from 'axios';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
+export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION';
+
 export interface Product {
     id: string;
     organization_id: string;
@@ -10,8 +12,28 @@ export interface Product {
     description?: string;
     price: number;
     is_active: boolean;
+    image_url?: string | null;
+    product_type?: ProductType;
+    wallet_id?: string | null;
+    income_account_id?: string | null;
     created_at?: string;
     updated_at?: string;
+}
+
+export interface PaymentLink {
+    id: string;
+    organization_id: string;
+    product_id: string;
+    token: string;
+    customer_name: string;
+    customer_phone: string;
+    amount: number;
+    wallet_id?: string | null;
+    status: 'ACTIVE' | 'PAID' | 'CANCELLED';
+    reference?: string | null;
+    created_at?: string;
+    paid_at?: string | null;
+    path?: string;
 }
 
 export const productService = {
@@ -90,6 +112,44 @@ export const productService = {
             }
         });
 
+        return response.data;
+    }
+};
+
+export const paymentLinkService = {
+    async createPaymentLink(payload: {
+        product_id: string;
+        customer_name: string;
+        customer_phone: string;
+        amount: number;
+    }): Promise<PaymentLink> {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+
+        const response = await axios.post(`${API_URL}/organizations/payment-links`, payload, {
+            headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        return response.data;
+    },
+
+    async listPaymentLinks(productId?: string): Promise<PaymentLink[]> {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+
+        const response = await axios.get(`${API_URL}/organizations/payment-links`, {
+            params: productId ? { product_id: productId } : undefined,
+            headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        return response.data;
+    },
+
+    async deactivatePaymentLink(id: string): Promise<PaymentLink> {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+
+        const response = await axios.post(`${API_URL}/organizations/payment-links/${id}/deactivate`, {}, {
+            headers: { Authorization: `Bearer ${session.access_token}` }
+        });
         return response.data;
     }
 };

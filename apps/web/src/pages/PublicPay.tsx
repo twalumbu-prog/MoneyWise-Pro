@@ -28,6 +28,8 @@ interface Product {
     description?: string;
     price: number;
     is_active: boolean;
+    image_url?: string | null;
+    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION';
 }
 
 interface OrgContext {
@@ -67,6 +69,8 @@ export const PublicPay: React.FC = () => {
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
+    // Customer-entered amounts for DONATION products (keyed by product id).
+    const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
     
     // Payment Status states
     const [currentReference, setCurrentReference] = useState('');
@@ -147,15 +151,29 @@ export const PublicPay: React.FC = () => {
     const handleQuantityChange = (productId: string, delta: number) => {
         const currentQty = selectedQuantities[productId] || 0;
         const newQty = Math.max(0, currentQty + delta);
-        setSelectedQuantities({
-            ...selectedQuantities,
-            [productId]: newQty
-        });
+        setSelectedQuantities({ ...selectedQuantities, [productId]: newQty });
     };
 
-    // Calculation variables
-    const selectedProductsList = products.filter(p => (selectedQuantities[p.id] || 0) > 0);
-    const subtotal = selectedProductsList.reduce((sum, p) => sum + (p.price * (selectedQuantities[p.id] || 0)), 0);
+    const handleQuantitySet = (productId: string, value: string) => {
+        const parsed = parseInt(value, 10);
+        const newQty = isNaN(parsed) || parsed < 0 ? 0 : parsed;
+        setSelectedQuantities({ ...selectedQuantities, [productId]: newQty });
+    };
+
+    // Variable-priced services are share-link only; never shown in the open catalog.
+    const catalogProducts = products.filter(p => p.product_type !== 'SERVICE_VARIABLE');
+
+    // Unified line items across fixed-price products and customer-priced donations.
+    const lineItems = catalogProducts
+        .map(p => {
+            const isDonation = p.product_type === 'DONATION';
+            const quantity = isDonation ? (donationAmounts[p.id] > 0 ? 1 : 0) : (selectedQuantities[p.id] || 0);
+            const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : p.price;
+            return { product: p, quantity, unitPrice, total: quantity * unitPrice };
+        })
+        .filter(li => li.quantity > 0 && li.unitPrice > 0);
+
+    const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
     
     // MoneyWise platform fee (tiered) — additive markup paid by the customer on top
     // of the subtotal. The merchant settles the net subtotal; the fee is swept to
@@ -178,8 +196,8 @@ export const PublicPay: React.FC = () => {
         }
 
         // Build list description for database narration
-        const productNarration = selectedProductsList
-            .map(p => `${p.name} (x${selectedQuantities[p.id]})`)
+        const productNarration = lineItems
+            .map(li => `${li.product.name} (x${li.quantity})`)
             .join(', ');
 
         const purpose = `Purchase: ${productNarration}`;
@@ -196,10 +214,10 @@ export const PublicPay: React.FC = () => {
                 walletId: wallet.id,
                 customerName,
                 customerPhone,
-                items: selectedProductsList.map(p => ({
-                    id: p.id,
-                    quantity: selectedQuantities[p.id] || 0,
-                    price: p.price
+                items: lineItems.map(li => ({
+                    id: li.product.id,
+                    quantity: li.quantity,
+                    price: li.unitPrice
                 }))
             });
 
@@ -298,6 +316,7 @@ export const PublicPay: React.FC = () => {
 
     const handleReset = () => {
         setSelectedQuantities({});
+        setDonationAmounts({});
         setReceiptNumber(null);
         setLastTransactionId(null);
         setConfirmManualError(null);
@@ -395,12 +414,12 @@ export const PublicPay: React.FC = () => {
             doc.setFont('Helvetica', 'normal');
             doc.setTextColor('#334155');
 
-            selectedProductsList.forEach((item) => {
-                const qty = selectedQuantities[item.id] || 0;
-                const unitPrice = item.price;
-                const total = unitPrice * qty;
+            lineItems.forEach((li) => {
+                const qty = li.quantity;
+                const unitPrice = li.unitPrice;
+                const total = li.total;
 
-                doc.text(item.name, 24, y);
+                doc.text(li.product.name, 24, y);
                 doc.text(qty.toString(), 110, y, { align: 'center' });
                 doc.text(unitPrice.toFixed(2), 145, y, { align: 'right' });
                 doc.text(total.toFixed(2), 186, y, { align: 'right' });
@@ -881,59 +900,96 @@ Status: VERIFIED`;
 
                         {/* Catalog List */}
                         <div className="p-6 flex-1 overflow-y-auto max-h-[350px] space-y-3.5">
-                            {products.length === 0 ? (
+                            {catalogProducts.length === 0 ? (
                                 <div className="text-center py-10">
                                     <ShoppingCart className="mx-auto text-slate-200 mb-2" size={36} />
                                     <p className="text-xs font-semibold text-slate-400">No products configured yet.</p>
                                 </div>
                             ) : (
-                                products.map(product => {
+                                catalogProducts.map(product => {
+                                    const isDonation = product.product_type === 'DONATION';
                                     const qty = selectedQuantities[product.id] || 0;
+                                    const donationAmount = donationAmounts[product.id] || 0;
+                                    const isSelected = isDonation ? donationAmount > 0 : qty > 0;
                                     return (
-                                        <div 
+                                        <div
                                             key={product.id}
-                                            className={`p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center ${
-                                                qty > 0 
-                                                    ? 'border-blue-500 bg-blue-50/10 shadow-xs' 
+                                            className={`p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center gap-3 ${
+                                                isSelected
+                                                    ? 'border-blue-500 bg-blue-50/10 shadow-xs'
                                                     : 'border-slate-100 hover:border-slate-200 bg-white'
                                             }`}
                                         >
-                                            <div className="flex-1 min-w-0 pr-4">
+                                            {product.image_url && (
+                                                <img
+                                                    src={product.image_url}
+                                                    alt={product.name}
+                                                    className="h-12 w-12 rounded-xl object-cover border border-slate-100 flex-shrink-0"
+                                                />
+                                            )}
+                                            <div className="flex-1 min-w-0 pr-1">
                                                 <h5 className="text-xs font-black text-slate-900 truncate uppercase tracking-wide">{product.name}</h5>
                                                 {product.description && (
                                                     <p className="text-[10px] font-medium text-slate-400 mt-1 line-clamp-2">{product.description}</p>
                                                 )}
-                                                <p className="text-xs font-black text-blue-600 mt-2">
-                                                    K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                </p>
-                                            </div>
-                                            
-                                            <div className="flex items-center space-x-2">
-                                                {qty > 0 ? (
-                                                    <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl p-1">
-                                                        <button 
-                                                            onClick={() => handleQuantityChange(product.id, -1)}
-                                                            className="p-1 rounded-lg hover:bg-white text-slate-500 hover:text-slate-800 transition-all"
-                                                        >
-                                                            <Minus size={12} strokeWidth={2.5} />
-                                                        </button>
-                                                        <span className="px-2.5 text-xs font-black text-slate-900">{qty}</span>
-                                                        <button 
-                                                            onClick={() => handleQuantityChange(product.id, 1)}
-                                                            className="p-1 rounded-lg hover:bg-white text-slate-500 hover:text-slate-800 transition-all"
-                                                        >
-                                                            <Plus size={12} strokeWidth={2.5} />
-                                                        </button>
+                                                {isDonation ? (
+                                                    <div className="relative mt-2 w-32">
+                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400">K</span>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={donationAmounts[product.id] ?? ''}
+                                                            onChange={(e) => {
+                                                                const val = Math.max(0, Number(e.target.value) || 0);
+                                                                setDonationAmounts(prev => ({ ...prev, [product.id]: val }));
+                                                            }}
+                                                            placeholder="0.00"
+                                                            className="w-full pl-6 pr-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-300 transition-all"
+                                                        />
                                                     </div>
                                                 ) : (
-                                                    <button
-                                                        onClick={() => handleQuantityChange(product.id, 1)}
-                                                        className="p-2 border border-slate-100 hover:border-blue-200 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50/50 transition-all"
-                                                    >
-                                                        <Plus size={14} strokeWidth={2.5} />
-                                                    </button>
+                                                    <p className="text-xs font-black text-blue-600 mt-2">
+                                                        K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                    </p>
                                                 )}
                                             </div>
+
+                                            {!isDonation && (
+                                                <div className="flex items-center space-x-2 flex-shrink-0">
+                                                    {qty > 0 ? (
+                                                        <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl p-1">
+                                                            <button
+                                                                onClick={() => handleQuantityChange(product.id, -1)}
+                                                                className="p-1 rounded-lg hover:bg-white text-slate-500 hover:text-slate-800 transition-all"
+                                                            >
+                                                                <Minus size={12} strokeWidth={2.5} />
+                                                            </button>
+                                                            <input
+                                                                type="number"
+                                                                min="0"
+                                                                value={qty}
+                                                                onChange={(e) => handleQuantitySet(product.id, e.target.value)}
+                                                                onFocus={(e) => e.target.select()}
+                                                                className="w-10 text-center text-xs font-black text-slate-900 bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                            />
+                                                            <button
+                                                                onClick={() => handleQuantityChange(product.id, 1)}
+                                                                className="p-1 rounded-lg hover:bg-white text-slate-500 hover:text-slate-800 transition-all"
+                                                            >
+                                                                <Plus size={12} strokeWidth={2.5} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={() => handleQuantityChange(product.id, 1)}
+                                                            className="p-2 border border-slate-100 hover:border-blue-200 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50/50 transition-all"
+                                                        >
+                                                            <Plus size={14} strokeWidth={2.5} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })
@@ -1066,9 +1122,9 @@ Status: VERIFIED`;
                                 <div className="flex justify-between font-semibold text-slate-400">
                                     <span>Products:</span>
                                     <span className="font-bold text-slate-700 text-right truncate max-w-[150px]" title={
-                                        selectedProductsList.map(p => `${p.name} (x${selectedQuantities[p.id]})`).join(', ')
+                                        lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ')
                                     }>
-                                        {selectedProductsList.map(p => `${p.name} (x${selectedQuantities[p.id]})`).join(', ')}
+                                        {lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ')}
                                     </span>
                                 </div>
                                 <div className="flex justify-between font-semibold text-slate-400 pt-2 border-t border-slate-100">

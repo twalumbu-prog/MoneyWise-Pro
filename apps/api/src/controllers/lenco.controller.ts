@@ -5,6 +5,7 @@ import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
+import { applyProductRevenueRouting, markPaymentLinkPaid } from '../services/product_routing.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 
 export const listLencoAccounts = async (req: Request, res: Response) => {
@@ -604,11 +605,68 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
 };
 
 /**
+ * Public context for a one-time payment link (Share button flow). Returns the org
+ * branding, the linked product, the pre-filled customer + amount, the destination
+ * wallet's Lenco config, and the link status so the page can refuse non-ACTIVE links.
+ */
+export const getPaymentLinkContext = async (req: Request, res: Response) => {
+    const { token } = req.params;
+
+    if (!token) {
+        return res.status(400).json({ error: 'token is required' });
+    }
+
+    try {
+        const { data: link, error: linkError } = await supabase
+            .from('payment_links')
+            .select('*, products(id, name, description, image_url, product_type)')
+            .eq('token', token)
+            .single();
+
+        if (linkError || !link) {
+            return res.status(404).json({ error: 'Payment link not found' });
+        }
+
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+            .eq('id', link.organization_id)
+            .single();
+
+        if (orgError || !org) {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        res.json({
+            status: link.status,
+            organization: {
+                id: link.organization_id,
+                name: org.name,
+                logo_url: org.logo_url || null
+            },
+            wallet: {
+                id: link.wallet_id,
+                lenco_subaccount_id: org.lenco_subaccount_id || null,
+                lenco_public_key: org.lenco_public_key || null,
+                payment_test_mode: org.payment_test_mode || false
+            },
+            product: link.products,
+            customer_name: link.customer_name,
+            customer_phone: link.customer_phone,
+            amount: Number(link.amount)
+        });
+    } catch (error: any) {
+        console.error('[Lenco Payment Link Context] Error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/**
  * Log public wallet deposit intent (before external customer checkout redirects/initiates Lenco)
  */
 export const logPublicWalletDepositIntent = async (req: Request, res: Response) => {
     try {
-        const { reference, purpose, amount, walletId, customerName, customerPhone, items } = req.body;
+        const { reference, purpose, amount, walletId, customerName, customerPhone, items, paymentLinkToken } = req.body;
 
         if (!reference || !purpose || !walletId) {
             return res.status(400).json({ error: 'reference, purpose, and walletId are required' });
@@ -669,6 +727,19 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
 
             if (salesError) {
                 console.error('[Lenco Public Intent] Error logging product sales:', salesError);
+            }
+        }
+
+        // One-time payment link: tie this checkout's reference to the link so the
+        // finalization can flip it to PAID (single-use auto-deactivation).
+        if (paymentLinkToken) {
+            const { error: linkError } = await supabase
+                .from('payment_links')
+                .update({ reference })
+                .eq('token', paymentLinkToken)
+                .eq('status', 'ACTIVE');
+            if (linkError) {
+                console.error('[Lenco Public Intent] Error stamping payment link reference:', linkError);
             }
         }
 
@@ -1029,6 +1100,11 @@ async function completeSalesForReference(orgId: string, reference: string): Prom
     if (error) {
         console.error(`[Lenco Sync] Failed to complete product_sales for ref ${reference}:`, error.message);
     }
+
+    // Route revenue to each product's mapped wallet + income account, and flip any
+    // one-time payment link tied to this reference to PAID. Both are idempotent.
+    await applyProductRevenueRouting(orgId, reference);
+    await markPaymentLinkPaid(orgId, reference);
 }
 
 export const syncAllLencoTransactions = async (req: Request, res: Response) => {

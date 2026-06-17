@@ -1,19 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { organizationService } from '../../services/organization.service';
-import { 
-    Building2, 
-    Mail, 
-    Phone, 
-    MapPin, 
-    Globe, 
-    Loader2, 
-    CheckCircle, 
-    AlertCircle, 
-    FileText, 
-    Trash2, 
-    AlertTriangle, 
-    X, 
-    Wallet
+import { departmentService, Department } from '../../services/department.service';
+import {
+    Building2,
+    Mail,
+    Phone,
+    MapPin,
+    Globe,
+    Loader2,
+    CheckCircle,
+    AlertCircle,
+    FileText,
+    Trash2,
+    AlertTriangle,
+    X,
+    Wallet,
+    Layers,
+    Plus,
+    Pencil,
+    Check,
+    ToggleLeft,
+    ToggleRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { lencoService } from '../../services/lenco.service';
@@ -31,6 +38,18 @@ export const GeneralSettings: React.FC = () => {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [deleteConfirmText, setDeleteConfirmText] = useState('');
     const [deleting, setDeleting] = useState(false);
+
+    // Department state
+    const [useDepartments, setUseDepartments] = useState(false);
+    const [departments, setDepartments] = useState<Department[]>([]);
+    const [loadingDepts, setLoadingDepts] = useState(false);
+    const [savingDeptToggle, setSavingDeptToggle] = useState(false);
+    const [newDeptName, setNewDeptName] = useState('');
+    const [addingDept] = useState(false);
+    const [editingDeptId, setEditingDeptId] = useState<string | null>(null);
+    const [editingDeptName, setEditingDeptName] = useState('');
+    const [savingDept, setSavingDept] = useState(false);
+    const newDeptInputRef = useRef<HTMLInputElement>(null);
 
     // Lenco state
     const [lencoAccounts, setLencoAccounts] = useState<any[]>([]);
@@ -78,8 +97,12 @@ export const GeneralSettings: React.FC = () => {
             });
             setLencoSubaccountId(data.lenco_subaccount_id || null);
             setLogoUrl(data.logo_url || null);
+            setUseDepartments(data.use_departments ?? false);
 
-            // Fetch Lenco accounts as well
+            if (data.use_departments) {
+                loadDepartments();
+            }
+
             if (isAdmin) {
                 fetchLencoAccounts();
             }
@@ -100,6 +123,72 @@ export const GeneralSettings: React.FC = () => {
             console.error('Failed to fetch Lenco accounts:', err);
         } finally {
             setFetchingLenco(false);
+        }
+    };
+
+    const loadDepartments = async () => {
+        try {
+            setLoadingDepts(true);
+            const { departments } = await departmentService.list();
+            setDepartments(departments);
+        } catch (err) {
+            console.error('Failed to load departments:', err);
+        } finally {
+            setLoadingDepts(false);
+        }
+    };
+
+    const handleToggleDepartments = async (enabled: boolean) => {
+        if (!isAdmin) return;
+        try {
+            setSavingDeptToggle(true);
+            await organizationService.updateOrganization({ use_departments: enabled });
+            setUseDepartments(enabled);
+            if (enabled && departments.length === 0) {
+                await loadDepartments();
+            }
+        } catch (err: any) {
+            setError(err.message || 'Failed to update department setting');
+        } finally {
+            setSavingDeptToggle(false);
+        }
+    };
+
+    const handleAddDepartment = async () => {
+        if (!newDeptName.trim() || !isAdmin) return;
+        try {
+            setSavingDept(true);
+            const dept = await departmentService.create(newDeptName);
+            setDepartments(prev => [...prev, dept].sort((a, b) => a.name.localeCompare(b.name)));
+            setNewDeptName('');
+        } catch (err: any) {
+            setError(err.message || 'Failed to create department');
+        } finally {
+            setSavingDept(false);
+        }
+    };
+
+    const handleSaveEditDept = async (id: string) => {
+        if (!editingDeptName.trim() || !isAdmin) return;
+        try {
+            setSavingDept(true);
+            const updated = await departmentService.update(id, { name: editingDeptName });
+            setDepartments(prev => prev.map(d => d.id === id ? updated : d).sort((a, b) => a.name.localeCompare(b.name)));
+            setEditingDeptId(null);
+        } catch (err: any) {
+            setError(err.message || 'Failed to update department');
+        } finally {
+            setSavingDept(false);
+        }
+    };
+
+    const handleDeleteDept = async (id: string, name: string) => {
+        if (!isAdmin || !window.confirm(`Delete department "${name}"? This cannot be undone.`)) return;
+        try {
+            await departmentService.delete(id);
+            setDepartments(prev => prev.filter(d => d.id !== id));
+        } catch (err: any) {
+            setError(err.message || 'Failed to delete department');
         }
     };
 
@@ -482,6 +571,141 @@ export const GeneralSettings: React.FC = () => {
                                         className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 resize-none"
                                         placeholder="123 Business Rd, Suite 100&#10;City, State, ZIP&#10;Country"
                                     />
+                                </div>
+                            </div>
+
+                            {/* Departments Section */}
+                            <div className="md:col-span-2 pt-6 border-t border-gray-100">
+                                <div className="bg-gray-50/50 rounded-2xl p-6 border border-gray-100">
+                                    {/* Header row: icon + title + toggle */}
+                                    <div className="flex items-start justify-between gap-4 mb-1">
+                                        <label className="text-sm font-bold text-brand-navy flex items-center">
+                                            <Layers className="h-4 w-4 mr-2 text-[#006AFF]" />
+                                            Departments
+                                        </label>
+                                        {isAdmin && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handleToggleDepartments(!useDepartments)}
+                                                disabled={savingDeptToggle}
+                                                className="flex items-center gap-2 text-xs font-bold transition-colors flex-shrink-0"
+                                            >
+                                                {savingDeptToggle ? (
+                                                    <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                                                ) : useDepartments ? (
+                                                    <ToggleRight className="h-6 w-6 text-[#006AFF]" />
+                                                ) : (
+                                                    <ToggleLeft className="h-6 w-6 text-gray-300" />
+                                                )}
+                                                <span className={useDepartments ? 'text-[#006AFF]' : 'text-gray-400'}>
+                                                    {useDepartments ? 'Enabled' : 'Disabled'}
+                                                </span>
+                                            </button>
+                                        )}
+                                    </div>
+                                    <p className="text-xs text-gray-400 mb-4">
+                                        When enabled, requisitions can be tagged to a specific department from a list you define here.
+                                    </p>
+
+                                    {useDepartments && (
+                                        <div className="space-y-2 mt-4">
+                                            {loadingDepts ? (
+                                                <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                    Loading departments...
+                                                </div>
+                                            ) : (
+                                                <>
+                                                    {departments.length === 0 && (
+                                                        <p className="text-xs text-gray-400 py-2">No departments yet. Add your first one below.</p>
+                                                    )}
+                                                    {departments.map(dept => (
+                                                        <div key={dept.id} className="flex items-center gap-2 bg-white rounded-xl px-4 py-2.5 border border-gray-100 group">
+                                                            {editingDeptId === dept.id ? (
+                                                                <>
+                                                                    <input
+                                                                        autoFocus
+                                                                        value={editingDeptName}
+                                                                        onChange={e => setEditingDeptName(e.target.value)}
+                                                                        onKeyDown={e => {
+                                                                            if (e.key === 'Enter') handleSaveEditDept(dept.id);
+                                                                            if (e.key === 'Escape') setEditingDeptId(null);
+                                                                        }}
+                                                                        className="flex-1 text-sm font-medium text-brand-navy bg-transparent border-b border-[#006AFF] outline-none pb-0.5"
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => handleSaveEditDept(dept.id)}
+                                                                        disabled={savingDept}
+                                                                        className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors"
+                                                                        title="Save"
+                                                                    >
+                                                                        {savingDept ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                                                                    </button>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => setEditingDeptId(null)}
+                                                                        className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition-colors"
+                                                                        title="Cancel"
+                                                                    >
+                                                                        <X size={14} />
+                                                                    </button>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="flex-1 text-sm font-medium text-brand-navy">{dept.name}</span>
+                                                                    {isAdmin && (
+                                                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => { setEditingDeptId(dept.id); setEditingDeptName(dept.name); }}
+                                                                                className="p-1.5 rounded-lg text-gray-400 hover:text-[#006AFF] hover:bg-blue-50 transition-colors"
+                                                                                title="Edit"
+                                                                            >
+                                                                                <Pencil size={13} />
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={() => handleDeleteDept(dept.id, dept.name)}
+                                                                                className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                                                                                title="Delete"
+                                                                            >
+                                                                                <Trash2 size={13} />
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                    ))}
+
+                                                    {/* Add new department */}
+                                                    {isAdmin && (
+                                                        <div className="flex items-center gap-2 mt-3">
+                                                            <input
+                                                                ref={newDeptInputRef}
+                                                                type="text"
+                                                                value={newDeptName}
+                                                                onChange={e => setNewDeptName(e.target.value)}
+                                                                onKeyDown={e => { if (e.key === 'Enter') handleAddDepartment(); }}
+                                                                placeholder="New department name..."
+                                                                className="flex-1 px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all"
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={handleAddDepartment}
+                                                                disabled={!newDeptName.trim() || addingDept || savingDept}
+                                                                className="flex items-center gap-1.5 px-4 py-2.5 bg-[#006AFF] text-white text-xs font-bold rounded-xl hover:bg-blue-600 disabled:opacity-40 transition-all whitespace-nowrap"
+                                                            >
+                                                                {savingDept ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                                                Add
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 

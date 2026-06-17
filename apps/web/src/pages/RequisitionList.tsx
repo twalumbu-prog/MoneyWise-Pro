@@ -13,6 +13,7 @@ import { MobilePayrollWizard } from '../components/requisitions/MobilePayrollWiz
 import { useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, Filter } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
+import { departmentService } from '../services/department.service';
 
 interface Requisition {
     id: string;
@@ -40,6 +41,15 @@ const TABS = [
     { label: 'Completed', value: 'COMPLETED' },
 ];
 
+const MOBILE_STATUS_LABELS: Record<string, string> = {
+    DRAFT: 'Draft',
+    PENDING_APPROVAL: 'Awaiting Approval',
+    REVIEWED: 'Reviewed',
+    DISBURSED: 'Disbursed',
+    CHANGE_SUBMITTED: 'Returned',
+    COMPLETED: 'Completed',
+};
+
 export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
@@ -51,25 +61,29 @@ export const RequisitionList: React.FC = () => {
     const [selectedRequisition, setSelectedRequisition] = useState<RequisitionType | null>(null);
     const [viewMode, setViewMode] = useState<'inbox' | 'scheduled'>('inbox');
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('ALL');
+    const [activeTab, setActiveTab] = useState<string[]>(['ALL']);
     const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false); // State for mobile action sheet
     const [isRequisitionWizardOpen, setIsRequisitionWizardOpen] = useState(false);
     const [isStaffLoanWizardOpen, setIsStaffLoanWizardOpen] = useState(false);
     const [isSalaryAdvanceWizardOpen, setIsSalaryAdvanceWizardOpen] = useState(false);
     const [isPayrollWizardOpen, setIsPayrollWizardOpen] = useState(false);
 
+    // Org departments config
+    const [useDepartments, setUseDepartments] = useState(false);
+    const [orgDepartments, setOrgDepartments] = useState<string[]>([]);
+
     // Mobile filter/sort states
     const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
     const [filterRead, setFilterRead] = useState<'ALL' | 'READ' | 'UNREAD'>('ALL');
-    const [filterDepartment, setFilterDepartment] = useState('ALL');
+    const [filterDepartment, setFilterDepartment] = useState<string[]>(['ALL']);
     const [filterStartDate, setFilterStartDate] = useState('');
     const [filterEndDate, setFilterEndDate] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
     // Temp state for bottom sheet filters
-    const [tempStatus, setTempStatus] = useState('ALL');
+    const [tempStatus, setTempStatus] = useState<string[]>(['ALL']);
     const [tempRead, setTempRead] = useState<'ALL' | 'READ' | 'UNREAD'>('ALL');
-    const [tempDepartment, setTempDepartment] = useState('ALL');
+    const [tempDepartment, setTempDepartment] = useState<string[]>(['ALL']);
     const [tempStartDate, setTempStartDate] = useState('');
     const [tempEndDate, setTempEndDate] = useState('');
 
@@ -100,6 +114,12 @@ export const RequisitionList: React.FC = () => {
 
     useEffect(() => {
         loadRequisitions();
+        departmentService.list()
+            .then(({ use_departments, departments }) => {
+                setUseDepartments(use_departments);
+                if (use_departments) setOrgDepartments(departments.map(d => d.name));
+            })
+            .catch(() => {});
     }, []);
 
     const loadRequisitions = async () => {
@@ -131,18 +151,12 @@ export const RequisitionList: React.FC = () => {
 
 
     const uniqueDepartments = React.useMemo(() => {
+        // Prefer org-managed departments when configured; fall back to values on requisitions
+        if (orgDepartments.length > 0) return orgDepartments;
         const depts = new Set<string>();
-        requisitions.forEach(req => {
-            if (req.department) {
-                depts.add(req.department);
-            }
-        });
-        const arr = Array.from(depts);
-        if (arr.length === 0) {
-            return ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
-        }
-        return arr.sort();
-    }, [requisitions]);
+        requisitions.forEach(req => { if (req.department) depts.add(req.department); });
+        return Array.from(depts).sort();
+    }, [requisitions, orgDepartments]);
 
     const filteredRequisitions = requisitions.filter(req => {
         // Apply search filter
@@ -150,25 +164,26 @@ export const RequisitionList: React.FC = () => {
                              (req.requestor_name || '').toLowerCase().includes(searchQuery.toLowerCase());
         if (!matchesSearch) return false;
 
-        // Apply tab filter
+        // Apply tab/status filter (multi-select: OR across all selected statuses)
         const config = getStatusConfig(req.status);
-        if (activeTab === 'REVIEWED') {
-            if (req.status !== 'AUTHORISED') return false;
-        } else if (activeTab === 'PENDING_APPROVAL') {
-            if (!['DRAFT', 'PENDING_APPROVAL'].includes(req.status)) return false;
-        } else if (activeTab === 'COMPLETED') {
-            if (!config.isCompleted) return false;
-        } else if (activeTab !== 'ALL') {
-            if (config.tab !== activeTab) return false;
+        if (!activeTab.includes('ALL')) {
+            const matchesAny = activeTab.some(tab => {
+                if (tab === 'REVIEWED') return req.status === 'AUTHORISED';
+                if (tab === 'PENDING_APPROVAL') return ['DRAFT', 'PENDING_APPROVAL'].includes(req.status);
+                if (tab === 'COMPLETED') return config.isCompleted;
+                return config.tab === tab;
+            });
+            if (!matchesAny) return false;
         }
 
         // Apply read/unread filter
         if (filterRead === 'UNREAD' && !req.has_unread_updates) return false;
         if (filterRead === 'READ' && req.has_unread_updates) return false;
 
-        // Apply department filter
-        if (filterDepartment !== 'ALL') {
-            if ((req.department || 'General').toLowerCase() !== filterDepartment.toLowerCase()) return false;
+        // Apply department filter (multi-select: OR across selected departments)
+        if (!filterDepartment.includes('ALL')) {
+            const reqDept = (req.department || 'General').toLowerCase();
+            if (!filterDepartment.some(d => d.toLowerCase() === reqDept)) return false;
         }
 
         // Apply date range filter
@@ -317,16 +332,16 @@ export const RequisitionList: React.FC = () => {
                                     return (
                                         <button
                                             key={tab.value}
-                                            onClick={() => setActiveTab(tab.value)}
+                                            onClick={() => setActiveTab([tab.value])}
                                             className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all whitespace-nowrap border flex items-center
-                                                ${activeTab === tab.value 
-                                                    ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30 shadow-sm' 
+                                                ${activeTab.length === 1 && activeTab[0] === tab.value
+                                                    ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30 shadow-sm'
                                                     : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50 border-transparent'}`}
                                         >
                                             <span>{tab.label}</span>
                                             {count > 0 && (
                                                 <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] font-black min-w-[18px] text-center ${
-                                                    activeTab === tab.value ? 'bg-[#006AFF] text-white' : 'bg-gray-100 text-gray-500'
+                                                    activeTab.length === 1 && activeTab[0] === tab.value ? 'bg-[#006AFF] text-white' : 'bg-gray-100 text-gray-500'
                                                 }`}>
                                                     {count}
                                                 </span>
@@ -337,10 +352,10 @@ export const RequisitionList: React.FC = () => {
                             </div>
 
                             {/* Mobile Search & Sort/Filter Bar */}
-                            <div className="md:hidden px-6 pt-2 pb-4">
+                            <div className="md:hidden px-6 pt-2 pb-3">
                                 <div className="flex items-center bg-white border border-gray-100 rounded-full px-4 py-3 shadow-sm">
                                     <Search className="text-gray-400 mr-2 flex-shrink-0" size={18} />
-                                    <input 
+                                    <input
                                         type="text"
                                         placeholder="Search..."
                                         value={searchQuery}
@@ -348,7 +363,7 @@ export const RequisitionList: React.FC = () => {
                                         className="flex-1 bg-transparent border-none outline-none text-sm text-brand-navy placeholder:text-gray-400 font-bold"
                                     />
                                     <div className="w-[1px] h-6 bg-gray-100 mx-2 flex-shrink-0" />
-                                    <button 
+                                    <button
                                         onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
                                         className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ${
                                             sortOrder !== 'desc' ? 'bg-[#F0F7FF] text-[#006AFF]' : 'text-gray-400 hover:text-brand-navy'
@@ -357,11 +372,11 @@ export const RequisitionList: React.FC = () => {
                                     >
                                         <ArrowUpDown size={18} />
                                     </button>
-                                    <button 
+                                    <button
                                         onClick={() => setIsFilterSheetOpen(true)}
                                         className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ml-1 ${
-                                            activeTab !== 'ALL' || filterRead !== 'ALL' || filterDepartment !== 'ALL' || filterStartDate || filterEndDate
-                                                ? 'bg-[#F0F7FF] text-[#006AFF]' 
+                                            !activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate
+                                                ? 'bg-[#F0F7FF] text-[#006AFF]'
                                                 : 'text-gray-400 hover:text-brand-navy'
                                         }`}
                                         title="Filters"
@@ -370,6 +385,82 @@ export const RequisitionList: React.FC = () => {
                                     </button>
                                 </div>
                             </div>
+
+                            {/* Active Filter Chips */}
+                            {(!activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate || sortOrder !== 'desc') && (
+                                <div className="md:hidden px-6 pb-3 flex items-center gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                                    {activeTab.filter(t => t !== 'ALL').map(status => (
+                                        <span key={status} className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                            {MOBILE_STATUS_LABELS[status] ?? status}
+                                            <button
+                                                onClick={() => {
+                                                    const next = activeTab.filter(t => t !== status);
+                                                    setActiveTab(next.length === 0 ? ['ALL'] : next);
+                                                }}
+                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                aria-label="Remove status filter"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </span>
+                                    ))}
+                                    {filterRead !== 'ALL' && (
+                                        <span className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                            {filterRead === 'UNREAD' ? 'Unread Only' : 'Read Only'}
+                                            <button
+                                                onClick={() => setFilterRead('ALL')}
+                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                aria-label="Remove read filter"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </span>
+                                    )}
+                                    {useDepartments && filterDepartment.filter(d => d !== 'ALL').map(dept => (
+                                        <span key={dept} className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                            {dept} Dept.
+                                            <button
+                                                onClick={() => {
+                                                    const next = filterDepartment.filter(d => d !== dept);
+                                                    setFilterDepartment(next.length === 0 ? ['ALL'] : next);
+                                                }}
+                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                aria-label="Remove department filter"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </span>
+                                    ))}
+                                    {(filterStartDate || filterEndDate) && (
+                                        <span className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                            {filterStartDate && filterEndDate
+                                                ? `${new Date(filterStartDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })} – ${new Date(filterEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+                                                : filterStartDate
+                                                    ? `From ${new Date(filterStartDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`
+                                                    : `Until ${new Date(filterEndDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}`}
+                                            <button
+                                                onClick={() => { setFilterStartDate(''); setFilterEndDate(''); }}
+                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                aria-label="Remove date filter"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </span>
+                                    )}
+                                    {sortOrder !== 'desc' && (
+                                        <span className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
+                                            Oldest First
+                                            <button
+                                                onClick={() => setSortOrder('desc')}
+                                                className="ml-0.5 rounded-full hover:bg-[#006AFF]/10 p-0.5 transition-colors"
+                                                aria-label="Remove sort filter"
+                                            >
+                                                <X size={11} />
+                                            </button>
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </>
                     );
                 })()}
@@ -649,9 +740,22 @@ export const RequisitionList: React.FC = () => {
                                 ].map(status => (
                                     <button
                                         key={status.value}
-                                        onClick={() => setTempStatus(status.value)}
+                                        onClick={() => {
+                                            if (status.value === 'ALL') {
+                                                setTempStatus(['ALL']);
+                                            } else {
+                                                setTempStatus(prev => {
+                                                    const withoutAll = prev.filter(s => s !== 'ALL');
+                                                    if (withoutAll.includes(status.value)) {
+                                                        const next = withoutAll.filter(s => s !== status.value);
+                                                        return next.length === 0 ? ['ALL'] : next;
+                                                    }
+                                                    return [...withoutAll, status.value];
+                                                });
+                                            }
+                                        }}
                                         className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${
-                                            tempStatus === status.value
+                                            (status.value === 'ALL' ? tempStatus.includes('ALL') : tempStatus.includes(status.value))
                                                 ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
                                                 : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
                                         }`}
@@ -683,15 +787,29 @@ export const RequisitionList: React.FC = () => {
                                 ))}
                             </div>
                         </div>
+                        {useDepartments && uniqueDepartments.length > 0 && (
                         <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Department</label>
                             <div className="flex flex-wrap gap-2">
                                 {['ALL', ...uniqueDepartments].map(dept => (
                                     <button
                                         key={dept}
-                                        onClick={() => setTempDepartment(dept)}
+                                        onClick={() => {
+                                            if (dept === 'ALL') {
+                                                setTempDepartment(['ALL']);
+                                            } else {
+                                                setTempDepartment(prev => {
+                                                    const withoutAll = prev.filter(d => d !== 'ALL');
+                                                    if (withoutAll.includes(dept)) {
+                                                        const next = withoutAll.filter(d => d !== dept);
+                                                        return next.length === 0 ? ['ALL'] : next;
+                                                    }
+                                                    return [...withoutAll, dept];
+                                                });
+                                            }
+                                        }}
                                         className={`px-4 py-2 rounded-full text-xs font-bold transition-all border ${
-                                            tempDepartment === dept
+                                            (dept === 'ALL' ? tempDepartment.includes('ALL') : tempDepartment.includes(dept))
                                                 ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30'
                                                 : 'bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100'
                                         }`}
@@ -701,6 +819,7 @@ export const RequisitionList: React.FC = () => {
                                 ))}
                             </div>
                         </div>
+                        )}
                         <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Date Range</label>
                             <div className="flex items-center gap-3">
@@ -728,9 +847,9 @@ export const RequisitionList: React.FC = () => {
                     <div className="p-5 border-t border-gray-50 bg-white flex items-center gap-3 absolute bottom-0 left-0 right-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
                         <button
                             onClick={() => {
-                                setTempStatus('ALL');
+                                setTempStatus(['ALL']);
                                 setTempRead('ALL');
-                                setTempDepartment('ALL');
+                                setTempDepartment(['ALL']);
                                 setTempStartDate('');
                                 setTempEndDate('');
                             }}

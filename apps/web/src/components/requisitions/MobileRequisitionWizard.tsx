@@ -3,6 +3,7 @@ import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, Rotate
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { cashbookService } from '../../services/cashbook.service';
+import { departmentService } from '../../services/department.service';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
@@ -30,7 +31,6 @@ interface PaymentInfo {
     mobile_money_name?: string;
 }
 
-const DEPARTMENTS = ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
 
 type WizardTab = 'basic' | 'buy' | 'order';
 // Stages: 1 = basic, 2 = expense list, 3 = payment method, 4 = review, 5 = manual amount (when no expense list)
@@ -81,6 +81,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [wallets, setWallets] = useState<any[]>([]);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
 
+    // Org department config
+    const [useDepartments, setUseDepartments] = useState(false);
+    const [orgDepartments, setOrgDepartments] = useState<string[]>([]);
+
     // Common
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -111,6 +115,12 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             fetchBanks();
             fetchPaymentInfo();
             fetchWallets();
+            departmentService.list()
+                .then(({ use_departments, departments }) => {
+                    setUseDepartments(use_departments);
+                    setOrgDepartments(departments.map(d => d.name));
+                })
+                .catch(() => {});
         }
     }, [isOpen]);
 
@@ -244,7 +254,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         setError(null);
         if (stage === 1) {
             if (!description.trim()) { setError('Please describe the purpose.'); return; }
-            if (!department) { setError('Please select a department.'); return; }
+            if (useDepartments && !department) { setError('Please select a department.'); return; }
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
@@ -413,13 +423,15 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Purpose of funds</label>
                                         <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="What is this request for?" className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all" />
                                     </div>
+                                    {useDepartments && (
                                     <div className="space-y-1.5">
                                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Department</label>
                                         <select value={department} onChange={e => setDepartment(e.target.value)} className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all appearance-none">
                                             <option value="">Select Department</option>
-                                            {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                                            {orgDepartments.map(d => <option key={d} value={d}>{d}</option>)}
                                         </select>
                                     </div>
+                                    )}
                                     <div className="pt-4 space-y-4">
                                         <div className="space-y-3">
                                             <button onClick={() => setUseMyAccount(!useMyAccount)} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
