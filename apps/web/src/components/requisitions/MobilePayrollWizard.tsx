@@ -773,7 +773,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                         <button
                             onClick={handleSubmit}
                             disabled={submitting}
-                            className="w-full h-14 bg-emerald-500 rounded-2xl text-white font-black text-base shadow-lg shadow-emerald-100 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2 mt-4"
+                            className="w-full h-14 bg-emerald-500 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2 mt-4"
                         >
                             {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Payroll Requisition'}
                         </button>
@@ -789,7 +789,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                                 type="button"
                                 onClick={handleVerifyAll}
                                 disabled={isVerifying || lineItems.length === 0}
-                                className="flex-1 py-4 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-100 transition-all active:scale-[0.98]"
+                                className="flex-1 py-4 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
                             >
                                 {isVerifying ? (
                                     <>
@@ -803,7 +803,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                             <button 
                                 onClick={handleProceedToSummary} 
                                 disabled={!lineItems.every(item => verificationResults[item.id]?.status === 'verified') || isVerifying}
-                                className="w-14 h-14 bg-emerald-500 disabled:bg-gray-200 disabled:text-gray-400 rounded-full flex-shrink-0 flex items-center justify-center text-white shadow-xl shadow-emerald-200 disabled:shadow-none active:scale-90 transition-all"
+                                className="w-14 h-14 bg-emerald-500 disabled:bg-gray-200 disabled:text-gray-400 rounded-full flex-shrink-0 flex items-center justify-center text-white active:scale-90 transition-all"
                             >
                                 <ArrowRight size={24} />
                             </button>
@@ -812,7 +812,7 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                         <div className="flex w-full justify-end">
                             <button 
                                 onClick={handleProceedToPreview} 
-                                className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-xl shadow-emerald-200 active:scale-90 transition-all"
+                                className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
                             >
                                 <ArrowRight size={24} />
                             </button>

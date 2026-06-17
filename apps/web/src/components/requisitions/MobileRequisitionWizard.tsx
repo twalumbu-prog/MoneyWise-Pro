@@ -776,7 +776,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                         <div className="flex justify-end">
                             <button
                                 onClick={handleProceed}
-                                className="w-14 h-14 bg-[#006AFF] rounded-full flex items-center justify-center text-white active:scale-90 transition-all shadow-lg shadow-blue-100"
+                                className="w-14 h-14 bg-[#006AFF] rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
                             >
                                 <ArrowRight size={24} />
                             </button>
@@ -792,7 +792,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                             <button
                                 onClick={handleSubmit}
                                 disabled={submitting}
-                                className="flex-1 h-16 bg-[#006AFF] rounded-full text-white font-bold text-base active:scale-[0.98] transition-all flex items-center justify-center gap-2 shadow-lg shadow-blue-200"
+                                className="flex-1 h-16 bg-[#006AFF] rounded-full text-white font-bold text-base active:scale-[0.98] transition-all flex items-center justify-center gap-2"
                             >
                                 {submitting ? (
                                     <>

@@ -644,7 +644,7 @@ export const RequisitionList: React.FC = () => {
                                 setIsNewRequisitionOpen(false);
                                 setIsRequisitionWizardOpen(true);
                             }}
-                            className="w-full flex items-center p-4 text-left bg-gray-50 hover:bg-gray-100 border border-transparent hover:border-gray-200 rounded-2xl transition-all group active:scale-[0.98]"
+                            className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
                                 <FileText className="h-6 w-6 text-brand-navy" />
@@ -660,7 +660,7 @@ export const RequisitionList: React.FC = () => {
                                 setIsNewRequisitionOpen(false);
                                 setIsSalaryAdvanceWizardOpen(true);
                             }}
-                            className="w-full flex items-center p-4 text-left bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-100/30 rounded-2xl transition-all group active:scale-[0.98]"
+                            className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
                                 <History className="h-6 w-6 text-emerald-600" />
@@ -676,7 +676,7 @@ export const RequisitionList: React.FC = () => {
                                 setIsNewRequisitionOpen(false);
                                 setIsStaffLoanWizardOpen(true);
                             }}
-                            className="w-full flex items-center p-4 text-left bg-blue-50/50 hover:bg-blue-50 border border-blue-100/30 rounded-2xl transition-all group active:scale-[0.98]"
+                            className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
                                 <Plus className="h-6 w-6 text-blue-600" />
@@ -692,7 +692,7 @@ export const RequisitionList: React.FC = () => {
                                 setIsNewRequisitionOpen(false);
                                 setIsPayrollWizardOpen(true);
                             }}
-                            className="w-full flex items-center p-4 text-left bg-indigo-50/50 hover:bg-indigo-50 border border-indigo-100/30 rounded-2xl transition-all group active:scale-[0.98]"
+                            className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
                                 <FileText className="h-6 w-6 text-indigo-650" />

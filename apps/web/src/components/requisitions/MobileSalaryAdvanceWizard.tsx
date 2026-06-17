@@ -225,7 +225,7 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
                         <button
                             onClick={handleSubmit}
                             disabled={submitting}
-                            className="w-full h-14 bg-emerald-500 rounded-2xl text-white font-black text-base shadow-lg shadow-emerald-100 active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                            className="w-full h-14 bg-emerald-500 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
                         >
                             {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Advance Request'}
                         </button>
@@ -235,7 +235,7 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
 
             {stage === 1 && (
                 <div className="shrink-0 p-6 pb-8 flex justify-end">
-                    <button onClick={handleProceed} className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white shadow-xl shadow-emerald-200 active:scale-90 transition-all">
+                    <button onClick={handleProceed} className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
                         <ArrowRight size={24} />
                     </button>
                 </div>
