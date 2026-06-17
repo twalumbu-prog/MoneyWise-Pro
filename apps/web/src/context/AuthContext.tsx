@@ -17,6 +17,7 @@ interface AuthContextType {
     userStatus: string | null;
     organizationId: string | null;
     organizationName: string | null;
+    organizationLogoUrl: string | null;
     session: Session | null;
     loading: boolean;
     notificationCounts: NotificationCounts;
@@ -42,7 +43,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userStatus, setUserStatus] = useState<string | null>(null);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [organizationName, setOrganizationName] = useState<string | null>(null);
+    const [organizationLogoUrl, setOrganizationLogoUrl] = useState<string | null>(null);
     const [userName, setUserName] = useState<string | null>(null);
+
+    // Warm the browser cache for a logo so dependent UI (share modals, receipts)
+    // can paint it instantly instead of fetching it cold on first render.
+    const preloadImage = (url: string | null | undefined) => {
+        if (!url) return;
+        const img = new Image();
+        img.src = url;
+    };
     const [userOrganizations, setUserOrganizations] = useState<any[]>([]);
     const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({
         requisitions: 0, approvals: 0, vouchers: 0, disbursements: 0, settings: 0
@@ -76,7 +86,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const fetchRoleAndOrg = async (userId: string) => {
             const { data, error } = await supabase
                 .from('users')
-                .select('role, status, name, organization_id, organizations(name)')
+                .select('role, status, name, organization_id, organizations(name, logo_url)')
                 .eq('id', userId)
                 .single();
 
@@ -87,6 +97,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUserName(userData.name);
                 setOrganizationId(userData.organization_id);
                 setOrganizationName(userData.organizations?.name || null);
+                const logo = userData.organizations?.logo_url || null;
+                setOrganizationLogoUrl(logo);
+                preloadImage(logo);
                 refreshNotifications();
                 refreshUserOrganizations();
             }
@@ -112,6 +125,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUserStatus(null);
                 setOrganizationId(null);
                 setOrganizationName(null);
+                setOrganizationLogoUrl(null);
                 setLoading(false);
             }
         });
@@ -285,7 +299,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Find name of switched organization
             const targetOrg = userOrganizations.find(uo => uo.organization?.id === orgId);
             setOrganizationName(targetOrg?.organization?.name || 'Selected Organization');
-            
+            const switchedLogo = targetOrg?.organization?.logo_url || null;
+            setOrganizationLogoUrl(switchedLogo);
+            preloadImage(switchedLogo);
+
             await refreshNotifications();
         } catch (error) {
             console.error('Error switching organization:', error);
@@ -300,12 +317,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserRole(null);
         setOrganizationId(null);
         setOrganizationName(null);
+        setOrganizationLogoUrl(null);
         setUserOrganizations([]);
     };
 
     return (
         <AuthContext.Provider value={{
-            user, userName, session, userRole, userStatus, organizationId, organizationName, loading,
+            user, userName, session, userRole, userStatus, organizationId, organizationName, organizationLogoUrl, loading,
             notificationCounts, refreshNotifications,
             userOrganizations, refreshUserOrganizations, switchOrganization,
             signIn, signInWithPassword, signUpWithPassword, joinOrganization, signUp, signOut

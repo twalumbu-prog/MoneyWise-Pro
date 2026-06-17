@@ -32,6 +32,7 @@ import {
     ClipboardList
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
+import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -86,7 +87,9 @@ export const PublicPay: React.FC = () => {
     // Customer-entered amounts for DONATION products (keyed by product id).
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
     // Bottom-sheet overlay for adding products/services to the cart.
+    // `showProductSheet` keeps it mounted; `sheetIn` drives the slide-up/down transition.
     const [showProductSheet, setShowProductSheet] = useState(false);
+    const [sheetIn, setSheetIn] = useState(false);
     // Search + category filter within the product sheet.
     const [productSearch, setProductSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
@@ -169,6 +172,17 @@ export const PublicPay: React.FC = () => {
         setStep('CATALOG');
     };
 
+    // Mount the sheet, then flip `sheetIn` on the next frame so the CSS transition runs.
+    const openProductSheet = () => {
+        setShowProductSheet(true);
+        requestAnimationFrame(() => setSheetIn(true));
+    };
+    // Slide the sheet down first, then unmount it once the transition finishes.
+    const closeProductSheet = () => {
+        setSheetIn(false);
+        setTimeout(() => setShowProductSheet(false), 300);
+    };
+
     const handleQuantityChange = (productId: string, delta: number) => {
         const currentQty = selectedQuantities[productId] || 0;
         const newQty = Math.max(0, currentQty + delta);
@@ -220,6 +234,9 @@ export const PublicPay: React.FC = () => {
 
     // Total units currently in the cart (drives the "Add N Items" button counter).
     const cartItemCount = lineItems.reduce((n, li) => n + li.quantity, 0);
+
+    // Active category position → drives the directional slide of the product list.
+    const activeCategoryIndex = Math.max(0, productCategories.indexOf(activeCategory));
 
     // Cart → Payment Summary. Validates the cart before showing the breakdown;
     // the actual Lenco charge is only triggered by the Pay button on the summary.
@@ -1014,7 +1031,7 @@ Status: VERIFIED`;
                                 <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{org.name}</h2>
                                 <BadgeCheck className="w-6 h-6 text-white flex-shrink-0" fill="#2563eb" />
                             </div>
-                            <p className="text-sm font-medium text-slate-400 mt-1.5">Payment Checkout Portal</p>
+                            <p className="text-sm font-thin text-[#5A5A5A] mt-1.5">Payment Checkout Portal</p>
                         </div>
 
                         <form onSubmit={handleLoginSubmit} className="space-y-5">
@@ -1084,7 +1101,7 @@ Status: VERIFIED`;
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
                                     <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
                                 </div>
-                                <p className="text-xs font-medium text-slate-400">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
@@ -1097,11 +1114,11 @@ Status: VERIFIED`;
                         </div>
 
                         {/* Cart items */}
-                        <div className="flex-1 flex flex-col px-6 pt-6 pb-2">
+                        <div className="flex-1 flex flex-col px-6 pt-6">
                             <div className="flex-1 min-h-[260px] rounded-3xl border border-slate-200 p-4 flex flex-col">
                                 {lineItems.length === 0 ? (
                                     <div className="flex-1 flex items-center justify-center">
-                                        <p className="text-center text-xs font-normal text-slate-400 leading-relaxed">
+                                        <p className="text-center text-xs font-thin text-[#5A5A5A] leading-relaxed">
                                             Items will appear in your cart when you<br />Add Products and Services
                                         </p>
                                     </div>
@@ -1114,14 +1131,7 @@ Status: VERIFIED`;
                         </div>
 
                         {/* Footer actions */}
-                        <div className="p-6 border-t-[0.5px] border-slate-200 space-y-3">
-                            {subtotal > 0 && (
-                                <div className="flex justify-between text-[11px] font-medium text-slate-400 px-1">
-                                    <span>+ Processing fee (paid by client)</span>
-                                    <span>K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                </div>
-                            )}
-
+                        <div className="p-6 pt-6 space-y-3">
                             {error && (
                                 <div className="p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2 animate-in fade-in duration-200">
                                     <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
@@ -1130,8 +1140,8 @@ Status: VERIFIED`;
                             )}
 
                             <button
-                                onClick={() => setShowProductSheet(true)}
-                                className={`w-full py-4 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-2 ${
+                                onClick={openProductSheet}
+                                className={`w-full py-5 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-2 ${
                                     lineItems.length > 0
                                         ? 'bg-neutral-100 hover:bg-neutral-200 text-zinc-600'
                                         : 'bg-black hover:bg-slate-800 text-white'
@@ -1143,7 +1153,7 @@ Status: VERIFIED`;
                             <button
                                 onClick={handleProceedToSummary}
                                 disabled={subtotal <= 0}
-                                className={`w-full py-4 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 ${
+                                className={`w-full py-5 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 ${
                                     lineItems.length > 0
                                         ? 'bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white'
                                         : 'bg-neutral-100 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-600'
@@ -1152,22 +1162,16 @@ Status: VERIFIED`;
                                 <span>Checkout</span>
                                 <ChevronRight size={14} strokeWidth={2.5} />
                             </button>
-                            <div className="pt-1 text-center">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowRetrievePortal(true)}
-                                    className="text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider"
-                                >
-                                    Already Paid? Find your receipt
-                                </button>
-                            </div>
                         </div>
                     </div>
                 )}
 
                 {/* 3b. Payment Summary Step */}
                 {step === 'SUMMARY' && org && (
-                    <div className="flex flex-col flex-1 min-h-[620px]">
+                    <div
+                        className="flex flex-col flex-1 min-h-[620px]"
+                        style={{ animation: 'atabs-in-right 0.42s cubic-bezier(0.22, 1, 0.36, 1)' }}
+                    >
                         {/* Header — logo left, business name right (matches cart) */}
                         <div className="px-6 pt-7 pb-5 flex items-center gap-4">
                             {renderLogo("w-14 h-14", "text-xl")}
@@ -1176,7 +1180,7 @@ Status: VERIFIED`;
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
                                     <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
                                 </div>
-                                <p className="text-xs font-medium text-slate-400">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
@@ -1347,7 +1351,7 @@ Status: VERIFIED`;
                                     <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
                                     <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
                                 </div>
-                                <p className="text-xs font-medium text-slate-400">Payment Checkout Portal</p>
+                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
                             </div>
                         </div>
 
@@ -1488,10 +1492,10 @@ Status: VERIFIED`;
             {showProductSheet && (
                 <div className="fixed inset-0 z-50 flex flex-col sm:justify-end">
                     <div
-                        className="hidden sm:block absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200"
-                        onClick={() => setShowProductSheet(false)}
+                        className={`hidden sm:block absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-300 ${sheetIn ? 'opacity-100' : 'opacity-0'}`}
+                        onClick={closeProductSheet}
                     />
-                    <div className="relative w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:mx-auto bg-white sm:rounded-t-[32px] sm:shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-300">
+                    <div className={`relative w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:mx-auto bg-white sm:rounded-t-[32px] sm:shadow-2xl flex flex-col transition-transform duration-300 ease-out ${sheetIn ? 'translate-y-0' : 'translate-y-full'}`}>
 
                         {/* Top bar */}
                         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
@@ -1500,7 +1504,7 @@ Status: VERIFIED`;
                                 <h3 className="text-sm font-black text-slate-900 tracking-wide">Add Products/Services</h3>
                             </div>
                             <button
-                                onClick={() => setShowProductSheet(false)}
+                                onClick={closeProductSheet}
                                 className="w-8 h-8 rounded-full border border-slate-200 shadow-sm flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all"
                                 title="Cancel"
                             >
@@ -1517,32 +1521,20 @@ Status: VERIFIED`;
                                     value={productSearch}
                                     onChange={(e) => setProductSearch(e.target.value)}
                                     placeholder="Search products"
-                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                 />
                             </div>
                         </div>
 
-                        {/* Category tabs — segmented control */}
+                        {/* Category tabs — animated segmented control (sliding pill) */}
                         {productCategories.length > 1 && (
                             <div className="px-4 pt-6 flex-shrink-0">
-                                <div className="p-0.5 bg-neutral-100 rounded-full flex items-center">
-                                    {productCategories.map(cat => {
-                                        const active = activeCategory === cat;
-                                        return (
-                                            <button
-                                                key={cat}
-                                                onClick={() => setActiveCategory(cat)}
-                                                className={`flex-1 min-w-0 px-2.5 py-2 rounded-full text-xs leading-4 text-center truncate transition-all ${
-                                                    active
-                                                        ? 'bg-white text-slate-900 font-semibold shadow-[0px_3px_8px_0px_rgba(0,0,0,0.12)] ring-[0.5px] ring-black/5'
-                                                        : 'text-slate-500 font-normal'
-                                                }`}
-                                            >
-                                                {cat}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
+                                <SegmentedControl
+                                    variant="capsule"
+                                    options={productCategories.map(cat => ({ value: cat, label: cat }))}
+                                    value={activeCategory}
+                                    onChange={setActiveCategory}
+                                />
                             </div>
                         )}
 
@@ -1556,9 +1548,13 @@ Status: VERIFIED`;
                                     </p>
                                 </div>
                             ) : (
-                                <div className="space-y-5">
+                                <AnimatedTabContent
+                                    tabKey={activeCategory}
+                                    index={activeCategoryIndex}
+                                    className="space-y-5"
+                                >
                                     {sheetProducts.map(product => renderProductCard(product))}
-                                </div>
+                                </AnimatedTabContent>
                             )}
                         </div>
 
@@ -1571,7 +1567,7 @@ Status: VERIFIED`;
                                 </span>
                             </div>
                             <button
-                                onClick={() => setShowProductSheet(false)}
+                                onClick={closeProductSheet}
                                 disabled={cartItemCount === 0}
                                 className="w-full bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
                             >
@@ -1586,7 +1582,7 @@ Status: VERIFIED`;
 
             {/* Footer Brand Info */}
             {step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && (
-            <div className="mt-8 text-center space-y-2">
+            <div className="mt-auto pt-8 pb-6 text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                     <Building2 size={12} />
                     <span>Secured by MoneyWise Ledger Gateway</span>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, Copy, Link2, ExternalLink, Download } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { organizationService } from '../services/organization.service';
+import { useAuth } from '../context/AuthContext';
 
 interface ShareWalletLinkModalProps {
     isOpen: boolean;
@@ -16,16 +17,25 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
     walletName,
     shareUrl
 }) => {
+    const { organizationLogoUrl } = useAuth();
     const [copied, setCopied] = useState(false);
-    const [logoUrl, setLogoUrl] = useState<string | null>(null);
+    // Seed from the auth context (already loaded + preloaded at login) so the logo
+    // paints immediately; only fall back to a fetch if it isn't there yet.
+    const [logoUrl, setLogoUrl] = useState<string | null>(organizationLogoUrl);
     const qrRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        if (!isOpen) return;
+        if (organizationLogoUrl) {
+            setLogoUrl(organizationLogoUrl);
+        }
+    }, [organizationLogoUrl]);
+
+    useEffect(() => {
+        if (!isOpen || organizationLogoUrl) return;
         organizationService.getOrganization()
             .then(org => setLogoUrl(org.logo_url || null))
             .catch(() => setLogoUrl(null));
-    }, [isOpen]);
+    }, [isOpen, organizationLogoUrl]);
 
     if (!isOpen) return null;
 
