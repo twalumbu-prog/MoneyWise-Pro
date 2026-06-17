@@ -5,6 +5,7 @@ import { LencoService } from '../services/lenco.service';
 import { cashbookService } from '../services/cashbook.service';
 import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
+import { applyProductRevenueRouting, markPaymentLinkPaid } from '../services/product_routing.service';
 
 // MoneyWise settlement merchant (Blue Opus Software Technology). The platform
 // commission collected on external payment links is auto-forwarded here.
@@ -227,6 +228,9 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
                 .eq('reference', reference)
                 .eq('status', 'PENDING');
+            // Heal routing + link state too, in case the earlier run died before these ran.
+            await applyProductRevenueRouting(organizationId, reference);
+            await markPaymentLinkPaid(organizationId, reference);
         }
         return true;
     }
@@ -380,6 +384,11 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             } else {
                 console.log(`[Lenco Webhook] Successfully updated product sales for reference ${reference} to COMPLETED`);
             }
+
+            // Split revenue to each product's mapped wallet + income account and flip
+            // any one-time payment link tied to this reference to PAID (both idempotent).
+            await applyProductRevenueRouting(organizationId, reference);
+            await markPaymentLinkPaid(organizationId, reference);
         }
 
         console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);

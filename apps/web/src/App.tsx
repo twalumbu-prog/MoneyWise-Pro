@@ -21,6 +21,7 @@ import { Join } from './pages/Join';
 import { Audit } from './pages/Audit';
 import { Menu } from './pages/Menu';
 import { PublicPay } from './pages/PublicPay';
+import { PublicPaymentLink } from './pages/PublicPaymentLink';
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 
@@ -91,6 +92,7 @@ function App() {
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/disconnect" element={<Disconnect />} />
                     <Route path="/pay/:wallet_id" element={<PublicPay />} />
+                    <Route path="/pl/:token" element={<PublicPaymentLink />} />
                     <Route
                         path="/"
                         element={

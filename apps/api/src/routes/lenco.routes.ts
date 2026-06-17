@@ -11,6 +11,7 @@ import {
     resolveBankAccount,
     resolveMobileMoney,
     getPublicWalletContext,
+    getPaymentLinkContext,
     logPublicWalletDepositIntent,
     getSaleReceiptDetails,
     getPublicSalesByPhone,
@@ -27,6 +28,7 @@ router.post('/webhook', handleLencoWebhook);
 // Public payment portal endpoints
 router.get('/public-verify-status/:reference', verifyCollectionStatus);
 router.get('/public-context/:wallet_id', getPublicWalletContext);
+router.get('/public-payment-link/:token', getPaymentLinkContext);
 router.post('/public-wallet-deposit-intent', logPublicWalletDepositIntent);
 router.get('/public-sales/by-phone/:phone', getPublicSalesByPhone);
 router.get('/public-sale-receipt/:reference', getPublicSaleReceiptDetails);

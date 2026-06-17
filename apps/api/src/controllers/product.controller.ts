@@ -1,6 +1,31 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
+const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION'];
+
+/**
+ * Validates that an optional wallet/income-account reference belongs to the
+ * caller's organization. Returns an error message string if invalid, else null.
+ * A null/undefined id is allowed (the column falls back to defaults / AI).
+ */
+const validateOrgOwnedRef = async (
+    table: 'organization_wallets' | 'accounts',
+    id: string | null | undefined,
+    organization_id: string
+): Promise<string | null> => {
+    if (id === undefined || id === null || id === '') return null;
+    const { data, error } = await supabase
+        .from(table)
+        .select('organization_id')
+        .eq('id', id)
+        .single();
+    if (error || !data) return `Referenced ${table === 'accounts' ? 'income account' : 'wallet'} not found`;
+    if (data.organization_id !== organization_id) {
+        return `Referenced ${table === 'accounts' ? 'income account' : 'wallet'} belongs to another organization`;
+    }
+    return null;
+};
+
 export const getProducts = async (req: any, res: Response): Promise<any> => {
     try {
         const organization_id = req.user.organization_id;
@@ -36,16 +61,27 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
             return res.status(403).json({ error: 'Only administrators can manage products' });
         }
 
-        const { name, description, price } = req.body;
+        const { name, description, price, image_url, product_type, wallet_id, income_account_id } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
         }
 
-        const productPrice = Number(price);
-        if (isNaN(productPrice) || productPrice < 0) {
+        const productType = product_type || 'PRODUCT';
+        if (!VALID_PRODUCT_TYPES.includes(productType)) {
+            return res.status(400).json({ error: `Product type must be one of: ${VALID_PRODUCT_TYPES.join(', ')}` });
+        }
+
+        // DONATION amounts are set by the payer; everything else carries a price.
+        const productPrice = productType === 'DONATION' ? 0 : Number(price);
+        if (productType !== 'DONATION' && (isNaN(productPrice) || productPrice < 0)) {
             return res.status(400).json({ error: 'Price must be a valid non-negative number' });
         }
+
+        const walletErr = await validateOrgOwnedRef('organization_wallets', wallet_id, organization_id);
+        if (walletErr) return res.status(400).json({ error: walletErr });
+        const accountErr = await validateOrgOwnedRef('accounts', income_account_id, organization_id);
+        if (accountErr) return res.status(400).json({ error: accountErr });
 
         const { data, error } = await supabase
             .from('products')
@@ -54,6 +90,10 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 name: name.trim(),
                 description: description || null,
                 price: productPrice,
+                image_url: image_url || null,
+                product_type: productType,
+                wallet_id: wallet_id || null,
+                income_account_id: income_account_id || null,
                 is_active: true
             })
             .select()
@@ -84,7 +124,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         // Verify product belongs to user's organization
         const { data: product, error: findError } = await supabase
             .from('products')
-            .select('organization_id')
+            .select('organization_id, product_type')
             .eq('id', id)
             .single();
 
@@ -96,7 +136,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
             return res.status(403).json({ error: 'Permission denied: Product belongs to another organization' });
         }
 
-        const { name, description, price, is_active } = req.body;
+        const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id } = req.body;
         const updateData: any = {};
 
         if (name !== undefined) {
@@ -108,12 +148,35 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
 
         if (description !== undefined) updateData.description = description;
 
+        if (product_type !== undefined) {
+            if (!VALID_PRODUCT_TYPES.includes(product_type)) {
+                return res.status(400).json({ error: `Product type must be one of: ${VALID_PRODUCT_TYPES.join(', ')}` });
+            }
+            updateData.product_type = product_type;
+        }
+
         if (price !== undefined) {
-            const productPrice = Number(price);
-            if (isNaN(productPrice) || productPrice < 0) {
+            // DONATION carries no fixed price; the payer sets the amount.
+            const effectiveType = product_type ?? product.product_type;
+            const productPrice = effectiveType === 'DONATION' ? 0 : Number(price);
+            if (effectiveType !== 'DONATION' && (isNaN(productPrice) || productPrice < 0)) {
                 return res.status(400).json({ error: 'Price must be a valid non-negative number' });
             }
             updateData.price = productPrice;
+        }
+
+        if (image_url !== undefined) updateData.image_url = image_url || null;
+
+        if (wallet_id !== undefined) {
+            const walletErr = await validateOrgOwnedRef('organization_wallets', wallet_id, organization_id);
+            if (walletErr) return res.status(400).json({ error: walletErr });
+            updateData.wallet_id = wallet_id || null;
+        }
+
+        if (income_account_id !== undefined) {
+            const accountErr = await validateOrgOwnedRef('accounts', income_account_id, organization_id);
+            if (accountErr) return res.status(400).json({ error: accountErr });
+            updateData.income_account_id = income_account_id || null;
         }
 
         if (is_active !== undefined) updateData.is_active = !!is_active;
