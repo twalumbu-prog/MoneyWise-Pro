@@ -61,7 +61,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
             return res.status(403).json({ error: 'Only administrators can manage products' });
         }
 
-        const { name, description, price, image_url, product_type, wallet_id, income_account_id } = req.body;
+        const { name, description, price, image_url, product_type, wallet_id, income_account_id, category } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -94,6 +94,7 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 product_type: productType,
                 wallet_id: wallet_id || null,
                 income_account_id: income_account_id || null,
+                category: (category && category.trim()) || null,
                 is_active: true
             })
             .select()
@@ -136,7 +137,7 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
             return res.status(403).json({ error: 'Permission denied: Product belongs to another organization' });
         }
 
-        const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id } = req.body;
+        const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category } = req.body;
         const updateData: any = {};
 
         if (name !== undefined) {
@@ -178,6 +179,8 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
             if (accountErr) return res.status(400).json({ error: accountErr });
             updateData.income_account_id = income_account_id || null;
         }
+
+        if (category !== undefined) updateData.category = (category && category.trim()) || null;
 
         if (is_active !== undefined) updateData.is_active = !!is_active;
         updateData.updated_at = new Date().toISOString();

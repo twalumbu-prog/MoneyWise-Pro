@@ -21,7 +21,8 @@ import {
     Share2,
     ImagePlus,
     Wallet,
-    BookOpen
+    BookOpen,
+    Layers
 } from 'lucide-react';
 
 interface WalletOption { id: string; name: string; is_main?: boolean; }
@@ -68,6 +69,7 @@ export const ProductSettings: React.FC = () => {
         wallet_id: '',
         income_account_id: '',
         image_url: '',
+        category: '',
         is_active: true
     });
 
@@ -118,6 +120,7 @@ export const ProductSettings: React.FC = () => {
             wallet_id: '',
             income_account_id: '',
             image_url: '',
+            category: '',
             is_active: true
         });
         setError(null);
@@ -134,6 +137,7 @@ export const ProductSettings: React.FC = () => {
             wallet_id: product.wallet_id || '',
             income_account_id: product.income_account_id || '',
             image_url: product.image_url || '',
+            category: product.category || '',
             is_active: product.is_active
         });
         setError(null);
@@ -185,6 +189,12 @@ export const ProductSettings: React.FC = () => {
     const isVariable = formData.product_type === 'SERVICE_VARIABLE';
     const priceRequired = !isDonation && !isVariable;
 
+    // Existing categories across the catalog — offered as suggestions so admins
+    // reuse consistent names (these drive the toggle tabs on the public portal).
+    const existingCategories = Array.from(
+        new Set(products.map(p => (p.category || '').trim()).filter(Boolean))
+    ).sort();
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!isAdmin) return;
@@ -220,6 +230,7 @@ export const ProductSettings: React.FC = () => {
                 wallet_id: formData.wallet_id || null,
                 income_account_id: formData.income_account_id || null,
                 image_url: formData.image_url || null,
+                category: formData.category.trim() || null,
                 is_active: formData.is_active
             };
 
@@ -572,6 +583,30 @@ export const ProductSettings: React.FC = () => {
                                             placeholder="e.g. Standard Consultation"
                                         />
                                     </div>
+                                </div>
+
+                                {/* Category — drives the toggle tabs on the public portal */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center">
+                                        <Layers className="h-4 w-4 mr-1.5 text-gray-400" />
+                                        Category
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="category"
+                                        list="product-categories"
+                                        value={formData.category}
+                                        onChange={handleChange}
+                                        disabled={submitting}
+                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50"
+                                        placeholder="e.g. School Fees, Merchandise"
+                                    />
+                                    <datalist id="product-categories">
+                                        {existingCategories.map(c => (
+                                            <option key={c} value={c} />
+                                        ))}
+                                    </datalist>
+                                    <p className="text-xs text-gray-400 mt-1">Groups this item into a tab on the public payment portal. Optional.</p>
                                 </div>
 
                                 {/* Price — hidden for donations */}

@@ -2,21 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
-import { 
-    Loader2, 
-    ArrowRight, 
-    Smartphone, 
-    User, 
-    ShoppingCart, 
-    Plus, 
-    Minus, 
-    AlertCircle, 
-    CheckCircle2, 
-    ArrowLeft, 
+import {
+    Loader2,
+    ArrowRight,
+    Smartphone,
+    Phone,
+    User,
+    ShoppingCart,
+    ShoppingBag,
+    Plus,
+    Minus,
+    AlertCircle,
+    ArrowLeft,
     Building2,
-    ShieldCheck,
     Download,
-    Search
+    Search,
+    BadgeCheck,
+    PlusCircle,
+    ChevronRight,
+    ChevronDown,
+    Check,
+    X,
+    CreditCard,
+    ShieldCheck,
+    Ticket,
+    Receipt,
+    Info,
+    Wallet,
+    ClipboardList
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 
@@ -30,6 +43,7 @@ interface Product {
     is_active: boolean;
     image_url?: string | null;
     product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION';
+    category?: string | null;
 }
 
 interface OrgContext {
@@ -58,7 +72,7 @@ export const PublicPay: React.FC = () => {
 
     // UI Steps
     // 'LOADING' | 'LOGIN' | 'CATALOG' | 'VERIFYING' | 'SUCCESS' | 'ERROR'
-    const [step, setStep] = useState<'LOADING' | 'LOGIN' | 'CATALOG' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
+    const [step, setStep] = useState<'LOADING' | 'LOGIN' | 'CATALOG' | 'SUMMARY' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
     
     // Data Context
     const [org, setOrg] = useState<OrgContext | null>(null);
@@ -71,12 +85,19 @@ export const PublicPay: React.FC = () => {
     const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
     // Customer-entered amounts for DONATION products (keyed by product id).
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
+    // Bottom-sheet overlay for adding products/services to the cart.
+    const [showProductSheet, setShowProductSheet] = useState(false);
+    // Search + category filter within the product sheet.
+    const [productSearch, setProductSearch] = useState('');
+    const [activeCategory, setActiveCategory] = useState('All');
     
     // Payment Status states
     const [currentReference, setCurrentReference] = useState('');
     const [verificationStep, setVerificationStep] = useState<'POLLING' | 'SUCCESS' | 'FAILED'>('POLLING');
     const [verificationReason, setVerificationReason] = useState('');
     const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
+    // How the customer paid (from the Lenco success payload), shown on the receipt screen.
+    const [paymentMethod, setPaymentMethod] = useState<string>('Mobile Money');
     const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
     const [lastTransactionId, setLastTransactionId] = useState<string | null>(null);
     const [isConfirmingManual, setIsConfirmingManual] = useState(false);
@@ -164,16 +185,19 @@ export const PublicPay: React.FC = () => {
     const catalogProducts = products.filter(p => p.product_type !== 'SERVICE_VARIABLE');
 
     // Unified line items across fixed-price products and customer-priced donations.
+    // Donations are included as soon as qty > 0 (amount entered in the cart, not the sheet).
     const lineItems = catalogProducts
         .map(p => {
             const isDonation = p.product_type === 'DONATION';
-            const quantity = isDonation ? (donationAmounts[p.id] > 0 ? 1 : 0) : (selectedQuantities[p.id] || 0);
+            const quantity = selectedQuantities[p.id] || 0;
             const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : p.price;
-            return { product: p, quantity, unitPrice, total: quantity * unitPrice };
+            return { product: p, quantity, unitPrice, total: quantity * unitPrice, isDonation };
         })
-        .filter(li => li.quantity > 0 && li.unitPrice > 0);
+        .filter(li => li.quantity > 0);
 
     const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
+    // Donation items in cart with no amount yet entered (amount = 0)
+    const pendingDonations = lineItems.filter(li => li.isDonation && li.unitPrice === 0);
     
     // MoneyWise platform fee (tiered) — additive markup paid by the customer on top
     // of the subtotal. The merchant settles the net subtotal; the fee is swept to
@@ -181,7 +205,50 @@ export const PublicPay: React.FC = () => {
     const processingFee = calculatePlatformFee(subtotal);
     const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
 
+    // Distinct categories present in the catalog → toggle tabs (always lead with "All").
+    const productCategories = ['All', ...Array.from(
+        new Set(catalogProducts.map(p => (p.category || '').trim()).filter(Boolean))
+    )];
+
+    // Products shown in the sheet, narrowed by the active category tab + search query.
+    const sheetProducts = catalogProducts.filter(p => {
+        const matchesCat = activeCategory === 'All' || (p.category || '').trim() === activeCategory;
+        const q = productSearch.trim().toLowerCase();
+        const matchesSearch = !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q);
+        return matchesCat && matchesSearch;
+    });
+
+    // Total units currently in the cart (drives the "Add N Items" button counter).
+    const cartItemCount = lineItems.reduce((n, li) => n + li.quantity, 0);
+
+    // Cart → Payment Summary. Validates the cart before showing the breakdown;
+    // the actual Lenco charge is only triggered by the Pay button on the summary.
+    const handleProceedToSummary = () => {
+        setError(null);
+        if (lineItems.length === 0) {
+            setError('Please select at least one product or service to purchase.');
+            return;
+        }
+        if (pendingDonations.length > 0) {
+            setError(`Please enter an amount for: ${pendingDonations.map(li => li.product.name).join(', ')}`);
+            return;
+        }
+        if (subtotal <= 0) {
+            setError('Please select at least one product or service to purchase.');
+            return;
+        }
+        setStep('SUMMARY');
+    };
+
     const handlePay = async () => {
+        if (lineItems.length === 0) {
+            setError('Please select at least one product or service to purchase.');
+            return;
+        }
+        if (pendingDonations.length > 0) {
+            setError(`Please enter an amount for: ${pendingDonations.map(li => li.product.name).join(', ')}`);
+            return;
+        }
         if (subtotal <= 0) {
             setError('Please select at least one product or service to purchase.');
             return;
@@ -230,6 +297,7 @@ export const PublicPay: React.FC = () => {
                 accountId: wallet.lenco_subaccount_id!,
                 email: 'customer@moneywise.co',
                 name: customerName,
+                phone: customerPhone,
                 description: purpose,
                 narration: purpose,
                 meta: {
@@ -242,6 +310,10 @@ export const PublicPay: React.FC = () => {
                     console.log('Public payment window success reported', response);
                     const transactionId = response.id || response.transactionId;
                     setLastTransactionId(transactionId || null);
+                    // Capture how they paid (card vs mobile money) when Lenco reports it.
+                    const rawMethod = response?.type || response?.channel || response?.method || '';
+                    if (/card/i.test(rawMethod)) setPaymentMethod('Card');
+                    else if (rawMethod) setPaymentMethod('Mobile Money');
                     setStep('VERIFYING');
                     setVerificationStep('POLLING');
                     
@@ -667,6 +739,127 @@ Status: VERIFIED`;
         }
     };
 
+    // A single selectable product/service row, shown inside the Add Products sheet.
+    const renderProductCard = (product: Product) => {
+        const isDonation = product.product_type === 'DONATION';
+        const qty = selectedQuantities[product.id] || 0;
+        const isInCart = qty > 0;
+
+        return (
+            <div key={product.id} className="flex items-center gap-2 py-2">
+                {/* Product image tile */}
+                <div className="w-20 h-20 rounded-xl overflow-hidden bg-neutral-100 flex-shrink-0 flex items-center justify-center">
+                    {product.image_url ? (
+                        <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="w-full h-full object-cover"
+                        />
+                    ) : (
+                        <ShoppingBag size={24} className="text-neutral-300" />
+                    )}
+                </div>
+
+                {/* Content */}
+                <div className="flex-1 flex flex-col gap-1.5 min-w-0 ml-4">
+                    {/* Name + price row */}
+                    <div className="flex flex-col">
+                        <span className="text-slate-900 text-base font-semibold truncate leading-snug">{product.name}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                            {isDonation ? (
+                                isInCart ? (
+                                    <div className="relative w-28">
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-semibold text-slate-400">K</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={donationAmounts[product.id] ?? ''}
+                                            onChange={(e) => {
+                                                const val = Math.max(0, Number(e.target.value) || 0);
+                                                setDonationAmounts(prev => ({ ...prev, [product.id]: val }));
+                                            }}
+                                            placeholder="0.00"
+                                            className="w-full pl-6 pr-2 py-1 bg-white border border-slate-200 rounded-lg text-sm font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-200 transition-all [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                        />
+                                    </div>
+                                ) : (
+                                    <span className="text-slate-400 text-sm">Open amount</span>
+                                )
+                            ) : (
+                                <>
+                                    <span className="text-orange-600 text-base font-semibold">
+                                        K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                    {product.description && (
+                                        <>
+                                            <div className="w-px h-4 bg-neutral-200 flex-shrink-0" />
+                                            <span className="text-slate-400 text-xs leading-tight line-clamp-1 flex-1 min-w-0">
+                                                {product.description}
+                                            </span>
+                                        </>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Qty stepper — zinc pill, only for non-donation */}
+                    {!isDonation && (
+                        <div className="bg-zinc-100 rounded-full inline-flex items-center self-start">
+                            <button
+                                onClick={() => handleQuantityChange(product.id, -1)}
+                                className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors"
+                            >
+                                <Minus size={11} strokeWidth={2} />
+                            </button>
+                            <div className="w-px h-3 bg-neutral-200 flex-shrink-0" />
+                            <input
+                                type="number"
+                                min="0"
+                                value={qty}
+                                onChange={(e) => handleQuantitySet(product.id, e.target.value)}
+                                onFocus={(e) => e.target.select()}
+                                className="w-7 h-7 text-center text-xs font-bold text-zinc-600 bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <div className="w-px h-3 bg-neutral-200 flex-shrink-0" />
+                            <button
+                                onClick={() => handleQuantityChange(product.id, 1)}
+                                className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors"
+                            >
+                                <Plus size={11} strokeWidth={2} />
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                {/* Add-to-cart button (＋) / remove-from-cart button (✕) */}
+                <button
+                    onClick={() => {
+                        if (isInCart) {
+                            // Remove the item entirely from the cart
+                            setSelectedQuantities(prev => ({ ...prev, [product.id]: 0 }));
+                            if (isDonation) setDonationAmounts(prev => ({ ...prev, [product.id]: 0 }));
+                        } else if (isDonation) {
+                            // Add donation (amount entered inline / on cart screen)
+                            setSelectedQuantities(prev => ({ ...prev, [product.id]: 1 }));
+                        } else {
+                            handleQuantityChange(product.id, 1);
+                        }
+                    }}
+                    className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center transition-all ${
+                        isInCart
+                            ? 'text-slate-900 hover:text-rose-500'
+                            : 'border border-black text-black hover:bg-black hover:text-white'
+                    }`}
+                    title={isInCart ? 'Remove from cart' : 'Add to cart'}
+                >
+                    {isInCart ? <X size={18} strokeWidth={2} /> : <Plus size={13} strokeWidth={2} />}
+                </button>
+            </div>
+        );
+    };
+
     // Helper to render Organization Logo / Initial
     const renderLogo = (sizeClass = "w-20 h-20", textClass = "text-3xl") => {
         if (!org) return null;
@@ -685,8 +878,8 @@ Status: VERIFIED`;
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30 flex flex-col justify-between py-10 px-4">
-            <div className="max-w-md w-full mx-auto my-auto bg-white/70 backdrop-blur-xl rounded-[32px] border border-slate-100 shadow-2xl overflow-hidden flex flex-col justify-between transition-all duration-300">
+        <div className="min-h-screen bg-white flex flex-col sm:justify-center sm:py-10 sm:px-4">
+            <div className={`w-full bg-white overflow-hidden flex flex-col sm:max-w-md sm:mx-auto sm:rounded-[32px] ${(step === 'CATALOG' || step === 'SUMMARY' || step === 'SUCCESS') ? 'flex-1 sm:flex-none' : ''} ${step === 'LOGIN' ? '' : 'sm:border sm:border-slate-100 sm:shadow-xl'}`}>
                 
                 {showRetrievePortal ? (
                     <div className="flex flex-col min-h-[500px]">
@@ -815,37 +1008,40 @@ Status: VERIFIED`;
                 {/* 2. Login Step */}
                 {step === 'LOGIN' && org && (
                     <div className="p-8">
-                        <div className="flex flex-col items-center text-center mb-8">
-                            {renderLogo("w-20 h-20", "text-3xl")}
-                            <h2 className="text-lg font-black text-slate-900 mt-4 uppercase tracking-wider">{org.name}</h2>
-                            <p className="text-xs font-semibold text-slate-400 mt-1">Payment Checkout Portal</p>
+                        <div className="flex flex-col items-center text-center mb-10">
+                            {renderLogo("w-24 h-24", "text-4xl")}
+                            <div className="flex items-center gap-2 mt-5">
+                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{org.name}</h2>
+                                <BadgeCheck className="w-6 h-6 text-white flex-shrink-0" fill="#2563eb" />
+                            </div>
+                            <p className="text-sm font-medium text-slate-400 mt-1.5">Payment Checkout Portal</p>
                         </div>
 
                         <form onSubmit={handleLoginSubmit} className="space-y-5">
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Your Full Name</label>
+                                <label className="block text-xs font-medium text-slate-400 mb-2">Your Full Name</label>
                                 <div className="relative">
-                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                     <input
                                         type="text"
                                         value={customerName}
                                         onChange={(e) => setCustomerName(e.target.value)}
                                         placeholder="John Doe"
-                                        className="w-full pl-12 pr-4 py-3.5 bg-slate-50/70 border border-slate-100 rounded-2xl text-xs font-bold text-slate-800 outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 focus:border-blue-300 transition-all placeholder:text-slate-300"
+                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-semibold text-slate-800 outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
                                     />
                                 </div>
                             </div>
 
                             <div>
-                                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Phone Number</label>
+                                <label className="block text-xs font-medium text-slate-400 mb-2">Phone Number</label>
                                 <div className="relative">
-                                    <Smartphone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                     <input
                                         type="tel"
                                         value={customerPhone}
                                         onChange={(e) => setCustomerPhone(e.target.value)}
-                                        placeholder="e.g. 0970000000"
-                                        className="w-full pl-12 pr-4 py-3.5 bg-slate-50/70 border border-slate-100 rounded-2xl text-xs font-bold text-slate-800 outline-none focus:bg-white focus:ring-4 focus:ring-blue-50 focus:border-blue-300 transition-all placeholder:text-slate-300"
+                                        placeholder="XXX - XXX - XXXX"
+                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-semibold text-slate-800 outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
                                     />
                                 </div>
                             </div>
@@ -859,12 +1055,12 @@ Status: VERIFIED`;
 
                             <button
                                 type="submit"
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2"
+                                className="w-full bg-black hover:bg-slate-800 text-white py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center space-x-2"
                             >
-                                <span>Enter Portal</span>
-                                <ArrowRight size={14} />
+                                <span>Proceed</span>
+                                <ArrowRight size={16} />
                             </button>
-                            <div className="pt-4 text-center">
+                            <div className="pt-2 text-center">
                                 <button
                                     type="button"
                                     onClick={() => setShowRetrievePortal(true)}
@@ -877,143 +1073,52 @@ Status: VERIFIED`;
                     </div>
                 )}
 
-                {/* 3. Catalog / Selector Step */}
+                {/* 3. Cart Step */}
                 {step === 'CATALOG' && org && (
-                    <div className="flex flex-col min-h-[500px]">
-                        {/* Catalog Header */}
-                        <div className="p-6 border-b border-slate-50 flex items-center justify-between bg-slate-50/30">
-                            <div className="flex items-center space-x-3">
-                                {renderLogo("w-10 h-10", "text-sm")}
-                                <div>
-                                    <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">{org.name}</h4>
-                                    <p className="text-[10px] font-semibold text-slate-400">Products & Services</p>
+                    <div className="flex flex-col flex-1 min-h-[620px]">
+                        {/* Cart Header — logo left, business name right */}
+                        <div className="px-6 pt-7 pb-5 flex items-center gap-4">
+                            {renderLogo("w-14 h-14", "text-xl")}
+                            <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
                                 </div>
+                                <p className="text-xs font-medium text-slate-400">Payment Checkout Portal</p>
                             </div>
-                            <button
-                                onClick={() => setStep('LOGIN')}
-                                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100/50 transition-all"
-                                title="Back to Login"
-                            >
-                                <ArrowLeft size={16} />
-                            </button>
                         </div>
 
-                        {/* Catalog List */}
-                        <div className="p-6 flex-1 overflow-y-auto max-h-[350px] space-y-3.5">
-                            {catalogProducts.length === 0 ? (
-                                <div className="text-center py-10">
-                                    <ShoppingCart className="mx-auto text-slate-200 mb-2" size={36} />
-                                    <p className="text-xs font-semibold text-slate-400">No products configured yet.</p>
-                                </div>
-                            ) : (
-                                catalogProducts.map(product => {
-                                    const isDonation = product.product_type === 'DONATION';
-                                    const qty = selectedQuantities[product.id] || 0;
-                                    const donationAmount = donationAmounts[product.id] || 0;
-                                    const isSelected = isDonation ? donationAmount > 0 : qty > 0;
-                                    return (
-                                        <div
-                                            key={product.id}
-                                            className={`p-4 rounded-2xl border transition-all duration-300 flex justify-between items-center gap-3 ${
-                                                isSelected
-                                                    ? 'border-blue-500 bg-blue-50/10 shadow-xs'
-                                                    : 'border-slate-100 hover:border-slate-200 bg-white'
-                                            }`}
-                                        >
-                                            {product.image_url && (
-                                                <img
-                                                    src={product.image_url}
-                                                    alt={product.name}
-                                                    className="h-12 w-12 rounded-xl object-cover border border-slate-100 flex-shrink-0"
-                                                />
-                                            )}
-                                            <div className="flex-1 min-w-0 pr-1">
-                                                <h5 className="text-xs font-black text-slate-900 truncate uppercase tracking-wide">{product.name}</h5>
-                                                {product.description && (
-                                                    <p className="text-[10px] font-medium text-slate-400 mt-1 line-clamp-2">{product.description}</p>
-                                                )}
-                                                {isDonation ? (
-                                                    <div className="relative mt-2 w-32">
-                                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-black text-slate-400">K</span>
-                                                        <input
-                                                            type="number"
-                                                            min="0"
-                                                            step="0.01"
-                                                            value={donationAmounts[product.id] ?? ''}
-                                                            onChange={(e) => {
-                                                                const val = Math.max(0, Number(e.target.value) || 0);
-                                                                setDonationAmounts(prev => ({ ...prev, [product.id]: val }));
-                                                            }}
-                                                            placeholder="0.00"
-                                                            className="w-full pl-6 pr-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-xs font-black text-slate-900 outline-none focus:bg-white focus:ring-2 focus:ring-blue-300 transition-all"
-                                                        />
-                                                    </div>
-                                                ) : (
-                                                    <p className="text-xs font-black text-blue-600 mt-2">
-                                                        K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            {!isDonation && (
-                                                <div className="flex items-center space-x-2 flex-shrink-0">
-                                                    {qty > 0 ? (
-                                                        <div className="flex items-center bg-slate-50 border border-slate-100 rounded-xl p-1">
-                                                            <button
-                                                                onClick={() => handleQuantityChange(product.id, -1)}
-                                                                className="p-1 rounded-lg hover:bg-white text-slate-500 hover:text-slate-800 transition-all"
-                                                            >
-                                                                <Minus size={12} strokeWidth={2.5} />
-                                                            </button>
-                                                            <input
-                                                                type="number"
-                                                                min="0"
-                                                                value={qty}
-                                                                onChange={(e) => handleQuantitySet(product.id, e.target.value)}
-                                                                onFocus={(e) => e.target.select()}
-                                                                className="w-10 text-center text-xs font-black text-slate-900 bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                                            />
-                                                            <button
-                                                                onClick={() => handleQuantityChange(product.id, 1)}
-                                                                className="p-1 rounded-lg hover:bg-white text-slate-500 hover:text-slate-800 transition-all"
-                                                            >
-                                                                <Plus size={12} strokeWidth={2.5} />
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <button
-                                                            onClick={() => handleQuantityChange(product.id, 1)}
-                                                            className="p-2 border border-slate-100 hover:border-blue-200 text-slate-400 hover:text-blue-600 rounded-xl hover:bg-blue-50/50 transition-all"
-                                                        >
-                                                            <Plus size={14} strokeWidth={2.5} />
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })
-                            )}
+                        {/* Cart Total band */}
+                        <div className="px-9 py-6 bg-slate-50">
+                            <p className="text-xs font-normal text-slate-500">Cart Total</p>
+                            <p className="text-4xl font-extrabold text-slate-900 mt-1 tracking-tight">
+                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </p>
                         </div>
 
-                        {/* Order Summary & Button */}
-                        <div className="p-6 border-t border-slate-100 bg-slate-50/50 space-y-4">
+                        {/* Cart items */}
+                        <div className="flex-1 flex flex-col px-6 pt-6 pb-2">
+                            <div className="flex-1 min-h-[260px] rounded-3xl border border-slate-200 p-4 flex flex-col">
+                                {lineItems.length === 0 ? (
+                                    <div className="flex-1 flex items-center justify-center">
+                                        <p className="text-center text-xs font-normal text-slate-400 leading-relaxed">
+                                            Items will appear in your cart when you<br />Add Products and Services
+                                        </p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-5 overflow-y-auto">
+                                        {lineItems.map(li => renderProductCard(li.product))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Footer actions */}
+                        <div className="p-6 border-t-[0.5px] border-slate-200 space-y-3">
                             {subtotal > 0 && (
-                                <div className="space-y-1.5 text-xs">
-                                    <div className="flex justify-between font-semibold text-slate-500">
-                                        <span>Subtotal</span>
-                                        <span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                    </div>
-                                    <div className="flex justify-between font-normal text-slate-400 text-[11px]">
-                                        <span className="flex items-center gap-1">
-                                            <span>Processing fee Paid by client</span>
-                                        </span>
-                                        <span>K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                    </div>
-                                    <div className="flex justify-between font-black text-slate-900 text-sm pt-2 border-t border-slate-200/50">
-                                        <span>Total Amount</span>
-                                        <span>K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                    </div>
+                                <div className="flex justify-between text-[11px] font-medium text-slate-400 px-1">
+                                    <span>+ Processing fee (paid by client)</span>
+                                    <span>K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                 </div>
                             )}
 
@@ -1025,20 +1130,152 @@ Status: VERIFIED`;
                             )}
 
                             <button
-                                onClick={handlePay}
-                                disabled={subtotal <= 0}
-                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2"
+                                onClick={() => setShowProductSheet(true)}
+                                className={`w-full py-4 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-2 ${
+                                    lineItems.length > 0
+                                        ? 'bg-neutral-100 hover:bg-neutral-200 text-zinc-600'
+                                        : 'bg-black hover:bg-slate-800 text-white'
+                                }`}
                             >
-                                <ShieldCheck size={14} />
-                                <span>Pay with Lenco</span>
+                                <PlusCircle size={16} />
+                                <span>Add Products/Services</span>
                             </button>
-                            <div className="pt-4 text-center">
+                            <button
+                                onClick={handleProceedToSummary}
+                                disabled={subtotal <= 0}
+                                className={`w-full py-4 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 ${
+                                    lineItems.length > 0
+                                        ? 'bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white'
+                                        : 'bg-neutral-100 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-600'
+                                }`}
+                            >
+                                <span>Checkout</span>
+                                <ChevronRight size={14} strokeWidth={2.5} />
+                            </button>
+                            <div className="pt-1 text-center">
                                 <button
                                     type="button"
                                     onClick={() => setShowRetrievePortal(true)}
-                                    className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider"
+                                    className="text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider"
                                 >
                                     Already Paid? Find your receipt
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 3b. Payment Summary Step */}
+                {step === 'SUMMARY' && org && (
+                    <div className="flex flex-col flex-1 min-h-[620px]">
+                        {/* Header — logo left, business name right (matches cart) */}
+                        <div className="px-6 pt-7 pb-5 flex items-center gap-4">
+                            {renderLogo("w-14 h-14", "text-xl")}
+                            <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                </div>
+                                <p className="text-xs font-medium text-slate-400">Payment Checkout Portal</p>
+                            </div>
+                        </div>
+
+                        {/* Cart Total band */}
+                        <div className="px-9 py-6 bg-slate-50">
+                            <p className="text-xs font-normal text-slate-500">Cart Total</p>
+                            <p className="text-4xl font-extrabold text-slate-900 mt-1 tracking-tight">
+                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </p>
+                        </div>
+
+                        {/* Summary body */}
+                        <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
+                            <div className="rounded-3xl border border-slate-200 p-5 space-y-5">
+                                {/* Breakdown */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Receipt size={16} className="text-slate-900" />
+                                        <h5 className="text-sm font-bold text-slate-900">Breakdown</h5>
+                                    </div>
+                                    <div className="space-y-2.5">
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-500">
+                                                {customerName.trim() ? `${customerName.trim().split(' ')[0]} Cart Total` : 'Cart Total'}
+                                            </span>
+                                            <span className="text-slate-700 font-medium">
+                                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <div className="flex justify-between text-sm">
+                                            <span className="text-slate-500">Transaction Fee</span>
+                                            <span className="text-slate-700 font-medium">
+                                                K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                        <div className="border-t border-dashed border-slate-200 pt-3 flex justify-between text-sm">
+                                            <span className="font-bold text-slate-900">Total</span>
+                                            <span className="font-bold text-slate-900">
+                                                K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Discounts (placeholder) */}
+                                <div>
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Ticket size={16} className="text-slate-900" />
+                                        <h5 className="text-sm font-bold text-slate-900">Discounts</h5>
+                                    </div>
+                                    <div className="flex items-start gap-2 px-3 py-2.5 bg-slate-50 rounded-xl mb-3">
+                                        <Info size={13} className="text-slate-400 mt-0.5 flex-shrink-0" />
+                                        <p className="text-[11px] text-slate-400 leading-snug">
+                                            You can check which discounts you can get for and apply them.
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        disabled
+                                        className="w-full flex items-center justify-between px-4 py-3.5 border border-slate-200 rounded-xl text-sm text-slate-500 cursor-not-allowed"
+                                        title="Coming soon"
+                                    >
+                                        <span className="flex items-center gap-2">
+                                            <Plus size={15} strokeWidth={2.5} />
+                                            Add Discounts (0 Selected)
+                                        </span>
+                                        <ChevronDown size={16} className="text-slate-400" />
+                                    </button>
+                                </div>
+                            </div>
+
+                            {error && (
+                                <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2 animate-in fade-in duration-200">
+                                    <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                    <span className="text-[10px] font-semibold leading-normal">{error}</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer — Lenco notice + Pay (sticky at the bottom) */}
+                        <div className="sticky bottom-0 mt-auto bg-white border-t border-slate-100 px-6 pt-4 pb-6 space-y-4">
+                            <div className="flex items-center justify-center gap-1.5 text-slate-400">
+                                <ShieldCheck size={14} />
+                                <span className="text-xs font-medium">Secure payments powered by Lenco</span>
+                            </div>
+                            <button
+                                onClick={handlePay}
+                                className="w-full bg-black hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+                            >
+                                <CreditCard size={16} />
+                                <span>Pay</span>
+                            </button>
+                            <div className="text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => { setError(null); setStep('CATALOG'); }}
+                                    className="text-[11px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-wider"
+                                >
+                                    Back to Cart
                                 </button>
                             </div>
                         </div>
@@ -1101,61 +1338,121 @@ Status: VERIFIED`;
 
                 {/* 5. Success Step */}
                 {step === 'SUCCESS' && org && (
-                    <div className="p-8 text-center min-h-[450px] flex flex-col justify-between">
-                        <div className="my-auto py-6 space-y-5">
-                            <div className="mx-auto w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center animate-in zoom-in-75 duration-300">
-                                <CheckCircle2 size={32} strokeWidth={2.5} />
-                            </div>
-                            
-                            <div>
-                                <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">Payment Confirmed!</h3>
-                                <p className="text-xs text-slate-400 font-semibold mt-1">
-                                    Receipt Number: {receiptNumber ? `#${receiptNumber}` : currentReference.replace('-PUB', '')}
-                                </p>
-                            </div>
-
-                            <div className="bg-slate-50/70 border border-slate-100/50 rounded-2xl p-5 text-left text-xs space-y-2.5 max-w-xs mx-auto">
-                                <div className="flex justify-between font-semibold text-slate-400">
-                                    <span>Client Name:</span>
-                                    <span className="font-bold text-slate-700">{customerName}</span>
+                    <div className="flex flex-col flex-1 min-h-[620px]">
+                        {/* Header — logo + name (matches cart/summary) */}
+                        <div className="px-6 pt-7 pb-2 flex items-center gap-4">
+                            {renderLogo("w-14 h-14", "text-xl")}
+                            <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
                                 </div>
-                                <div className="flex justify-between font-semibold text-slate-400">
-                                    <span>Products:</span>
-                                    <span className="font-bold text-slate-700 text-right truncate max-w-[150px]" title={
-                                        lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ')
-                                    }>
-                                        {lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ')}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between font-semibold text-slate-400 pt-2 border-t border-slate-100">
-                                    <span>Amount Settled:</span>
-                                    <span className="font-black text-emerald-600">K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                </div>
-                                <div className="flex justify-between font-semibold text-slate-400">
-                                    <span>Total Paid:</span>
-                                    <span className="font-bold text-slate-800">K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                </div>
+                                <p className="text-xs font-medium text-slate-400">Payment Checkout Portal</p>
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-3">
+                        {/* Body */}
+                        <div className="flex-1 overflow-y-auto px-6 pb-4">
+                            {/* Success seal + headline */}
+                            <div className="flex flex-col items-center text-center pt-6 pb-1">
+                                <div
+                                    className="relative w-24 h-24 animate-in zoom-in-75 duration-300"
+                                    style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,49,41,1))' }}
+                                >
+                                    <BadgeCheck
+                                        className="w-24 h-24 text-[#003129]"
+                                        fill="#16a34a"
+                                        strokeWidth={1.5}
+                                    />
+                                    {/* White tick overlaid on top of the seal's own check */}
+                                    <Check className="absolute inset-0 m-auto w-9 h-9 text-white" strokeWidth={3} />
+                                </div>
+                                <h2 className="text-2xl font-black text-slate-900 mt-6">Congratulations</h2>
+                                <p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">
+                                    Your payment was successful.<br />Thank you for your support.
+                                </p>
+                            </div>
+
+                            {/* Payment Details */}
+                            <div className="mt-7 bg-gray-50 border border-neutral-200 rounded-2xl px-6 pt-4 pb-5">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Wallet size={15} className="text-slate-900" />
+                                    <span className="text-xs font-bold text-zinc-600">Payment Details</span>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs text-zinc-600">Payment Method</span>
+                                        <span className="text-xs font-semibold text-zinc-600">{paymentMethod}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs text-zinc-600">Account Number</span>
+                                        <span className="text-xs font-semibold text-zinc-600">{customerPhone}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs text-zinc-600">Account Name</span>
+                                        <span className="text-xs font-bold text-zinc-600 text-right truncate max-w-[55%]">{customerName}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Order Summary */}
+                            <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <ClipboardList size={15} className="text-slate-900" />
+                                    <span className="text-xs font-bold text-zinc-600">Order Summary</span>
+                                </div>
+                                <div className="space-y-2">
+                                    {lineItems.map(li => (
+                                        <div key={li.product.id} className="flex justify-between items-center gap-3">
+                                            <span className="text-xs text-zinc-600 truncate">
+                                                {li.product.name}
+                                                {!li.isDonation && li.quantity > 1 ? ` (x${li.quantity})` : ''}
+                                            </span>
+                                            <span className="text-xs text-zinc-600 flex-shrink-0">
+                                                K{li.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between items-center gap-3">
+                                        <span className="text-xs text-zinc-600">Transaction Cost</span>
+                                        <span className="text-xs text-zinc-600 flex-shrink-0">
+                                            K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                    <div className="border-t border-neutral-200 my-1" />
+                                    <div className="flex justify-between items-center gap-3">
+                                        <span className="text-xs font-bold text-slate-900">Payment Total</span>
+                                        <span className="text-xs font-bold text-slate-900 flex-shrink-0">
+                                            K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p className="text-center text-[10px] font-semibold text-slate-300 mt-4">
+                                Receipt No: {receiptNumber ? `#${receiptNumber}` : currentReference.replace('-PUB', '')}
+                            </p>
+                        </div>
+
+                        {/* Footer actions (pinned at the bottom) */}
+                        <div className="mt-auto px-6 pt-4 pb-6 space-y-3 bg-white">
                             <button
                                 onClick={handleDownloadReceipt}
                                 disabled={isGeneratingReceipt}
-                                className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2"
+                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs transition-all flex items-center justify-center gap-2"
                             >
                                 {isGeneratingReceipt ? (
                                     <Loader2 size={14} className="animate-spin" />
                                 ) : (
                                     <Download size={14} />
                                 )}
-                                <span>{isGeneratingReceipt ? 'Generating...' : 'Download Receipt'}</span>
+                                <span>{isGeneratingReceipt ? 'Generating...' : 'Download Receipts'}</span>
                             </button>
                             <button
                                 onClick={handleReset}
-                                className="w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg"
+                                className="w-full bg-zinc-100 hover:bg-zinc-200 text-black py-4 rounded-2xl font-medium text-xs transition-all"
                             >
-                                Make Another Payment
+                                Close
                             </button>
                         </div>
                     </div>
@@ -1187,7 +1484,108 @@ Status: VERIFIED`;
 
             </div>
 
+            {/* Add Products / Services — full-screen on mobile, bottom sheet on desktop */}
+            {showProductSheet && (
+                <div className="fixed inset-0 z-50 flex flex-col sm:justify-end">
+                    <div
+                        className="hidden sm:block absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200"
+                        onClick={() => setShowProductSheet(false)}
+                    />
+                    <div className="relative w-full h-full sm:h-auto sm:max-h-[92vh] sm:max-w-md sm:mx-auto bg-white sm:rounded-t-[32px] sm:shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-300">
+
+                        {/* Top bar */}
+                        <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+                            <div className="flex items-center gap-2">
+                                <PlusCircle size={16} className="text-slate-900" />
+                                <h3 className="text-sm font-black text-slate-900 tracking-wide">Add Products/Services</h3>
+                            </div>
+                            <button
+                                onClick={() => setShowProductSheet(false)}
+                                className="w-8 h-8 rounded-full border border-slate-200 shadow-sm flex items-center justify-center text-slate-500 hover:text-slate-800 hover:bg-slate-50 transition-all"
+                                title="Cancel"
+                            >
+                                <X size={15} />
+                            </button>
+                        </div>
+
+                        {/* Search */}
+                        <div className="px-4 pt-4 flex-shrink-0">
+                            <div className="relative">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <input
+                                    type="text"
+                                    value={productSearch}
+                                    onChange={(e) => setProductSearch(e.target.value)}
+                                    placeholder="Search products"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-slate-800 outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Category tabs — segmented control */}
+                        {productCategories.length > 1 && (
+                            <div className="px-4 pt-6 flex-shrink-0">
+                                <div className="p-0.5 bg-neutral-100 rounded-full flex items-center">
+                                    {productCategories.map(cat => {
+                                        const active = activeCategory === cat;
+                                        return (
+                                            <button
+                                                key={cat}
+                                                onClick={() => setActiveCategory(cat)}
+                                                className={`flex-1 min-w-0 px-2.5 py-2 rounded-full text-xs leading-4 text-center truncate transition-all ${
+                                                    active
+                                                        ? 'bg-white text-slate-900 font-semibold shadow-[0px_3px_8px_0px_rgba(0,0,0,0.12)] ring-[0.5px] ring-black/5'
+                                                        : 'text-slate-500 font-normal'
+                                                }`}
+                                            >
+                                                {cat}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Product list */}
+                        <div className="flex-1 overflow-y-auto px-4 pt-6 pb-2">
+                            {sheetProducts.length === 0 ? (
+                                <div className="text-center py-16">
+                                    <ShoppingCart className="mx-auto text-slate-200 mb-2" size={36} />
+                                    <p className="text-xs font-semibold text-slate-400">
+                                        {catalogProducts.length === 0 ? 'No products configured yet.' : 'No matching products.'}
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="space-y-5">
+                                    {sheetProducts.map(product => renderProductCard(product))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Footer: subtotal + Add N items */}
+                        <div className="border-t border-slate-200 px-4 py-4 space-y-3 flex-shrink-0">
+                            <div className="flex justify-between items-center px-1">
+                                <span className="text-sm font-bold text-slate-900">Subtotal</span>
+                                <span className="text-sm font-bold text-slate-900">
+                                    K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                            <button
+                                onClick={() => setShowProductSheet(false)}
+                                disabled={cartItemCount === 0}
+                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2"
+                            >
+                                <ShoppingBag size={16} />
+                                <span>{cartItemCount > 0 ? `Add ${cartItemCount} Item${cartItemCount === 1 ? '' : 's'}` : 'Add Items'}</span>
+                                {cartItemCount > 0 && <Check size={16} strokeWidth={2.5} />}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Footer Brand Info */}
+            {step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && (
             <div className="mt-8 text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                     <Building2 size={12} />
@@ -1197,6 +1595,7 @@ Status: VERIFIED`;
                     Terms & Privacy Apply. Payments are processed securely via Lenco.
                 </p>
             </div>
+            )}
         </div>
     );
 };

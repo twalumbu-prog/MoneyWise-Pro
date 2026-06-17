@@ -16,6 +16,7 @@ export interface Product {
     product_type?: ProductType;
     wallet_id?: string | null;
     income_account_id?: string | null;
+    category?: string | null;
     created_at?: string;
     updated_at?: string;
 }
