@@ -36,6 +36,31 @@ import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
+// Inject the add-to-cart micro-interaction keyframes once.
+//  - mw-add-pop: presses in, springs up past 1, then settles (premium "pop").
+//  - mw-tick-draw: strokes the checkmark on as if it's being drawn.
+const POP_STYLE_ID = 'mw-add-pop-keyframes';
+if (typeof document !== 'undefined' && !document.getElementById(POP_STYLE_ID)) {
+    const el = document.createElement('style');
+    el.id = POP_STYLE_ID;
+    el.textContent = `
+@keyframes mw-add-pop {
+  0%   { transform: scale(1); }
+  28%  { transform: scale(0.8); }
+  60%  { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+@keyframes mw-tick-draw {
+  from { stroke-dashoffset: 26; }
+  to   { stroke-dashoffset: 0; }
+}
+@keyframes mw-pulse-ring {
+  0%   { transform: scale(0.9); opacity: 0.65; }
+  100% { transform: scale(2.8); opacity: 0; }
+}`;
+    document.head.appendChild(el);
+}
+
 interface Product {
     id: string;
     name: string;
@@ -90,6 +115,8 @@ export const PublicPay: React.FC = () => {
     // `showProductSheet` keeps it mounted; `sheetIn` drives the slide-up/down transition.
     const [showProductSheet, setShowProductSheet] = useState(false);
     const [sheetIn, setSheetIn] = useState(false);
+    // Product id currently playing the add-to-cart pop animation.
+    const [poppedId, setPoppedId] = useState<string | null>(null);
     // Search + category filter within the product sheet.
     const [productSearch, setProductSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
@@ -850,29 +877,66 @@ Status: VERIFIED`;
                     )}
                 </div>
 
-                {/* Add-to-cart button (＋) / remove-from-cart button (✕) */}
-                <button
-                    onClick={() => {
-                        if (isInCart) {
-                            // Remove the item entirely from the cart
-                            setSelectedQuantities(prev => ({ ...prev, [product.id]: 0 }));
-                            if (isDonation) setDonationAmounts(prev => ({ ...prev, [product.id]: 0 }));
-                        } else if (isDonation) {
-                            // Add donation (amount entered inline / on cart screen)
-                            setSelectedQuantities(prev => ({ ...prev, [product.id]: 1 }));
-                        } else {
-                            handleQuantityChange(product.id, 1);
-                        }
-                    }}
-                    className={`w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center transition-all ${
-                        isInCart
-                            ? 'text-slate-900 hover:text-rose-500'
-                            : 'border border-black text-black hover:bg-black hover:text-white'
-                    }`}
-                    title={isInCart ? 'Remove from cart' : 'Add to cart'}
-                >
-                    {isInCart ? <X size={18} strokeWidth={2} /> : <Plus size={13} strokeWidth={2} />}
-                </button>
+                {/* Add-to-cart button (＋) / remove-from-cart button (✓) */}
+                <span className="relative inline-flex flex-shrink-0">
+                    {/* Pulse wave that radiates outward when the item is added */}
+                    {poppedId === product.id && (
+                        <span
+                            aria-hidden
+                            className="absolute inset-0 rounded-full bg-blue-500/50 pointer-events-none"
+                            style={{ animation: 'mw-pulse-ring 0.6s ease-out forwards' }}
+                        />
+                    )}
+                    <button
+                        onPointerDown={() => {
+                            // Fire the pop + pulse the instant the button is pressed (add only).
+                            if (!isInCart) {
+                                setPoppedId(product.id);
+                                setTimeout(() => setPoppedId(cur => (cur === product.id ? null : cur)), 600);
+                            }
+                        }}
+                        onClick={() => {
+                            if (isInCart) {
+                                // Remove the item entirely from the cart
+                                setSelectedQuantities(prev => ({ ...prev, [product.id]: 0 }));
+                                if (isDonation) setDonationAmounts(prev => ({ ...prev, [product.id]: 0 }));
+                            } else if (isDonation) {
+                                // Add donation (amount entered inline / on cart screen)
+                                setSelectedQuantities(prev => ({ ...prev, [product.id]: 1 }));
+                            } else {
+                                handleQuantityChange(product.id, 1);
+                            }
+                        }}
+                        style={poppedId === product.id ? { animation: 'mw-add-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' } : undefined}
+                        className={`relative w-7 h-7 rounded-full flex items-center justify-center transition-colors duration-200 active:scale-90 ${
+                            isInCart
+                                ? 'bg-black border border-black text-white hover:bg-slate-800'
+                                : 'border border-black text-black hover:bg-black hover:text-white'
+                        }`}
+                        title={isInCart ? 'Remove from cart' : 'Add to cart'}
+                    >
+                        {isInCart ? (
+                            <svg
+                                viewBox="0 0 24 24"
+                                className="w-3.5 h-3.5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={3}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                            >
+                                <path
+                                    d="M5 12.5l4.5 4.5L19 7"
+                                    strokeDasharray={26}
+                                    style={{ animation: 'mw-tick-draw 0.42s ease-out 0.08s both' }}
+                                />
+                            </svg>
+                        ) : (
+                            <Plus size={13} strokeWidth={2} />
+                        )}
+                    </button>
+                </span>
             </div>
         );
     };
@@ -1184,11 +1248,11 @@ Status: VERIFIED`;
                             </div>
                         </div>
 
-                        {/* Cart Total band */}
+                        {/* Cart Total band — grand total (products + transaction costs) */}
                         <div className="px-9 py-6 bg-slate-50">
                             <p className="text-xs font-normal text-slate-500">Cart Total</p>
                             <p className="text-4xl font-extrabold text-slate-900 mt-1 tracking-tight">
-                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                             </p>
                         </div>
 
@@ -1210,7 +1274,7 @@ Status: VERIFIED`;
                                                 K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between text-sm">
+                                        <div className="flex justify-between text-xs">
                                             <span className="text-slate-500">Transaction Fee</span>
                                             <span className="text-slate-700 font-medium">
                                                 K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
