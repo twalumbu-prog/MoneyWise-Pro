@@ -12,6 +12,7 @@ export default {
             colors: {
                 brand: {
                     green: '#03D47C',
+                    blue: '#006AFF',
                     navy: '#002E3B',
                     gray: '#F7F9FA',
                     pink: '#FF2970',

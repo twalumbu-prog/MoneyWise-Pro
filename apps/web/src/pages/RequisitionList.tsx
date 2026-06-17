@@ -13,6 +13,7 @@ import { MobilePayrollWizard } from '../components/requisitions/MobilePayrollWiz
 import { useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, Filter } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
+import { departmentService } from '../services/department.service';
 
 interface Requisition {
     id: string;
@@ -67,6 +68,10 @@ export const RequisitionList: React.FC = () => {
     const [isSalaryAdvanceWizardOpen, setIsSalaryAdvanceWizardOpen] = useState(false);
     const [isPayrollWizardOpen, setIsPayrollWizardOpen] = useState(false);
 
+    // Org departments config
+    const [useDepartments, setUseDepartments] = useState(false);
+    const [orgDepartments, setOrgDepartments] = useState<string[]>([]);
+
     // Mobile filter/sort states
     const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
     const [filterRead, setFilterRead] = useState<'ALL' | 'READ' | 'UNREAD'>('ALL');
@@ -109,6 +114,12 @@ export const RequisitionList: React.FC = () => {
 
     useEffect(() => {
         loadRequisitions();
+        departmentService.list()
+            .then(({ use_departments, departments }) => {
+                setUseDepartments(use_departments);
+                if (use_departments) setOrgDepartments(departments.map(d => d.name));
+            })
+            .catch(() => {});
     }, []);
 
     const loadRequisitions = async () => {
@@ -140,18 +151,12 @@ export const RequisitionList: React.FC = () => {
 
 
     const uniqueDepartments = React.useMemo(() => {
+        // Prefer org-managed departments when configured; fall back to values on requisitions
+        if (orgDepartments.length > 0) return orgDepartments;
         const depts = new Set<string>();
-        requisitions.forEach(req => {
-            if (req.department) {
-                depts.add(req.department);
-            }
-        });
-        const arr = Array.from(depts);
-        if (arr.length === 0) {
-            return ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
-        }
-        return arr.sort();
-    }, [requisitions]);
+        requisitions.forEach(req => { if (req.department) depts.add(req.department); });
+        return Array.from(depts).sort();
+    }, [requisitions, orgDepartments]);
 
     const filteredRequisitions = requisitions.filter(req => {
         // Apply search filter
@@ -370,7 +375,7 @@ export const RequisitionList: React.FC = () => {
                                     <button
                                         onClick={() => setIsFilterSheetOpen(true)}
                                         className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ml-1 ${
-                                            !activeTab.includes('ALL') || filterRead !== 'ALL' || !filterDepartment.includes('ALL') || filterStartDate || filterEndDate
+                                            !activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate
                                                 ? 'bg-[#F0F7FF] text-[#006AFF]'
                                                 : 'text-gray-400 hover:text-brand-navy'
                                         }`}
@@ -382,7 +387,7 @@ export const RequisitionList: React.FC = () => {
                             </div>
 
                             {/* Active Filter Chips */}
-                            {(!activeTab.includes('ALL') || filterRead !== 'ALL' || !filterDepartment.includes('ALL') || filterStartDate || filterEndDate || sortOrder !== 'desc') && (
+                            {(!activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate || sortOrder !== 'desc') && (
                                 <div className="md:hidden px-6 pb-3 flex items-center gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                                     {activeTab.filter(t => t !== 'ALL').map(status => (
                                         <span key={status} className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
@@ -411,7 +416,7 @@ export const RequisitionList: React.FC = () => {
                                             </button>
                                         </span>
                                     )}
-                                    {filterDepartment.filter(d => d !== 'ALL').map(dept => (
+                                    {useDepartments && filterDepartment.filter(d => d !== 'ALL').map(dept => (
                                         <span key={dept} className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
                                             {dept} Dept.
                                             <button
@@ -782,6 +787,7 @@ export const RequisitionList: React.FC = () => {
                                 ))}
                             </div>
                         </div>
+                        {useDepartments && uniqueDepartments.length > 0 && (
                         <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Department</label>
                             <div className="flex flex-wrap gap-2">
@@ -813,6 +819,7 @@ export const RequisitionList: React.FC = () => {
                                 ))}
                             </div>
                         </div>
+                        )}
                         <div>
                             <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-3">Date Range</label>
                             <div className="flex items-center gap-3">

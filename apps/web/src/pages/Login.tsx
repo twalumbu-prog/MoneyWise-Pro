@@ -170,14 +170,14 @@ export const Login: React.FC = () => {
                                     type="button"
                                     onClick={() => handleSelectOrg(uo.organization.id)}
                                     disabled={loadingOrg !== null}
-                                    className="w-full text-left p-4 border border-gray-200 rounded-2xl hover:border-brand-green hover:bg-brand-green/5 transition-all flex items-center justify-between group transform hover:-translate-y-0.5 active:translate-y-0"
+                                    className="w-full text-left p-4 border border-gray-200 rounded-2xl hover:border-brand-blue hover:bg-brand-blue/5 transition-all flex items-center justify-between group transform hover:-translate-y-0.5 active:translate-y-0"
                                 >
                                     <div className="flex items-center space-x-4">
-                                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center font-bold text-brand-navy group-hover:bg-brand-green group-hover:text-white transition-colors">
+                                        <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center font-bold text-brand-navy group-hover:bg-brand-blue group-hover:text-white transition-colors">
                                             {uo.organization.name.charAt(0).toUpperCase()}
                                         </div>
                                         <div>
-                                            <div className="font-bold text-brand-navy group-hover:text-brand-green transition-colors">
+                                            <div className="font-bold text-brand-navy group-hover:text-brand-blue transition-colors">
                                                 {uo.organization.name}
                                             </div>
                                             <div className="text-xs text-gray-400 capitalize">
@@ -185,7 +185,7 @@ export const Login: React.FC = () => {
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="text-gray-400 group-hover:text-brand-green transition-colors">
+                                    <div className="text-gray-400 group-hover:text-brand-blue transition-colors">
                                         {loadingOrg === uo.organization.id ? (
                                             <Loader2 className="h-5 w-5 animate-spin" />
                                         ) : (
@@ -266,7 +266,7 @@ export const Login: React.FC = () => {
                                             name="name"
                                             type="text"
                                             required
-                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue sm:text-sm transition-all"
                                             value={name}
                                             onChange={(e) => setName(e.target.value)}
                                         />
@@ -282,7 +282,7 @@ export const Login: React.FC = () => {
                                             name="username"
                                             type="text"
                                             required
-                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue sm:text-sm transition-all"
                                             value={username}
                                             onChange={(e) => setUsername(e.target.value)}
                                             placeholder="unique_username"
@@ -301,7 +301,7 @@ export const Login: React.FC = () => {
                                                 name="organizationName"
                                                 type="text"
                                                 required={signupMode === 'CREATE'}
-                                                className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                                className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue sm:text-sm transition-all"
                                                 value={organizationName}
                                                 onChange={(e) => {
                                                     setOrganizationName(e.target.value);
@@ -311,10 +311,10 @@ export const Login: React.FC = () => {
                                             />
                                         </div>
                                         {suggestion && (
-                                            <div className="mt-2 p-3 bg-brand-green/5 border border-brand-green/20 rounded-xl flex items-center justify-between">
+                                            <div className="mt-2 p-3 bg-brand-blue/5 border border-brand-blue/20 rounded-xl flex items-center justify-between">
                                                 <div className="text-sm">
                                                     <span className="text-gray-500 font-medium">Suggestion: </span>
-                                                    <span className="text-brand-green font-bold">{suggestion}</span>
+                                                    <span className="text-brand-blue font-bold">{suggestion}</span>
                                                 </div>
                                                 <button
                                                     type="button"
@@ -322,7 +322,7 @@ export const Login: React.FC = () => {
                                                         setOrganizationName(suggestion);
                                                         setSuggestion('');
                                                     }}
-                                                    className="text-xs font-bold text-brand-green hover:bg-brand-green/10 px-2 py-1 rounded-md transition-colors"
+                                                    className="text-xs font-bold text-brand-blue hover:bg-brand-blue/10 px-2 py-1 rounded-md transition-colors"
                                                 >
                                                     Use this
                                                 </button>
@@ -342,7 +342,7 @@ export const Login: React.FC = () => {
                                                 id="org-search"
                                                 type="text"
                                                 required={signupMode === 'JOIN'}
-                                                className="appearance-none block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                                className="appearance-none block w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue sm:text-sm transition-all"
                                                 placeholder="Type to search..."
                                                 value={searchQuery}
                                                 onChange={(e) => {
@@ -355,7 +355,7 @@ export const Login: React.FC = () => {
                                             />
                                             {isSearching && (
                                                 <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                                    <Loader2 className="h-4 w-4 text-brand-green animate-spin" />
+                                                    <Loader2 className="h-4 w-4 text-brand-blue animate-spin" />
                                                 </div>
                                             )}
                                         </div>
@@ -371,7 +371,7 @@ export const Login: React.FC = () => {
                                                     searchResults.map((org) => (
                                                         <div
                                                             key={org.id}
-                                                            className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-brand-green/10 hover:text-brand-green text-gray-900 transition-colors"
+                                                            className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-brand-blue/10 hover:text-brand-blue text-gray-900 transition-colors"
                                                             onClick={() => {
                                                                 setOrganizationId(org.id);
                                                                 setSearchQuery(org.name); // Set input text to selected org
@@ -404,7 +404,7 @@ export const Login: React.FC = () => {
                                     type={isSignup ? "email" : "text"}
                                     autoComplete={isSignup ? "email" : "username"}
                                     required
-                                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                    className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue sm:text-sm transition-all"
                                     value={loginIdentifier}
                                     onChange={(e) => setLoginIdentifier(e.target.value)}
                                 />
@@ -423,7 +423,7 @@ export const Login: React.FC = () => {
                                     autoComplete="current-password"
                                     required
                                     minLength={6}
-                                    className="appearance-none block w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green sm:text-sm transition-all"
+                                    className="appearance-none block w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-blue/20 focus:border-brand-blue sm:text-sm transition-all"
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                 />
@@ -447,7 +447,7 @@ export const Login: React.FC = () => {
                         <button
                             type="submit"
                             disabled={loading}
-                            className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-lg shadow-green-200 text-sm font-bold text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 disabled:cursor-not-allowed transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+                            className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-brand-blue hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-blue disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                         >
                             {loading ? (
                                 <Loader2 className="h-5 w-5 animate-spin" />

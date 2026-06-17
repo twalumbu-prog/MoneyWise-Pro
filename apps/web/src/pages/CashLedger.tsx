@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
+import { departmentService } from '../services/department.service';
 import { Layout } from '../components/Layout';
 import { lencoService } from '../services/lenco.service';
 import {
@@ -186,6 +187,10 @@ const CashLedger: React.FC = () => {
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [editingNarration, setEditingNarration] = useState<{ [entryId: string]: string }>({});
 
+    // Org department config
+    const [useDepartments, setUseDepartments] = useState(false);
+    const [orgDepartments, setOrgDepartments] = useState<string[]>([]);
+
     // Search, Sort, and Filter State
     const [searchQuery, setSearchQuery] = useState('');
     const [sortBy, setSortBy] = useState<'DATE_DESC' | 'DATE_ASC' | 'AMOUNT_HIGH' | 'AMOUNT_LOW'>('DATE_DESC');
@@ -227,6 +232,12 @@ const CashLedger: React.FC = () => {
 
     useEffect(() => {
         loadAccounts();
+        departmentService.list()
+            .then(({ use_departments, departments }) => {
+                setUseDepartments(use_departments);
+                if (use_departments) setOrgDepartments(departments.map(d => d.name));
+            })
+            .catch(() => {});
     }, []);
 
     useEffect(() => {
@@ -356,16 +367,15 @@ const CashLedger: React.FC = () => {
 
     // Derived State for Filters
     const uniqueDepartments = React.useMemo(() => {
+        if (orgDepartments.length > 0) return orgDepartments;
         const depts = new Set<string>();
         if (Array.isArray(entries)) {
             entries.forEach(entry => {
-                if (entry.requisitions?.department) {
-                    depts.add(entry.requisitions.department);
-                }
+                if (entry.requisitions?.department) depts.add(entry.requisitions.department);
             });
         }
         return Array.from(depts).sort();
-    }, [entries]);
+    }, [entries, orgDepartments]);
 
     const uniqueAccounts = React.useMemo(() => {
         const accs = new Set<string>();
@@ -1737,7 +1747,7 @@ Status: VERIFIED`;
                                 <button
                                     onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
                                     className={`p-1.5 text-gray-500 hover:text-slate-900 active:scale-90 transition-all rounded-full ${
-                                        isFilterMenuOpen || filterDepartment !== 'ALL' || filterStatus !== 'ALL'
+                                        isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterStatus !== 'ALL'
                                             ? 'text-[#006AFF]'
                                             : ''
                                     }`}
@@ -1753,6 +1763,7 @@ Status: VERIFIED`;
                 {/* Mobile Filter Menu */}
                 {isFilterMenuOpen && (
                     <div className="mx-6 mb-5 p-4 bg-white rounded-3xl border border-gray-100 shadow-md flex flex-col gap-3.5 animate-in slide-in-from-top-2 duration-200">
+                        {useDepartments && uniqueDepartments.length > 0 && (
                         <div className="flex flex-col">
                             <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Department</span>
                             <select
@@ -1764,6 +1775,7 @@ Status: VERIFIED`;
                                 {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
                             </select>
                         </div>
+                        )}
                         <div className="flex flex-col">
                             <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-0.5">Status</span>
                             <select
@@ -2137,7 +2149,7 @@ Status: VERIFIED`;
                             <div className="w-[1px] h-4 bg-gray-200 mx-1" />
                             <button 
                                 onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                                className={`p-2 transition-colors rounded-xl hover:bg-white hover:shadow-sm ${isFilterMenuOpen || filterDepartment !== 'ALL' || filterAccount !== 'ALL' || filterStatus !== 'ALL' ? 'text-[#006AFF]' : 'text-gray-400'}`}
+                                className={`p-2 transition-colors rounded-xl hover:bg-white hover:shadow-sm ${isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterAccount !== 'ALL' || filterStatus !== 'ALL' ? 'text-[#006AFF]' : 'text-gray-400'}`}
                             >
                                 <Filter size={18} strokeWidth={2.5} />
                             </button>
@@ -2172,6 +2184,7 @@ Status: VERIFIED`;
                 {/* Filter Menu (Sub-toolbar) */}
                 {isFilterMenuOpen && (
                     <div className="flex flex-wrap items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm animate-in slide-in-from-top-2 duration-200">
+                        {useDepartments && uniqueDepartments.length > 0 && (
                         <div className="flex flex-col">
                             <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">Department</span>
                             <select
@@ -2183,6 +2196,7 @@ Status: VERIFIED`;
                                 {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
                             </select>
                         </div>
+                        )}
                         <div className="flex flex-col">
                             <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">Category Account</span>
                             <select

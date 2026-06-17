@@ -17,6 +17,7 @@ export interface Organization {
     lenco_secret_key?: string;
     payment_test_mode?: boolean;
     logo_url?: string;
+    use_departments?: boolean;
 }
 
 export const organizationService = {

@@ -30,6 +30,7 @@ import reportRoutes from './routes/report.routes';
 import lencoRoutes from './routes/lenco.routes';
 import productRoutes from './routes/product.routes';
 import paymentLinkRoutes from './routes/payment_link.routes';
+import departmentRoutes from './routes/department.routes';
 
 dotenv.config();
 
@@ -333,6 +334,7 @@ app.use('/ai', aiRoutes);
 app.use('/organizations', organizationRoutes);
 app.use('/organizations/products', productRoutes);
 app.use('/organizations/payment-links', paymentLinkRoutes);
+app.use('/departments', departmentRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
 app.use('/lenco', lencoRoutes);
