@@ -296,17 +296,22 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             });
 
         // Create DISBURSAL_SUCCESS message BEFORE EXPENSE_TRACKING to guarantee correct chat ordering.
+        // For wallet transfers that are not yet confirmed by Lenco we must NOT claim SUCCESS —
+        // mobile-money/bank payouts are asynchronous and frequently start as 'pending'. Reporting
+        // a false success here is what previously let a never-completed transfer reach COMPLETED.
+        const isUnconfirmedTransfer = isDigital && (req as any).lencoStatus !== 'successful';
         await RequisitionMessageService.createMessage({
             requisitionId: id,
             userId: cashier_id,
-            content: `Funds Disbursed: K${totalDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nMethod: ${payment_method || 'CASH'}\nRef: ${lencoReference || 'N/A'}\nStatus: SUCCESS`,
+            content: `Funds Disbursed: K${totalDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}\nMethod: ${payment_method || 'CASH'}\nRef: ${lencoReference || 'N/A'}\nStatus: ${isUnconfirmedTransfer ? 'PROCESSING' : 'SUCCESS'}`,
             type: 'SYSTEM',
             metadata: {
                 isSummary: true,
                 stage: 'DISBURSAL_SUCCESS',
                 disbursement_id: disbursementData.id,
                 payment_method,
-                amount: totalDeduction
+                amount: totalDeduction,
+                transferStatus: isDigital ? ((req as any).lencoStatus || 'pending') : 'n/a'
             }
         });
 
@@ -757,6 +762,106 @@ async function revertDisbursementAndCleanup(
             action: 'TRANSFER_FAILED',
             changes: { reverted_to: 'AUTHORISED' }
         });
+}
+
+export type TransferConfirmation =
+    | { confirmed: true }
+    | { confirmed: false; status: 'pending' | 'failed' | 'not_found'; message: string };
+
+/**
+ * Authoritative gate that confirms a requisition's wallet (digital) disbursement
+ * actually went through on Lenco BEFORE the requisition is allowed to advance to a
+ * terminal state (CATEGORIZED / COMPLETED).
+ *
+ * This deliberately does NOT trust the webhook or the in-memory polling backstop —
+ * either can be missed (webhook never delivered, process restarted), which is exactly
+ * how a transfer that never completed previously reached COMPLETED. Instead it asks
+ * Lenco directly at the moment of completion.
+ *
+ *   - Cash / non-digital, no reference, or test-mode (SIM-) payouts  -> confirmed
+ *   - A finalized DISBURSED ledger entry already exists              -> confirmed
+ *   - Lenco reports 'successful'                                     -> finalize ledger, confirmed
+ *   - Lenco reports 'failed' or not found                           -> revert disbursement, blocked
+ *   - Lenco reports 'pending'/processing (or the check errors)      -> blocked (fail-safe)
+ */
+export async function ensureWalletTransferConfirmed(
+    requisitionId: string,
+    organizationId: string
+): Promise<TransferConfirmation> {
+    const { data: disbursement } = await supabase
+        .from('disbursements')
+        .select('external_reference, payment_method, organization_id')
+        .eq('requisition_id', requisitionId)
+        .maybeSingle();
+
+    // Nothing to verify for cash / manual disbursements.
+    if (!disbursement) return { confirmed: true };
+    const method = (disbursement.payment_method || 'CASH').toUpperCase();
+    if (method === 'CASH' || !disbursement.external_reference) return { confirmed: true };
+
+    // Test-mode simulated payouts are always confirmed.
+    if (disbursement.external_reference.startsWith('SIM-PAY-')) return { confirmed: true };
+
+    // If the ledger was already finalized, the transfer succeeded earlier (webhook/poller).
+    const { data: existingLedger } = await supabase
+        .from('cashbook_entries')
+        .select('id')
+        .eq('requisition_id', requisitionId)
+        .eq('status', 'DISBURSED')
+        .maybeSingle();
+    if (existingLedger) return { confirmed: true };
+
+    const targetOrgId = disbursement.organization_id || organizationId;
+    const { data: orgKeys } = await supabase
+        .from('organizations')
+        .select('lenco_secret_key')
+        .eq('id', targetOrgId)
+        .single();
+    const secretKey = orgKeys?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+
+    let statusCheck;
+    try {
+        statusCheck = await LencoService.getTransferStatus(disbursement.external_reference, secretKey);
+    } catch (err: any) {
+        // Network/API error: do NOT complete on a guess — block and let the user retry.
+        console.error(`[Transfer Gate] Lenco status check errored for ${requisitionId}:`, err?.message);
+        return {
+            confirmed: false,
+            status: 'pending',
+            message: 'Could not confirm the wallet transfer with Lenco right now. Please try completing again in a moment.'
+        };
+    }
+
+    if (!statusCheck) {
+        await revertDisbursementAndCleanup(requisitionId, targetOrgId, disbursement.payment_method);
+        return {
+            confirmed: false,
+            status: 'not_found',
+            message: 'The transfer could not be found on Lenco. The disbursement has been reversed and the requisition reset to AUTHORISED — please retry the disbursement.'
+        };
+    }
+
+    if (statusCheck.status === 'successful') {
+        const actualFee = statusCheck.fee ? parseFloat(statusCheck.fee) : undefined;
+        await cashbookService.finalizeWalletDisbursementLedger(requisitionId, actualFee);
+        return { confirmed: true };
+    }
+
+    if (statusCheck.status === 'failed') {
+        await revertDisbursementAndCleanup(requisitionId, targetOrgId, disbursement.payment_method);
+        return {
+            confirmed: false,
+            status: 'failed',
+            message: `The transfer failed on Lenco: ${statusCheck.message || 'unknown error'}. The disbursement has been reversed and the requisition reset to AUTHORISED — please retry the disbursement.`
+        };
+    }
+
+    // pending / processing / any non-terminal state.
+    return {
+        confirmed: false,
+        status: 'pending',
+        message: 'The wallet transfer is still being processed by Lenco. This requisition can be completed once the payment is confirmed — please try again shortly.'
+    };
 }
 
 /**

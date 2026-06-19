@@ -9,6 +9,7 @@ import { QuickBooksService } from '../services/quickbooks.service';
 import { ocrService } from '../services/ai/ocr.service';
 import { LencoService } from '../services/lenco.service';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
+import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { RequisitionMessageService } from '../services/requisition_message.service';
 import { aiService } from '../services/ai/ai.service';
 import { AuditService } from '../services/audit.service';
@@ -1741,6 +1742,18 @@ export const approveCategorization = async (req: AuthRequest, res: Response): Pr
 
         // 2. Check for QuickBooks integration
         const organizationId = (req as any).user.organization_id;
+
+        // PAYMENT GATE: a wallet (digital) requisition cannot be finalized until Lenco has
+        // actually confirmed the payout. This prevents a still-pending or failed transfer
+        // from being marched all the way to COMPLETED through the normal UI steps.
+        const confirmation = await ensureWalletTransferConfirmed(id, organizationId);
+        if (!confirmation.confirmed) {
+            return res.status(409).json({
+                error: confirmation.message,
+                transferStatus: confirmation.status
+            });
+        }
+
         const { data: qbIntegration } = await supabase
             .from('integrations')
             .select('id')
