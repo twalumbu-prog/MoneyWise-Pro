@@ -376,16 +376,24 @@ export const cashbookService = {
 
         const walletId = disbursement.requisitions?.wallet_id;
 
-        // 2. Prevent Double Entry
+        // 2. Prevent Double Entry.
+        // Match ANY non-pending wallet-disbursement row for this requisition — not just
+        // status='DISBURSED'. Once Lenco confirms/syncs the transfer the row moves to
+        // COMPLETED, so the old DISBURSED-only check let a re-trigger (verify-disbursement,
+        // periodic Lenco sync, webhook, deferred poll, or the repair script) create a second
+        // outflow for an already-disbursed requisition. `voucher_id IS NULL` excludes the
+        // "Actual for Req" voucher entries, which also use entry_type='DISBURSEMENT'.
         const { data: existingLedger } = await supabase
             .from('cashbook_entries')
             .select('id')
             .eq('requisition_id', requisitionId)
-            .eq('status', 'DISBURSED')
-            .maybeSingle();
+            .eq('entry_type', 'DISBURSEMENT')
+            .is('voucher_id', null)
+            .neq('status', 'PENDING')
+            .limit(1);
 
-        if (existingLedger) {
-            console.log(`[Ledger Finalization] Ledger entry already exists for ${requisitionId}, skipping.`);
+        if (existingLedger && existingLedger.length > 0) {
+            console.log(`[Ledger Finalization] Disbursement ledger entry already exists for ${requisitionId}, skipping.`);
             return;
         }
 

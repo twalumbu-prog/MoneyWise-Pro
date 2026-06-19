@@ -802,14 +802,20 @@ export async function ensureWalletTransferConfirmed(
     // Test-mode simulated payouts are always confirmed.
     if (disbursement.external_reference.startsWith('SIM-PAY-')) return { confirmed: true };
 
-    // If the ledger was already finalized, the transfer succeeded earlier (webhook/poller).
+    // If a wallet-disbursement ledger row already exists in ANY non-pending state, the transfer
+    // was finalized earlier (immediate success, webhook, poller, or periodic sync). The old
+    // DISBURSED-only check missed rows already advanced to COMPLETED, so it re-verified and
+    // re-finalized already-confirmed transfers — creating duplicate outflows. `voucher_id IS NULL`
+    // keeps "Actual for Req" voucher entries (which also use entry_type='DISBURSEMENT') from matching.
     const { data: existingLedger } = await supabase
         .from('cashbook_entries')
         .select('id')
         .eq('requisition_id', requisitionId)
-        .eq('status', 'DISBURSED')
-        .maybeSingle();
-    if (existingLedger) return { confirmed: true };
+        .eq('entry_type', 'DISBURSEMENT')
+        .is('voucher_id', null)
+        .neq('status', 'PENDING')
+        .limit(1);
+    if (existingLedger && existingLedger.length > 0) return { confirmed: true };
 
     const targetOrgId = disbursement.organization_id || organizationId;
     const { data: orgKeys } = await supabase
@@ -908,15 +914,20 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
 
         if (statusCheck.status === 'successful') {
             // CRITICAL: Finalize Ledger and Fees NOW that we are sure it succeeded.
-            // Only skip if the DISBURSED entry specifically exists — NOT voucher/reconciliation entries
+            // Skip if a wallet-disbursement entry already exists in ANY non-pending state
+            // (DISBURSED or, once confirmed/synced, COMPLETED) — checking DISBURSED-only let
+            // re-verification of an already-completed transfer create a duplicate outflow.
+            // `voucher_id IS NULL` keeps "Actual for Req" voucher entries from matching.
             const { data: existingLedger } = await supabase
                 .from('cashbook_entries')
                 .select('id')
                 .eq('requisition_id', id)
-                .eq('status', 'DISBURSED')
-                .maybeSingle();
+                .eq('entry_type', 'DISBURSEMENT')
+                .is('voucher_id', null)
+                .neq('status', 'PENDING')
+                .limit(1);
 
-            if (!existingLedger) {
+            if (!existingLedger || existingLedger.length === 0) {
                 const actualFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
                 await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
             }

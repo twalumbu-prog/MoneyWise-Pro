@@ -1617,15 +1617,22 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     const requisitionId = matchedDisb?.requisition_id || null;
 
                     if (requisitionId) {
-                        // Check if ledger entry already exists for this requisition
+                        // Check if a wallet-disbursement ledger entry already exists for this
+                        // requisition in ANY non-pending state. Matching DISBURSED-only missed rows
+                        // already advanced to COMPLETED, so the sync re-finalized confirmed
+                        // disbursements into duplicate outflows. (finalizeWalletDisbursementLedger
+                        // self-guards too; this avoids the redundant call.) voucher_id IS NULL
+                        // excludes "Actual for Req" voucher entries.
                         const { data: existingLedger } = await supabase
                             .from('cashbook_entries')
                             .select('id')
                             .eq('requisition_id', requisitionId)
-                            .eq('status', 'DISBURSED')
-                            .maybeSingle();
+                            .eq('entry_type', 'DISBURSEMENT')
+                            .is('voucher_id', null)
+                            .neq('status', 'PENDING')
+                            .limit(1);
 
-                        if (!existingLedger) {
+                        if (!existingLedger || existingLedger.length === 0) {
                             console.log(`[Lenco Sync] Finalizing ledger for matched requisition ${requisitionId}`);
                             await cashbookService.finalizeWalletDisbursementLedger(requisitionId);
                             finalizedCount++;
