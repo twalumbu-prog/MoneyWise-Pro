@@ -1,6 +1,7 @@
 import express from 'express';
 import { supabase } from '../lib/supabase';
 import { LencoService } from '../services/lenco.service';
+import { seedDefaultAccounts } from '../services/account-provisioning.service';
 
 interface RegisterUserRequest {
     email: string;
@@ -252,6 +253,11 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
                 error: 'Failed to link user to organization: ' + uoError.message,
             });
         }
+
+        // Seed the baseline chart of accounts (MoneyWise wallet, Owner's Equity, Retained
+        // Earnings) so the org's balance sheet balances from the start. Best-effort — never
+        // blocks registration.
+        await seedDefaultAccounts(orgData.id);
 
         return res.status(201).json({
             message: 'User registered successfully. You can now log in.',

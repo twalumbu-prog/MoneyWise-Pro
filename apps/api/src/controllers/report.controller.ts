@@ -282,6 +282,48 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
             });
         }
 
+        // Retained Earnings: roll cumulative (income - expense) up to endDate onto the
+        // Retained Earnings equity row, mirroring the GL path (buildFinancialsFromGL).
+        // Without this the legacy balance sheet never reflects accumulated profit/loss, so
+        // Equity stays flat and Assets - Liabilities != Total Equity. Income increases it,
+        // expense decreases it — keeping the accounting equation satisfied from day one.
+        let cumIncome = 0;
+        let cumExpense = 0;
+        for (const acc of (accounts || [])) {
+            if (acc.type === 'INCOME') {
+                const cbs = (cbEntries || []).filter(e => e.account_id === acc.id && e.date <= endDate);
+                cumIncome += cbs.reduce((sum, e) => sum + (Number(e.debit || 0) - Number(e.credit || 0)), 0);
+            } else if (acc.type === 'EXPENSE') {
+                const lis = (lineItems || []).filter(item =>
+                    lineItemMatchesAccount(item, acc) && getLineItemDate(item).split('T')[0] <= endDate);
+                cumExpense += lis.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
+                const cbs = (cbEntries || []).filter(e => e.account_id === acc.id && !e.requisition_id && e.date <= endDate);
+                cumExpense += cbs.reduce((sum, e) => sum + (Number(e.credit || 0) - Number(e.debit || 0)), 0);
+            }
+        }
+        const retainedEarnings = cumIncome - cumExpense;
+
+        const isRetainedAccount = (acc: any) => acc.type === 'EQUITY' && (
+            acc.subtype === 'Retained Earnings' ||
+            acc.code === 'QB-73' ||
+            /retained earnings/i.test(acc.name || '')
+        );
+        const reAccount = (accounts || []).find(isRetainedAccount);
+        const reRow = reAccount ? financials.find(f => f.account_id === reAccount.id) : undefined;
+        if (reRow) {
+            reRow.total_amount += retainedEarnings;
+        } else if (Math.abs(retainedEarnings) > 0.005) {
+            // Org has no Retained Earnings account — surface a synthetic row so the
+            // balance sheet still balances.
+            financials.push({
+                account_id: 'RETAINED_EARNINGS',
+                account_name: 'Retained Earnings',
+                total_amount: retainedEarnings,
+                transaction_count: 0,
+                type: 'EQUITY'
+            });
+        }
+
         res.json(financials);
     } catch (error: any) {
         console.error('Error fetching expenditures:', error);
