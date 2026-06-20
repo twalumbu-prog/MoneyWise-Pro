@@ -757,9 +757,10 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         ledgerService.repostForRequisition(id)
             .catch(err => console.error(`[Ledger] repost after expense submission failed for req ${id}:`, err?.message));
 
-        res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
-        
-        // 5. Trigger AI Review & Categorization stage automatically ONLY if no change to submit
+        // 5. Advance the workflow synchronously, BEFORE responding. On serverless
+        // (Vercel) any work after res.json is terminated — performing the AI-review
+        // trigger as a post-response background task is exactly what left "no
+        // change" requisitions stuck at the expense stage with no categorization.
         const organizationId = (req as any).user.organization_id;
         
         // Calculate change for the summary message
@@ -806,11 +807,12 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
 
         if (change >= -0.01) {
             if (change <= 0.01) {
-                // No change, no excess. Trigger AI Review immediately.
-                await new Promise(resolve => setTimeout(resolve, 1500));
-                
-                // Trigger AI Review & Categorization
-                await triggerAIReview(id, organizationId, userId).catch(err => 
+                // No change, no excess: advance straight to AI categorization.
+                // Awaited (not delayed/backgrounded) so it reliably completes within
+                // the request lifetime, including on serverless. triggerAIReview
+                // handles its own errors and leaves a retryable AI_REVIEW card, so a
+                // failure here never blocks the (already-persisted) expense save.
+                await triggerAIReview(id, organizationId, userId).catch(err =>
                     console.error('[AI Review] Auto-trigger failed:', err)
                 );
             } else {
@@ -819,6 +821,8 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
         } else {
             console.log(`[updateRequisitionExpenses] Excess is K${Math.abs(change)}. Halting workflow at EXPENSED to allow user to disburse excess.`);
         }
+
+        res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
 
     } catch (error: any) {
         console.error('Error updating expenses:', error);

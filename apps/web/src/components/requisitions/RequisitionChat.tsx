@@ -92,28 +92,11 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
         processQueue();
     }, [pendingQueue, user?.id]);
 
-    // Auto-transition to Returned if no change identified
-    useEffect(() => {
-        const checkAutoTransition = async () => {
-            const hasNoChangeMessage = messages.some(m => 
-                (m.message_type === 'SYSTEM' || m.metadata?.stage === 'EXPENSE_SUMMARY') && 
-                m.content?.includes('No change to submit')
-            );
-
-            if (requisition.status === 'EXPENSED' && hasNoChangeMessage) {
-                try {
-                    await requisitionService.updateStatus(requisition.id, 'CHANGE_SUBMITTED');
-                    if (onStatusChange) onStatusChange();
-                } catch (err) {
-                    console.error('Failed to auto-transition status:', err);
-                }
-            }
-        };
-
-        if (messages.length > 0) {
-            checkAutoTransition();
-        }
-    }, [messages, requisition.status, requisition.id, onStatusChange]);
+    // NOTE: The "no change" case is advanced by the backend (the expense-tracking
+    // endpoint triggers AI categorization synchronously). A previous client-side
+    // auto-transition to CHANGE_SUBMITTED was removed here — it raced on a stale
+    // status and moved requisitions to CHANGE_SUBMITTED via a path that never
+    // triggered categorization, stranding them at a dead-end.
 
     const loadMessages = async (forceNoAnimation = false) => {
         if (isLoadingMessagesRef.current) return;
