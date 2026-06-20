@@ -4,7 +4,6 @@ import { memoryService } from './memory.service';
 import { ruleEngine } from './rule.engine';
 
 const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
-const OPENAI_MODEL = process.env.OPENAI_CATEGORIZATION_MODEL || 'gpt-4o';
 const GEMINI_MODEL = process.env.GEMINI_CATEGORIZATION_MODEL || 'gemini-2.5-flash';
 
 export interface SuggestionResult {
@@ -130,23 +129,6 @@ export const aiService = {
 
         const aiPromises: Promise<SuggestionResult>[] = [];
 
-        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-        if (OPENAI_API_KEY && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY') {
-            aiPromises.push(timeout(
-                this.callOpenAI(item.description, item.amount, accounts, item.receipt_data, examples).then(res => ({
-                    account_code: res.account_code,
-                    confidence: res.confidence,
-                    reasoning: `OpenAI: ${res.reasoning || 'Categorized'}`,
-                    method: 'AI-OPENAI',
-                })),
-                12000,
-                'OpenAI'
-            ).catch(err => {
-                console.warn(`[AI Service] OpenAI failed: ${err.message}`);
-                return { model: 'OpenAI', error: err.message } as any;
-            }));
-        }
-
         const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
         if (GEMINI_API_KEY && GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY') {
             aiPromises.push(timeout(
@@ -187,7 +169,7 @@ export const aiService = {
 
         if (validResults.length === 0) {
             const failureDetails = results.map((r: any) => {
-                const modelName = r?.method?.includes('OPENAI') ? 'OpenAI' : (r?.method?.includes('GEMINI') ? 'Gemini' : (r?.model || 'AI'));
+                const modelName = r?.method?.includes('GEMINI') ? 'Gemini' : (r?.model || 'AI');
                 if (!r || r.error) return `${modelName}: ${r?.error || 'Unknown Error'}`;
                 return `${modelName}: invalid code "${r.account_code}"`;
             }).join('; ');
@@ -230,31 +212,6 @@ export const aiService = {
         const acc = this.findAccountById(accounts, e.account_id);
         if (!acc) return null;
         return { description: e.description, account_code: this.codeOf(acc), account_name: acc.name ?? acc.Name };
-    },
-
-    async callOpenAI(description: string, amount: number, accounts: any[], receipt_data?: any, examples: CategorizationExample[] = []) {
-        const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data, examples);
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                model: OPENAI_MODEL,
-                temperature: 0,
-                messages: [
-                    { role: 'system', content: CATEGORIZATION_SYSTEM_PROMPT },
-                    { role: 'user', content: userPrompt },
-                ],
-                response_format: { type: 'json_object' },
-            }),
-        });
-
-        if (!response.ok) throw new Error(`OpenAI API Status ${response.status}`);
-        const data = await response.json();
-        return JSON.parse(data.choices[0].message.content);
     },
 
     async suggestCategoryGemini(accounts: any[], description: string, amount: number, receipt_data?: any, examples: CategorizationExample[] = []): Promise<SuggestionResult> {

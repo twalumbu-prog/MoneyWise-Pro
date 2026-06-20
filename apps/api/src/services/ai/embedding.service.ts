@@ -1,47 +1,56 @@
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
+
+// gemini-embedding-001 supports Matryoshka truncation, so we request 1536 dims
+// to stay compatible with the existing vector(1536) column / match_ai_memory RPC.
+const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
+const EMBEDDING_DIMENSIONS = Number(process.env.EMBEDDING_DIMENSIONS || 1536);
 
 export class EmbeddingService {
     /**
-     * Generate a vector embedding for a given text using OpenAI.
+     * Generate a vector embedding for a given text using Google Gemini.
      */
     async generateEmbedding(text: string): Promise<number[] | null> {
         if (AI_TEST_MODE) {
-            // Generate a deterministic mock vector (1536 dims) for testing
-            // Simple hash-like approach: fill with a deterministic pattern
-            const mockVector = new Array(1536).fill(0);
+            // Deterministic mock vector matching the configured dimension.
+            const mockVector = new Array(EMBEDDING_DIMENSIONS).fill(0);
             for (let i = 0; i < text.length; i++) {
-                mockVector[i % 1536] += text.charCodeAt(i) / 255;
+                mockVector[i % EMBEDDING_DIMENSIONS] += text.charCodeAt(i) / 255;
             }
             return mockVector;
         }
 
-        if (!OPENAI_API_KEY || OPENAI_API_KEY === 'YOUR_OPENAI_API_KEY') {
-            console.warn('[EmbeddingService] OpenAI API Key missing or default. Skipping embedding.');
+        if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
+            console.warn('[EmbeddingService] Gemini API key missing or default. Skipping embedding.');
             return null;
         }
 
         try {
-            const response = await fetch('https://api.openai.com/v1/embeddings', {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`;
+            const response = await fetch(url, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    input: text.replace(/\n/g, ' '),
-                    model: 'text-embedding-3-small' // 1536 dimensions
-                })
+                    model: `models/${EMBEDDING_MODEL}`,
+                    content: { parts: [{ text: text.replace(/\n/g, ' ') }] },
+                    taskType: 'SEMANTIC_SIMILARITY',
+                    outputDimensionality: EMBEDDING_DIMENSIONS,
+                }),
             });
 
             if (!response.ok) {
-                const error = await response.json();
-                console.error('[EmbeddingService] OpenAI Error:', error);
+                const error = await response.text();
+                console.error('[EmbeddingService] Gemini Error:', error);
                 return null;
             }
 
             const data = await response.json();
-            return data.data[0].embedding;
+            const values = data?.embedding?.values;
+            if (!Array.isArray(values)) {
+                console.warn('[EmbeddingService] Gemini returned no embedding values.');
+                return null;
+            }
+            return values;
         } catch (err) {
             console.error('[EmbeddingService] Fetch Error:', err);
             return null;
