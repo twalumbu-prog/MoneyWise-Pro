@@ -145,12 +145,25 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
             if (trulyNew.length > 0) {
                 setPendingQueue(prev => [...prev, ...trulyNew]);
             }
-            
-            if (updated.length > 0) {
-                setMessages(prev => prev.map(m => {
-                    const update = updated.find(u => u.id === m.id);
-                    return update || m;
-                }));
+
+            // Reconcile deletions: drop lifecycle/system messages the backend has
+            // removed (e.g. pruned on revert to draft, or duplicate AI_REVIEW cards
+            // collapsed on re-run) so the thread mirrors server state. User chat
+            // messages are preserved even if a poll races an optimistic send.
+            const serverIds = new Set(data.map(m => m.id));
+            const isLifecycle = (m: RequisitionMessage) => !!(m.metadata?.stage) || m.message_type === 'SYSTEM' || !!(m.metadata?.isCategorizationApproval) || !!(m.metadata?.isApprovalAction);
+            const hasRemovals = messagesRef.current.some(m => !serverIds.has(m.id) && isLifecycle(m));
+
+            if (updated.length > 0 || hasRemovals) {
+                setMessages(prev => prev
+                    .filter(m => serverIds.has(m.id) || !isLifecycle(m))
+                    .map(m => updated.find(u => u.id === m.id) || m)
+                );
+            }
+
+            if (hasRemovals) {
+                // Also clear any queued-but-not-yet-rendered messages that vanished.
+                setPendingQueue(prev => prev.filter(m => serverIds.has(m.id)));
             }
 
             if (trulyNew.length === 0 && isTypingRef.current && pendingQueueRef.current.length === 0) {
@@ -211,7 +224,7 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
             try {
                 // 1. Send the user's message to the backend FIRST to ensure it gets an older database timestamp
                 // We do NOT use handleSendMessage here because we want to defer the UI rendering.
-                const msgPromise = requisitionService.sendMessage(requisition.id, 'Approved');
+                const msgPromise = requisitionService.sendMessage(requisition.id, 'Approved', 'CHAT', { isApprovalAction: true });
                 
                 // Give the DB a tiny head start to guarantee timestamp chronology
                 await new Promise(r => setTimeout(r, 150));
@@ -246,7 +259,7 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
         } else if (action === 'REJECT') {
             try {
                 // 1. Send message to backend first for chronological integrity
-                const msgPromise = requisitionService.sendMessage(requisition.id, 'Rejected');
+                const msgPromise = requisitionService.sendMessage(requisition.id, 'Rejected', 'CHAT', { isApprovalAction: true });
                 await new Promise(r => setTimeout(r, 150));
                 
                 // 2. Update backend status

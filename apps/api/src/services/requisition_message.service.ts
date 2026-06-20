@@ -1,5 +1,23 @@
 import { supabase } from '../lib/supabase';
 
+// Canonical order of the requisition lifecycle stages. Used to prune messages
+// that belong to stages *after* the one a requisition is being reverted to, so
+// the chat doesn't keep stale cards (e.g. a "disburse" prompt after a revert to
+// draft) cluttering the thread.
+const STAGE_ORDER = [
+    'APPROVAL',
+    'DISBURSAL',
+    'DISBURSAL_SUCCESS',
+    'EXPENSE_TRACKING',
+    'EXPENSE_SUMMARY',
+    'CHANGE_SUBMITTED',
+    'AI_REVIEW',
+    'AI_REVIEW_DISABLED',
+    'QUICKBOOKS_POSTING',
+    'POSTED_SUCCESS',
+    'COMPLETED',
+];
+
 export class RequisitionMessageService {
     static async createMessage(params: {
         requisitionId: string;
@@ -40,6 +58,52 @@ export class RequisitionMessageService {
             ...data,
             user_name: data.user?.name || 'System'
         };
+    }
+
+    /**
+     * Delete every lifecycle message that belongs to a stage occurring strictly
+     * after `keepThroughStage` (e.g. reverting an AUTHORISED requisition back to
+     * DRAFT should remove the DISBURSAL prompt and anything beyond it). Messages
+     * with no recognised `metadata.stage` (user chat, action logs) are preserved.
+     */
+    static async pruneMessagesAfterStage(requisitionId: string, keepThroughStage: string) {
+        const keepIdx = STAGE_ORDER.indexOf(keepThroughStage);
+        if (keepIdx === -1) {
+            console.warn(`[RequisitionMessageService] pruneMessagesAfterStage: unknown stage "${keepThroughStage}"`);
+            return;
+        }
+
+        const { data: messages, error } = await supabase
+            .from('requisition_messages')
+            .select('id, metadata')
+            .eq('requisition_id', requisitionId);
+
+        if (error || !messages) {
+            if (error) console.error('[RequisitionMessageService] Prune fetch failed:', error);
+            return;
+        }
+
+        const idsToDelete = messages
+            .filter(m => {
+                const stage = m.metadata?.stage;
+                if (!stage) return false; // keep non-lifecycle messages
+                const idx = STAGE_ORDER.indexOf(stage);
+                return idx > keepIdx; // delete strictly-later stages
+            })
+            .map(m => m.id);
+
+        if (idsToDelete.length === 0) return;
+
+        const { error: delError } = await supabase
+            .from('requisition_messages')
+            .delete()
+            .in('id', idsToDelete);
+
+        if (delError) {
+            console.error('[RequisitionMessageService] Prune delete failed:', delError);
+        } else {
+            console.log(`[RequisitionMessageService] Pruned ${idsToDelete.length} stale message(s) after ${keepThroughStage} for ${requisitionId}`);
+        }
     }
 
 

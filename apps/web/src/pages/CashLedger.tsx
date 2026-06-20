@@ -253,6 +253,21 @@ const CashLedger: React.FC = () => {
         }
     };
 
+    // Refresh ledger data AND the currently-open requisition so status-driven UI
+    // (e.g. approve/reject buttons after a revert to draft) updates instantly
+    // without needing to close and reopen the modal.
+    const handleStatusChange = async () => {
+        await loadData();
+        if (selectedRequisition) {
+            try {
+                const updated = await requisitionService.getById(selectedRequisition.id);
+                setSelectedRequisition(updated as any);
+            } catch (err) {
+                console.error('Failed to refresh requisition after status change:', err);
+            }
+        }
+    };
+
     const loadData = async () => {
         setLoading(true);
         try {
@@ -2604,7 +2619,7 @@ Status: VERIFIED`;
                     setIsRequisitionModalOpen(false);
                     setSelectedRequisition(null);
                 }}
-                onStatusChange={loadData}
+                onStatusChange={handleStatusChange}
             />
 
             <ExportLedgerModal

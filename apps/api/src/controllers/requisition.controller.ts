@@ -1403,20 +1403,32 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
             .update({ status: 'CATEGORIZING', updated_at: new Date().toISOString() })
             .eq('id', requisitionId);
 
-        // 2. Find or create a single AI_REVIEW message — NEVER create a second one.
+        // 2. Find or create a single AI_REVIEW message — NEVER keep more than one.
+        // Re-running categorization must reuse the existing card and collapse any
+        // stale duplicates rather than appending a fresh one each time.
         const { data: existingMsgRows } = await supabase
             .from('requisition_messages')
             .select('id')
             .eq('requisition_id', requisitionId)
             .contains('metadata', { stage: 'AI_REVIEW' })
-            .order('created_at', { ascending: false })
-            .limit(1);
+            .order('created_at', { ascending: false });
 
         const existingMsg = existingMsgRows?.[0] || null;
 
         let aiMessageId: string;
 
         if (existingMsg) {
+            // Remove any duplicate AI_REVIEW cards left over from earlier runs,
+            // keeping only the most recent one which we reuse below.
+            const staleIds = (existingMsgRows || []).slice(1).map(r => r.id);
+            if (staleIds.length > 0) {
+                const { error: dedupErr } = await supabase
+                    .from('requisition_messages')
+                    .delete()
+                    .in('id', staleIds);
+                if (dedupErr) console.error('[AI Review] Failed to remove duplicate AI_REVIEW messages:', dedupErr);
+            }
+
             // Update the existing message to "thinking" state
             await RequisitionMessageService.updateMessage(existingMsg.id, {
                 content: 'AI is re-categorizing your transaction. Please wait...',
@@ -1812,6 +1824,18 @@ export const approveCategorization = async (req: AuthRequest, res: Response): Pr
             .eq('id', id);
 
         if (error) throw error;
+
+        // Re-approval (user edited the mapping after a prior approval and approved
+        // again): remove the post-approval messages from the previous run so they
+        // aren't duplicated. Prune everything after the AI_REVIEW stage
+        // (QUICKBOOKS_POSTING / COMPLETED / POSTED_SUCCESS) and the prior
+        // "Categorization Approved" bubble, then re-create them fresh below.
+        await RequisitionMessageService.pruneMessagesAfterStage(id, 'AI_REVIEW');
+        await supabase
+            .from('requisition_messages')
+            .delete()
+            .eq('requisition_id', id)
+            .contains('metadata', { isCategorizationApproval: true });
 
         // Send "Approved" message to the right (Blue)
         await RequisitionMessageService.createMessage({
@@ -2416,7 +2440,27 @@ export const revertToDraft = async (req: AuthRequest, res: Response): Promise<an
 
         if (updateError) throw updateError;
 
-        // 5. Log the event
+        // 5. Remove now-irrelevant lifecycle messages from later stages (e.g. the
+        // "How would you like to disburse?" prompt) so the reverted thread isn't
+        // cluttered with cards that no longer apply.
+        await RequisitionMessageService.pruneMessagesAfterStage(id, 'APPROVAL');
+
+        // Also remove the "Approved"/"Rejected" action bubbles so the reverted
+        // thread reflects a fresh, pre-approval state. Match the metadata marker
+        // (new messages) and the exact action text (legacy messages without it).
+        await supabase
+            .from('requisition_messages')
+            .delete()
+            .eq('requisition_id', id)
+            .contains('metadata', { isApprovalAction: true });
+        await supabase
+            .from('requisition_messages')
+            .delete()
+            .eq('requisition_id', id)
+            .eq('message_type', 'CHAT')
+            .in('content', ['Approved', 'Rejected']);
+
+        // 6. Log the event
         await RequisitionMessageService.createMessage({
             requisitionId: id,
             userId: user_id,
