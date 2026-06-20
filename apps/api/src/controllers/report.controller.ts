@@ -2,6 +2,19 @@ import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
 /**
+ * Match a requisition line item to an account. We match on the internal account_id, or
+ * on qb_account_id only when the account actually has one. Without the null guard, two
+ * accounts that both have a NULL qb_account_id would spuriously match every uncategorized
+ * line item (null === null), inflating every account row to the same total/count and
+ * breaking the balance sheet. (Orgs whose chart of accounts has no QuickBooks mapping —
+ * e.g. BenchMark — have qb_account_id NULL on every account.)
+ */
+function lineItemMatchesAccount(item: any, acc: any): boolean {
+    if (item.account_id && item.account_id === acc.id) return true;
+    return acc.qb_account_id != null && item.qb_account_id === acc.qb_account_id;
+}
+
+/**
  * An org reads its reports from the double-entry GL only once its history is fully
  * posted (no cashbook entry is missing a journal entry). Until then it stays on the
  * legacy per-type computation, so partially-backfilled orgs never show a wrong
@@ -180,7 +193,7 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                 // Source A: Requisition line items matching this account within date range
                 const matchingLIs = (lineItems || []).filter(item => {
                     const itemDate = getLineItemDate(item).split('T')[0];
-                    const matchAcc = item.account_id === acc.id || item.qb_account_id === acc.qb_account_id;
+                    const matchAcc = lineItemMatchesAccount(item, acc);
                     return matchAcc && itemDate >= startDate && itemDate <= endDate;
                 });
                 const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
@@ -219,7 +232,7 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                         txCount = matchingCBs.length;
                     } else {
                         // Matches a specific subwallet
-                        const matchedWallet = (wallets || []).find(w => w.name === acc.name || w.qb_account_id === acc.qb_account_id);
+                        const matchedWallet = (wallets || []).find(w => w.name === acc.name || (acc.qb_account_id != null && w.qb_account_id === acc.qb_account_id));
                         if (matchedWallet) {
                             const matchingCBs = (cbEntries || []).filter(entry => entry.wallet_id === matchedWallet.id);
                             totalAmount = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
@@ -233,7 +246,7 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                             // General Bank Account
                             const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
                             const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
-                            const matchingLIs = (lineItems || []).filter(item => item.account_id === acc.id || item.qb_account_id === acc.qb_account_id);
+                            const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
                             const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
                             totalAmount = cbSum + liSum;
                             txCount = matchingCBs.length + matchingLIs.length;
@@ -243,7 +256,7 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                     // Other Asset
                     const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
                     const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.credit || 0) - Number(entry.debit || 0)), 0);
-                    const matchingLIs = (lineItems || []).filter(item => item.account_id === acc.id || item.qb_account_id === acc.qb_account_id);
+                    const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
                     const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
                     totalAmount = cbSum + liSum;
                     txCount = matchingCBs.length + matchingLIs.length;
@@ -253,7 +266,7 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                 // Cumulative (up to endDate)
                 const matchingCBs = (cbEntries || []).filter(entry => entry.account_id === acc.id);
                 const cbSum = matchingCBs.reduce((sum, entry) => sum + (Number(entry.debit || 0) - Number(entry.credit || 0)), 0);
-                const matchingLIs = (lineItems || []).filter(item => item.account_id === acc.id || item.qb_account_id === acc.qb_account_id);
+                const matchingLIs = (lineItems || []).filter(item => lineItemMatchesAccount(item, acc));
                 const liSum = matchingLIs.reduce((sum, item) => sum + Number(item.actual_amount || item.estimated_amount || 0), 0);
 
                 totalAmount = cbSum - liSum;
