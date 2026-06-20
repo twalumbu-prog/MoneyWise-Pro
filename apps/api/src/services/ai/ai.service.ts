@@ -1,15 +1,24 @@
 
-import { CATEGORIZATION_SYSTEM_PROMPT, buildCategorizationPrompt } from './prompts';
+import { CATEGORIZATION_SYSTEM_PROMPT, buildCategorizationPrompt, CategorizationExample } from './prompts';
 import { memoryService } from './memory.service';
 import { ruleEngine } from './rule.engine';
 
 const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
+const OPENAI_MODEL = process.env.OPENAI_CATEGORIZATION_MODEL || 'gpt-4o';
+const GEMINI_MODEL = process.env.GEMINI_CATEGORIZATION_MODEL || 'gemini-2.5-flash';
 
 export interface SuggestionResult {
     account_code: string | null;
     confidence: number;
     reasoning: string;
     method: string;
+}
+
+export interface ClassifyItem {
+    description: string;
+    amount: number;
+    receipt_data?: any;
+    organizationId?: string;
 }
 
 export const aiService = {
@@ -21,29 +30,27 @@ export const aiService = {
     /**
      * Parallelized batch suggestion with controlled concurrency.
      */
-    async suggestBatch(accounts: any[], lineItems: any[]): Promise<SuggestionResult[]> {
+    async suggestBatch(accounts: any[], lineItems: ClassifyItem[]): Promise<SuggestionResult[]> {
         console.log(`[AI Service] suggestBatch: Processing ${lineItems.length} items.`);
-
-        // 1. Ensure rules are loaded
         await ruleEngine.loadRules();
 
-        // Controlled concurrency: process in chunks of 5
         const CHUNK_SIZE = 5;
         const allResults: SuggestionResult[] = [];
-
         for (let i = 0; i < lineItems.length; i += CHUNK_SIZE) {
             const chunk = lineItems.slice(i, i + CHUNK_SIZE);
-            const chunkPromises = chunk.map(item => this.classifyItem(accounts, item));
-            const chunkResults = await Promise.all(chunkPromises);
+            const chunkResults = await Promise.all(chunk.map(item => this.classifyItem(accounts, item)));
             allResults.push(...chunkResults);
         }
-
         return allResults;
     },
 
-    async classifyItem(accounts: any[], item: { description: string, amount: number, receipt_data?: any }): Promise<SuggestionResult> {
+    /**
+     * Hybrid single-item classification: deterministic rules + org memory,
+     * then the model ensemble. Account references are always resolved to a
+     * concrete COA code (never a raw UUID).
+     */
+    async classifyItem(accounts: any[], item: ClassifyItem): Promise<SuggestionResult> {
         if (AI_TEST_MODE) {
-            // ... (keep mock logic)
             const desc = item.description.toLowerCase();
             if (desc.includes('kfc') || desc.includes('subway') || desc.includes('pizza') || desc.includes('diner')) return { account_code: '1001', confidence: 0.95, reasoning: 'MOCK: Staff Meal AI', method: 'AI' };
             if (desc.includes('microsoft') || desc.includes('amazon') || desc.includes('oracle') || desc.includes('zesco')) return { account_code: '4000', confidence: 0.95, reasoning: 'MOCK: Vendor AI', method: 'AI' };
@@ -54,51 +61,85 @@ export const aiService = {
             return { account_code: '9999', confidence: 0.50, reasoning: 'MOCK: Generic fallback', method: 'AI' };
         }
 
-        // TIER 1: Rule Engine (Pattern Matching) - Highest Priority
-        const ruleMatch = ruleEngine.match(item.description, item.amount);
+        // TIER 1: Rule Engine — resolve the rule's target account (UUID) to its COA code.
+        const ruleMatch = ruleEngine.match(item.description, item.amount, undefined, item.organizationId);
         if (ruleMatch.matched && ruleMatch.accountId) {
-            console.log(`[AI Service] Rule Match: ${item.description} -> ${ruleMatch.accountId}`);
-            return {
-                account_code: ruleMatch.accountId,
-                confidence: ruleMatch.confidence,
-                reasoning: ruleMatch.reasoning,
-                method: 'RULE'
-            };
+            const acc = this.findAccountById(accounts, ruleMatch.accountId);
+            if (acc) {
+                return {
+                    account_code: this.codeOf(acc),
+                    confidence: ruleMatch.confidence,
+                    reasoning: ruleMatch.reasoning,
+                    method: 'RULE',
+                };
+            }
         }
 
-        // TIER 2: Memory Service (Historical Learning) - Second Priority
-        const memoryMatch = await memoryService.lookup({ description: item.description, amount: item.amount });
-        if (memoryMatch) {
-            console.log(`[AI Service] Memory Match: ${item.description} -> ${memoryMatch.account_id}`);
-            return {
-                account_code: memoryMatch.account_id,
-                confidence: memoryMatch.confidence,
-                reasoning: 'Matched historical transaction memory.',
-                method: 'MEMORY'
-            };
+        // TIER 2: Organizational memory (only when we know the org).
+        if (item.organizationId) {
+            const memoryMatch = await memoryService.lookup({
+                description: item.description,
+                amount: item.amount,
+                organizationId: item.organizationId,
+            });
+            if (memoryMatch) {
+                const acc = this.findAccountById(accounts, memoryMatch.account_id);
+                if (acc) {
+                    return {
+                        account_code: this.codeOf(acc),
+                        confidence: memoryMatch.confidence,
+                        reasoning: 'Matched a previously confirmed transaction for this organization.',
+                        method: memoryMatch.method,
+                    };
+                }
+            }
         }
 
-        // TIER 3: AI Models (Ensemble Inference) - Fallback
-        const timeout = <T>(promise: Promise<T>, ms: number, name: string): Promise<T> => {
-            return new Promise((resolve, reject) => {
+        // TIER 3: Model ensemble (few-shot grounded when an org is known).
+        let examples: CategorizationExample[] = [];
+        if (item.organizationId) {
+            examples = (await memoryService.getExamples(item.organizationId, item.description, 5))
+                .map(e => this.exampleFor(accounts, e))
+                .filter((e): e is CategorizationExample => !!e);
+        }
+        return this.classifyWithModels(accounts, item, examples);
+    },
+
+    /**
+     * PURE model ensemble (OpenAI + Gemini) with strict exact-code validation.
+     * No rule/memory tiers here — callers that want those use classifyItem or
+     * the DecisionRouter. Used directly by the DecisionRouter for its AI tier.
+     */
+    async classifyWithModels(accounts: any[], item: ClassifyItem, examples: CategorizationExample[] = []): Promise<SuggestionResult> {
+        if (AI_TEST_MODE) {
+            const desc = item.description.toLowerCase();
+            if (desc.includes('kfc') || desc.includes('subway') || desc.includes('pizza') || desc.includes('diner')) return { account_code: '1001', confidence: 0.95, reasoning: 'MOCK: Staff Meal AI', method: 'AI' };
+            if (desc.includes('microsoft') || desc.includes('amazon') || desc.includes('oracle') || desc.includes('zesco')) return { account_code: '4000', confidence: 0.95, reasoning: 'MOCK: Vendor AI', method: 'AI' };
+            if (desc.includes('office') || desc.includes('stationery') || desc.includes('paper')) return { account_code: '6101', confidence: 0.95, reasoning: 'MOCK: Office Supplies AI', method: 'AI' };
+            if (desc.includes('uber') || desc.includes('emirates') || desc.includes('hilton') || desc.includes('cab')) return { account_code: '6200', confidence: 0.95, reasoning: 'MOCK: Travel AI', method: 'AI' };
+            if (desc.includes('water') || desc.includes('electric') || desc.includes('waste')) return { account_code: '6100', confidence: 0.98, reasoning: 'MOCK: Utility AI', method: 'AI' };
+            if (desc.includes('consulting') || desc.includes('fee') || desc.includes('sale') || desc.includes('revenue')) return { account_code: '4100', confidence: 0.98, reasoning: 'MOCK: Income AI', method: 'AI' };
+            return { account_code: '9999', confidence: 0.50, reasoning: 'MOCK: Generic fallback', method: 'AI' };
+        }
+
+        const timeout = <T>(promise: Promise<T>, ms: number, name: string): Promise<T> =>
+            new Promise((resolve, reject) => {
                 const timer = setTimeout(() => reject(new Error(`${name} timed out after ${ms}ms`)), ms);
                 promise.then(res => { clearTimeout(timer); resolve(res); }).catch(err => { clearTimeout(timer); reject(err); });
             });
-        };
 
         const aiPromises: Promise<SuggestionResult>[] = [];
 
-        // 1. OpenAI (Primary AI)
         const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
         if (OPENAI_API_KEY && OPENAI_API_KEY !== 'YOUR_OPENAI_API_KEY') {
             aiPromises.push(timeout(
-                this.callOpenAI(item.description, item.amount, accounts, item.receipt_data).then(res => ({
+                this.callOpenAI(item.description, item.amount, accounts, item.receipt_data, examples).then(res => ({
                     account_code: res.account_code,
                     confidence: res.confidence,
                     reasoning: `OpenAI: ${res.reasoning || 'Categorized'}`,
-                    method: 'AI-OPENAI'
+                    method: 'AI-OPENAI',
                 })),
-                10000,
+                12000,
                 'OpenAI'
             ).catch(err => {
                 console.warn(`[AI Service] OpenAI failed: ${err.message}`);
@@ -106,12 +147,11 @@ export const aiService = {
             }));
         }
 
-        // 2. Gemini (Secondary AI / Diversity)
         const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
         if (GEMINI_API_KEY && GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY') {
             aiPromises.push(timeout(
-                this.suggestCategoryGemini(accounts, item.description, item.amount, item.receipt_data),
-                10000,
+                this.suggestCategoryGemini(accounts, item.description, item.amount, item.receipt_data, examples),
+                12000,
                 'Gemini'
             ).catch(err => {
                 console.warn(`[AI Service] Gemini failed: ${err.message}`);
@@ -119,35 +159,29 @@ export const aiService = {
             }));
         }
 
-        // 3. ENSEMBLE RANKING & VALIDATION
         const results = await Promise.all(aiPromises);
 
-        // Filter and validate results: MUST be in the provided accounts list
-        const validResults = results.filter((r: SuggestionResult) => {
-            if (!r || !r.account_code) return false;
+        // Strict validation: the suggested code MUST be an EXACT member of the COA
+        // (by code, or by name as a fallback for models that echo the name). This is
+        // what prevents "correct logic, wrong account" from loose substring matching.
+        const codeMap = new Map<string, any>();
+        const nameMap = new Map<string, any>();
+        for (const a of accounts) {
+            codeMap.set(String(a.code ?? a.AcctNum ?? '').trim().toLowerCase(), a);
+            nameMap.set(String(a.name ?? a.Name ?? '').trim().toLowerCase(), a);
+        }
+
+        const validResults = results.filter((r: any): r is SuggestionResult => {
+            if (!r || r.error || !r.account_code) return false;
             if (r.account_code === 'UNCATEGORIZED') return true;
 
-            // Robust matching: Try exact, then normalized, then partial
-            const normalizedSuggested = String(r.account_code).trim().toLowerCase();
-            
-            const matchedAccount = accounts.find((a: any) => {
-                const normalizedCode = String(a.code).trim().toLowerCase();
-                // 1. Exact match
-                if (normalizedCode === normalizedSuggested) return true;
-                // 2. Suggested code contains the account code (e.g. "1001 - Staff Meal" contains "1001")
-                if (normalizedSuggested.includes(normalizedCode)) return true;
-                // 3. Account code contains the suggested code (less common but possible)
-                if (normalizedCode.includes(normalizedSuggested)) return true;
-                return false;
-            });
-
-            if (matchedAccount) {
-                // Normalize the suggestion to the actual database code
-                r.account_code = String(matchedAccount.code);
+            const key = String(r.account_code).trim().toLowerCase();
+            const matched = codeMap.get(key) || nameMap.get(key);
+            if (matched) {
+                r.account_code = String(matched.code ?? matched.AcctNum ?? '');
                 return true;
             }
-
-            console.warn(`[AI Service] Hallucination detected: AI suggested "${r.account_code}" but no matching code was found in COA.`);
+            console.warn(`[AI Service] Rejected non-member code "${r.account_code}" (not exact in COA).`);
             return false;
         });
 
@@ -155,39 +189,67 @@ export const aiService = {
             const failureDetails = results.map((r: any) => {
                 const modelName = r?.method?.includes('OPENAI') ? 'OpenAI' : (r?.method?.includes('GEMINI') ? 'Gemini' : (r?.model || 'AI'));
                 if (!r || r.error) return `${modelName}: ${r?.error || 'Unknown Error'}`;
-                return `${modelName}: Suggested invalid code "${r.account_code}"`;
+                return `${modelName}: invalid code "${r.account_code}"`;
             }).join('; ');
 
             console.warn(`[AI Service] No valid suggestions: ${failureDetails}`);
             return {
                 account_code: 'UNCATEGORIZED',
                 confidence: 0,
-                reasoning: `AI could not find a matching account in your Chart of Accounts. Details: ${failureDetails}. Please select the category manually.`,
-                method: 'AI-FAILED'
+                reasoning: `AI could not match an account in your Chart of Accounts. Details: ${failureDetails}. Please select the category manually.`,
+                method: 'AI-FAILED',
             };
         }
 
-        // Rank by confidence (descending)
-        return validResults.sort((a: SuggestionResult, b: SuggestionResult) => b.confidence - a.confidence)[0];
+        // Agreement boost: if both models independently chose the same code, trust it more.
+        const byCode = new Map<string, SuggestionResult[]>();
+        for (const r of validResults) {
+            const k = String(r.account_code);
+            (byCode.get(k) || byCode.set(k, []).get(k)!).push(r);
+        }
+        let best = validResults.sort((a, b) => b.confidence - a.confidence)[0];
+        for (const [, group] of byCode) {
+            if (group.length > 1) {
+                const top = group.sort((a, b) => b.confidence - a.confidence)[0];
+                best = { ...top, confidence: Math.min(0.99, top.confidence + 0.05), reasoning: `${top.reasoning} (models agreed)` };
+                break;
+            }
+        }
+        return best;
     },
 
-    async callOpenAI(description: string, amount: number, accounts: any[], receipt_data?: any) {
+    findAccountById(accounts: any[], id: string): any | undefined {
+        return accounts.find(a => String(a.id ?? a.Id ?? '') === String(id));
+    },
+
+    codeOf(account: any): string {
+        return String(account.code ?? account.AcctNum ?? '');
+    },
+
+    exampleFor(accounts: any[], e: { description: string; account_id: string }): CategorizationExample | null {
+        const acc = this.findAccountById(accounts, e.account_id);
+        if (!acc) return null;
+        return { description: e.description, account_code: this.codeOf(acc), account_name: acc.name ?? acc.Name };
+    },
+
+    async callOpenAI(description: string, amount: number, accounts: any[], receipt_data?: any, examples: CategorizationExample[] = []) {
         const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data);
+        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data, examples);
         const response = await fetch('https://api.openai.com/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-                model: 'gpt-4o-mini',
+                model: OPENAI_MODEL,
+                temperature: 0,
                 messages: [
                     { role: 'system', content: CATEGORIZATION_SYSTEM_PROMPT },
-                    { role: 'user', content: userPrompt }
+                    { role: 'user', content: userPrompt },
                 ],
-                response_format: { type: 'json_object' }
-            })
+                response_format: { type: 'json_object' },
+            }),
         });
 
         if (!response.ok) throw new Error(`OpenAI API Status ${response.status}`);
@@ -195,24 +257,20 @@ export const aiService = {
         return JSON.parse(data.choices[0].message.content);
     },
 
-    async suggestCategoryGemini(accounts: any[], description: string, amount: number, receipt_data?: any): Promise<SuggestionResult> {
+    async suggestCategoryGemini(accounts: any[], description: string, amount: number, receipt_data?: any, examples: CategorizationExample[] = []): Promise<SuggestionResult> {
         const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data, examples);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
 
         const payload = {
-            contents: [{
-                parts: [{
-                    text: CATEGORIZATION_SYSTEM_PROMPT + '\n' + userPrompt
-                }]
-            }],
-            generationConfig: { responseMimeType: "application/json" }
+            contents: [{ parts: [{ text: CATEGORIZATION_SYSTEM_PROMPT + '\n' + userPrompt }] }],
+            generationConfig: { responseMimeType: 'application/json', temperature: 0 },
         };
 
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(payload),
         });
 
         if (!response.ok) {
@@ -223,12 +281,7 @@ export const aiService = {
 
         const data = await response.json();
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) {
-            console.warn('[AI Service] Gemini returned an empty response candidate.');
-            throw new Error('Empty response from Gemini');
-        }
-
-        console.log(`[AI Service] Gemini Raw Response for "${description.substring(0, 30)}...":`, text);
+        if (!text) throw new Error('Empty response from Gemini');
 
         const jsonText = text.replace(/```json\n?|\n?```/g, '').trim();
         const parsed = JSON.parse(jsonText);
@@ -237,7 +290,7 @@ export const aiService = {
             account_code: parsed.account_code || 'UNCATEGORIZED',
             confidence: parsed.confidence || 0,
             reasoning: parsed.reasoning || 'Gemini Suggestion',
-            method: 'AI-GEMINI'
+            method: 'AI-GEMINI',
         };
-    }
+    },
 };

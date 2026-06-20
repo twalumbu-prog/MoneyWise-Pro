@@ -3,7 +3,6 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { memoryService } from '../services/ai/memory.service';
-import { learningValidator } from '../services/ai/learning.validator';
 import { metricsService } from '../services/ai/metrics.service';
 
 export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
@@ -81,31 +80,15 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
             throw new Error(errorMsg);
         }
 
-        // ── Stage 7: SAFE LEARNING GATE ──
-        stages.push('Stage 7: Triggering safe organizational learning');
+        // ── Stage 7: ORGANIZATIONAL LEARNING ──
+        stages.push('Stage 7: Triggering organizational learning');
 
-        // Only learn if the transaction is posted AND criteria met
-        for (const item of items) {
-            const { data: finalItem } = await supabase
-                .from('line_items')
-                .select('description, account_id, ai_similarity_score, ai_decision_path')
-                .eq('id', item.id)
-                .single();
-
-            if (finalItem && finalItem.account_id) {
-                const isSafe = learningValidator.isSafeToLearn({
-                    isPostedToQB: true,
-                    wasOverridden: false, // In this simple implement, we only learn if no override occurred at this stage
-                    confidence: Number(finalItem.ai_similarity_score || 0),
-                    method: finalItem.ai_decision_path || 'UNKNOWN'
-                });
-
-                if (isSafe) {
-                    console.log(`[Hybrid AI] Safe to learn from item: ${finalItem.description}`);
-                    memoryService.learnFromRequisition(id).catch(err => console.error('[AI Learning] Failed:', err));
-                }
-            }
-        }
+        // The voucher has been posted to QuickBooks — these mappings are now verified
+        // ground truth. Learn them authoritatively (per-organization) so identical
+        // descriptions auto-fill next time.
+        memoryService.learnFromRequisition(id, { authoritative: true }).catch(err =>
+            console.error('[AI Learning] postVoucher learn failed:', err)
+        );
 
         await supabase.from('requisitions').update({ status: 'ACCOUNTED' }).eq('id', id);
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from '../../lib/supabase';
 import { RequisitionMessage, requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
@@ -59,6 +60,51 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
     const [isAccountDropdownOpen, setIsAccountDropdownOpen] = useState<number | null>(null);
     const [accountSearch, setAccountSearch] = useState('');
+    // Portal-anchored account dropdown (renders above all layers, never clipped by overflow containers)
+    const [accountDropdownPos, setAccountDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+    const accountTriggerElRef = useRef<HTMLElement | null>(null);
+
+    const resolveAccountDropdownPos = (el: HTMLElement) => {
+        const rect = el.getBoundingClientRect();
+        const isMobile = window.innerWidth < 768;
+        const width = Math.min(350, window.innerWidth - 24);
+        let left: number;
+        if (isMobile) {
+            // Center the dropdown on small screens so it doesn't skew to one side
+            left = (window.innerWidth - width) / 2;
+        } else {
+            left = rect.left;
+            if (left + width > window.innerWidth - 12) left = window.innerWidth - 12 - width;
+            if (left < 12) left = 12;
+        }
+        return { top: rect.bottom + 8, left, width };
+    };
+
+    const computeAccountDropdownPos = () => {
+        const el = accountTriggerElRef.current;
+        if (!el) return;
+        setAccountDropdownPos(resolveAccountDropdownPos(el));
+    };
+
+    const openAccountDropdown = (idx: number, el: HTMLElement) => {
+        accountTriggerElRef.current = el;
+        setAccountDropdownPos(resolveAccountDropdownPos(el));
+        setIsAccountDropdownOpen(idx);
+        setAccountSearch('');
+    };
+
+    // Keep the portal-anchored dropdown aligned with its trigger while the chat scrolls/resizes
+    useEffect(() => {
+        if (isAccountDropdownOpen === null) return;
+        const update = () => computeAccountDropdownPos();
+        window.addEventListener('scroll', update, true);
+        window.addEventListener('resize', update);
+        return () => {
+            window.removeEventListener('scroll', update, true);
+            window.removeEventListener('resize', update);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAccountDropdownOpen]);
     const [isAICategorizationExpanded, setIsAICategorizationExpanded] = useState(true);
     
     // QuickBooks State
@@ -2509,12 +2555,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             <div
                                                                                 role="button"
                                                                                 tabIndex={0}
-                                                                                onClick={() => {
+                                                                                onClick={(e) => {
                                                                                     if (isAccountDropdownOpen === idx) {
                                                                                         setIsAccountDropdownOpen(null);
                                                                                     } else {
-                                                                                        setIsAccountDropdownOpen(idx);
-                                                                                        setAccountSearch('');
+                                                                                        openAccountDropdown(idx, e.currentTarget as HTMLElement);
                                                                                     }
                                                                                 }}
                                                                                 onKeyDown={(e) => {
@@ -2522,8 +2567,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                         if (isAccountDropdownOpen === idx) {
                                                                                             setIsAccountDropdownOpen(null);
                                                                                         } else {
-                                                                                            setIsAccountDropdownOpen(idx);
-                                                                                            setAccountSearch('');
+                                                                                            openAccountDropdown(idx, e.currentTarget as HTMLElement);
                                                                                         }
                                                                                     }
                                                                                 }}
@@ -2535,11 +2579,25 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 </span>
                                                                                 <span className="text-[9px] font-bold text-emerald-500">
                                                                                     {item.confidence ? `${Math.round(item.confidence * 100)}% Confidence` : (item.is_manual ? 'Manual Override' : 'System Suggestion')}
+                                                                                    {!item.is_manual && typeof item.method === 'string' && item.method.startsWith('MEMORY') && (
+                                                                                        <span className="ml-1 text-[8px] font-black text-[#006AFF] uppercase tracking-wide">· Auto-filled from history</span>
+                                                                                    )}
+                                                                                    {!item.is_manual && item.method === 'RULE' && (
+                                                                                        <span className="ml-1 text-[8px] font-black text-violet-500 uppercase tracking-wide">· Rule</span>
+                                                                                    )}
                                                                                 </span>
                                                                             </div>
 
-                                                                            {isAccountDropdownOpen === idx && (
-                                                                                <div className="absolute top-full left-0 mt-2 min-w-[200px] w-[90vw] max-w-[350px] bg-white border border-gray-100 shadow-2xl rounded-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                                                            {isAccountDropdownOpen === idx && accountDropdownPos && createPortal(
+                                                                                <>
+                                                                                <div
+                                                                                    className="fixed inset-0 z-[9998]"
+                                                                                    onClick={() => setIsAccountDropdownOpen(null)}
+                                                                                />
+                                                                                <div
+                                                                                    style={{ position: 'fixed', top: accountDropdownPos.top, left: accountDropdownPos.left, width: accountDropdownPos.width }}
+                                                                                    className="bg-white border border-gray-100 shadow-2xl rounded-2xl z-[9999] overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                                                                                >
                                                                                     <div className="p-4 border-b border-gray-50 bg-gray-50/30">
                                                                                         <div className="relative">
                                                                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -2582,6 +2640,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                         )}
                                                                                     </div>
                                                                                 </div>
+                                                                                </>,
+                                                                                document.body
                                                                             )}
                                                                         </div>
                                                                     ) : (
@@ -2608,7 +2668,10 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                         <div className="flex items-center space-x-2 mb-2">
                                                                             <span className="font-black text-gray-400 uppercase tracking-widest">Method:</span>
                                                                             <span className="px-2 py-0.5 rounded bg-gray-100 text-[10px] font-black text-gray-500 border border-gray-200">
-                                                                                {item.method || (item.is_manual ? 'MANUAL OVERRIDE' : 'AI')}
+                                                                                {item.is_manual ? 'MANUAL OVERRIDE'
+                                                                                    : typeof item.method === 'string' && item.method.startsWith('MEMORY') ? 'LEARNED FROM HISTORY'
+                                                                                    : item.method === 'RULE' ? 'ACCOUNTING RULE'
+                                                                                    : item.method || 'AI'}
                                                                             </span>
                                                                         </div>
                                                                         <span className="font-black text-gray-400 uppercase tracking-widest block mb-1">AI Reasoning:</span>

@@ -1,6 +1,7 @@
 import { ruleEngine } from './rule.engine';
 import { memoryService } from './memory.service';
 import { aiService, SuggestionResult } from './ai.service';
+import { CategorizationExample } from './prompts';
 import { riskClassifier, RiskAssessment } from './risk.classifier';
 import { confidenceNormalizer } from './confidence.normalizer';
 
@@ -17,7 +18,7 @@ export class DecisionRouter {
     private TERMINATION_MEDIUM = 0.70;
     private RISK_HARDENING_THRESHOLD = 0.93;
 
-    async classify(accounts: any[], item: { description: string, amount: number, department?: string }, organizationId?: string): Promise<DecisionResult> {
+    async classify(accounts: any[], item: { description: string, amount: number, department?: string, receipt_data?: any }, organizationId?: string): Promise<DecisionResult> {
         console.log(`[DecisionRouter] Hardening Pass Classifying: "${item.description}" (K${item.amount})`);
 
         let bestResult: SuggestionResult = {
@@ -32,8 +33,13 @@ export class DecisionRouter {
         let similarityScore: number | undefined;
         let hint: SuggestionResult | null = null;
 
-        // --- TIER 1: MEMORY ---
-        const memoryMatch = await memoryService.lookup(item);
+        // --- TIER 1: MEMORY (per-organization) ---
+        const memoryMatch = await memoryService.lookup({
+            description: item.description,
+            amount: item.amount,
+            department: item.department,
+            organizationId,
+        });
         if (memoryMatch) {
             const normalizedConf = confidenceNormalizer.normalizeMemory(memoryMatch.confidence);
             const matchedAccount = accounts.find(a => (a.id || a.Id) === memoryMatch.account_id);
@@ -42,9 +48,16 @@ export class DecisionRouter {
                 const result = {
                     account_code: String(matchedAccount.code || matchedAccount.AcctNum || ''),
                     confidence: normalizedConf,
-                    reasoning: `Contextual memory match (${Math.round(normalizedConf * 100)}% calibrated)`,
+                    reasoning: memoryMatch.is_user_verified
+                        ? 'Auto-filled from a categorization you previously confirmed.'
+                        : `Contextual memory match (${Math.round(normalizedConf * 100)}% calibrated)`,
                     method: 'MEMORY'
                 };
+
+                // A human-verified exact match is authoritative autofill — stop here.
+                if (memoryMatch.is_user_verified && memoryMatch.method === 'MEMORY_EXACT') {
+                    return this.finalize({ ...result, confidence: Math.max(normalizedConf, 0.95) }, accounts, item, 'MEMORY', undefined, normalizedConf);
+                }
 
                 if (normalizedConf >= 0.92) {
                     // STOP: High confidence memory
@@ -83,10 +96,19 @@ export class DecisionRouter {
             }
         }
 
-        // --- TIER 3: AI ENSEMBLE ---
-        const aiResults = await aiService.suggestBatch(accounts, [item]);
-        if (aiResults[0] && aiResults[0].account_code) {
-            const rawAI = aiResults[0];
+        // --- TIER 3: AI ENSEMBLE (few-shot grounded in this org's verified history) ---
+        let examples: CategorizationExample[] = [];
+        if (organizationId) {
+            examples = (await memoryService.getExamples(organizationId, item.description, 5))
+                .map(e => aiService.exampleFor(accounts, e))
+                .filter((e): e is CategorizationExample => !!e);
+        }
+        const rawAI = await aiService.classifyWithModels(
+            accounts,
+            { description: item.description, amount: item.amount, receipt_data: item.receipt_data, organizationId },
+            examples
+        );
+        if (rawAI && rawAI.account_code) {
             const normalizedConf = confidenceNormalizer.normalizeAI(rawAI.confidence);
 
             const result = {

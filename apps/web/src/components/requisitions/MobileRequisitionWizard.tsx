@@ -37,6 +37,48 @@ type WizardTab = 'basic' | 'buy' | 'order';
 // Stages: 1 = basic, 2 = expense list, 3 = payment method, 4 = review, 5 = manual amount (when no expense list)
 type Stage = 1 | 2 | 3 | 4 | 5;
 
+// Remembers the toggle choices a user last made when creating a requisition
+// (Send to my account / Create expense list / Auto-authorize & send) and
+// restores them the next time the wizard opens.
+const TOGGLE_PREFS_KEY = 'mw_requisition_toggle_prefs';
+
+interface TogglePrefs {
+    useMyAccount: boolean;
+    makeExpenseList: boolean;
+    autoAuthorize: boolean;
+}
+
+const DEFAULT_TOGGLE_PREFS: TogglePrefs = {
+    useMyAccount: true,
+    makeExpenseList: true,
+    autoAuthorize: false,
+};
+
+const loadTogglePrefs = (): TogglePrefs => {
+    try {
+        const raw = localStorage.getItem(TOGGLE_PREFS_KEY);
+        if (raw) {
+            const p = JSON.parse(raw);
+            return {
+                useMyAccount: typeof p.useMyAccount === 'boolean' ? p.useMyAccount : DEFAULT_TOGGLE_PREFS.useMyAccount,
+                makeExpenseList: typeof p.makeExpenseList === 'boolean' ? p.makeExpenseList : DEFAULT_TOGGLE_PREFS.makeExpenseList,
+                autoAuthorize: typeof p.autoAuthorize === 'boolean' ? p.autoAuthorize : DEFAULT_TOGGLE_PREFS.autoAuthorize,
+            };
+        }
+    } catch {
+        /* ignore malformed/unavailable storage */
+    }
+    return { ...DEFAULT_TOGGLE_PREFS };
+};
+
+const saveTogglePrefs = (prefs: TogglePrefs) => {
+    try {
+        localStorage.setItem(TOGGLE_PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+        /* ignore unavailable storage */
+    }
+};
+
 const ComingSoonTab: React.FC<{ name: string }> = ({ name }) => (
     <div className="flex flex-col items-center justify-center h-64 text-center px-8">
         <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
@@ -96,12 +138,14 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
 
     useEffect(() => {
         if (isOpen) {
-            // Reset wizard state to fresh defaults
+            // Reset wizard state to fresh defaults, restoring the toggle choices
+            // the user last made (auto-fill).
+            const prefs = loadTogglePrefs();
             setStage(1);
             setDescription('');
             setDepartment('');
-            setUseMyAccount(true);
-            setMakeExpenseList(true);
+            setUseMyAccount(prefs.useMyAccount);
+            setMakeExpenseList(prefs.makeExpenseList);
             setLineItems([{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0 }]);
             setManualAmount('');
             setPaymentMethod('mobile');
@@ -109,7 +153,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             setAccountNumber('');
             setPhoneNumber('');
             setResolvedName('');
-            setAutoAuthorize(false);
+            setAutoAuthorize(prefs.autoAuthorize);
             setWallets([]);
             setSelectedWalletId(null);
             setError(null);
@@ -306,6 +350,9 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             };
             const created = await requisitionService.create(data);
 
+            // Remember the toggle choices for next time (auto-fill).
+            saveTogglePrefs({ useMyAccount, makeExpenseList, autoAuthorize });
+
             // Admin auto-authorize: immediately approve and disburse via Lenco,
             // mirroring the approve → disburse flow in the requisition modal.
             // Only applies when a recipient was entered manually (stage 3).
@@ -441,7 +488,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                     )}
                                     <div className="pt-4 space-y-4">
                                         <div className="space-y-3">
-                                            <button onClick={() => setUseMyAccount(!useMyAccount)} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
+                                            <button onClick={() => { const v = !useMyAccount; setUseMyAccount(v); saveTogglePrefs({ useMyAccount: v, makeExpenseList, autoAuthorize }); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
                                                 <div className="flex items-center gap-3 text-left">
                                                     <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${useMyAccount ? 'bg-[#006AFF]/10 text-[#006AFF]' : 'bg-gray-200 text-gray-400'}`}><User size={20} /></div>
                                                     <div><p className="text-sm font-bold text-brand-navy">Send to my account</p><p className="text-[11px] text-gray-400">Use details from your profile</p></div>
@@ -488,7 +535,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                             )}
                                         </div>
 
-                                        <button onClick={() => setMakeExpenseList(!makeExpenseList)} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
+                                        <button onClick={() => { const v = !makeExpenseList; setMakeExpenseList(v); saveTogglePrefs({ useMyAccount, makeExpenseList: v, autoAuthorize }); }} className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all">
                                             <div className="flex items-center gap-3 text-left">
                                                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${makeExpenseList ? 'bg-[#006AFF]/10 text-[#006AFF]' : 'bg-gray-200 text-gray-400'}`}><List size={20} /></div>
                                                 <div><p className="text-sm font-bold text-brand-navy">Create item list</p><p className="text-[11px] text-gray-400">Add specific items and prices</p></div>
@@ -673,7 +720,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                     {userRole === 'ADMIN' && (
                                         <div className="pt-2">
                                             <button
-                                                onClick={() => setAutoAuthorize(!autoAuthorize)}
+                                                onClick={() => { const v = !autoAuthorize; setAutoAuthorize(v); saveTogglePrefs({ useMyAccount, makeExpenseList, autoAuthorize: v }); }}
                                                 className="w-full flex items-center justify-between p-4 rounded-2xl bg-gray-50 border border-gray-100 active:scale-[0.98] transition-all"
                                             >
                                                 <div className="flex items-center gap-3 text-left">

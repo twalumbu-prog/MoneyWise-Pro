@@ -12,6 +12,7 @@ import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { RequisitionMessageService } from '../services/requisition_message.service';
 import { aiService } from '../services/ai/ai.service';
+import { decisionRouter } from '../services/ai/decision.router';
 import { AuditService } from '../services/audit.service';
 
 export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
@@ -266,14 +267,22 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
 
         res.status(201).json(requisition);
 
-        // 3. Trigger initial system message
-        await RequisitionMessageService.createMessage({
-            requisitionId: requisition.id,
-            userId: requestor_id,
-            content: 'Requisition submitted for approval',
-            type: 'SYSTEM',
-            metadata: { stage: 'APPROVAL' }
-        });
+        // Post-response side effects must never reach the outer catch — the
+        // response headers are already sent, so a second res.send() there would
+        // throw ERR_HTTP_HEADERS_SENT and crash the process (taking the next
+        // request down with a "Failed to fetch"). Isolate them here instead.
+        try {
+            // 3. Trigger initial system message
+            await RequisitionMessageService.createMessage({
+                requisitionId: requisition.id,
+                userId: requestor_id,
+                content: 'Requisition submitted for approval',
+                type: 'SYSTEM',
+                metadata: { stage: 'APPROVAL' }
+            });
+        } catch (msgErr) {
+            console.error('[Create Requisition] Failed to create initial system message:', msgErr);
+        }
 
         // 4. Trigger notification
         emailService.notifyRequisitionEvent(requisition.id, 'NEW_REQUISITION').catch(err =>
@@ -591,12 +600,11 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
             });
         }
 
-        // Trigger AI learning if authorized
-        if (status === 'AUTHORISED') {
-            memoryService.learnFromRequisition(id).catch((err: any) =>
-                console.error('[AI Memory] Background learning failed:', err)
-            );
-        }
+        // NOTE: AI memory learning is intentionally NOT triggered here. At AUTHORISED
+        // the expense has not been categorized yet (line_items.account_id is still
+        // null), so there is nothing to learn. Learning happens when the user
+        // confirms/corrects categorization (approveCategorization / updateLineItemAccount)
+        // and when a voucher is posted (postVoucher) — see those handlers.
 
         // Trigger notifications
         if (status === 'AUTHORISED') {
@@ -1630,22 +1638,22 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
             return;
         }
 
-        // 5. Get Suggestions
-        const suggestions = await aiService.suggestBatch(accounts || [], lineItems.map(li => ({
-            description: li.description,
-            amount: li.actual_amount ?? li.estimated_amount ?? 0,
-            receipt_data: li.receipt_ocr_data
-        })));
-
-        // 6. Update Line Items & Prepare metadata
+        // 5 + 6. Classify each item through the full hybrid Decision Router
+        // (org-scoped memory -> rules -> few-shot AI ensemble) and persist results.
         const itemsMetadata = [];
-        for (let i = 0; i < lineItems.length; i++) {
-            const li = lineItems[i];
-            const suggestion = suggestions[i];
-            
-            // CRITICAL FIX: Resolve the account UUID from the code returned by AI
-            // If we don't do this, the join in the reports/ledger will fail.
-            const matchedAccount = accounts?.find(a => String(a.code) === String(suggestion.account_code));
+        for (const li of lineItems) {
+            const amount = li.actual_amount ?? li.estimated_amount ?? 0;
+
+            const decision = await decisionRouter.classify(
+                accounts || [],
+                { description: li.description, amount, receipt_data: li.receipt_ocr_data },
+                organizationId
+            );
+
+            // Resolve the COA code back to the concrete account row (by code, then id).
+            const matchedAccount =
+                accounts?.find(a => String(a.code) === String(decision.account_code)) ||
+                accounts?.find(a => String(a.id) === String(decision.account_code));
             const accountId = matchedAccount ? matchedAccount.id : null;
 
             await supabase
@@ -1654,21 +1662,25 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
                     account_id: accountId,
                     qb_account_id: matchedAccount?.qb_account_id || null,
                     qb_account_name: matchedAccount?.name || null,
-                    ai_reasoning: suggestion.reasoning,
-                    ai_confidence: suggestion.confidence,
-                    ai_decision_path: suggestion.method
+                    ai_reasoning: decision.reasoning,
+                    ai_confidence: decision.confidence,
+                    ai_similarity_score: decision.similarity_score ?? decision.confidence,
+                    ai_decision_path: decision.decision_path,
+                    ai_rule_id: decision.rule_id || null,
+                    ai_risk_level: decision.risk?.riskLevel || 'LOW'
                 })
                 .eq('id', li.id);
 
             itemsMetadata.push({
                 id: li.id,
                 description: li.description,
-                amount: li.actual_amount ?? li.estimated_amount ?? 0,
-                category_code: suggestion.account_code,
-                category_name: matchedAccount?.name || suggestion.account_code,
-                reasoning: suggestion.reasoning,
-                confidence: suggestion.confidence,
-                method: suggestion.method
+                amount,
+                category_code: decision.account_code,
+                category_name: matchedAccount?.name || decision.account_code,
+                reasoning: decision.reasoning,
+                confidence: decision.confidence,
+                method: decision.decision_path,
+                requires_review: decision.requires_review
             });
         }
 
@@ -1725,20 +1737,46 @@ export const approveCategorization = async (req: AuthRequest, res: Response): Pr
 
             for (const item of overrides) {
                 if (!item.id || !item.account_id) continue;
-                
+
                 const matchedAccount = accounts?.find(a => a.id === item.account_id);
+
+                // Capture the prior AI mapping so we can log whether this was an override.
+                const { data: prior } = await supabase
+                    .from('line_items')
+                    .select('account_id, ai_decision_path, ai_similarity_score')
+                    .eq('id', item.id)
+                    .single();
 
                 await supabase
                     .from('line_items')
-                    .update({ 
+                    .update({
                         account_id: item.account_id,
                         qb_account_id: matchedAccount?.qb_account_id || null,
                         qb_account_name: matchedAccount?.name || null,
                         updated_at: new Date().toISOString()
                     })
                     .eq('id', item.id);
+
+                // Record override/confirmation for accuracy metrics.
+                const wasOverridden = !!prior?.account_id && prior.account_id !== item.account_id;
+                await supabase.from('ai_classification_logs').insert({
+                    transaction_id: id,
+                    suggested_account_id: prior?.account_id || null,
+                    final_account_id: item.account_id,
+                    was_overridden: wasOverridden,
+                    prediction_confidence: prior?.ai_similarity_score ?? null,
+                    prediction_method: prior?.ai_decision_path || null
+                });
             }
         }
+
+        // LEARNING: the user has reviewed & confirmed (and possibly corrected) these
+        // categorizations. Treat the final line-item mappings as ground truth so the
+        // same descriptions auto-fill correctly next time — including corrections,
+        // which authoritatively overwrite any prior memory.
+        memoryService.learnFromRequisition(id, { authoritative: true }).catch(err =>
+            console.error('[AI Learning] approveCategorization learn failed:', err)
+        );
 
         // 2. Check for QuickBooks integration
         const organizationId = (req as any).user.organization_id;
@@ -1898,6 +1936,25 @@ export const updateLineItemAccount = async (req: AuthRequest, res: Response): Pr
             .eq('id', itemId);
 
         if (error) throw error;
+
+        // LEARNING: an inline single-item correction is an authoritative signal —
+        // teach org memory immediately so this description auto-fills next time.
+        const { data: li } = await supabase
+            .from('line_items')
+            .select('description, requisition:requisitions!inner(organization_id)')
+            .eq('id', itemId)
+            .single();
+
+        const orgId = (li?.requisition as any)?.organization_id;
+        if (li?.description && orgId) {
+            memoryService.learn({
+                organizationId: orgId,
+                description: li.description,
+                accountId,
+                authoritative: true,
+                source: 'inline_correction'
+            }).catch(err => console.error('[AI Learning] inline correction learn failed:', err));
+        }
 
         res.json({ success: true });
     } catch (error: any) {
