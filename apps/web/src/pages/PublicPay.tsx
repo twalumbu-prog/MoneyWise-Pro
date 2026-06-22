@@ -20,6 +20,7 @@ import {
     BadgeCheck,
     PlusCircle,
     ChevronRight,
+    ChevronLeft,
     ChevronDown,
     Check,
     X,
@@ -57,6 +58,10 @@ if (typeof document !== 'undefined' && !document.getElementById(POP_STYLE_ID)) {
 @keyframes mw-pulse-ring {
   0%   { transform: scale(0.9); opacity: 0.65; }
   100% { transform: scale(2.8); opacity: 0; }
+}
+@keyframes mw-flash {
+  0%   { opacity: 0.45; }
+  100% { opacity: 0; }
 }`;
     document.head.appendChild(el);
 }
@@ -97,8 +102,10 @@ export const PublicPay: React.FC = () => {
     const navigate = useNavigate();
 
     // UI Steps
-    // 'LOADING' | 'LOGIN' | 'CATALOG' | 'VERIFYING' | 'SUCCESS' | 'ERROR'
-    const [step, setStep] = useState<'LOADING' | 'LOGIN' | 'CATALOG' | 'SUMMARY' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
+    //  SHOP    = product catalogue grid (entry page)
+    //  CATALOG = the cart (added items)
+    //  SUMMARY = checkout breakdown + customer details + Pay
+    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'CATALOG' | 'SUMMARY' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
     
     // Data Context
     const [org, setOrg] = useState<OrgContext | null>(null);
@@ -111,13 +118,13 @@ export const PublicPay: React.FC = () => {
     const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
     // Customer-entered amounts for DONATION products (keyed by product id).
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
-    // Bottom-sheet overlay for adding products/services to the cart.
+    // Bottom-sheet overlay for quick-adding more items from the cart screen.
     // `showProductSheet` keeps it mounted; `sheetIn` drives the slide-up/down transition.
     const [showProductSheet, setShowProductSheet] = useState(false);
     const [sheetIn, setSheetIn] = useState(false);
     // Product id currently playing the add-to-cart pop animation.
     const [poppedId, setPoppedId] = useState<string | null>(null);
-    // Search + category filter within the product sheet.
+    // Search + category filter on the catalogue.
     const [productSearch, setProductSearch] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
     
@@ -166,7 +173,7 @@ export const PublicPay: React.FC = () => {
                     return;
                 }
 
-                setStep('LOGIN');
+                setStep('SHOP');
             } catch (err: any) {
                 console.error('Error fetching public pay context:', err);
                 setError(err.response?.data?.error || 'Failed to load organization checkout details. Please check the link and try again.');
@@ -176,28 +183,6 @@ export const PublicPay: React.FC = () => {
 
         fetchContext();
     }, [wallet_id]);
-
-    const handleLoginSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!customerName.trim()) {
-            setError('Please enter your name');
-            return;
-        }
-        if (!customerPhone.trim()) {
-            setError('Please enter your phone number');
-            return;
-        }
-        
-        // Simple Phone format cleanup/check
-        const digits = customerPhone.replace(/\D/g, '');
-        if (digits.length < 9) {
-            setError('Please enter a valid phone number');
-            return;
-        }
-
-        setError(null);
-        setStep('CATALOG');
-    };
 
     // Mount the sheet, then flip `sheetIn` on the next frame so the CSS transition runs.
     const openProductSheet = () => {
@@ -265,6 +250,13 @@ export const PublicPay: React.FC = () => {
     // Active category position → drives the directional slide of the product list.
     const activeCategoryIndex = Math.max(0, productCategories.indexOf(activeCategory));
 
+    // Customer details must be present before the Pay button activates.
+    const canPay = customerName.trim().length > 0 && customerPhone.replace(/\D/g, '').length >= 9;
+
+    // Full-screen "app" steps fill the viewport (fixed height) so inner content
+    // scrolls and footers stay pinned; the simple states just center normally.
+    const isAppStep = step === 'SHOP' || step === 'CATALOG' || step === 'SUMMARY' || step === 'SUCCESS';
+
     // Cart → Payment Summary. Validates the cart before showing the breakdown;
     // the actual Lenco charge is only triggered by the Pay button on the summary.
     const handleProceedToSummary = () => {
@@ -295,6 +287,15 @@ export const PublicPay: React.FC = () => {
         }
         if (subtotal <= 0) {
             setError('Please select at least one product or service to purchase.');
+            return;
+        }
+        // Customer details are captured on the summary screen before paying.
+        if (!customerName.trim()) {
+            setError('Please enter your name to continue.');
+            return;
+        }
+        if (customerPhone.replace(/\D/g, '').length < 9) {
+            setError('Please enter a valid phone number to continue.');
             return;
         }
 
@@ -437,7 +438,7 @@ export const PublicPay: React.FC = () => {
         setLastTransactionId(null);
         setConfirmManualError(null);
         setIsConfirmingManual(false);
-        setStep('CATALOG');
+        setStep('SHOP');
         setError(null);
     };
 
@@ -941,26 +942,147 @@ Status: VERIFIED`;
         );
     };
 
+    // A single catalogue grid card (image on top, name + price, add control).
+    const renderGridCard = (product: Product) => {
+        const isDonation = product.product_type === 'DONATION';
+        const qty = selectedQuantities[product.id] || 0;
+        const isInCart = qty > 0;
+
+        // Fire the add-to-cart pop + pulse the instant the button is pressed.
+        const firePop = () => {
+            setPoppedId(product.id);
+            setTimeout(() => setPoppedId(cur => (cur === product.id ? null : cur)), 600);
+        };
+
+        return (
+            <div key={product.id} className="flex flex-col">
+                {/* Image */}
+                <div className="relative w-full aspect-square bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center">
+                    {product.image_url ? (
+                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                    ) : (
+                        <ShoppingBag size={28} className="text-neutral-300" />
+                    )}
+                    {/* In-cart tick — black badge with a drawn white check, top-right */}
+                    {isInCart && (
+                        <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-black flex items-center justify-center shadow-md">
+                            <svg
+                                viewBox="0 0 24 24"
+                                className="w-3.5 h-3.5 text-white"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth={3}
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                            >
+                                <path
+                                    d="M5 12.5l4.5 4.5L19 7"
+                                    strokeDasharray={26}
+                                    style={{ animation: 'mw-tick-draw 0.42s ease-out 0.08s both' }}
+                                />
+                            </svg>
+                        </span>
+                    )}
+                </div>
+
+                {/* Info + action */}
+                <div className="pt-3 flex flex-col gap-2.5">
+                    <div className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-slate-500 text-[11px] truncate">{product.name}</span>
+                        <span className="text-slate-900 text-sm font-bold">
+                            {isDonation ? 'Open amount' : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                        </span>
+                    </div>
+
+                    {/* Action area — pulse flash + pop persist across the button↔stepper swap */}
+                    <div className="relative self-stretch">
+                        {poppedId === product.id && (
+                            <span
+                                aria-hidden
+                                className="absolute inset-0 rounded-lg bg-blue-500 pointer-events-none"
+                                style={{ animation: 'mw-flash 0.5s ease-out forwards' }}
+                            />
+                        )}
+                        <div
+                            className="relative"
+                            style={poppedId === product.id ? { animation: 'mw-add-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' } : undefined}
+                        >
+                            {isInCart && !isDonation ? (
+                                // Quantity stepper once the item is in the cart
+                                <div className="bg-zinc-100 rounded-lg flex items-center justify-between px-1">
+                                    <button
+                                        onClick={() => handleQuantityChange(product.id, -1)}
+                                        className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors active:scale-90"
+                                    >
+                                        <Minus size={13} strokeWidth={2} />
+                                    </button>
+                                    <span className="text-xs font-bold text-zinc-700 tabular-nums">{qty}</span>
+                                    <button
+                                        onClick={() => handleQuantityChange(product.id, 1)}
+                                        className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors active:scale-90"
+                                    >
+                                        <Plus size={13} strokeWidth={2} />
+                                    </button>
+                                </div>
+                            ) : (
+                                <button
+                                    onPointerDown={() => { if (!(isInCart && isDonation)) firePop(); }}
+                                    onClick={() => {
+                                        if (isDonation) {
+                                            // Toggle donation in/out (amount entered on the cart screen)
+                                            setSelectedQuantities(prev => ({ ...prev, [product.id]: isInCart ? 0 : 1 }));
+                                            if (isInCart) setDonationAmounts(prev => ({ ...prev, [product.id]: 0 }));
+                                        } else {
+                                            handleQuantityChange(product.id, 1);
+                                        }
+                                    }}
+                                    className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
+                                        isInCart && isDonation
+                                            ? 'bg-black border-black text-white'
+                                            : 'border-slate-300 text-black hover:bg-black hover:text-white'
+                                    }`}
+                                >
+                                    {isInCart && isDonation ? (
+                                        <>
+                                            <Check size={13} strokeWidth={2.5} />
+                                            <span>Added</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Plus size={13} strokeWidth={2} />
+                                            <span>Add to Cart</span>
+                                        </>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // Helper to render Organization Logo / Initial
     const renderLogo = (sizeClass = "w-20 h-20", textClass = "text-3xl") => {
         if (!org) return null;
         if (org.logo_url) {
             return (
-                <div className={`${sizeClass} rounded-3xl overflow-hidden shadow-md bg-white border border-slate-100/50 flex-shrink-0 animate-in fade-in zoom-in duration-300`}>
+                <div className={`${sizeClass} rounded-2xl overflow-hidden shadow-md bg-white border border-slate-100/50 flex-shrink-0 animate-in fade-in zoom-in duration-300`}>
                     <img src={org.logo_url} alt={`${org.name} Logo`} className="w-full h-full object-cover" />
                 </div>
             );
         }
         return (
-            <div className={`${sizeClass} rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black ${textClass} shadow-md uppercase flex-shrink-0`}>
+            <div className={`${sizeClass} rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black ${textClass} shadow-md uppercase flex-shrink-0`}>
                 {org.name.charAt(0)}
             </div>
         );
     };
 
     return (
-        <div className="min-h-screen bg-white flex flex-col sm:justify-center sm:py-10 sm:px-4">
-            <div className={`w-full bg-white overflow-hidden flex flex-col sm:max-w-md sm:mx-auto sm:rounded-[32px] ${(step === 'CATALOG' || step === 'SUMMARY' || step === 'SUCCESS') ? 'flex-1 sm:flex-none' : ''} ${step === 'LOGIN' ? '' : 'sm:border sm:border-slate-100 sm:shadow-xl'}`}>
+        <div className={`bg-white flex flex-col sm:justify-center sm:py-10 sm:px-4 ${isAppStep ? 'h-[100dvh] sm:h-auto sm:min-h-screen' : 'min-h-screen'}`}>
+            <div className={`w-full bg-white overflow-hidden flex flex-col sm:max-w-md sm:mx-auto sm:rounded-[32px] sm:border sm:border-slate-100 sm:shadow-xl ${isAppStep ? 'flex-1 min-h-0 sm:flex-none sm:max-h-[90vh]' : ''}`}>
                 
                 {showRetrievePortal ? (
                     <div className="flex flex-col min-h-[500px]">
@@ -1086,77 +1208,109 @@ Status: VERIFIED`;
                     </div>
                 )}
 
-                {/* 2. Login Step */}
-                {step === 'LOGIN' && org && (
-                    <div className="p-8">
-                        <div className="flex flex-col items-center text-center mb-10">
-                            {renderLogo("w-24 h-24", "text-4xl")}
-                            <div className="flex items-center gap-2 mt-5">
-                                <h2 className="text-xl font-black text-slate-900 uppercase tracking-tight">{org.name}</h2>
-                                <BadgeCheck className="w-6 h-6 text-white flex-shrink-0" fill="#2563eb" />
+                {/* 2. Catalogue (Shop) Step — entry page */}
+                {step === 'SHOP' && org && (
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]">
+                        {/* Header */}
+                        <div className="px-6 pt-7 pb-4 flex items-center gap-4 flex-shrink-0">
+                            {renderLogo("w-14 h-14", "text-xl")}
+                            <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                    <h4 className="text-base font-black text-slate-900 uppercase tracking-tight truncate">{org.name}</h4>
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                </div>
+                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
                             </div>
-                            <p className="text-sm font-thin text-[#5A5A5A] mt-1.5">Payment Checkout Portal</p>
                         </div>
 
-                        <form onSubmit={handleLoginSubmit} className="space-y-5">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-2">Your Full Name</label>
-                                <div className="relative">
-                                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                    <input
-                                        type="text"
-                                        value={customerName}
-                                        onChange={(e) => setCustomerName(e.target.value)}
-                                        placeholder="John Doe"
-                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-semibold text-slate-800 outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
-                                    />
-                                </div>
+                        {/* Search */}
+                        <div className="px-4 flex-shrink-0">
+                            <div className="relative">
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <input
+                                    type="text"
+                                    value={productSearch}
+                                    onChange={(e) => setProductSearch(e.target.value)}
+                                    placeholder="Search products"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                />
                             </div>
+                        </div>
 
-                            <div>
-                                <label className="block text-xs font-medium text-slate-400 mb-2">Phone Number</label>
-                                <div className="relative">
-                                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                                    <input
-                                        type="tel"
-                                        value={customerPhone}
-                                        onChange={(e) => setCustomerPhone(e.target.value)}
-                                        placeholder="XXX - XXX - XXXX"
-                                        className="w-full pl-12 pr-4 py-4 bg-white border border-slate-200 rounded-2xl text-sm font-semibold text-slate-800 outline-none focus:border-slate-400 focus:ring-4 focus:ring-slate-50 transition-all placeholder:text-slate-300"
-                                    />
-                                </div>
+                        {/* Category tabs — animated segmented control */}
+                        {productCategories.length > 1 && (
+                            <div className="px-4 pt-4 flex-shrink-0">
+                                <SegmentedControl
+                                    variant="capsule"
+                                    options={productCategories.map(cat => ({ value: cat, label: cat }))}
+                                    value={activeCategory}
+                                    onChange={setActiveCategory}
+                                />
                             </div>
+                        )}
 
-                            {error && (
-                                <div className="p-4 bg-rose-50 text-rose-600 rounded-2xl flex items-start space-x-2.5 animate-in fade-in duration-200">
-                                    <AlertCircle className="flex-shrink-0 mt-0.5" size={16} />
-                                    <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                        {/* Product grid */}
+                        <div className="flex-1 min-h-0 overflow-y-auto px-4 pt-5 pb-3">
+                            {sheetProducts.length === 0 ? (
+                                <div className="text-center py-16">
+                                    <ShoppingCart className="mx-auto text-slate-200 mb-2" size={36} />
+                                    <p className="text-xs font-semibold text-slate-400">
+                                        {catalogProducts.length === 0 ? 'No products configured yet.' : 'No matching products.'}
+                                    </p>
                                 </div>
+                            ) : (
+                                <AnimatedTabContent
+                                    tabKey={activeCategory}
+                                    index={activeCategoryIndex}
+                                    className="grid grid-cols-2 gap-x-4 gap-y-6"
+                                >
+                                    {sheetProducts.map(product => renderGridCard(product))}
+                                </AnimatedTabContent>
                             )}
+                        </div>
 
+                        {/* Subtotal + Go to Cart (pinned) */}
+                        <div className="mt-auto bg-white border-t border-slate-100 px-6 pt-4 pb-5 space-y-3 flex-shrink-0">
+                            <div className="space-y-1">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs font-normal text-slate-500">Items Added</span>
+                                    <span className="text-xs font-normal text-slate-700">{cartItemCount} Item{cartItemCount === 1 ? '' : 's'}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-base font-bold text-slate-900">Subtotal</span>
+                                    <span className="text-base font-bold text-slate-900">
+                                        K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                            </div>
                             <button
-                                type="submit"
-                                className="w-full bg-black hover:bg-slate-800 text-white py-4 rounded-2xl font-bold text-sm transition-all flex items-center justify-center space-x-2"
+                                onClick={() => { setError(null); setStep('CATALOG'); }}
+                                disabled={cartItemCount === 0}
+                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
                             >
-                                <span>Proceed</span>
-                                <ArrowRight size={16} />
+                                <ShoppingBag size={18} />
+                                <span>Go to Cart</span>
+                                <ArrowRight size={18} strokeWidth={2.5} />
                             </button>
-                            <div className="pt-2 text-center">
+                            <div className="text-center">
                                 <button
                                     type="button"
                                     onClick={() => setShowRetrievePortal(true)}
-                                    className="text-xs font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider"
+                                    className="text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider"
                                 >
                                     Already Paid? Find your receipt
                                 </button>
                             </div>
-                        </form>
+                        </div>
                     </div>
                 )}
 
                 {/* 3. Cart Step */}
                 {step === 'CATALOG' && org && (
-                    <div className="flex flex-col flex-1 min-h-[620px]">
+                    <div
+                        className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]"
+                        style={{ animation: 'atabs-in-right 0.42s cubic-bezier(0.22, 1, 0.36, 1)' }}
+                    >
                         {/* Cart Header — logo left, business name right */}
                         <div className="px-6 pt-7 pb-5 flex items-center gap-4">
                             {renderLogo("w-14 h-14", "text-xl")}
@@ -1214,18 +1368,27 @@ Status: VERIFIED`;
                                 <PlusCircle size={16} />
                                 <span>Add Products/Services</span>
                             </button>
-                            <button
-                                onClick={handleProceedToSummary}
-                                disabled={subtotal <= 0}
-                                className={`w-full py-5 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 ${
-                                    lineItems.length > 0
-                                        ? 'bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white'
-                                        : 'bg-neutral-100 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-600'
-                                }`}
-                            >
-                                <span>Checkout</span>
-                                <ChevronRight size={14} strokeWidth={2.5} />
-                            </button>
+                            <div className="flex items-center gap-3">
+                                <button
+                                    onClick={() => { setError(null); setStep('SHOP'); }}
+                                    title="Back to catalogue"
+                                    className="flex-shrink-0 w-16 py-5 rounded-2xl border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-all flex items-center justify-center active:scale-95"
+                                >
+                                    <ChevronLeft size={18} strokeWidth={2.5} />
+                                </button>
+                                <button
+                                    onClick={handleProceedToSummary}
+                                    disabled={subtotal <= 0}
+                                    className={`flex-1 py-5 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 ${
+                                        lineItems.length > 0
+                                            ? 'bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white'
+                                            : 'bg-neutral-100 hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed text-zinc-600'
+                                    }`}
+                                >
+                                    <span>Checkout</span>
+                                    <ChevronRight size={14} strokeWidth={2.5} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1233,7 +1396,7 @@ Status: VERIFIED`;
                 {/* 3b. Payment Summary Step */}
                 {step === 'SUMMARY' && org && (
                     <div
-                        className="flex flex-col flex-1 min-h-[620px]"
+                        className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]"
                         style={{ animation: 'atabs-in-right 0.42s cubic-bezier(0.22, 1, 0.36, 1)' }}
                     >
                         {/* Header — logo left, business name right (matches cart) */}
@@ -1316,6 +1479,38 @@ Status: VERIFIED`;
                                 </div>
                             </div>
 
+                            {/* Your details — collected here, just before paying */}
+                            <div className="mt-4 rounded-3xl border border-slate-200 p-5">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <User size={16} className="text-slate-900" />
+                                    <h5 className="text-sm font-bold text-slate-900">
+                                        Your Details <span className="text-rose-500">*</span>
+                                    </h5>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="relative">
+                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input
+                                            type="text"
+                                            value={customerName}
+                                            onChange={(e) => setCustomerName(e.target.value)}
+                                            placeholder="Your full name"
+                                            className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                        />
+                                    </div>
+                                    <div className="relative">
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input
+                                            type="tel"
+                                            value={customerPhone}
+                                            onChange={(e) => setCustomerPhone(e.target.value)}
+                                            placeholder="Phone number"
+                                            className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
                             {error && (
                                 <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2 animate-in fade-in duration-200">
                                     <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
@@ -1332,7 +1527,12 @@ Status: VERIFIED`;
                             </div>
                             <button
                                 onClick={handlePay}
-                                className="w-full bg-black hover:bg-slate-800 text-white py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2"
+                                disabled={!canPay}
+                                className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                                    canPay
+                                        ? 'bg-black hover:bg-slate-800 text-white'
+                                        : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                                }`}
                             >
                                 <CreditCard size={16} />
                                 <span>Pay</span>
@@ -1406,7 +1606,7 @@ Status: VERIFIED`;
 
                 {/* 5. Success Step */}
                 {step === 'SUCCESS' && org && (
-                    <div className="flex flex-col flex-1 min-h-[620px]">
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]">
                         {/* Header — logo + name (matches cart/summary) */}
                         <div className="px-6 pt-7 pb-2 flex items-center gap-4">
                             {renderLogo("w-14 h-14", "text-xl")}
@@ -1552,7 +1752,7 @@ Status: VERIFIED`;
 
             </div>
 
-            {/* Add Products / Services — full-screen on mobile, bottom sheet on desktop */}
+            {/* Add Products / Services — quick-add sheet from the cart screen */}
             {showProductSheet && (
                 <div className="fixed inset-0 z-50 flex flex-col sm:justify-end">
                     <div
@@ -1645,7 +1845,7 @@ Status: VERIFIED`;
             )}
 
             {/* Footer Brand Info */}
-            {step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && (
+            {step !== 'SHOP' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && (
             <div className="mt-auto pt-8 pb-6 text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                     <Building2 size={12} />
