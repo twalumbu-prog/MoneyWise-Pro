@@ -1210,7 +1210,7 @@ Status: VERIFIED`;
 
                 {/* 2. Catalogue (Shop) Step — entry page */}
                 {step === 'SHOP' && org && (
-                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]">
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]">
                         {/* Header */}
                         <div className="px-6 pt-7 pb-4 flex items-center gap-4 flex-shrink-0">
                             {renderLogo("w-14 h-14", "text-xl")}
@@ -1308,7 +1308,7 @@ Status: VERIFIED`;
                 {/* 3. Cart Step */}
                 {step === 'CATALOG' && org && (
                     <div
-                        className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]"
+                        className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]"
                         style={{ animation: 'atabs-in-right 0.42s cubic-bezier(0.22, 1, 0.36, 1)' }}
                     >
                         {/* Cart Header — logo left, business name right */}
@@ -1332,8 +1332,8 @@ Status: VERIFIED`;
                         </div>
 
                         {/* Cart items */}
-                        <div className="flex-1 flex flex-col px-6 pt-6">
-                            <div className="flex-1 min-h-[260px] rounded-3xl border border-slate-200 p-4 flex flex-col">
+                        <div className="flex-1 min-h-0 flex flex-col px-6 pt-6">
+                            <div className="flex-1 min-h-[140px] rounded-3xl border border-slate-200 p-4 flex flex-col">
                                 {lineItems.length === 0 ? (
                                     <div className="flex-1 flex items-center justify-center">
                                         <p className="text-center text-xs font-thin text-[#5A5A5A] leading-relaxed">
@@ -1341,7 +1341,7 @@ Status: VERIFIED`;
                                         </p>
                                     </div>
                                 ) : (
-                                    <div className="space-y-5 overflow-y-auto">
+                                    <div className="space-y-5 overflow-y-auto min-h-0">
                                         {lineItems.map(li => renderProductCard(li.product))}
                                     </div>
                                 )}
@@ -1349,7 +1349,7 @@ Status: VERIFIED`;
                         </div>
 
                         {/* Footer actions */}
-                        <div className="p-6 pt-6 space-y-3">
+                        <div className="flex-shrink-0 p-6 pt-6 space-y-3">
                             {error && (
                                 <div className="p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2 animate-in fade-in duration-200">
                                     <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
@@ -1396,7 +1396,7 @@ Status: VERIFIED`;
                 {/* 3b. Payment Summary Step */}
                 {step === 'SUMMARY' && org && (
                     <div
-                        className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]"
+                        className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]"
                         style={{ animation: 'atabs-in-right 0.42s cubic-bezier(0.22, 1, 0.36, 1)' }}
                     >
                         {/* Header — logo left, business name right (matches cart) */}
@@ -1606,7 +1606,7 @@ Status: VERIFIED`;
 
                 {/* 5. Success Step */}
                 {step === 'SUCCESS' && org && (
-                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[620px]">
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]">
                         {/* Header — logo + name (matches cart/summary) */}
                         <div className="px-6 pt-7 pb-2 flex items-center gap-4">
                             {renderLogo("w-14 h-14", "text-xl")}
