@@ -5,7 +5,8 @@ import { LencoService } from '../services/lenco.service';
 import { cashbookService } from '../services/cashbook.service';
 import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
-import { applyProductRevenueRouting, markPaymentLinkPaid } from '../services/product_routing.service';
+import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
+import { whatsappService } from '../services/whatsapp.service';
 
 // MoneyWise settlement merchant (Blue Opus Software Technology). The platform
 // commission collected on external payment links is auto-forwarded here.
@@ -228,9 +229,14 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
                 .eq('reference', reference)
                 .eq('status', 'PENDING');
-            // Heal routing + link state too, in case the earlier run died before these ran.
+            // Heal routing + booking + link state too, in case the earlier run died before these ran.
             await applyProductRevenueRouting(organizationId, reference);
-            await markPaymentLinkPaid(organizationId, reference);
+            await confirmBookingsForReference(organizationId, reference);
+            const linkPaidOnHeal = await markPaymentLinkPaid(organizationId, reference);
+            // Only fires if THIS heal run owned the ACTIVE→PAID flip (notifications exactly once).
+            if (linkPaidOnHeal) {
+                await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
+            }
         }
         return true;
     }
@@ -390,10 +396,23 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 console.log(`[Lenco Webhook] Successfully updated product sales for reference ${reference} to COMPLETED`);
             }
 
-            // Split revenue to each product's mapped wallet + income account and flip
-            // any one-time payment link tied to this reference to PAID (both idempotent).
+            // Split revenue to each product's mapped wallet + income account, confirm any
+            // booking reservations, and flip any one-time payment link tied to this
+            // reference to PAID (all idempotent).
             await applyProductRevenueRouting(organizationId, reference);
-            await markPaymentLinkPaid(organizationId, reference);
+            await confirmBookingsForReference(organizationId, reference);
+            const linkPaid = await markPaymentLinkPaid(organizationId, reference);
+
+            // Confirm the payment over WhatsApp to both the admin (money in) and the
+            // customer (receipt). Non-fatal. Exactly once: a one-time link fires on its
+            // real ACTIVE→PAID transition; a public catalogue checkout fires from this
+            // owning finalization (the dedup guard means this tail runs once per ref).
+            if (linkPaid) {
+                await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
+            } else {
+                // Self-guards: skips link refs and no-ops when there are no product sales.
+                await whatsappService.notifyPublicSalePaid(organizationId, reference);
+            }
         }
 
         console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);

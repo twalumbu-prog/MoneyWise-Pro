@@ -32,6 +32,7 @@ const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string; hint: string }[
     { value: 'PRODUCT', label: 'Product (tangible)', hint: 'A physical item sold at a fixed price, by quantity.' },
     { value: 'SERVICE_FIXED', label: 'Service — fixed price', hint: 'A service offered at one established price.' },
     { value: 'SERVICE_VARIABLE', label: 'Service — variable price', hint: 'Price is set by you when sharing a one-time link.' },
+    { value: 'SERVICE_BOOKING', label: 'Service (Booking – Apartments)', hint: 'Guests pick check-in / check-out on a calendar. Total = nights × nightly rate. Booked dates are blocked so you never double-book.' },
     { value: 'DONATION', label: 'Donation', hint: 'The payer decides the amount to give.' }
 ];
 
@@ -39,6 +40,7 @@ const typeBadgeClass = (t?: ProductType) => {
     switch (t) {
         case 'SERVICE_FIXED': return 'bg-indigo-100 text-indigo-800';
         case 'SERVICE_VARIABLE': return 'bg-amber-100 text-amber-800';
+        case 'SERVICE_BOOKING': return 'bg-teal-100 text-teal-800';
         case 'DONATION': return 'bg-pink-100 text-pink-800';
         default: return 'bg-slate-100 text-slate-700';
     }
@@ -187,6 +189,7 @@ export const ProductSettings: React.FC = () => {
 
     const isDonation = formData.product_type === 'DONATION';
     const isVariable = formData.product_type === 'SERVICE_VARIABLE';
+    const isBooking = formData.product_type === 'SERVICE_BOOKING';
     const priceRequired = !isDonation && !isVariable;
 
     // Existing categories across the catalog — offered as suggestions so admins
@@ -613,7 +616,7 @@ export const ProductSettings: React.FC = () => {
                                 {!isDonation && (
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                                            {isVariable ? 'Default / quoted price (K)' : 'Price (K)'}
+                                            {isBooking ? 'Price per night (K)' : isVariable ? 'Default / quoted price (K)' : 'Price (K)'}
                                             {priceRequired && <span className="text-red-500"> *</span>}
                                         </label>
                                         <div className="relative">

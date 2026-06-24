@@ -5,7 +5,7 @@ import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
-import { applyProductRevenueRouting, markPaymentLinkPaid } from '../services/product_routing.service';
+import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 
 export const listLencoAccounts = async (req: Request, res: Response) => {
@@ -333,6 +333,8 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                         await supabase.from('cashbook_entries').delete().eq('id', i.id).eq('status', 'PENDING');
                     }
                     await supabase.from('product_sales').delete().eq('reference', reference).eq('status', 'PENDING');
+                    // Release any held booking reservation (PENDING never blocked dates).
+                    await supabase.from('product_bookings').delete().eq('reference', reference).eq('status', 'PENDING');
                     return res.json({
                         verified: false,
                         status: 'DELETED',
@@ -664,6 +666,33 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
 /**
  * Log public wallet deposit intent (before external customer checkout redirects/initiates Lenco)
  */
+/**
+ * Public: confirmed (paid) booked date ranges for a bookable product, so the
+ * portal calendar can grey out unavailable nights. Returns only current/future
+ * stays (check_out >= today). Half-open ranges → the check_out day stays bookable.
+ */
+export const getProductAvailability = async (req: Request, res: Response) => {
+    try {
+        const { productId } = req.params;
+        if (!productId) {
+            return res.status(400).json({ error: 'productId is required' });
+        }
+        const todayStr = new Date().toISOString().split('T')[0];
+        const { data, error } = await supabase
+            .from('product_bookings')
+            .select('check_in, check_out')
+            .eq('product_id', productId)
+            .eq('status', 'CONFIRMED')
+            .gte('check_out', todayStr)
+            .order('check_in', { ascending: true });
+        if (error) throw error;
+        res.json({ bookings: data || [] });
+    } catch (error: any) {
+        console.error('[Lenco Public Availability] Error:', error);
+        res.status(500).json({ error: 'Failed to fetch availability', details: error.message });
+    }
+};
+
 export const logPublicWalletDepositIntent = async (req: Request, res: Response) => {
     try {
         const { reference, purpose, amount, walletId, customerName, customerPhone, items, paymentLinkToken } = req.body;
@@ -681,6 +710,43 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
 
         if (walletError || !wallet) {
             return res.status(404).json({ error: 'Wallet not found' });
+        }
+
+        // --- Booking pre-validation (before logging anything) --------------------
+        // Booking items carry check_in/check_out. Validate the dates, recompute the
+        // price server-side (anti-tamper), and reject early if the range overlaps an
+        // already-CONFIRMED stay — so a rejection never leaves an orphan intent.
+        const bookingItems: any[] = Array.isArray(items) ? items.filter((it: any) => it?.check_in && it?.check_out) : [];
+        const bookingPrices: Record<string, number> = {};
+        const nightsOf = (ci: string, co: string) =>
+            Math.round((Date.parse(`${co}T00:00:00Z`) - Date.parse(`${ci}T00:00:00Z`)) / 86400000);
+        if (bookingItems.length > 0) {
+            const ids = [...new Set(bookingItems.map((b: any) => b.id))];
+            const { data: prods } = await supabase.from('products').select('id, price').in('id', ids);
+            for (const p of (prods || []) as any[]) bookingPrices[p.id] = Number(p.price) || 0;
+
+            const todayStr = new Date().toISOString().split('T')[0];
+            for (const b of bookingItems) {
+                const ci = String(b.check_in), co = String(b.check_out);
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(ci) || !/^\d{4}-\d{2}-\d{2}$/.test(co) || co <= ci) {
+                    return res.status(400).json({ error: 'Invalid booking dates.' });
+                }
+                if (ci < todayStr) {
+                    return res.status(400).json({ error: 'Check-in date cannot be in the past.' });
+                }
+                // Half-open overlap against confirmed stays for this product.
+                const { data: clashes } = await supabase
+                    .from('product_bookings')
+                    .select('id')
+                    .eq('product_id', b.id)
+                    .eq('status', 'CONFIRMED')
+                    .lt('check_in', co)
+                    .gt('check_out', ci)
+                    .limit(1);
+                if (clashes && clashes.length > 0) {
+                    return res.status(409).json({ error: 'Sorry, those dates have just been booked. Please choose different dates.' });
+                }
+            }
         }
 
         const { error } = await supabase.from('cashbook_entries').insert({
@@ -708,18 +774,24 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
             throw error;
         }
 
-        // Log pending product sales if present
+        // Log pending product sales + booking reservations if present
         if (items && Array.isArray(items) && items.length > 0) {
-            const salesData = items.map((item: any) => ({
-                organization_id: wallet.organization_id,
-                product_id: item.id,
-                customer_name: customerName || 'Anonymous',
-                customer_phone: customerPhone || 'N/A',
-                quantity: item.quantity,
-                amount_paid: Number(item.price) * Number(item.quantity),
-                reference: reference,
-                status: 'PENDING'
-            }));
+            // Booking lines store nights as quantity and a server-recomputed amount.
+            const salesData = items.map((item: any) => {
+                const isBooking = !!(item.check_in && item.check_out);
+                const qty = isBooking ? nightsOf(String(item.check_in), String(item.check_out)) : Number(item.quantity);
+                const unit = isBooking ? (bookingPrices[item.id] ?? (Number(item.price) || 0)) : Number(item.price);
+                return {
+                    organization_id: wallet.organization_id,
+                    product_id: item.id,
+                    customer_name: customerName || 'Anonymous',
+                    customer_phone: customerPhone || 'N/A',
+                    quantity: qty,
+                    amount_paid: Math.round(unit * qty * 100) / 100,
+                    reference: reference,
+                    status: 'PENDING'
+                };
+            });
 
             const { error: salesError } = await supabase
                 .from('product_sales')
@@ -727,6 +799,33 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
 
             if (salesError) {
                 console.error('[Lenco Public Intent] Error logging product sales:', salesError);
+            }
+
+            // Hold the booking reservations as PENDING. These do NOT block dates yet —
+            // confirmBookingsForReference flips them to CONFIRMED only once paid.
+            if (bookingItems.length > 0) {
+                const bookingsData = bookingItems.map((b: any) => {
+                    const nights = nightsOf(String(b.check_in), String(b.check_out));
+                    const unit = bookingPrices[b.id] ?? (Number(b.price) || 0);
+                    return {
+                        organization_id: wallet.organization_id,
+                        product_id: b.id,
+                        reference: reference,
+                        customer_name: customerName || 'Anonymous',
+                        customer_phone: customerPhone || 'N/A',
+                        check_in: b.check_in,
+                        check_out: b.check_out,
+                        nights,
+                        amount: Math.round(unit * nights * 100) / 100,
+                        status: 'PENDING'
+                    };
+                });
+                const { error: bookingErr } = await supabase
+                    .from('product_bookings')
+                    .insert(bookingsData);
+                if (bookingErr) {
+                    console.error('[Lenco Public Intent] Error logging product bookings:', bookingErr);
+                }
             }
         }
 
@@ -1101,9 +1200,11 @@ async function completeSalesForReference(orgId: string, reference: string): Prom
         console.error(`[Lenco Sync] Failed to complete product_sales for ref ${reference}:`, error.message);
     }
 
-    // Route revenue to each product's mapped wallet + income account, and flip any
-    // one-time payment link tied to this reference to PAID. Both are idempotent.
+    // Route revenue to each product's mapped wallet + income account, confirm any
+    // booking reservations, and flip any one-time payment link tied to this
+    // reference to PAID. All idempotent.
     await applyProductRevenueRouting(orgId, reference);
+    await confirmBookingsForReference(orgId, reference);
     await markPaymentLinkPaid(orgId, reference);
 }
 

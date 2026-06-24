@@ -3,7 +3,12 @@ import axios from 'axios';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION';
+export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING';
+
+export interface BookingRange {
+    check_in: string;  // YYYY-MM-DD
+    check_out: string; // YYYY-MM-DD (exclusive — turnover day stays bookable)
+}
 
 export interface Product {
     id: string;
@@ -114,6 +119,13 @@ export const productService = {
         });
 
         return response.data;
+    },
+
+    // Public (no auth): confirmed booked date ranges for a bookable product, used
+    // by the portal calendar to grey out unavailable nights.
+    async getAvailability(productId: string): Promise<BookingRange[]> {
+        const response = await axios.get(`${API_URL}/lenco/public-product-availability/${productId}`);
+        return response.data?.bookings || [];
     }
 };
 

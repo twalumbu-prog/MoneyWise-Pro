@@ -5,20 +5,76 @@ import { ledgerService } from './ledger.service';
 /**
  * Flip a one-time payment link tied to this collection reference to PAID so it
  * auto-deactivates after the first successful payment. No-op for non-link sales.
+ *
+ * Returns true ONLY when this call actually performed the ACTIVE→PAID transition
+ * (i.e. it owns the finalization). The webhook and the 5-min sync both run this for
+ * the same reference, but the `status = ACTIVE` filter means exactly one of them
+ * updates a row — callers use that boolean to fire side effects (e.g. WhatsApp
+ * notifications) exactly once.
  */
-export async function markPaymentLinkPaid(orgId: string, reference: string): Promise<void> {
+export async function markPaymentLinkPaid(orgId: string, reference: string): Promise<boolean> {
     try {
-        const { error } = await supabase
+        const { data, error } = await supabase
             .from('payment_links')
             .update({ status: 'PAID', paid_at: new Date().toISOString() })
             .eq('organization_id', orgId)
             .eq('reference', reference)
-            .eq('status', 'ACTIVE');
+            .eq('status', 'ACTIVE')
+            .select('id');
         if (error) {
             console.error(`[ProductRouting] Failed to mark payment link PAID for ref ${reference}:`, error.message);
+            return false;
         }
+        return Array.isArray(data) && data.length > 0;
     } catch (err: any) {
         console.error(`[ProductRouting] markPaymentLinkPaid error for ref ${reference}:`, err.message);
+        return false;
+    }
+}
+
+/**
+ * Confirm any booking reservations tied to this paid collection reference:
+ * flip product_bookings PENDING → CONFIRMED so their dates start blocking the
+ * calendar. Idempotent (only acts on PENDING rows).
+ *
+ * Per-row so one collision can't fail the rest. A partial GiST exclusion
+ * constraint (`product_bookings_no_overlap`, CONFIRMED-only) rejects a stay whose
+ * dates were already confirmed by a concurrent payment — since the money already
+ * cleared, we never throw: the row is flagged CONFLICT for the merchant to resolve.
+ */
+export async function confirmBookingsForReference(orgId: string, reference: string): Promise<void> {
+    try {
+        const { data: pending } = await supabase
+            .from('product_bookings')
+            .select('id, product_id, check_in, check_out')
+            .eq('organization_id', orgId)
+            .eq('reference', reference)
+            .eq('status', 'PENDING');
+        if (!pending || pending.length === 0) return;
+
+        const now = new Date().toISOString();
+        for (const b of pending as any[]) {
+            const { error } = await supabase
+                .from('product_bookings')
+                .update({ status: 'CONFIRMED', updated_at: now })
+                .eq('id', b.id)
+                .eq('status', 'PENDING');
+            if (!error) continue;
+
+            const isOverlap = error.code === '23P01' || /exclusion|no_overlap|conflicting key/i.test(error.message || '');
+            if (isOverlap) {
+                await supabase.from('product_bookings').update({ status: 'CONFLICT', updated_at: now }).eq('id', b.id);
+                console.warn(
+                    `[ProductRouting] BOOKING CONFLICT ref ${reference}: product ${b.product_id} ` +
+                    `${b.check_in}..${b.check_out} was already confirmed for those dates. ` +
+                    `Payment succeeded — flagged CONFLICT for merchant review.`
+                );
+            } else {
+                console.error(`[ProductRouting] Failed to confirm booking ${b.id} for ref ${reference}:`, error.message);
+            }
+        }
+    } catch (err: any) {
+        console.error(`[ProductRouting] confirmBookingsForReference error for ref ${reference}:`, err.message);
     }
 }
 

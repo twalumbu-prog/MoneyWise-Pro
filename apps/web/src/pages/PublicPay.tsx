@@ -30,10 +30,13 @@ import {
     Receipt,
     Info,
     Wallet,
-    ClipboardList
+    ClipboardList,
+    CalendarDays
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
+import BookingCalendar from '../components/BookingCalendar';
+import { BookingRange } from '../services/product.service';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -73,7 +76,7 @@ interface Product {
     price: number;
     is_active: boolean;
     image_url?: string | null;
-    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION';
+    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING';
     category?: string | null;
 }
 
@@ -118,6 +121,13 @@ export const PublicPay: React.FC = () => {
     const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
     // Customer-entered amounts for DONATION products (keyed by product id).
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
+    // Chosen stay for SERVICE_BOOKING products (keyed by product id). `nights` doubles
+    // as the cart quantity for that line, so total = nights × nightly price.
+    const [bookingDates, setBookingDates] = useState<Record<string, { checkIn: string; checkOut: string; nights: number }>>({});
+    // Booking calendar overlay state.
+    const [calendarProduct, setCalendarProduct] = useState<Product | null>(null);
+    const [calendarAvailability, setCalendarAvailability] = useState<BookingRange[]>([]);
+    const [calendarLoading, setCalendarLoading] = useState(false);
     // Bottom-sheet overlay for quick-adding more items from the cart screen.
     // `showProductSheet` keeps it mounted; `sheetIn` drives the slide-up/down transition.
     const [showProductSheet, setShowProductSheet] = useState(false);
@@ -207,6 +217,48 @@ export const PublicPay: React.FC = () => {
         setSelectedQuantities({ ...selectedQuantities, [productId]: newQty });
     };
 
+    // Compact "12 Jul – 15 Jul" range label for a booking line.
+    const formatStayRange = (checkIn: string, checkOut: string) => {
+        const f = (s: string) => {
+            const [y, m, d] = s.split('-').map(Number);
+            return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' });
+        };
+        return `${f(checkIn)} – ${f(checkOut)}`;
+    };
+
+    // Open the booking calendar for a product, loading its confirmed (blocked) dates.
+    const openBookingCalendar = async (product: Product) => {
+        setCalendarProduct(product);
+        setCalendarAvailability([]);
+        setCalendarLoading(true);
+        try {
+            const res = await axios.get(`${API_URL}/lenco/public-product-availability/${product.id}`);
+            setCalendarAvailability(res.data?.bookings || []);
+        } catch (err) {
+            console.error('Failed to load availability:', err);
+            setCalendarAvailability([]);
+        } finally {
+            setCalendarLoading(false);
+        }
+    };
+
+    // Confirm a chosen stay → store the dates and set the line quantity to the nights.
+    const handleConfirmBooking = (productId: string, checkIn: string, checkOut: string, nights: number) => {
+        setBookingDates(prev => ({ ...prev, [productId]: { checkIn, checkOut, nights } }));
+        setSelectedQuantities(prev => ({ ...prev, [productId]: nights }));
+        setCalendarProduct(null);
+    };
+
+    // Remove a booking from the cart (clear its dates + quantity).
+    const removeBooking = (productId: string) => {
+        setSelectedQuantities(prev => ({ ...prev, [productId]: 0 }));
+        setBookingDates(prev => {
+            const next = { ...prev };
+            delete next[productId];
+            return next;
+        });
+    };
+
     // Variable-priced services are share-link only; never shown in the open catalog.
     const catalogProducts = products.filter(p => p.product_type !== 'SERVICE_VARIABLE');
 
@@ -215,9 +267,12 @@ export const PublicPay: React.FC = () => {
     const lineItems = catalogProducts
         .map(p => {
             const isDonation = p.product_type === 'DONATION';
+            const isBooking = p.product_type === 'SERVICE_BOOKING';
+            // For bookings, the stored quantity is the number of nights.
             const quantity = selectedQuantities[p.id] || 0;
             const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : p.price;
-            return { product: p, quantity, unitPrice, total: quantity * unitPrice, isDonation };
+            const booking = isBooking ? bookingDates[p.id] : undefined;
+            return { product: p, quantity, unitPrice, total: quantity * unitPrice, isDonation, isBooking, booking };
         })
         .filter(li => li.quantity > 0);
 
@@ -245,7 +300,8 @@ export const PublicPay: React.FC = () => {
     });
 
     // Total units currently in the cart (drives the "Add N Items" button counter).
-    const cartItemCount = lineItems.reduce((n, li) => n + li.quantity, 0);
+    // A booking counts as one item regardless of nights.
+    const cartItemCount = lineItems.reduce((n, li) => n + (li.isBooking ? 1 : li.quantity), 0);
 
     // Active category position → drives the directional slide of the product list.
     const activeCategoryIndex = Math.max(0, productCategories.indexOf(activeCategory));
@@ -329,7 +385,11 @@ export const PublicPay: React.FC = () => {
                 items: lineItems.map(li => ({
                     id: li.product.id,
                     quantity: li.quantity,
-                    price: li.unitPrice
+                    price: li.unitPrice,
+                    // Booking lines carry their stay so the server can hold/confirm the dates.
+                    ...(li.isBooking && li.booking
+                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                        : {})
                 }))
             });
 
@@ -434,6 +494,7 @@ export const PublicPay: React.FC = () => {
     const handleReset = () => {
         setSelectedQuantities({});
         setDonationAmounts({});
+        setBookingDates({});
         setReceiptNumber(null);
         setLastTransactionId(null);
         setConfirmManualError(null);
@@ -787,8 +848,10 @@ Status: VERIFIED`;
     // A single selectable product/service row, shown inside the Add Products sheet.
     const renderProductCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
+        const isBooking = product.product_type === 'SERVICE_BOOKING';
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
+        const stay = bookingDates[product.id];
 
         return (
             <div key={product.id} className="flex items-center gap-2 py-2">
@@ -834,9 +897,9 @@ Status: VERIFIED`;
                             ) : (
                                 <>
                                     <span className="text-orange-600 text-base font-semibold">
-                                        K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{isBooking ? ' / night' : ''}
                                     </span>
-                                    {product.description && (
+                                    {!isBooking && product.description && (
                                         <>
                                             <div className="w-px h-4 bg-neutral-200 flex-shrink-0" />
                                             <span className="text-slate-400 text-xs leading-tight line-clamp-1 flex-1 min-w-0">
@@ -849,8 +912,19 @@ Status: VERIFIED`;
                         </div>
                     </div>
 
-                    {/* Qty stepper — zinc pill, only for non-donation */}
-                    {!isDonation && (
+                    {/* Booking → show the chosen stay instead of a qty stepper */}
+                    {isBooking && isInCart && stay && (
+                        <button
+                            onClick={() => openBookingCalendar(product)}
+                            className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-[11px] font-bold hover:bg-teal-100 transition-colors"
+                        >
+                            <CalendarDays size={12} />
+                            {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} night{stay.nights === 1 ? '' : 's'}
+                        </button>
+                    )}
+
+                    {/* Qty stepper — zinc pill, only for fixed-price products */}
+                    {!isDonation && !isBooking && (
                         <div className="bg-zinc-100 rounded-full inline-flex items-center self-start">
                             <button
                                 onClick={() => handleQuantityChange(product.id, -1)}
@@ -890,13 +964,18 @@ Status: VERIFIED`;
                     )}
                     <button
                         onPointerDown={() => {
-                            // Fire the pop + pulse the instant the button is pressed (add only).
-                            if (!isInCart) {
+                            // Fire the pop + pulse the instant the button is pressed (add only; not bookings).
+                            if (!isInCart && !isBooking) {
                                 setPoppedId(product.id);
                                 setTimeout(() => setPoppedId(cur => (cur === product.id ? null : cur)), 600);
                             }
                         }}
                         onClick={() => {
+                            if (isBooking) {
+                                if (isInCart) removeBooking(product.id);
+                                else openBookingCalendar(product);
+                                return;
+                            }
                             if (isInCart) {
                                 // Remove the item entirely from the cart
                                 setSelectedQuantities(prev => ({ ...prev, [product.id]: 0 }));
@@ -914,7 +993,7 @@ Status: VERIFIED`;
                                 ? 'bg-black border border-black text-white hover:bg-slate-800'
                                 : 'border border-black text-black hover:bg-black hover:text-white'
                         }`}
-                        title={isInCart ? 'Remove from cart' : 'Add to cart'}
+                        title={isInCart ? (isBooking ? 'Remove booking' : 'Remove from cart') : (isBooking ? 'Choose dates' : 'Add to cart')}
                     >
                         {isInCart ? (
                             <svg
@@ -933,6 +1012,8 @@ Status: VERIFIED`;
                                     style={{ animation: 'mw-tick-draw 0.42s ease-out 0.08s both' }}
                                 />
                             </svg>
+                        ) : isBooking ? (
+                            <CalendarDays size={13} />
                         ) : (
                             <Plus size={13} strokeWidth={2} />
                         )}
@@ -945,8 +1026,10 @@ Status: VERIFIED`;
     // A single catalogue grid card (image on top, name + price, add control).
     const renderGridCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
+        const isBooking = product.product_type === 'SERVICE_BOOKING';
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
+        const stay = bookingDates[product.id];
 
         // Fire the add-to-cart pop + pulse the instant the button is pressed.
         const firePop = () => {
@@ -991,73 +1074,97 @@ Status: VERIFIED`;
                     <div className="flex flex-col gap-0.5 min-w-0">
                         <span className="text-slate-500 text-[11px] truncate">{product.name}</span>
                         <span className="text-slate-900 text-sm font-bold">
-                            {isDonation ? 'Open amount' : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                            {isDonation
+                                ? 'Open amount'
+                                : isBooking
+                                    ? `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} / night`
+                                    : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                         </span>
+                        {isBooking && isInCart && stay && (
+                            <span className="text-[10px] font-semibold text-teal-700 truncate">
+                                {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} night{stay.nights === 1 ? '' : 's'}
+                            </span>
+                        )}
                     </div>
 
-                    {/* Action area — pulse flash + pop persist across the button↔stepper swap */}
-                    <div className="relative self-stretch">
-                        {poppedId === product.id && (
-                            <span
-                                aria-hidden
-                                className="absolute inset-0 rounded-lg bg-blue-500 pointer-events-none"
-                                style={{ animation: 'mw-flash 0.5s ease-out forwards' }}
-                            />
-                        )}
-                        <div
-                            className="relative"
-                            style={poppedId === product.id ? { animation: 'mw-add-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' } : undefined}
+                    {isBooking ? (
+                        // Booking → open the date calendar (no instant add / pop).
+                        <button
+                            onClick={() => openBookingCalendar(product)}
+                            className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
+                                isInCart
+                                    ? 'bg-black border-black text-white'
+                                    : 'border-slate-300 text-black hover:bg-black hover:text-white'
+                            }`}
                         >
-                            {isInCart && !isDonation ? (
-                                // Quantity stepper once the item is in the cart
-                                <div className="bg-zinc-100 rounded-lg flex items-center justify-between px-1">
-                                    <button
-                                        onClick={() => handleQuantityChange(product.id, -1)}
-                                        className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors active:scale-90"
-                                    >
-                                        <Minus size={13} strokeWidth={2} />
-                                    </button>
-                                    <span className="text-xs font-bold text-zinc-700 tabular-nums">{qty}</span>
-                                    <button
-                                        onClick={() => handleQuantityChange(product.id, 1)}
-                                        className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors active:scale-90"
-                                    >
-                                        <Plus size={13} strokeWidth={2} />
-                                    </button>
-                                </div>
-                            ) : (
-                                <button
-                                    onPointerDown={() => { if (!(isInCart && isDonation)) firePop(); }}
-                                    onClick={() => {
-                                        if (isDonation) {
-                                            // Toggle donation in/out (amount entered on the cart screen)
-                                            setSelectedQuantities(prev => ({ ...prev, [product.id]: isInCart ? 0 : 1 }));
-                                            if (isInCart) setDonationAmounts(prev => ({ ...prev, [product.id]: 0 }));
-                                        } else {
-                                            handleQuantityChange(product.id, 1);
-                                        }
-                                    }}
-                                    className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
-                                        isInCart && isDonation
-                                            ? 'bg-black border-black text-white'
-                                            : 'border-slate-300 text-black hover:bg-black hover:text-white'
-                                    }`}
-                                >
-                                    {isInCart && isDonation ? (
-                                        <>
-                                            <Check size={13} strokeWidth={2.5} />
-                                            <span>Added</span>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Plus size={13} strokeWidth={2} />
-                                            <span>Add to Cart</span>
-                                        </>
-                                    )}
-                                </button>
+                            {isInCart ? <Check size={13} strokeWidth={2.5} /> : <CalendarDays size={13} />}
+                            <span>{isInCart ? 'Reserved · Edit' : 'Reserve'}</span>
+                        </button>
+                    ) : (
+                        // Action area — pulse flash + pop persist across the button↔stepper swap
+                        <div className="relative self-stretch">
+                            {poppedId === product.id && (
+                                <span
+                                    aria-hidden
+                                    className="absolute inset-0 rounded-lg bg-blue-500 pointer-events-none"
+                                    style={{ animation: 'mw-flash 0.5s ease-out forwards' }}
+                                />
                             )}
+                            <div
+                                className="relative"
+                                style={poppedId === product.id ? { animation: 'mw-add-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)' } : undefined}
+                            >
+                                {isInCart && !isDonation ? (
+                                    // Quantity stepper once the item is in the cart
+                                    <div className="bg-zinc-100 rounded-lg flex items-center justify-between px-1">
+                                        <button
+                                            onClick={() => handleQuantityChange(product.id, -1)}
+                                            className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors active:scale-90"
+                                        >
+                                            <Minus size={13} strokeWidth={2} />
+                                        </button>
+                                        <span className="text-xs font-bold text-zinc-700 tabular-nums">{qty}</span>
+                                        <button
+                                            onClick={() => handleQuantityChange(product.id, 1)}
+                                            className="w-7 h-7 flex items-center justify-center text-zinc-600 hover:text-zinc-900 transition-colors active:scale-90"
+                                        >
+                                            <Plus size={13} strokeWidth={2} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <button
+                                        onPointerDown={() => { if (!(isInCart && isDonation)) firePop(); }}
+                                        onClick={() => {
+                                            if (isDonation) {
+                                                // Toggle donation in/out (amount entered on the cart screen)
+                                                setSelectedQuantities(prev => ({ ...prev, [product.id]: isInCart ? 0 : 1 }));
+                                                if (isInCart) setDonationAmounts(prev => ({ ...prev, [product.id]: 0 }));
+                                            } else {
+                                                handleQuantityChange(product.id, 1);
+                                            }
+                                        }}
+                                        className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
+                                            isInCart && isDonation
+                                                ? 'bg-black border-black text-white'
+                                                : 'border-slate-300 text-black hover:bg-black hover:text-white'
+                                        }`}
+                                    >
+                                        {isInCart && isDonation ? (
+                                            <>
+                                                <Check size={13} strokeWidth={2.5} />
+                                                <span>Added</span>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Plus size={13} strokeWidth={2} />
+                                                <span>Add to Cart</span>
+                                            </>
+                                        )}
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         );
@@ -1674,7 +1781,9 @@ Status: VERIFIED`;
                                         <div key={li.product.id} className="flex justify-between items-center gap-3">
                                             <span className="text-xs text-zinc-600 truncate">
                                                 {li.product.name}
-                                                {!li.isDonation && li.quantity > 1 ? ` (x${li.quantity})` : ''}
+                                                {li.isBooking && li.booking
+                                                    ? ` · ${formatStayRange(li.booking.checkIn, li.booking.checkOut)} (${li.quantity} night${li.quantity === 1 ? '' : 's'})`
+                                                    : !li.isDonation && li.quantity > 1 ? ` (x${li.quantity})` : ''}
                                             </span>
                                             <span className="text-xs text-zinc-600 flex-shrink-0">
                                                 K{li.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -1842,6 +1951,21 @@ Status: VERIFIED`;
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Booking date calendar */}
+            {calendarProduct && (
+                <BookingCalendar
+                    productName={calendarProduct.name}
+                    nightlyPrice={calendarProduct.price}
+                    unavailable={calendarAvailability}
+                    loading={calendarLoading}
+                    initial={bookingDates[calendarProduct.id]
+                        ? { checkIn: bookingDates[calendarProduct.id].checkIn, checkOut: bookingDates[calendarProduct.id].checkOut }
+                        : null}
+                    onClose={() => setCalendarProduct(null)}
+                    onConfirm={(ci, co, nights) => handleConfirmBooking(calendarProduct.id, ci, co, nights)}
+                />
             )}
 
             {/* Footer Brand Info */}
