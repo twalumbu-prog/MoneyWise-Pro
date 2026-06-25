@@ -31,6 +31,7 @@ import { productService, Product, BookingRange } from '../services/product.servi
 import { organizationService, Organization } from '../services/organization.service';
 import { cashbookService } from '../services/cashbook.service';
 import { lencoService } from '../services/lenco.service';
+import { supabase } from '../lib/supabase';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -311,7 +312,12 @@ export const NewSale: React.FC = () => {
         setError(null);
 
         try {
-            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session?.access_token) { setError('Your session has expired. Please log in again.'); return; }
+
+            // Authenticated sibling of the public checkout intent — allows a past
+            // check-in date for retrospective bookings (see logInternalWalletDepositIntent).
+            await axios.post(`${API_URL}/lenco/wallet-deposit-intent`, {
                 reference: ref,
                 purpose,
                 amount: subtotal,
@@ -326,7 +332,7 @@ export const NewSale: React.FC = () => {
                         ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
                         : {}),
                 })),
-            });
+            }, { headers: { Authorization: `Bearer ${session.access_token}` } });
 
             LencoPay.getPaid({
                 key: org.lenco_public_key || 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',

@@ -14,6 +14,7 @@ import {
     getPaymentLinkContext,
     getProductAvailability,
     logPublicWalletDepositIntent,
+    logInternalWalletDepositIntent,
     getSaleReceiptDetails,
     getPublicSalesByPhone,
     getPublicSaleReceiptDetails,
@@ -50,5 +51,8 @@ router.get('/banks', getBanks);
 router.post('/resolve-bank', resolveBankAccount);
 router.post('/resolve-momo', resolveMobileMoney);
 router.get('/sale-receipt/:entryId', getSaleReceiptDetails);
+// New Sale → MoneyWise POS: same intent flow as the public checkout, but
+// authenticated and allows a past check-in date for retrospective bookings.
+router.post('/wallet-deposit-intent', logInternalWalletDepositIntent);
 
 export default router;

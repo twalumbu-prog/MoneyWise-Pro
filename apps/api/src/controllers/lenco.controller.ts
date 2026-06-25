@@ -693,7 +693,18 @@ export const getProductAvailability = async (req: Request, res: Response) => {
     }
 };
 
-export const logPublicWalletDepositIntent = async (req: Request, res: Response) => {
+/**
+ * Shared core for logging a wallet-deposit intent (PENDING cashbook entry +
+ * PENDING product_sales/product_bookings) ahead of a Lenco checkout.
+ *
+ * `allowPastBooking` lets the internal, authenticated dashboard flow (New Sale →
+ * MoneyWise POS) log a booking with a check-in date in the past — e.g. a guest
+ * who already checked in is now paying via mobile money. The public, anonymous
+ * customer portal (PublicPay / PublicPaymentLink) always books forward, so it
+ * keeps the restriction. Either way, double-booking is still blocked: the
+ * overlap check against existing CONFIRMED stays always runs.
+ */
+const logWalletDepositIntentCore = async (req: Request, res: Response, allowPastBooking: boolean) => {
     try {
         const { reference, purpose, amount, walletId, customerName, customerPhone, items, paymentLinkToken } = req.body;
 
@@ -731,7 +742,7 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(ci) || !/^\d{4}-\d{2}-\d{2}$/.test(co) || co <= ci) {
                     return res.status(400).json({ error: 'Invalid booking dates.' });
                 }
-                if (ci < todayStr) {
+                if (ci < todayStr && !allowPastBooking) {
                     return res.status(400).json({ error: 'Check-in date cannot be in the past.' });
                 }
                 // Half-open overlap against confirmed stays for this product.
@@ -847,6 +858,36 @@ export const logPublicWalletDepositIntent = async (req: Request, res: Response) 
         console.error('[Lenco Public Intent] Error:', error);
         res.status(500).json({ error: 'Failed to log wallet deposit intent', details: error.message });
     }
+};
+
+/** Public, anonymous customer checkout (PublicPay / PublicPaymentLink) — forward-booking only. */
+export const logPublicWalletDepositIntent = (req: Request, res: Response) =>
+    logWalletDepositIntentCore(req, res, false);
+
+/**
+ * Authenticated dashboard checkout (New Sale → MoneyWise POS) — allows a past
+ * check-in date for retrospective bookings. Verifies the target wallet belongs
+ * to the caller's own organization before logging anything, since the public
+ * core trusts `walletId` from the request body.
+ */
+export const logInternalWalletDepositIntent = async (req: Request, res: Response) => {
+    const organizationId = (req as any).user?.organization_id;
+    const { walletId } = req.body;
+    if (!organizationId) {
+        return res.status(400).json({ error: 'User organization context missing' });
+    }
+    if (!walletId) {
+        return res.status(400).json({ error: 'walletId is required' });
+    }
+    const { data: wallet, error } = await supabase
+        .from('organization_wallets')
+        .select('organization_id')
+        .eq('id', walletId)
+        .single();
+    if (error || !wallet || wallet.organization_id !== organizationId) {
+        return res.status(404).json({ error: 'Wallet not found' });
+    }
+    return logWalletDepositIntentCore(req, res, true);
 };
 
 /**
