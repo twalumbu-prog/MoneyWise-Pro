@@ -241,9 +241,13 @@ export const RequisitionList: React.FC = () => {
     // Inflows: filter by the (cleaned) title or receipt number, then sort by date.
     const sortedInflows = React.useMemo(() => {
         const q = searchQuery.toLowerCase();
+        // Only show inflows that actually went through. PENDING rows are unfinished
+        // intents (e.g. a Lenco/POS checkout the customer never completed) — they
+        // aren't real money yet, so they shouldn't clutter the inbox.
         const filtered = inflows.filter(row =>
-            inflowTitle(row.description).toLowerCase().includes(q) ||
-            (row.reference_number || '').toLowerCase().includes(q)
+            row.status !== 'PENDING' &&
+            (inflowTitle(row.description).toLowerCase().includes(q) ||
+            (row.reference_number || '').toLowerCase().includes(q))
         );
         return filtered.sort((a, b) => {
             const dateA = new Date(a.created_at || a.date).getTime();

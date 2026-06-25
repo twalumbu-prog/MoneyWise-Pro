@@ -11,6 +11,14 @@ interface BookingCalendarProps {
     initial?: { checkIn: string; checkOut: string } | null;
     onClose: () => void;
     onConfirm: (checkIn: string, checkOut: string, nights: number, total: number) => void;
+    /**
+     * Allow selecting a check-in date before today. Used by the internal New Sale
+     * flow so a cashier can log a walk-in/cash booking retrospectively (e.g. at
+     * close of day). The public portal never passes this — customers can only ever
+     * book forward. Double-booking is still prevented by the `unavailable` set
+     * regardless of this flag.
+     */
+    allowPast?: boolean;
 }
 
 // --- Timezone-stable date helpers (operate on 'YYYY-MM-DD' strings) -----------
@@ -40,10 +48,11 @@ const prettyDate = (s: string) => {
 
 const MAX_NIGHTS = 90;          // cap a single stay
 const MONTHS_AHEAD = 18;        // how far forward you can browse
+const MONTHS_BACK = 12;         // how far back you can browse when allowPast is set
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 const BookingCalendar: React.FC<BookingCalendarProps> = ({
-    productName, nightlyPrice, unavailable, loading, initial, onClose, onConfirm
+    productName, nightlyPrice, unavailable, loading, initial, onClose, onConfirm, allowPast = false
 }) => {
     const today = todayStr();
     const [checkIn, setCheckIn] = useState<string | null>(initial?.checkIn || null);
@@ -81,7 +90,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
     const maxCo = selectingCheckout ? maxCheckout(checkIn!) : null;
 
     const isEnabled = (d: string): boolean => {
-        if (d < today) return false;
+        if (d < today && !allowPast) return false;
         if (selectingCheckout) {
             if (d > checkIn! && maxCo && d <= maxCo) return true;   // checkout candidate (incl. turnover day)
             if (d < checkIn! && !blocked.has(d)) return true;       // click earlier free night → restart
@@ -121,7 +130,16 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
         month: 'long', year: 'numeric', timeZone: 'UTC'
     });
 
-    const atFloor = view.y === Number(today.slice(0, 4)) && view.m0 === Number(today.slice(5, 7)) - 1;
+    const minView = (() => {
+        if (!allowPast) {
+            const [y, m] = today.split('-').map(Number);
+            return { y, m0: m - 1 };
+        }
+        const [y, m] = today.split('-').map(Number);
+        const dt = new Date(Date.UTC(y, m - 1 - MONTHS_BACK, 1));
+        return { y: dt.getUTCFullYear(), m0: dt.getUTCMonth() };
+    })();
+    const atFloor = view.y === minView.y && view.m0 === minView.m0;
     const maxView = (() => {
         const [y, m] = today.split('-').map(Number);
         const dt = new Date(Date.UTC(y, m - 1 + MONTHS_AHEAD, 1));

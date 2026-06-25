@@ -926,6 +926,7 @@ export const NewSale: React.FC = () => {
                         : null}
                     onClose={() => setCalendarProduct(null)}
                     onConfirm={(ci, co, nights) => handleConfirmBooking(calendarProduct.id, ci, co, nights)}
+                    allowPast
                 />
             )}
         </div>

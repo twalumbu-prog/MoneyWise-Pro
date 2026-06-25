@@ -291,17 +291,16 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
         // the stay is reserved immediately (CONFIRMED). Validate the dates and reject up
         // front if they overlap an existing confirmed stay — so a clash never records an
         // orphan sale or lets the same room be double-booked (e.g. via the public link).
+        // Unlike the public portal, a past check-in is allowed here: a cashier may be
+        // entering a walk-in/cash sale retrospectively (e.g. logging today's bookings
+        // at close of day). The only hard rule is no double-booking an existing stay.
         const nightsOf = (ci: string, co: string) =>
             Math.round((Date.parse(`${co}T00:00:00Z`) - Date.parse(`${ci}T00:00:00Z`)) / 86400000);
-        const todayStr = new Date().toISOString().split('T')[0];
         const bookingLines = (lines as any[]).filter(l => l.check_in && l.check_out);
         for (const b of bookingLines) {
             const ci = String(b.check_in), co = String(b.check_out);
             if (!/^\d{4}-\d{2}-\d{2}$/.test(ci) || !/^\d{4}-\d{2}-\d{2}$/.test(co) || co <= ci) {
                 return res.status(400).json({ error: 'Invalid booking dates.' });
-            }
-            if (ci < todayStr) {
-                return res.status(400).json({ error: 'Check-in date cannot be in the past.' });
             }
             // Half-open overlap against confirmed stays for this product.
             const { data: clashes } = await supabase
