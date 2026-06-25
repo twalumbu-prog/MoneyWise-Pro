@@ -5,6 +5,7 @@ import { Login } from './pages/Login';
 // src/App.tsx unused Dashboard removed
 import { RequisitionList } from './pages/RequisitionList';
 import { RequisitionCreate } from './pages/RequisitionCreate';
+import { NewSale } from './pages/NewSale';
 import { Approvals } from './pages/Approvals';
 import { CashierDashboard } from './pages/CashierDashboard';
 // RequisitionDetail removed
@@ -114,6 +115,14 @@ function App() {
                         element={
                             <ProtectedRoute>
                                 <RequisitionCreate />
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/sales/new"
+                        element={
+                            <ProtectedRoute>
+                                <NewSale />
                             </ProtectedRoute>
                         }
                     />

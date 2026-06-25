@@ -227,6 +227,205 @@ export const logCashInflow = async (req: any, res: any): Promise<any> => {
 };
 
 /**
+ * Record a manual (non-Lenco) product sale paid by cash / mobile money / bank.
+ *
+ * Unlike the Lenco POS path (which logs a PENDING intent and finalizes on webhook),
+ * the money is already collected, so we post the revenue straight to the ledger:
+ *  1. Insert the sale lines into product_sales (COMPLETED).
+ *  2. Group the (possibly edited / partial) amount by each product's income account.
+ *  3. Create one `Sale:`-prefixed INFLOW per income group against the chosen external
+ *     account_type (CASH / AIRTEL_MONEY / BANK). createEntry auto-generates a REC-
+ *     receipt number, recalculates the external-ledger balance, and posts the balanced
+ *     GL journal (Dr asset / Cr income) — so the sale lands in Reports (revenue + net
+ *     worth) and in the Inflows inbox automatically.
+ */
+export const recordManualSale = async (req: any, res: any): Promise<any> => {
+    try {
+        const { items, amount, paymentDate, accountType, methodLabel, customerName, customerPhone } = req.body;
+        const userId = (req as any).user.id;
+        const organizationId = (req as any).user.organization_id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ error: 'At least one sale item is required' });
+        }
+
+        const totalAmount = Number(amount);
+        if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
+            return res.status(400).json({ error: 'A valid payment amount is required' });
+        }
+
+        const VALID_TYPES = ['CASH', 'AIRTEL_MONEY', 'BANK'];
+        const acctType = VALID_TYPES.includes(accountType) ? accountType : 'CASH';
+        const saleDate = paymentDate || new Date().toISOString().split('T')[0];
+        const reference = `MSALE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        // Normalise + validate cart lines. Booking (accommodation) lines carry a stay.
+        const lines = items
+            .map((it: any) => ({
+                id: it.id,
+                qty: Math.max(0, Number(it.quantity) || 0),
+                unit: Math.max(0, Number(it.price) || 0),
+                check_in: it.check_in || null,
+                check_out: it.check_out || null
+            }))
+            .filter((l: any) => l.id && l.qty > 0)
+            .map((l: any) => ({ ...l, lineTotal: l.qty * l.unit }));
+
+        if (lines.length === 0) {
+            return res.status(400).json({ error: 'No valid sale lines provided' });
+        }
+
+        // Resolve each product's income account + display name.
+        const productIds = [...new Set(lines.map((l: any) => l.id))];
+        const { data: products } = await supabase
+            .from('products')
+            .select('id, name, income_account_id')
+            .eq('organization_id', organizationId)
+            .in('id', productIds);
+        const productMap = new Map((products || []).map((p: any) => [p.id, p]));
+
+        // Booking pre-validation: a manual sale means the money is already collected, so
+        // the stay is reserved immediately (CONFIRMED). Validate the dates and reject up
+        // front if they overlap an existing confirmed stay — so a clash never records an
+        // orphan sale or lets the same room be double-booked (e.g. via the public link).
+        const nightsOf = (ci: string, co: string) =>
+            Math.round((Date.parse(`${co}T00:00:00Z`) - Date.parse(`${ci}T00:00:00Z`)) / 86400000);
+        const todayStr = new Date().toISOString().split('T')[0];
+        const bookingLines = (lines as any[]).filter(l => l.check_in && l.check_out);
+        for (const b of bookingLines) {
+            const ci = String(b.check_in), co = String(b.check_out);
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(ci) || !/^\d{4}-\d{2}-\d{2}$/.test(co) || co <= ci) {
+                return res.status(400).json({ error: 'Invalid booking dates.' });
+            }
+            if (ci < todayStr) {
+                return res.status(400).json({ error: 'Check-in date cannot be in the past.' });
+            }
+            // Half-open overlap against confirmed stays for this product.
+            const { data: clashes } = await supabase
+                .from('product_bookings')
+                .select('id')
+                .eq('product_id', b.id)
+                .eq('status', 'CONFIRMED')
+                .lt('check_in', co)
+                .gt('check_out', ci)
+                .limit(1);
+            if (clashes && clashes.length > 0) {
+                const prod: any = productMap.get(b.id);
+                return res.status(409).json({ error: `${prod?.name || 'This room'} is already booked for those dates. Please choose different dates.` });
+            }
+        }
+
+        // Pro-rate the entered amount across lines by their cart share (the cashier can
+        // edit the amount for partial / rounded cash payments, so it may differ from the
+        // raw subtotal). The final line absorbs any rounding remainder.
+        const cartSubtotal = lines.reduce((s: number, l: any) => s + l.lineTotal, 0);
+        let allocatedSoFar = 0;
+        lines.forEach((l: any, i: number) => {
+            if (i === lines.length - 1) {
+                l.allocated = Math.round((totalAmount - allocatedSoFar) * 100) / 100;
+            } else {
+                const share = cartSubtotal > 0 ? l.lineTotal / cartSubtotal : 1 / lines.length;
+                l.allocated = Math.round(totalAmount * share * 100) / 100;
+                allocatedSoFar += l.allocated;
+            }
+        });
+
+        // 1. Record the sale lines (money already collected → COMPLETED).
+        const salesData = lines.map((l: any) => ({
+            organization_id: organizationId,
+            product_id: l.id,
+            customer_name: customerName || 'Walk-in Customer',
+            customer_phone: customerPhone || 'N/A',
+            quantity: l.qty,
+            amount_paid: l.allocated,
+            reference,
+            status: 'COMPLETED'
+        }));
+        const { error: salesError } = await supabase.from('product_sales').insert(salesData);
+        if (salesError) {
+            console.error('[Manual Sale] Failed to record product_sales:', salesError.message);
+        }
+
+        // 2. Group allocations by income account.
+        const groups = new Map<string, { income: string | null; amount: number; names: string[] }>();
+        for (const l of lines as any[]) {
+            const prod: any = productMap.get(l.id);
+            const income: string | null = prod?.income_account_id || null;
+            const key = income || 'NULL';
+            const g = groups.get(key) || { income, amount: 0, names: [] };
+            g.amount += l.allocated;
+            g.names.push(`${prod?.name || 'Item'} (x${l.qty})`);
+            groups.set(key, g);
+        }
+        const groupList = [...groups.values()].sort((a, b) => b.amount - a.amount);
+
+        // 3. One INFLOW per income group; the largest keeps the primary reference,
+        //    the rest carry a `::gN` suffix (mirrors applyProductRevenueRouting).
+        const created: any[] = [];
+        for (let i = 0; i < groupList.length; i++) {
+            const g = groupList[i];
+            const desc = `Sale: ${g.names.join(', ')} | Cust: ${customerPhone || customerName || 'Walk-in'} | ${methodLabel || acctType}`;
+            const entry = await cashbookService.createEntry(organizationId, {
+                entry_type: 'INFLOW',
+                description: desc,
+                debit: g.amount,
+                credit: 0,
+                date: saleDate,
+                created_by: userId,
+                account_type: acctType,
+                account_id: g.income || null,
+                // Mapped income account is deterministic → ACCOUNTED so the AI sweep
+                // leaves it alone; otherwise COMPLETED for later classification.
+                status: g.income ? 'ACCOUNTED' : 'COMPLETED',
+                external_reference: i === 0 ? reference : `${reference}::g${i + 1}`
+            } as any);
+            created.push(entry);
+        }
+
+        // 4. Reserve booking dates immediately (CONFIRMED — payment already received),
+        //    so the room is blocked everywhere (public link, other sales) right away.
+        for (const b of bookingLines as any[]) {
+            const row = {
+                organization_id: organizationId,
+                product_id: b.id,
+                reference,
+                customer_name: customerName || 'Walk-in Customer',
+                customer_phone: customerPhone || 'N/A',
+                check_in: b.check_in,
+                check_out: b.check_out,
+                nights: nightsOf(String(b.check_in), String(b.check_out)),
+                amount: b.allocated,
+                status: 'CONFIRMED'
+            };
+            const { error: bookingErr } = await supabase.from('product_bookings').insert(row);
+            if (!bookingErr) continue;
+            // A concurrent booking slipped in between the pre-check and this insert
+            // (partial GiST exclusion). Money is already taken, so don't fail the sale —
+            // record the hold as CONFLICT for the merchant to resolve.
+            const isOverlap = bookingErr.code === '23P01' || /exclusion|no_overlap|conflicting key/i.test(bookingErr.message || '');
+            console.error(`[Manual Sale] Booking insert failed${isOverlap ? ' (overlap race)' : ''} for product ${b.id}:`, bookingErr.message);
+            if (isOverlap) {
+                await supabase.from('product_bookings').insert({ ...row, status: 'CONFLICT' });
+            }
+        }
+
+        const primary = created[0];
+        return res.json({
+            reference,
+            referenceNumber: primary?.reference_number || null,
+            amount: totalAmount,
+            entryId: primary?.id || null
+        });
+    } catch (error: any) {
+        console.error('Error recording manual sale:', error);
+        res.status(500).json({ error: 'Failed to record manual sale', details: error.message });
+    }
+};
+
+/**
  * Log wallet deposit intent
  */
 export const logWalletDepositIntent = async (req: any, res: any): Promise<any> => {

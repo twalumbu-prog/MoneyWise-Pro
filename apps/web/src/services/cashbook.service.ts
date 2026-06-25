@@ -142,6 +142,22 @@ export const cashbookService = {
         return response.json();
     },
 
+    async recordManualSale(payload: {
+        items: Array<{ id: string; quantity: number; price: number; check_in?: string; check_out?: string }>;
+        amount: number;
+        paymentDate: string;
+        accountType: 'CASH' | 'AIRTEL_MONEY' | 'BANK';
+        methodLabel: string;
+        customerName: string;
+        customerPhone: string;
+    }): Promise<{ reference: string; referenceNumber: string | null; amount: number; entryId: string | null }> {
+        const response = await apiFetch('/cashbook/manual-sale', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        return response.json();
+    },
+
     async logWalletDepositIntent(reference: string, purpose: string, amount: number, walletId?: string) {
         const response = await apiFetch('/cashbook/wallet-deposit-intent', {
             method: 'POST',

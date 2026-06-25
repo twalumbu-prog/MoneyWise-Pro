@@ -11,9 +11,12 @@ import { MobileStaffLoanWizard } from '../components/requisitions/MobileStaffLoa
 import { MobileSalaryAdvanceWizard } from '../components/requisitions/MobileSalaryAdvanceWizard';
 import { MobilePayrollWizard } from '../components/requisitions/MobilePayrollWizard';
 import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, Filter } from 'lucide-react';
+import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, Filter, ShoppingBag } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 import { departmentService } from '../services/department.service';
+import { SegmentedControl } from '../components/AnimatedTabs';
+import { InflowInbox, inflowTitle, InflowRow } from '../components/InflowInbox';
+import { cashbookService } from '../services/cashbook.service';
 
 interface Requisition {
     id: string;
@@ -59,7 +62,10 @@ export const RequisitionList: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [currentView] = useState<'active' | 'history'>('active');
     const [selectedRequisition, setSelectedRequisition] = useState<RequisitionType | null>(null);
-    const [viewMode, setViewMode] = useState<'inbox' | 'scheduled'>('inbox');
+    // Outflows = requisitions (existing) · Inflows = money-in ledger entries (sales, deposits, cash inflows)
+    const [inboxMode, setInboxMode] = useState<'outflows' | 'inflows'>('outflows');
+    const [inflows, setInflows] = useState<InflowRow[]>([]);
+    const [inflowsLoading, setInflowsLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string[]>(['ALL']);
     const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false); // State for mobile action sheet
@@ -135,6 +141,24 @@ export const RequisitionList: React.FC = () => {
             setLoading(false);
         }
     };
+
+    const loadInflows = async () => {
+        try {
+            setInflowsLoading(true);
+            const data = await cashbookService.getEntries({ entryType: 'INFLOW', limit: 200 });
+            setInflows(data || []);
+        } catch (err) {
+            console.error('Failed to load inflows:', err);
+        } finally {
+            setInflowsLoading(false);
+        }
+    };
+
+    // Lazily load the inflows ledger the first time the user opens that view, and
+    // refresh it whenever they switch back to it (e.g. after recording a sale).
+    useEffect(() => {
+        if (inboxMode === 'inflows') loadInflows();
+    }, [inboxMode]);
 
     const handleStatusChange = async () => {
         await loadRequisitions();
@@ -214,6 +238,20 @@ export const RequisitionList: React.FC = () => {
         });
     }, [filteredRequisitions, sortOrder]);
 
+    // Inflows: filter by the (cleaned) title or receipt number, then sort by date.
+    const sortedInflows = React.useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        const filtered = inflows.filter(row =>
+            inflowTitle(row.description).toLowerCase().includes(q) ||
+            (row.reference_number || '').toLowerCase().includes(q)
+        );
+        return filtered.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.date).getTime();
+            const dateB = new Date(b.created_at || b.date).getTime();
+            return sortOrder === 'desc' ? dateB - dateA : dateA - dateB;
+        });
+    }, [inflows, searchQuery, sortOrder]);
+
     interface DateGroup {
         dateLabel: string;
         dateKey: string;
@@ -258,6 +296,24 @@ export const RequisitionList: React.FC = () => {
         });
     };
 
+    // Same day-grouping shape as requisitions, keyed on the inflow's ledger date.
+    const groupInflowsByDate = (rows: InflowRow[]) => {
+        const groupsMap: { [key: string]: InflowRow[] } = {};
+        rows.forEach(row => {
+            const dateKey = (row.date || '').slice(0, 10) || new Date(row.created_at || Date.now()).toISOString().slice(0, 10);
+            if (!groupsMap[dateKey]) groupsMap[dateKey] = [];
+            groupsMap[dateKey].push(row);
+        });
+        const sortedKeys = Object.keys(groupsMap).sort((a, b) =>
+            sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b)
+        );
+        return sortedKeys.map(key => {
+            const [year, month, day] = key.split('-');
+            const dayName = new Date(`${key}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
+            return { dateLabel: `${dayName} - ${day}/${month}/${year}`, dateKey: key, rows: groupsMap[key] };
+        });
+    };
+
     return (
         <>
             <Layout noPadding={true} backgroundColor="bg-white">
@@ -265,19 +321,19 @@ export const RequisitionList: React.FC = () => {
                 {/* Desktop Action Row (Unified with Navigation Edges) */}
                 <div className="hidden md:block pt-2 mb-4">
                     <div className="flex items-center justify-between gap-6">
-                        {/* View Switcher */}
+                        {/* View Switcher: Outflows (requisitions) ⇄ Inflows (money-in) */}
                         <div className="flex items-center bg-gray-100/50 p-1.5 rounded-2xl w-fit border border-gray-100 shadow-inner">
-                            <button 
-                                onClick={() => setViewMode('inbox')}
-                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${viewMode === 'inbox' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
+                            <button
+                                onClick={() => setInboxMode('outflows')}
+                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${inboxMode === 'outflows' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
                             >
-                                Requisition Inbox
+                                Outflows
                             </button>
-                            <button 
-                                onClick={() => setViewMode('scheduled')}
-                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${viewMode === 'scheduled' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
+                            <button
+                                onClick={() => setInboxMode('inflows')}
+                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${inboxMode === 'inflows' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
                             >
-                                Scheduled
+                                Inflows
                             </button>
                         </div>
 
@@ -293,19 +349,19 @@ export const RequisitionList: React.FC = () => {
                                     className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 transition-all font-bold text-brand-navy placeholder:text-gray-400 shadow-sm"
                                 />
                             </div>
-                            <button 
-                                onClick={loadRequisitions}
+                            <button
+                                onClick={() => inboxMode === 'inflows' ? loadInflows() : loadRequisitions()}
                                 className="p-3.5 bg-white text-gray-400 hover:text-[#006AFF] rounded-2xl border border-gray-100 transition-all shadow-sm hover:shadow"
                                 title="Refresh"
                             >
                                 <RefreshCw size={20} />
                             </button>
-                            <button 
-                                onClick={() => navigate('/requisitions/new')}
+                            <button
+                                onClick={() => navigate(inboxMode === 'inflows' ? '/sales/new' : '/requisitions/new')}
                                 className="bg-[#006AFF] text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-blue-600 transition-all flex items-center space-x-2 whitespace-nowrap"
                             >
                                 <Plus size={20} />
-                                <span>New Request</span>
+                                <span>{inboxMode === 'inflows' ? 'New Sale' : 'New Request'}</span>
                             </button>
                         </div>
                     </div>
@@ -325,7 +381,21 @@ export const RequisitionList: React.FC = () => {
 
                     return (
                         <>
-                            {/* Status Tabs Row (Stand-alone) */}
+                            {/* Mobile Outflows/Inflows toggle — styled like the Reports view toggle */}
+                            <div className="md:hidden px-6 pt-3 pb-1">
+                                <SegmentedControl
+                                    variant="pill"
+                                    value={inboxMode}
+                                    onChange={(v) => setInboxMode(v as 'outflows' | 'inflows')}
+                                    options={[
+                                        { value: 'outflows', label: 'Outflows' },
+                                        { value: 'inflows', label: 'Inflows' },
+                                    ]}
+                                />
+                            </div>
+
+                            {/* Status Tabs Row (Stand-alone, Outflows only) */}
+                            {inboxMode === 'outflows' && (
                             <div className="hidden md:flex items-center space-x-2 pb-2">
                                 {TABS.map((tab) => {
                                     const count = getTabCount(tab.value);
@@ -350,6 +420,7 @@ export const RequisitionList: React.FC = () => {
                                     );
                                 })}
                             </div>
+                            )}
 
                             {/* Mobile Search & Sort/Filter Bar */}
                             <div className="md:hidden px-6 pt-2 pb-3">
@@ -372,6 +443,7 @@ export const RequisitionList: React.FC = () => {
                                     >
                                         <ArrowUpDown size={18} />
                                     </button>
+                                    {inboxMode === 'outflows' && (
                                     <button
                                         onClick={() => setIsFilterSheetOpen(true)}
                                         className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ml-1 ${
@@ -383,11 +455,12 @@ export const RequisitionList: React.FC = () => {
                                     >
                                         <Filter size={18} />
                                     </button>
+                                    )}
                                 </div>
                             </div>
 
-                            {/* Active Filter Chips */}
-                            {(!activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate || sortOrder !== 'desc') && (
+                            {/* Active Filter Chips (Outflows only) */}
+                            {inboxMode === 'outflows' && (!activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate || sortOrder !== 'desc') && (
                                 <div className="md:hidden px-6 pb-3 flex items-center gap-2 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                                     {activeTab.filter(t => t !== 'ALL').map(status => (
                                         <span key={status} className="inline-flex items-center gap-1.5 bg-[#F0F7FF] text-[#006AFF] border border-[#006AFF]/20 rounded-full px-3 py-1.5 text-[11px] font-bold whitespace-nowrap flex-shrink-0">
@@ -466,6 +539,7 @@ export const RequisitionList: React.FC = () => {
                 })()}
 
                 <div className="w-full pt-6">
+                    {inboxMode === 'outflows' && (<>
                     {loading && (
                         <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
                             <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>
@@ -591,6 +665,80 @@ export const RequisitionList: React.FC = () => {
                             </div>
                         </>
                     )}
+                    </>)}
+
+                    {inboxMode === 'inflows' && (<>
+                        {inflowsLoading && inflows.length === 0 && (
+                            <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
+                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
+                                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
+                            </div>
+                        )}
+
+                        {!inflowsLoading && sortedInflows.length === 0 && (
+                            <div className="bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
+                                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
+                                    <FileText className="h-10 w-10 text-gray-200" />
+                                </div>
+                                <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                                <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
+                            </div>
+                        )}
+
+                        {sortedInflows.length > 0 && (
+                            <>
+                                {/* Mobile Card View */}
+                                <div className="md:hidden space-y-6 px-6">
+                                    {groupInflowsByDate(sortedInflows).map((group) => (
+                                        <div key={group.dateKey} className="space-y-3">
+                                            <h4 className="text-[12px] font-bold text-black px-1">{group.dateLabel}</h4>
+                                            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                                                {group.rows.map((row) => {
+                                                    const statusConfig = getStatusConfig(row.status || 'COMPLETED');
+                                                    const getStatusIcon = (status: string) => {
+                                                        switch (getStatusConfig(status).iconType) {
+                                                            case 'clock': return <Clock size={13} className="text-blue-500" />;
+                                                            case 'check-circle': return <CheckCircle2 size={13} className="text-[#006AFF]" />;
+                                                            case 'check': return <Check size={13} className="text-emerald-500" />;
+                                                            case 'alert': return <AlertCircle size={13} className="text-red-500" />;
+                                                            case 'rotate': return <RotateCcw size={13} className="text-gray-400" />;
+                                                            default: return <Clock size={13} className="text-gray-400" />;
+                                                        }
+                                                    };
+                                                    return (
+                                                        <div key={row.id} className="p-5 transition-colors">
+                                                            <div className="text-[11px] font-bold text-gray-400 mb-1.5">
+                                                                {row.reference_number || 'Receipt'}
+                                                            </div>
+                                                            <div className="flex justify-between items-start gap-4 mb-2">
+                                                                <h3 className="font-normal text-[15px] text-brand-navy leading-tight line-clamp-2">
+                                                                    {inflowTitle(row.description)}
+                                                                </h3>
+                                                                <div className="font-normal text-[15px] text-emerald-600 tracking-tight whitespace-nowrap text-right">
+                                                                    +K{(row.debit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex items-center gap-1.5">
+                                                                {getStatusIcon(row.status || 'COMPLETED')}
+                                                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                                                    {statusConfig.label}
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Desktop View */}
+                                <div className="hidden md:block">
+                                    <InflowInbox inflows={sortedInflows} />
+                                </div>
+                            </>
+                        )}
+                    </>)}
                 </div>
             </div>
         </Layout>
@@ -639,7 +787,7 @@ export const RequisitionList: React.FC = () => {
 
                     {/* Sheet Header */}
                     <div className="px-6 py-4 flex items-center justify-between border-b border-gray-50">
-                        <h2 className="text-xl font-bold text-brand-navy">New Requisition</h2>
+                        <h2 className="text-xl font-bold text-brand-navy">{inboxMode === 'inflows' ? 'New Sale' : 'New Requisition'}</h2>
                         <button
                             onClick={() => setIsNewRequisitionOpen(false)}
                             className="p-2 bg-gray-50 rounded-full text-gray-400 hover:bg-gray-100 transition-colors"
@@ -650,6 +798,23 @@ export const RequisitionList: React.FC = () => {
 
                     {/* Sheet Content */}
                     <div className="p-5 space-y-3 overflow-y-auto pb-10">
+                        {inboxMode === 'inflows' ? (
+                        <button
+                            onClick={() => {
+                                setIsNewRequisitionOpen(false);
+                                navigate('/sales/new');
+                            }}
+                            className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
+                        >
+                            <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
+                                <ShoppingBag className="h-6 w-6 text-emerald-600" />
+                            </div>
+                            <div>
+                                <div className="font-bold text-gray-900 text-base">New Sale</div>
+                                <div className="text-xs text-emerald-600/70 font-medium">Ring up products & take payment</div>
+                            </div>
+                        </button>
+                        ) : (<>
                         <button
                             onClick={() => {
                                 setIsNewRequisitionOpen(false);
@@ -713,6 +878,7 @@ export const RequisitionList: React.FC = () => {
                                 <div className="text-xs text-indigo-600/70 font-medium">Batch processing via spreadsheet upload</div>
                             </div>
                         </button>
+                        </>)}
                     </div>
                 </div>
 
