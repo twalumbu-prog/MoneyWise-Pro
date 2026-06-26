@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import {
@@ -13,6 +13,7 @@ import {
     Plus,
     Minus,
     AlertCircle,
+    RefreshCw,
     ArrowLeft,
     Building2,
     Download,
@@ -34,6 +35,7 @@ import {
     CalendarDays
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
+import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import BookingCalendar from '../components/BookingCalendar';
 import { BookingRange } from '../services/product.service';
@@ -102,7 +104,6 @@ interface PublicContextResponse {
 
 export const PublicPay: React.FC = () => {
     const { wallet_id } = useParams<{ wallet_id: string }>();
-    const navigate = useNavigate();
 
     // UI Steps
     //  SHOP    = product catalogue grid (entry page)
@@ -152,6 +153,8 @@ export const PublicPay: React.FC = () => {
     
     // Global errors
     const [error, setError] = useState<string | null>(null);
+    // Structured diagnosis for the full-screen ERROR step (load failures).
+    const [errorInfo, setErrorInfo] = useState<CheckoutErrorInfo | null>(null);
 
     // Receipt Retrieval states
     const [showRetrievePortal, setShowRetrievePortal] = useState(false);
@@ -161,38 +164,54 @@ export const PublicPay: React.FC = () => {
     const [retrieveError, setRetrieveError] = useState<string | null>(null);
     const [downloadingReference, setDownloadingReference] = useState<string | null>(null);
 
-    // Fetch context on load
-    useEffect(() => {
-        const fetchContext = async () => {
-            if (!wallet_id) {
-                setError('Invalid wallet ID in URL.');
+    // Fetch context on load (also re-runnable from the ERROR screen's Try Again).
+    const loadContext = useCallback(async () => {
+        setErrorInfo(null);
+        setStep('LOADING');
+
+        if (!wallet_id) {
+            setErrorInfo({
+                title: 'Incomplete link',
+                message: 'This payment link looks incomplete, so the checkout can’t open.',
+                tips: ['Make sure the entire link was copied, then try again.', 'Ask the business to resend the link.'],
+                retry: false,
+            });
+            setStep('ERROR');
+            return;
+        }
+
+        try {
+            const response = await axios.get<PublicContextResponse>(
+                `${API_URL}/lenco/public-context/${wallet_id}`,
+                { timeout: 15000 }
+            );
+            setOrg(response.data.organization);
+            setWallet(response.data.wallet);
+            setProducts(response.data.products);
+
+            // Reached the server, but the business hasn't connected a payment provider.
+            if (!response.data.wallet.lenco_subaccount_id) {
+                setErrorInfo({
+                    title: 'Payments not set up yet',
+                    message: 'This business hasn’t finished connecting their payment provider, so checkout isn’t available yet.',
+                    tips: ['Please let the business know so they can finish their payment setup.', 'You can try again once they’ve completed it.'],
+                    retry: true,
+                });
                 setStep('ERROR');
                 return;
             }
 
-            try {
-                const response = await axios.get<PublicContextResponse>(`${API_URL}/lenco/public-context/${wallet_id}`);
-                setOrg(response.data.organization);
-                setWallet(response.data.wallet);
-                setProducts(response.data.products);
-                
-                // If wallet doesn't have a lenco configuration
-                if (!response.data.wallet.lenco_subaccount_id) {
-                    setError('This organization hasn\'t completed their payment provider integration. Checkout is currently unavailable.');
-                    setStep('ERROR');
-                    return;
-                }
-
-                setStep('SHOP');
-            } catch (err: any) {
-                console.error('Error fetching public pay context:', err);
-                setError(err.response?.data?.error || 'Failed to load organization checkout details. Please check the link and try again.');
-                setStep('ERROR');
-            }
-        };
-
-        fetchContext();
+            setStep('SHOP');
+        } catch (err: any) {
+            console.error('Error fetching public pay context:', err);
+            setErrorInfo(diagnoseCheckoutError(err));
+            setStep('ERROR');
+        }
     }, [wallet_id]);
+
+    useEffect(() => {
+        loadContext();
+    }, [loadContext]);
 
     // Mount the sheet, then flip `sheetIn` on the next frame so the CSS transition runs.
     const openProductSheet = () => {
@@ -1842,18 +1861,36 @@ Status: VERIFIED`;
                             <div className="mx-auto w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center">
                                 <AlertCircle size={32} />
                             </div>
-                            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider">Configuration Error</h3>
-                            <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed font-semibold">
-                                {error}
+                            <h3 className="text-base font-black text-slate-900 uppercase tracking-wider">
+                                {errorInfo?.title || 'Checkout unavailable'}
+                            </h3>
+                            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed font-semibold">
+                                {errorInfo?.message || 'We couldn’t load this checkout right now. Please try again in a moment.'}
                             </p>
+
+                            {errorInfo?.tips && errorInfo.tips.length > 0 && (
+                                <div className="text-left bg-slate-50 border border-slate-100 rounded-2xl p-4 max-w-xs mx-auto space-y-2">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">What you can try</p>
+                                    <ul className="space-y-1.5">
+                                        {errorInfo.tips.map((tip, i) => (
+                                            <li key={i} className="flex items-start gap-2 text-[11px] font-medium text-slate-500 leading-relaxed">
+                                                <span className="mt-1.5 h-1 w-1 rounded-full bg-slate-300 flex-shrink-0" />
+                                                <span>{tip}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            )}
                         </div>
 
-                        <button
-                            onClick={() => navigate('/login')}
-                            className="w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg"
-                        >
-                            Return to Login
-                        </button>
+                        {(errorInfo?.retry ?? true) && (
+                            <button
+                                onClick={loadContext}
+                                className="w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
+                            >
+                                <RefreshCw size={14} /> Try Again
+                            </button>
+                        )}
                     </div>
                 )}
                 </>

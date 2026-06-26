@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import {
     Loader2,
     AlertCircle,
+    RefreshCw,
     CheckCircle2,
     ShieldCheck,
     Building2,
@@ -12,6 +13,7 @@ import {
     XCircle
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
+import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -44,43 +46,57 @@ export const PublicPaymentLink: React.FC = () => {
     const [step, setStep] = useState<'LOADING' | 'READY' | 'INACTIVE' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
     const [ctx, setCtx] = useState<LinkContext | null>(null);
     const [error, setError] = useState<string | null>(null);
+    // Structured, actionable diagnosis for the full-screen ERROR step (load failures).
+    const [errorInfo, setErrorInfo] = useState<CheckoutErrorInfo | null>(null);
     const [verificationStep, setVerificationStep] = useState<'POLLING' | 'FAILED'>('POLLING');
     const [verificationReason, setVerificationReason] = useState('');
     const [receiptNumber, setReceiptNumber] = useState<string | null>(null);
     const [currentReference, setCurrentReference] = useState('');
 
-    useEffect(() => {
-        const fetchContext = async () => {
-            if (!token) {
-                setError('Invalid payment link.');
+    // Re-runnable from the ERROR screen's Try Again.
+    const loadContext = useCallback(async () => {
+        setErrorInfo(null);
+        setStep('LOADING');
+
+        if (!token) {
+            setErrorInfo({
+                title: 'Incomplete link',
+                message: 'This payment link looks incomplete, so the checkout can’t open.',
+                tips: ['Make sure the entire link was copied, then try again.', 'Ask the business to resend the link.'],
+                retry: false,
+            });
+            setStep('ERROR');
+            return;
+        }
+        try {
+            const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`, { timeout: 15000 });
+            setCtx(res.data);
+
+            if (res.data.status !== 'ACTIVE') {
+                setStep('INACTIVE');
+                return;
+            }
+            if (!res.data.wallet.lenco_subaccount_id) {
+                setErrorInfo({
+                    title: 'Payments not set up yet',
+                    message: 'This business hasn’t finished connecting their payment provider, so checkout isn’t available yet.',
+                    tips: ['Please let the business know so they can finish their payment setup.', 'You can try again once they’ve completed it.'],
+                    retry: true,
+                });
                 setStep('ERROR');
                 return;
             }
-            try {
-                const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`);
-                setCtx(res.data);
-
-                if (res.data.status !== 'ACTIVE') {
-                    setStep('INACTIVE');
-                    return;
-                }
-                if (!res.data.wallet.lenco_subaccount_id) {
-                    setError('This organization hasn\'t completed their payment provider integration. Checkout is currently unavailable.');
-                    setStep('ERROR');
-                    return;
-                }
-                setStep('READY');
-            } catch (err: any) {
-                if (err.response?.status === 404) {
-                    setError('This payment link could not be found.');
-                } else {
-                    setError(err.response?.data?.error || 'Failed to load payment link. Please check the link and try again.');
-                }
-                setStep('ERROR');
-            }
-        };
-        fetchContext();
+            setStep('READY');
+        } catch (err: any) {
+            console.error('Error fetching payment-link context:', err);
+            setErrorInfo(diagnoseCheckoutError(err));
+            setStep('ERROR');
+        }
     }, [token]);
+
+    useEffect(() => {
+        loadContext();
+    }, [loadContext]);
 
     const subtotal = ctx?.amount || 0;
     const processingFee = subtotal > 0 ? calculatePlatformFee(subtotal) : 0;
@@ -333,10 +349,35 @@ export const PublicPaymentLink: React.FC = () => {
                         <div className="mx-auto w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mb-4">
                             <AlertCircle size={32} />
                         </div>
-                        <h3 className="text-base font-black text-slate-900 uppercase tracking-wider">Unable to Load Link</h3>
-                        <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed font-semibold mt-3">
-                            {error}
+                        <h3 className="text-base font-black text-slate-900 uppercase tracking-wider">
+                            {errorInfo?.title || 'Unable to load link'}
+                        </h3>
+                        <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed font-semibold mt-3">
+                            {errorInfo?.message || 'We couldn’t load this payment link right now. Please try again in a moment.'}
                         </p>
+
+                        {errorInfo?.tips && errorInfo.tips.length > 0 && (
+                            <div className="text-left bg-slate-50 border border-slate-100/50 rounded-2xl p-4 max-w-xs mx-auto space-y-2 mt-5">
+                                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">What you can try</p>
+                                <ul className="space-y-1.5">
+                                    {errorInfo.tips.map((tip, i) => (
+                                        <li key={i} className="flex items-start gap-2 text-[11px] font-medium text-slate-500 leading-relaxed">
+                                            <span className="mt-1.5 h-1 w-1 rounded-full bg-slate-300 flex-shrink-0" />
+                                            <span>{tip}</span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
+
+                        {(errorInfo?.retry ?? true) && (
+                            <button
+                                onClick={loadContext}
+                                className="mt-6 w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
+                            >
+                                <RefreshCw size={14} /> Try Again
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
