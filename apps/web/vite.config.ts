@@ -5,6 +5,9 @@ import { fileURLToPath, URL } from 'node:url'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+    // Expose both Vite-native vars and the NEXT_PUBLIC_* vars created by the
+    // PostHog/Vercel integration (it assumes Next.js naming) to the client bundle.
+    envPrefix: ['VITE_', 'NEXT_PUBLIC_'],
     plugins: [
         react(),
         VitePWA({
