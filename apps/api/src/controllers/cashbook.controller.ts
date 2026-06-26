@@ -942,3 +942,79 @@ export const transferSubwalletFunds = async (req: any, res: any): Promise<any> =
         res.status(500).json({ error: 'Failed to transfer funds', details: error.message });
     }
 };
+
+/**
+ * Record the CASH-side leg of a "Transfer to MoneyWise" once the funding Lenco
+ * deposit has actually cleared.
+ *
+ * The wallet is credited by the real Lenco deposit (the standard wallet-deposit
+ * intent → getPaid → verify flow), so this only books the contra outflow that
+ * reduces the external account — so no money is "moved" in the ledger until the
+ * deposit truly succeeds. Posts one ADJUSTMENT credit (Cr external asset / Dr
+ * Suspense); paired with the deposit's inflow it nets to an asset → asset move
+ * with no P&L impact. Idempotent on the deposit `reference` so a retried or
+ * double-fired success callback never deducts cash twice.
+ */
+export const transferCashToWallet = async (req: any, res: any): Promise<any> => {
+    try {
+        const { amount, reference, sourceAccountType, walletName } = req.body;
+        const organizationId = (req as any).user.organization_id;
+        const userId = (req as any).user.id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+        if (!reference) {
+            return res.status(400).json({ error: 'A deposit reference is required' });
+        }
+
+        const amt = Number(amount);
+        if (!Number.isFinite(amt) || amt <= 0) {
+            return res.status(400).json({ error: 'A valid transfer amount is required' });
+        }
+
+        const EXTERNAL_TYPES: Record<string, string> = { CASH: 'Cash', AIRTEL_MONEY: 'Mobile Money', BANK: 'Bank' };
+        const srcType = EXTERNAL_TYPES[sourceAccountType] ? sourceAccountType : 'CASH';
+        const cashOutRef = `${reference}-CASHOUT`;
+
+        // Idempotent: only deduct once per funding deposit, even if the success
+        // callback fires multiple times or the request is retried.
+        const { data: existing } = await supabase
+            .from('cashbook_entries')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .eq('external_reference', cashOutRef)
+            .maybeSingle();
+        if (existing) {
+            return res.json({ message: 'Cash transfer leg already recorded', outEntry: sanitizeEntry(existing) });
+        }
+
+        // Ensure the external account still holds enough to cover the transfer.
+        const srcBalance = await cashbookService.getCurrentBalance(organizationId, srcType);
+        if (srcBalance < amt) {
+            return res.status(400).json({ error: `Insufficient ${EXTERNAL_TYPES[srcType]} balance. Available: K${srcBalance.toFixed(2)}` });
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const dest = (walletName || 'MoneyWise Wallet').toString().slice(0, 60);
+
+        // Reduce the external account (credit = outflow). The matching wallet inflow
+        // is created by the Lenco deposit finalization, not here.
+        const outEntry = await cashbookService.createEntry(organizationId, {
+            entry_type: 'ADJUSTMENT',
+            description: `Transfer to MoneyWise: ${EXTERNAL_TYPES[srcType]} ➡️ ${dest} (Outflow)`,
+            debit: 0,
+            credit: amt,
+            date: today,
+            created_by: userId,
+            account_type: srcType,
+            external_reference: cashOutRef,
+            status: 'COMPLETED'
+        } as any);
+
+        res.json({ message: 'Cash transfer leg recorded', outEntry: sanitizeEntry(outEntry) });
+    } catch (error: any) {
+        console.error('Error recording cash transfer leg:', error);
+        res.status(500).json({ error: 'Failed to record cash transfer', details: error.message });
+    }
+};

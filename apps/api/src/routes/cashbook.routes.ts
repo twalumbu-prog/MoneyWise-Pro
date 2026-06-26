@@ -16,7 +16,8 @@ import {
     narrateEntry,
     getWallets,
     createWallet,
-    transferSubwalletFunds
+    transferSubwalletFunds,
+    transferCashToWallet
 } from '../controllers/cashbook.controller';
 
 const router = Router();
@@ -32,6 +33,9 @@ router.post('/wallets', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), createW
 
 // Transfer funds between subwallets
 router.post('/wallets/transfer', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), transferSubwalletFunds);
+
+// Transfer from an external account (cash/mobile money/bank) into a MoneyWise wallet
+router.post('/transfer-to-wallet', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), transferCashToWallet);
 
 // Get cashbook entries (All roles can view for transparency)
 router.get('/', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getCashbookEntries);

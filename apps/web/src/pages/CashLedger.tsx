@@ -37,6 +37,7 @@ import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
 import CreateWalletModal from '../components/CreateWalletModal';
 import TransferModal from '../components/TransferModal';
+import TransferToWalletModal from '../components/TransferToWalletModal';
 import ShareWalletLinkModal from '../components/ShareWalletLinkModal';
 import { useAuth } from '../context/AuthContext';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
@@ -204,6 +205,7 @@ const CashLedger: React.FC = () => {
     const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL'>('MONEYWISE');
     const [isCreateWalletModalOpen, setIsCreateWalletModalOpen] = useState(false);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+    const [isCashTransferModalOpen, setIsCashTransferModalOpen] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [shareWalletId, setShareWalletId] = useState<string | null>(null);
     const [externalBalances, setExternalBalances] = useState<Record<string, number>>({ CASH: 0, AIRTEL_MONEY: 0, BANK: 0 });
@@ -1695,14 +1697,24 @@ Status: VERIFIED`;
                                             </div>
                                         </div>
 
-                                        {/* Deposit Button inside card */}
+                                        {/* Action Buttons inside card */}
                                         {isActive && !isRequestor && (
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
-                                                className="w-full py-3 mt-5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
-                                            >
-                                                + Deposit Funds
-                                            </button>
+                                            <div className="mt-5 space-y-2">
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
+                                                    className="w-full py-3 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
+                                                >
+                                                    + Deposit Funds
+                                                </button>
+                                                {acc.id === 'CASH' && wallets.length > 0 && (
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setIsCashTransferModalOpen(true); }}
+                                                        className="w-full py-3 bg-white/10 rounded-2xl flex items-center justify-center gap-1.5 font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
+                                                    >
+                                                        <ArrowDownUp size={14} strokeWidth={2.5} /> Transfer to MoneyWise
+                                                    </button>
+                                                )}
+                                            </div>
                                         )}
                                     </div>
                                 </div>
@@ -2119,6 +2131,16 @@ Status: VERIFIED`;
                             </button>
                         )}
                         
+                        {!isRequestor && selectedAccountType === 'CASH' && wallets.length > 0 && (
+                            <button
+                                onClick={() => setIsCashTransferModalOpen(true)}
+                                className="bg-white hover:bg-gray-50 text-gray-950 border border-gray-200 px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
+                            >
+                                <ArrowDownUp size={14} className="mr-2 text-gray-500" strokeWidth={3} />
+                                Transfer to MoneyWise
+                            </button>
+                        )}
+
                         {selectedAccountType !== 'MONEYWISE_WALLET' && (
                             <button
                                 onClick={() => setIsCloseModalOpen(true)}
@@ -2645,6 +2667,15 @@ Status: VERIFIED`;
                 onSuccess={loadData}
                 wallets={wallets}
                 initialSourceWalletId={selectedWalletId}
+            />
+
+            <TransferToWalletModal
+                isOpen={isCashTransferModalOpen}
+                onClose={() => setIsCashTransferModalOpen(false)}
+                onSuccess={async () => { await loadWallets(); loadData(); }}
+                wallets={wallets}
+                sourceBalance={externalBalances.CASH || 0}
+                sourceAccountType="CASH"
             />
 
             <ShareWalletLinkModal

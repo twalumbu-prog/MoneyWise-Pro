@@ -217,5 +217,15 @@ export const cashbookService = {
             body: JSON.stringify({ sourceWalletId, destinationWalletId, amount, description }),
         });
         return response.json();
+    },
+
+    // Records the cash-side outflow of a Transfer to MoneyWise, AFTER the funding
+    // Lenco deposit (reference) has cleared. Idempotent on the reference.
+    async transferToWallet(amount: number, reference: string, sourceAccountType: 'CASH' | 'AIRTEL_MONEY' | 'BANK' = 'CASH', walletName?: string) {
+        const response = await apiFetch('/cashbook/transfer-to-wallet', {
+            method: 'POST',
+            body: JSON.stringify({ amount, reference, sourceAccountType, walletName }),
+        });
+        return response.json();
     }
 };
