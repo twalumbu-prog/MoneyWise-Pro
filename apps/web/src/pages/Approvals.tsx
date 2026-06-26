@@ -3,6 +3,7 @@ import { Layout } from '../components/Layout';
 import { Check, X, Eye, ChevronRight } from 'lucide-react';
 import { requisitionService, Requisition } from '../services/requisition.service';
 import { useNavigate } from 'react-router-dom';
+import posthog from '../lib/posthog';
 
 export const Approvals: React.FC = () => {
     const navigate = useNavigate();
@@ -39,9 +40,25 @@ export const Approvals: React.FC = () => {
     };
 
     const handleStatusUpdate = async (id: string, status: 'AUTHORISED' | 'REJECTED') => {
+        const req = requisitions.find(r => r.id === id);
         try {
             setProcessingId(id);
             await requisitionService.updateStatus(id, status);
+            if (status === 'AUTHORISED') {
+                posthog.capture('requisition_approved', {
+                    requisition_id: id,
+                    type: req?.type,
+                    department: req?.department,
+                    estimated_total: req?.estimated_total,
+                });
+            } else {
+                posthog.capture('requisition_rejected', {
+                    requisition_id: id,
+                    type: req?.type,
+                    department: req?.department,
+                    estimated_total: req?.estimated_total,
+                });
+            }
             // Reload list to get updated data
             await loadRequisitions();
         } catch (err) {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
+import posthog from '../lib/posthog';
 import {
     Loader2,
     ArrowRight,
@@ -392,6 +393,14 @@ export const PublicPay: React.FC = () => {
         setCurrentReference(ref);
         setError(null);
 
+        posthog.capture('checkout_payment_started', {
+            wallet_id: wallet.id,
+            organization_name: org.name,
+            subtotal,
+            total_payable: totalPayable,
+            item_count: lineItems.length,
+        });
+
         try {
             // Log intent on server publicly
             await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
@@ -455,6 +464,14 @@ export const PublicPay: React.FC = () => {
                             if (verifyRes.data.verified) {
                                 setVerificationStep('SUCCESS');
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
+                                posthog.capture('checkout_payment_completed', {
+                                    wallet_id: wallet.id,
+                                    organization_name: org.name,
+                                    subtotal,
+                                    total_payable: totalPayable,
+                                    receipt_number: verifyRes.data.referenceNumber,
+                                    payment_method: paymentMethod,
+                                });
                                 setStep('SUCCESS');
                                 return;
                             }
@@ -545,6 +562,13 @@ export const PublicPay: React.FC = () => {
 
     const handleDownloadReceipt = async () => {
         if (!org || !wallet) return;
+
+        posthog.capture('receipt_downloaded', {
+            wallet_id: wallet.id,
+            organization_name: org.name,
+            receipt_number: receiptNumber,
+            total_payable: totalPayable,
+        });
 
         setIsGeneratingReceipt(true);
         try {
@@ -1410,7 +1434,16 @@ Status: VERIFIED`;
                                 </div>
                             </div>
                             <button
-                                onClick={() => { setError(null); setStep('CATALOG'); }}
+                                onClick={() => {
+                                    setError(null);
+                                    posthog.capture('checkout_initiated', {
+                                        wallet_id,
+                                        organization_name: org?.name,
+                                        item_count: cartItemCount,
+                                        subtotal,
+                                    });
+                                    setStep('CATALOG');
+                                }}
                                 disabled={cartItemCount === 0}
                                 className="w-full bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
                             >

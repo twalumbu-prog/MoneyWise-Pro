@@ -6,6 +6,7 @@ import { requisitionService } from '../services/requisition.service';
 import { lencoService } from '../services/lenco.service';
 import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
+import posthog from '../lib/posthog';
 
 interface LineItem {
     id: string;
@@ -479,7 +480,14 @@ export const RequisitionCreate: React.FC = () => {
                 }
             }
 
-            await requisitionService.create(payload);
+            const created = await requisitionService.create(payload);
+            posthog.capture('requisition_submitted', {
+                type: reqType,
+                department,
+                estimated_total: payload.estimated_total,
+                item_count: lineItems.length,
+                requisition_id: created?.id,
+            });
             navigate('/requisitions');
         } catch (err: any) {
             setError(err.message || 'Failed to create requisition. Please try again.');

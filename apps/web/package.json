@@ -11,6 +11,7 @@
     },
     "dependencies": {
         "@supabase/supabase-js": "^2.86.0",
+        "posthog-js": "^1.393.5",
         "axios": "^1.13.2",
         "browser-image-compression": "^2.0.2",
         "heic2any": "^0.0.4",

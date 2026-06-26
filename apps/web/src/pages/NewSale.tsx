@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
+import posthog from '../lib/posthog';
 import {
     Loader2,
     ArrowLeft,
@@ -255,6 +256,14 @@ export const NewSale: React.FC = () => {
             setCurrentReference(res.reference);
             setPaidMethodLabel(label);
             setPaidTotal(amount);
+            posthog.capture('pos_sale_completed', {
+                payment_channel: 'manual',
+                method_label: label,
+                total: amount,
+                item_count: lineItems.length,
+                customer_name: customerName.trim(),
+                receipt_number: res.referenceNumber,
+            });
             setStep('SUCCESS');
         } catch (err: any) {
             console.error('Manual sale failed:', err);
@@ -364,6 +373,13 @@ export const NewSale: React.FC = () => {
                             );
                             if (verifyRes.data.verified) {
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
+                                posthog.capture('pos_sale_completed', {
+                                    payment_channel: 'moneywise_pos',
+                                    total: totalPayable,
+                                    item_count: lineItems.length,
+                                    customer_name: customerName.trim(),
+                                    receipt_number: verifyRes.data.referenceNumber,
+                                });
                                 setStep('SUCCESS');
                                 return;
                             }

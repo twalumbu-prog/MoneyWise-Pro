@@ -4,6 +4,7 @@ import { cashbookService } from '../services/cashbook.service';
 import { organizationService } from '../services/organization.service';
 import { lencoService } from '../services/lenco.service';
 import { DenominationInput } from './DenominationInput';
+import posthog from '../lib/posthog';
 
 interface CashInflowModalProps {
     isOpen: boolean;
@@ -96,6 +97,11 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                 date,
                 amount: totalAmount,
                 denominations
+            });
+            posthog.capture('inflow_recorded', {
+                inflow_type: 'CASH',
+                amount: totalAmount,
+                purpose,
             });
             onSuccess();
             onClose();

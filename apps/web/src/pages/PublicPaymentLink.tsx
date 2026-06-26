@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import posthog from '../lib/posthog';
 import {
     Loader2,
     AlertCircle,
@@ -160,6 +161,14 @@ export const PublicPaymentLink: React.FC = () => {
                             );
                             if (verifyRes.data.verified) {
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
+                                posthog.capture('payment_link_paid', {
+                                    token,
+                                    organization_name: ctx.organization.name,
+                                    product_name: ctx.product.name,
+                                    subtotal,
+                                    total_payable: totalPayable,
+                                    receipt_number: verifyRes.data.referenceNumber,
+                                });
                                 setStep('SUCCESS');
                                 return;
                             }

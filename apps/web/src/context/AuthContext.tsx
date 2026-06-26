@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import posthog from '../lib/posthog';
 
 export interface NotificationCounts {
     requisitions: number;
@@ -83,7 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     useEffect(() => {
-        const fetchRoleAndOrg = async (userId: string) => {
+        const fetchRoleAndOrg = async (userId: string, email?: string) => {
             const { data, error } = await supabase
                 .from('users')
                 .select('role, status, name, organization_id, organizations(name, logo_url)')
@@ -100,6 +101,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const logo = userData.organizations?.logo_url || null;
                 setOrganizationLogoUrl(logo);
                 preloadImage(logo);
+                posthog.identify(userId, {
+                    email,
+                    name: userData.name,
+                    role: userData.role,
+                    organization_id: userData.organization_id,
+                    organization_name: userData.organizations?.name,
+                });
                 refreshNotifications();
                 refreshUserOrganizations();
             }
@@ -109,7 +117,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchRoleAndOrg(session.user.id);
+                fetchRoleAndOrg(session.user.id, session.user.email ?? undefined);
             } else {
                 setLoading(false);
             }
@@ -119,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
-                fetchRoleAndOrg(session.user.id).then(() => setLoading(false));
+                fetchRoleAndOrg(session.user.id, session.user.email ?? undefined).then(() => setLoading(false));
             } else {
                 setUserRole(null);
                 setUserStatus(null);
@@ -178,6 +186,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             password,
         });
         if (error) throw error;
+        posthog.capture('user_signed_in', { email });
     };
 
     const signUpWithPassword = async (email: string, password: string) => {
@@ -217,7 +226,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         const data = await response.json();
-        
+
         if (!response.ok) {
             // If the error contains a suggestion, stringify the whole thing so the caller can parse it
             if (data.suggestion) {
@@ -226,6 +235,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             throw new Error(data.error || 'Registration failed');
         }
 
+        posthog.capture('organization_created', { email, organization_name: organizationName });
         return data;
     };
 
@@ -251,6 +261,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             throw new Error(data.error || 'Join request failed');
         }
 
+        posthog.capture('organization_join_requested', { email, organization_id: organizationId });
         return data;
     };
 
@@ -311,6 +322,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signOut = async () => {
+        posthog.capture('user_signed_out');
+        posthog.reset();
         await supabase.auth.signOut();
         setUser(null);
         setSession(null);
