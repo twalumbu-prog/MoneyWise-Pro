@@ -142,6 +142,7 @@ export const Login: React.FC = () => {
             <div className="min-h-screen bg-brand-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
                 <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
                     <div className="flex items-center space-x-3">
+                        <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
                         <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
                     </div>
                 </div>
@@ -220,6 +221,7 @@ export const Login: React.FC = () => {
             {/* Navbar-style Branding */}
             <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
                 <div className="flex items-center space-x-3">
+                    <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
                     <div>
                         <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
                     </div>

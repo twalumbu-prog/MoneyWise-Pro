@@ -27,6 +27,7 @@ export const TopNavbar: React.FC = () => {
                 {/* Left side: Logo and Org */}
                 <div className="flex items-center space-x-4">
                     <div className="flex items-center">
+                        <img src="/logo.png" alt="MoneyWise" className="h-7 w-7 mr-2" />
                         <span className="text-xl font-medium text-brand-navy tracking-tight">MoneyWise</span>
                         <span className="text-xl font-bold text-[#006AFF] ml-1 tracking-tight">Pro</span>
                     </div>
