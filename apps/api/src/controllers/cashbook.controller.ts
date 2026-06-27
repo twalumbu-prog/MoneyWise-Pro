@@ -5,6 +5,7 @@ import { decisionRouter } from '../services/ai/decision.router';
 import { supabase } from '../lib/supabase';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { ledgerService } from '../services/ledger.service';
+import { calculatePlatformFee } from '../utils/platformFee';
 
 /**
  * Get all cashbook entries with optional filters
@@ -944,16 +945,35 @@ export const transferSubwalletFunds = async (req: any, res: any): Promise<any> =
 };
 
 /**
- * Record the CASH-side leg of a "Transfer to MoneyWise" once the funding Lenco
+ * Compute the fee breakdown for a "Transfer to MoneyWise", working BACKWARDS from
+ * the gross amount the user entered (which is the total charged / deducted):
+ *
+ *   net to wallet  = gross − platform fee − Lenco fee
+ *   deposit charge = platform fee (tiered, calculatePlatformFee) + Lenco fee (1%)
+ *
+ * so net + depositCharge === gross exactly. Kept here (not just on the client) so
+ * the ledger amounts are authoritative.
+ */
+export const computeTransferFees = (gross: number) => {
+    const platformFee = calculatePlatformFee(gross);
+    const lencoFee = Math.round(gross * 0.01 * 100) / 100;
+    const depositCharge = Math.round((platformFee + lencoFee) * 100) / 100;
+    const net = Math.round((gross - depositCharge) * 100) / 100;
+    return { platformFee, lencoFee, depositCharge, net };
+};
+
+/**
+ * Record the CASH-side legs of a "Transfer to MoneyWise" once the funding Lenco
  * deposit has actually cleared.
  *
- * The wallet is credited by the real Lenco deposit (the standard wallet-deposit
- * intent → getPaid → verify flow), so this only books the contra outflow that
- * reduces the external account — so no money is "moved" in the ledger until the
- * deposit truly succeeds. Posts one ADJUSTMENT credit (Cr external asset / Dr
- * Suspense); paired with the deposit's inflow it nets to an asset → asset move
- * with no P&L impact. Idempotent on the deposit `reference` so a retried or
- * double-fired success callback never deducts cash twice.
+ * `amount` is the GROSS the user entered = the total charged. The wallet is
+ * credited the NET (gross − fees) by the real Lenco deposit, so here we only book
+ * the outgo from the external account, split into two lines so it always sums to
+ * the entered amount:
+ *   • a transfer Outflow of `net` (the part that actually reaches the wallet)
+ *   • a Deposit charge of `depositCharge` (the platform + Lenco fees), as an EXPENSE
+ * Total reduction = net + depositCharge = gross. Idempotent on the deposit
+ * `reference` so a retried / double-fired success callback never deducts twice.
  */
 export const transferCashToWallet = async (req: any, res: any): Promise<any> => {
     try {
@@ -968,8 +988,8 @@ export const transferCashToWallet = async (req: any, res: any): Promise<any> => 
             return res.status(400).json({ error: 'A deposit reference is required' });
         }
 
-        const amt = Number(amount);
-        if (!Number.isFinite(amt) || amt <= 0) {
+        const gross = Number(amount);
+        if (!Number.isFinite(gross) || gross <= 0) {
             return res.status(400).json({ error: 'A valid transfer amount is required' });
         }
 
@@ -989,22 +1009,24 @@ export const transferCashToWallet = async (req: any, res: any): Promise<any> => 
             return res.json({ message: 'Cash transfer leg already recorded', outEntry: sanitizeEntry(existing) });
         }
 
-        // Ensure the external account still holds enough to cover the transfer.
+        // Ensure the external account still holds enough to cover the full (gross) charge.
         const srcBalance = await cashbookService.getCurrentBalance(organizationId, srcType);
-        if (srcBalance < amt) {
+        if (srcBalance < gross) {
             return res.status(400).json({ error: `Insufficient ${EXTERNAL_TYPES[srcType]} balance. Available: K${srcBalance.toFixed(2)}` });
         }
 
+        const { depositCharge, net } = computeTransferFees(gross);
         const today = new Date().toISOString().split('T')[0];
         const dest = (walletName || 'MoneyWise Wallet').toString().slice(0, 60);
 
-        // Reduce the external account (credit = outflow). The matching wallet inflow
-        // is created by the Lenco deposit finalization, not here.
+        // 1. Transfer outflow — the net that actually reaches the wallet (matches the
+        //    Lenco deposit credit). The wallet inflow itself is created by the deposit
+        //    finalization, not here.
         const outEntry = await cashbookService.createEntry(organizationId, {
             entry_type: 'ADJUSTMENT',
             description: `Transfer to MoneyWise: ${EXTERNAL_TYPES[srcType]} ➡️ ${dest} (Outflow)`,
             debit: 0,
-            credit: amt,
+            credit: net,
             date: today,
             created_by: userId,
             account_type: srcType,
@@ -1012,7 +1034,30 @@ export const transferCashToWallet = async (req: any, res: any): Promise<any> => 
             status: 'COMPLETED'
         } as any);
 
-        res.json({ message: 'Cash transfer leg recorded', outEntry: sanitizeEntry(outEntry) });
+        // 2. Deposit charge — the platform + Lenco fees, booked as an expense so the
+        //    total leaving the account equals the amount the user entered.
+        let chargeEntry: any = null;
+        if (depositCharge > 0) {
+            chargeEntry = await cashbookService.createEntry(organizationId, {
+                entry_type: 'EXPENSE',
+                description: `Deposit charge — Lenco + platform fees (Transfer to ${dest})`,
+                debit: 0,
+                credit: depositCharge,
+                date: today,
+                created_by: userId,
+                account_type: srcType,
+                external_reference: `${reference}-FEE`,
+                status: 'COMPLETED'
+            } as any);
+        }
+
+        res.json({
+            message: 'Cash transfer legs recorded',
+            net,
+            depositCharge,
+            outEntry: sanitizeEntry(outEntry),
+            chargeEntry: chargeEntry ? sanitizeEntry(chargeEntry) : null
+        });
     } catch (error: any) {
         console.error('Error recording cash transfer leg:', error);
         res.status(500).json({ error: 'Failed to record cash transfer', details: error.message });

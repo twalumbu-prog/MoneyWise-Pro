@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, ArrowDownUp, Loader2, AlertCircle, Coins, Wallet, CheckCircle } from 'lucide-react';
+import { calculatePlatformFee } from 'shared';
 import { cashbookService } from '../services/cashbook.service';
 import { organizationService } from '../services/organization.service';
 import { lencoService } from '../services/lenco.service';
@@ -65,13 +66,20 @@ const TransferToWalletModal: React.FC<TransferToWalletModalProps> = ({
     }, [isOpen, wallets, sourceBalance]);
 
     const sourceLabel = SOURCE_LABELS[sourceAccountType] || 'External Account';
-    const targetNet = Number(amount) || 0;
-    const payableGross = targetNet > 0 ? targetNet / 0.99 : 0;
+    // The entered amount is the GROSS — the total charged / deducted. Fees are worked
+    // backwards so that net + fees === the amount entered (must mirror the backend's
+    // computeTransferFees, which uses the same calculatePlatformFee).
+    const gross = Number(amount) || 0;
+    const platformFee = calculatePlatformFee(gross);
+    const lencoFee = Math.round(gross * 0.01 * 100) / 100;
+    const depositCharge = Math.round((platformFee + lencoFee) * 100) / 100;
+    const netToWallet = gross > 0 ? Math.round((gross - depositCharge) * 100) / 100 : 0;
     const destWallet = wallets.find(w => w.id === destinationWalletId);
 
     const handleTransfer = async () => {
-        if (!targetNet || targetNet <= 0) { setError('Please enter a valid amount.'); return; }
-        if (targetNet > sourceBalance) { setError(`Amount exceeds the available ${sourceLabel} balance (K${sourceBalance.toFixed(2)}).`); return; }
+        if (!gross || gross <= 0) { setError('Please enter a valid amount.'); return; }
+        if (gross > sourceBalance) { setError(`Amount exceeds the available ${sourceLabel} balance (K${sourceBalance.toFixed(2)}).`); return; }
+        if (netToWallet <= 0) { setError('Amount is too small to cover the fees.'); return; }
         if (!destinationWalletId) { setError('Please select a destination wallet.'); return; }
         if (!lencoSubaccountId) { setError('This organization has no linked Lenco wallet. Configure it in Settings > General.'); return; }
 
@@ -82,17 +90,18 @@ const TransferToWalletModal: React.FC<TransferToWalletModalProps> = ({
         const purpose = `Transfer to MoneyWise (from ${sourceLabel})`;
         setError(null);
 
-        // 1. Log the wallet-deposit intent (credits the wallet on success — standard flow).
+        // 1. Log the wallet-deposit intent for the NET — that's what actually reaches the
+        //    wallet (the deposit finalization credits the wallet with the intent amount).
         try {
-            await cashbookService.logWalletDepositIntent(ref, purpose, targetNet, destinationWalletId);
+            await cashbookService.logWalletDepositIntent(ref, purpose, netToWallet, destinationWalletId);
         } catch (err) {
             console.error('Failed to log deposit intent:', err);
         }
 
-        // 2. Open Lenco checkout to actually fund the wallet.
+        // 2. Open Lenco checkout charging the full GROSS amount the user entered.
         LencoPay.getPaid({
             key: lencoPublicKey || 'pub-f3a595efda03948ae5dcd2effe073ef0aa2b333457a6c80d',
-            amount: payableGross.toFixed(2),
+            amount: gross.toFixed(2),
             currency: 'ZMW',
             reference: ref,
             accountId: lencoSubaccountId,
@@ -116,7 +125,7 @@ const TransferToWalletModal: React.FC<TransferToWalletModalProps> = ({
                         if (result.verified) {
                             // 3. Only now book the cash-side outflow (idempotent on ref).
                             try {
-                                await cashbookService.transferToWallet(targetNet, ref, sourceAccountType, destWallet?.name);
+                                await cashbookService.transferToWallet(gross, ref, sourceAccountType, destWallet?.name);
                             } catch (err) {
                                 console.error('Failed to record cash outflow leg:', err);
                             }
@@ -180,7 +189,7 @@ const TransferToWalletModal: React.FC<TransferToWalletModalProps> = ({
                         </div>
                         <div>
                             <h3 className="text-xl font-black text-emerald-600">Transfer Complete!</h3>
-                            <p className="text-gray-500 mt-1 text-sm">K{targetNet.toLocaleString(undefined, { minimumFractionDigits: 2 })} moved from {sourceLabel} to {destWallet?.name || 'your wallet'}.</p>
+                            <p className="text-gray-500 mt-1 text-sm">K{netToWallet.toLocaleString(undefined, { minimumFractionDigits: 2 })} reached {destWallet?.name || 'your wallet'} (K{gross.toLocaleString(undefined, { minimumFractionDigits: 2 })} charged, less fees).</p>
                         </div>
                         <button onClick={onClose} className="px-10 py-3.5 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-black transition-all">
                             Finish
@@ -256,9 +265,10 @@ const TransferToWalletModal: React.FC<TransferToWalletModalProps> = ({
 
                             {/* Lenco fee breakdown */}
                             <div className="bg-slate-50 rounded-2xl p-4 space-y-1.5 text-xs">
-                                <div className="flex justify-between font-semibold text-gray-500"><span>Credited to wallet</span><span>K{targetNet.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                <div className="flex justify-between font-medium text-gray-400"><span>Lenco fee (1%)</span><span>K{(payableGross - targetNet).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                                <div className="flex justify-between font-black text-gray-900 pt-1.5 border-t border-gray-200"><span>You pay via Lenco</span><span>K{payableGross.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                <div className="flex justify-between font-semibold text-gray-500"><span>Total charged</span><span>K{gross.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                <div className="flex justify-between font-medium text-gray-400"><span>Platform fee</span><span>− K{platformFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                <div className="flex justify-between font-medium text-gray-400"><span>Lenco fee (1%)</span><span>− K{lencoFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                <div className="flex justify-between font-black text-emerald-600 pt-1.5 border-t border-gray-200"><span>Credited to wallet</span><span>K{netToWallet.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                             </div>
                             <p className="text-[11px] text-gray-400 leading-relaxed px-1">
                                 You'll be taken to the secure Lenco checkout to fund the wallet. The {sourceLabel.toLowerCase()} balance is only deducted once the deposit is confirmed.
