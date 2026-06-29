@@ -81,11 +81,14 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         }
 
         // 0. Check for existing active requisitions (Accountability Safeguard)
+        // Scoped to this organization only - a pending requisition in another
+        // org the user belongs to must not block requests here.
         const blockingStatuses = ['DISBURSED', 'EXPENSED'];
         const { data: activeReq, error: activeError } = await supabase
             .from('requisitions')
             .select('id, status')
             .eq('requestor_id', requestor_id)
+            .eq('organization_id', organization_id)
             .in('status', blockingStatuses)
             .maybeSingle();
 

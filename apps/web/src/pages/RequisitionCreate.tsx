@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Plus, Trash2, AlertTriangle, Clock, Download, Edit3, Check, X, Loader2 } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { lencoService } from '../services/lenco.service';
+import { departmentService } from '../services/department.service';
 import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
 import posthog from '../lib/posthog';
@@ -37,11 +38,13 @@ export const RequisitionCreate: React.FC = () => {
     const [amount, setAmount] = useState<number>(0);
     const [repaymentPeriod, setRepaymentPeriod] = useState<number>(1);
 
-    const DEPARTMENTS = [
+    const DEFAULT_DEPARTMENTS = [
         'Finance', 'Admin', 'HR', 'IT',
         'Education', 'Transportation', 'Stocks',
         'Maintenance', 'Catering'
     ];
+    const [orgDepartments, setOrgDepartments] = useState<string[] | null>(null);
+    const DEPARTMENTS = orgDepartments ?? DEFAULT_DEPARTMENTS;
     const [lineItems, setLineItems] = useState<LineItem[]>(
         reqType === 'PAYROLL' ? [] : [{ id: '1', description: '', quantity: 1, unit_price: 0, estimated_amount: 0, account_id: '' }]
     );
@@ -299,6 +302,16 @@ export const RequisitionCreate: React.FC = () => {
             checkActiveRequisition();
         }
     }, [user?.id, navigate]);
+
+    React.useEffect(() => {
+        departmentService.list()
+            .then(({ use_departments, departments }) => {
+                if (use_departments && departments.length > 0) {
+                    setOrgDepartments(departments.map(d => d.name));
+                }
+            })
+            .catch(err => console.error('Failed to load org departments:', err));
+    }, []);
 
     const checkActiveRequisition = async () => {
         try {
