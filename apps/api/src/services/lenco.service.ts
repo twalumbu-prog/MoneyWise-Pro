@@ -177,7 +177,8 @@ export class LencoService {
     static async getAccountBalance(accountId: string, secretKey?: string) {
         try {
             const response = await axios.get(`${this.BASE_URL}/accounts/${accountId}/balance`, {
-                headers: this.getHeaders(secretKey)
+                headers: this.getHeaders(secretKey),
+                timeout: 20000
             });
             return response.data.data;
         } catch (error: any) {
@@ -208,6 +209,7 @@ export class LencoService {
         try {
             const response = await axios.get(`${this.BASE_URL}/transactions`, {
                 headers: this.getHeaders(secretKey),
+                timeout: 20000,
                 params: {
                     ...params,
                     accountId
@@ -351,6 +353,7 @@ export class LencoService {
         try {
             const response = await axios.get(`${this.BASE_URL}/collections`, {
                 headers: this.getHeaders(secretKey),
+                timeout: 20000,
                 params
             });
             return response.data;

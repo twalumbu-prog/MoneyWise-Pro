@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    background-color: #F7F9FA;
+    color: #002E3B;
+}
+
+/* Tabular figures so money columns line up cleanly. */
+.tabular-nums {
+    font-variant-numeric: tabular-nums;
+}
