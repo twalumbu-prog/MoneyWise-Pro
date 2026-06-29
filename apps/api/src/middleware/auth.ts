@@ -1,8 +1,45 @@
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
 import { supabase } from '../lib/supabase';
 
 // Simplified for direct ANY access to bypass Vercel TS environment issues
 export type AuthRequest = any;
+
+// Supabase signs access tokens with this project secret (HS256). Verifying
+// the signature locally skips the network round-trip to GoTrue's /user
+// endpoint, which was previously hit on every single API request. Falls
+// back to the remote getUser() check below when this isn't configured, so
+// deployments that haven't set it yet don't hard-break.
+const SUPABASE_JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+
+// Decoded shape of a Supabase access token payload (subset we use).
+interface SupabaseAccessTokenPayload {
+    sub: string;
+    email?: string;
+    phone?: string;
+    role?: string; // Postgres role claim (e.g. "authenticated"), not our app role
+    app_metadata?: Record<string, any>;
+    user_metadata?: Record<string, any>;
+    exp: number;
+}
+
+function verifyTokenLocally(token: string): { id: string; email?: string; phone?: string; app_metadata?: Record<string, any>; user_metadata?: Record<string, any> } {
+    const decoded = jwt.verify(token, SUPABASE_JWT_SECRET as string, {
+        algorithms: ['HS256'],
+    }) as SupabaseAccessTokenPayload;
+
+    if (!decoded.sub) {
+        throw new Error('Token missing sub claim');
+    }
+
+    return {
+        id: decoded.sub,
+        email: decoded.email,
+        phone: decoded.phone,
+        app_metadata: decoded.app_metadata,
+        user_metadata: decoded.user_metadata,
+    };
+}
 
 export const requireAuth = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
@@ -32,6 +69,43 @@ export const requireAuth = async (req: any, res: any, next: any) => {
 
         let user: any = null;
         let authError: any = null;
+
+        // Fast path: verify the JWT signature locally instead of round-tripping
+        // to Supabase's Auth server. This is the same signature Supabase's own
+        // getUser() validates, so it's equally secure but removes the network
+        // dependency for the common case (every authenticated request).
+        if (SUPABASE_JWT_SECRET) {
+            try {
+                user = verifyTokenLocally(token);
+            } catch (verifyErr: any) {
+                console.error('[Auth] Local JWT verification failed:', verifyErr.message);
+                const isExpired = verifyErr.name === 'TokenExpiredError';
+                return res.status(401).json({
+                    error: isExpired ? 'Token expired' : 'Invalid token',
+                    details: verifyErr.message,
+                });
+            }
+
+            console.log(`[Auth] User authenticated locally: ${user.id}`);
+            const { data: profile, error: profileError } = await supabase
+                .from('users')
+                .select('role, organization_id')
+                .eq('id', user.id)
+                .single();
+
+            if (profileError || !profile) {
+                console.warn(`[Auth] User profile not found for ${user.id}. Tables might be out of sync.`);
+            } else {
+                user.role = profile.role;
+                user.organization_id = profile.organization_id;
+            }
+
+            req.user = user;
+            (next as any)();
+            return;
+        }
+
+        // Fallback: no local secret configured, use Supabase's remote getUser().
         let retries = 3;
 
         while (retries > 0) {

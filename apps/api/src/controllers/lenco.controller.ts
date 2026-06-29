@@ -7,6 +7,11 @@ import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { calculatePlatformFee } from '../utils/platformFee';
+import { QuickBooksService } from '../services/quickbooks.service';
+
+// MoneyWise's own Lenco settlement merchant (receives the commission-sweep
+// credit leg of every external payment link). See categorizeSplitPaymentRevenue.
+const BLUE_OPUS_ORG_ID = 'fa99669d-6160-44fd-94ac-8ff1f065003f';
 
 export const listLencoAccounts = async (req: Request, res: Response) => {
     try {
@@ -1187,18 +1192,34 @@ export const getPublicSaleReceiptDetails = async (req: Request, res: Response) =
  * receives "Split payment" credits and has this account.
  */
 async function categorizeSplitPaymentRevenue(orgId: string, entryId: string) {
+    if (orgId !== BLUE_OPUS_ORG_ID) return;
+
     const { data: account } = await supabase
         .from('accounts')
-        .select('id')
+        .select('id, qb_account_id')
         .eq('organization_id', orgId)
         .ilike('name', 'Transaction Service Revenue')
         .maybeSingle();
 
-    if (account) {
-        await supabase
-            .from('cashbook_entries')
-            .update({ account_id: account.id, status: 'ACCOUNTED' })
-            .eq('id', entryId);
+    if (!account) return;
+
+    await supabase
+        .from('cashbook_entries')
+        .update({ account_id: account.id, status: 'ACCOUNTED' })
+        .eq('id', entryId);
+
+    // Auto-post to QuickBooks immediately instead of waiting for a manual
+    // "Post to QB" click - this is Blue Opus's own commission revenue, so
+    // there's never a categorization judgment call for a human to make.
+    if (account.qb_account_id) {
+        try {
+            const result = await QuickBooksService.createDeposit(orgId, entryId, account.qb_account_id, 'system-lenco-sync');
+            if (!result.success) {
+                console.warn(`[Lenco Sync] Auto QB post failed for split-inflow entry ${entryId}:`, result.error);
+            }
+        } catch (qbErr: any) {
+            console.warn(`[Lenco Sync] Auto QB post threw for split-inflow entry ${entryId}:`, qbErr.message);
+        }
     }
 }
 
@@ -1530,8 +1551,11 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
 
                 // A "Split payment" commission-sweep credit landing in the settlement
                 // merchant's (Blue Opus) sub-account — see categorizeSplitPaymentRevenue.
+                // Lenco's own narration for these inflows is inconsistent ("Split payment"
+                // vs "Split-Inflow Payment - <txnId>"), so match both variants.
                 const isSplitPaymentSweep = txnType === 'credit' && (
                     descLower.includes('split payment') ||
+                    descLower.includes('split-inflow') ||
                     resolvedRef.toUpperCase().startsWith('SPLIT-')
                 );
 
