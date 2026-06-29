@@ -18,6 +18,21 @@ const STAGE_ORDER = [
     'COMPLETED',
 ];
 
+// The earliest lifecycle stage the message thread must have reached for a given
+// requisition status. Used by getMessages to detect a thread that's missing
+// stage cards (e.g. status advanced to RECEIVED but the EXPENSE_TRACKING message
+// that lets the requestor enter expenses was never created).
+const STATUS_MIN_STAGE: Record<string, string> = {
+    'AUTHORISED': 'DISBURSAL',
+    'DISBURSED': 'EXPENSE_TRACKING',
+    'RECEIVED': 'EXPENSE_TRACKING',
+    'EXPENSED': 'EXPENSE_SUMMARY',
+    'CHANGE_SUBMITTED': 'CHANGE_SUBMITTED',
+    'CATEGORIZED': 'AI_REVIEW',
+    'COMPLETED': 'AI_REVIEW',
+    'ACCOUNTED': 'AI_REVIEW',
+};
+
 export class RequisitionMessageService {
     static async createMessage(params: {
         requisitionId: string;
@@ -311,20 +326,32 @@ export class RequisitionMessageService {
 
         if (error) throw error;
 
-        // Lazy Initialization / Repair: 
-        // If no messages exist OR if the requisition is far along but missing modern stages
-        const hasModernStages = data?.some(m => m.metadata?.stage && m.metadata.stage !== 'APPROVAL');
-        
-        if (!data || data.length === 0 || (!hasModernStages && data.length < 5)) {
-            // Check if it's an old one that needs repair
-            const { data: req } = await supabase
-                .from('requisitions')
-                .select('status, updated_at')
-                .eq('id', requisitionId)
-                .single();
-            
+        // Lazy Initialization / Repair:
+        // If no messages exist, or the thread hasn't reached the stage implied by the
+        // requisition's current status, the lifecycle is missing messages (e.g. a
+        // background job that advances the status crashed/returned early before it could
+        // create the next-stage card). The old heuristic only checked "does any non-APPROVAL
+        // stage exist" — true the moment a single DISBURSAL message exists — so a
+        // requisition stuck after disbursement (RECEIVED but no EXPENSE_TRACKING message)
+        // was never detected as needing repair, leaving the requestor with no way to
+        // proceed to "Enter Expenses" in the UI.
+        const { data: req } = await supabase
+            .from('requisitions')
+            .select('status, updated_at')
+            .eq('id', requisitionId)
+            .single();
+
+        const furthestStageIdx = Math.max(
+            -1,
+            ...(data?.map(m => STAGE_ORDER.indexOf(m.metadata?.stage)).filter(i => i >= 0) || [])
+        );
+        const requiredStage = req ? STATUS_MIN_STAGE[req.status] : undefined;
+        const requiredStageIdx = requiredStage ? STAGE_ORDER.indexOf(requiredStage) : -1;
+        const isMissingStages = requiredStageIdx >= 0 && furthestStageIdx < requiredStageIdx;
+
+        if (!data || data.length === 0 || isMissingStages) {
             const updatedRecently = req?.updated_at && (Date.now() - new Date(req.updated_at).getTime() < 5000);
-            
+
             if (req && req.status !== 'DRAFT' && req.status !== 'PENDING_APPROVAL' && !updatedRecently) {
                 await this.repairLifecycleMessages(requisitionId);
                 // Re-fetch after repair with incremented recursion level
