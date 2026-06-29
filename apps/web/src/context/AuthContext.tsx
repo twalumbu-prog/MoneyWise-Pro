@@ -85,11 +85,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         const fetchRoleAndOrg = async (userId: string, email?: string) => {
-            const { data, error } = await supabase
+            let { data, error } = await supabase
                 .from('users')
                 .select('role, status, name, organization_id, organizations(name, logo_url)')
                 .eq('id', userId)
                 .single();
+
+            // A 406 here (PostgREST "0 rows" under RLS) usually means this query
+            // raced a token refresh - the request went out with a not-yet-valid
+            // token. Retry once after a short delay rather than leaving the
+            // navbar/org context blank for the rest of the session.
+            if (error) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                ({ data, error } = await supabase
+                    .from('users')
+                    .select('role, status, name, organization_id, organizations(name, logo_url)')
+                    .eq('id', userId)
+                    .single());
+            }
 
             if (data && !error) {
                 const userData = data as any;

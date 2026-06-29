@@ -42,9 +42,15 @@ export const requireAuth = async (req: any, res: any, next: any) => {
 
                 if (!authError && user) break;
 
-                // If it's a transient error, retry
-                if (authError && (authError.message.includes('fetch failed') || authError.status === 0)) {
-                    console.warn(`[Auth] Transient error, retrying... (${retries} left)`);
+                // Supabase's auth-js throws a distinct AuthRetryableFetchError (name)
+                // for anything transient: real network failures (status 0) AND any
+                // 502/503/504 from Supabase's own Auth servers. The old check here
+                // only matched status 0 / a Node fetch-failure message, so a brief
+                // 5xx blip from Supabase Auth was treated as "invalid token" and
+                // surfaced as an immediate 401 - which the frontend reacts to by
+                // force-signing the user out, even though their session was fine.
+                if (authError && authError.name === 'AuthRetryableFetchError') {
+                    console.warn(`[Auth] Transient error (status=${authError.status}), retrying... (${retries} left)`);
                     retries--;
                     await new Promise(resolve => setTimeout(resolve, 1000));
                     continue;
