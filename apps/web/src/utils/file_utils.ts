@@ -1,7 +1,13 @@
 import imageCompression from 'browser-image-compression';
 import heic2any from 'heic2any';
 
-export const compressImage = async (file: File): Promise<File> => {
+interface CompressOverrides {
+    maxSizeMB?: number;
+    maxWidthOrHeight?: number;
+    initialQuality?: number;
+}
+
+export const compressImage = async (file: File, overrides?: CompressOverrides): Promise<File> => {
     // Check for HEIC/HEIF files which might not have a proper MIME type in all browsers
     const isHeic = file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif') || 
                    file.type === 'image/heic' || file.type === 'image/heif';
@@ -37,10 +43,10 @@ export const compressImage = async (file: File): Promise<File> => {
     }
 
     const options = {
-        maxSizeMB: 1, // Max size 1MB
-        maxWidthOrHeight: 1920, // Max resolution 1080p equivalent
+        maxSizeMB: overrides?.maxSizeMB ?? 1, // Max size 1MB
+        maxWidthOrHeight: overrides?.maxWidthOrHeight ?? 1920, // Max resolution 1080p equivalent
         useWebWorker: true,
-        initialQuality: 0.8,
+        initialQuality: overrides?.initialQuality ?? 0.8,
         fileType: 'image/jpeg' // Force conversion to JPEG for widest compatibility
     };
 

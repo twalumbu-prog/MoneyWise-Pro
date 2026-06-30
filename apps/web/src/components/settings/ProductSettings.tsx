@@ -4,6 +4,7 @@ import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
+import { compressImage } from '../../utils/file_utils';
 import ShareProductLinkModal from '../ShareProductLinkModal';
 import {
     ShoppingBag,
@@ -164,13 +165,17 @@ export const ProductSettings: React.FC = () => {
             setUploadingImage(true);
             setError(null);
 
-            const fileExt = file.name.split('.').pop();
+            // Product images only ever render as small thumbnails on the portal —
+            // compress/resize aggressively so they load instantly instead of pulling
+            // multi-megabyte full-resolution photos. Outputs JPEG.
+            const compressed = await compressImage(file, { maxSizeMB: 0.3, maxWidthOrHeight: 1000, initialQuality: 0.72 });
             const folder = organizationId || 'shared';
-            const filePath = `${folder}/product-${Date.now()}.${fileExt}`;
+            const filePath = `${folder}/product-${Date.now()}.jpg`;
 
             const { data: uploadData, error: uploadError } = await supabase.storage
                 .from('product-images')
-                .upload(filePath, file, { cacheControl: '3600', upsert: true });
+                // Long cache: filenames are unique per upload, so they never go stale.
+                .upload(filePath, compressed, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
 
             if (uploadError) throw uploadError;
 

@@ -72,6 +72,31 @@ if (typeof document !== 'undefined' && !document.getElementById(POP_STYLE_ID)) {
     document.head.appendChild(el);
 }
 
+// Warm the browser cache for a batch of image URLs. Resolves when they've all
+// loaded (or errored), or after `timeoutMs` — whichever comes first — so a slow
+// or broken image can never block the catalogue from showing. Once warmed, the
+// real <img> tags paint instantly from cache instead of popping in one by one.
+const preloadImages = (urls: (string | null | undefined)[], timeoutMs = 3000): Promise<void> => {
+    const valid = Array.from(new Set(urls.filter((u): u is string => !!u)));
+    if (valid.length === 0) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+        let settled = false;
+        let remaining = valid.length;
+        const finish = () => {
+            if (settled) return;
+            remaining -= 1;
+            if (remaining <= 0) { settled = true; resolve(); }
+        };
+        valid.forEach((u) => {
+            const img = new Image();
+            img.onload = finish;
+            img.onerror = finish;
+            img.src = u;
+        });
+        window.setTimeout(() => { if (!settled) { settled = true; resolve(); } }, timeoutMs);
+    });
+};
+
 interface Product {
     id: string;
     name: string;
@@ -201,6 +226,16 @@ export const PublicPay: React.FC = () => {
                 setStep('ERROR');
                 return;
             }
+
+            // Preload catalogue images so they're already present when the page shows,
+            // instead of popping in one by one. Wait on the first screenful (the org
+            // logo + the first product images, ~capped) before revealing; warm the rest
+            // in the background. A timeout cap means a slow image never hangs the reveal.
+            const catalogImages = response.data.products
+                .filter(p => p.product_type !== 'SERVICE_VARIABLE')
+                .map(p => p.image_url);
+            preloadImages(catalogImages.slice(6)); // background, not awaited
+            await preloadImages([response.data.organization.logo_url, ...catalogImages.slice(0, 6)], 3000);
 
             setStep('SHOP');
         } catch (err: any) {
