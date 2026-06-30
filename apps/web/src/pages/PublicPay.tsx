@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
@@ -155,6 +155,25 @@ export const PublicPay: React.FC = () => {
     const [calendarProduct, setCalendarProduct] = useState<Product | null>(null);
     const [calendarAvailability, setCalendarAvailability] = useState<BookingRange[]>([]);
     const [calendarLoading, setCalendarLoading] = useState(false);
+
+    // Desktop (≥1024px) uses a full-width two-column shop+cart layout; mobile keeps
+    // the stepped flow. Initialised from matchMedia to avoid a first-paint flash.
+    const [isDesktop, setIsDesktop] = useState<boolean>(
+        () => typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches
+    );
+    useEffect(() => {
+        const mq = window.matchMedia('(min-width: 1024px)');
+        const update = () => setIsDesktop(mq.matches);
+        mq.addEventListener('change', update);
+        return () => mq.removeEventListener('change', update);
+    }, []);
+
+    // The desktop cart panel's height is measured (not assumed) so its bottom edge
+    // always lands a fixed margin above the viewport bottom — regardless of where
+    // the panel sits on the page (which varies with header/category-tab height) and
+    // regardless of how many items are in the cart.
+    const cartPanelRef = useRef<HTMLDivElement | null>(null);
+    const [cartPanelHeight, setCartPanelHeight] = useState<number | null>(null);
     // Bottom-sheet overlay for quick-adding more items from the cart screen.
     // `showProductSheet` keeps it mounted; `sheetIn` drives the slide-up/down transition.
     const [showProductSheet, setShowProductSheet] = useState(false);
@@ -1265,7 +1284,169 @@ Status: VERIFIED`;
         );
     };
 
+    // Full-width desktop shop: logo/name top-left, search below, then products
+    // (2/3) + a sticky cart panel (1/3), e-commerce style. Checkout → SUMMARY.
+    const renderDesktopShop = () => {
+        if (!org) return null;
+        return (
+            <div className="min-h-screen bg-white">
+                <div className="max-w-7xl mx-auto px-8 py-8">
+                    {/* Header */}
+                    <div className="flex items-start justify-between gap-6">
+                        <div className="flex items-center gap-4">
+                            {renderLogo('w-14 h-14', 'text-xl')}
+                            <div className="flex flex-col">
+                                <div className="flex items-center gap-1.5">
+                                    <h4 className="text-lg font-black text-slate-900 uppercase tracking-tight">{org.name}</h4>
+                                    <BadgeCheck className="w-5 h-5 text-white flex-shrink-0" fill="#2563eb" />
+                                </div>
+                                <p className="text-xs font-thin text-[#5A5A5A]">Payment Checkout Portal</p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowRetrievePortal(true)}
+                            className="mt-2 text-[11px] font-bold text-slate-400 hover:text-blue-600 transition-colors uppercase tracking-wider flex-shrink-0"
+                        >
+                            Already Paid? Find your receipt
+                        </button>
+                    </div>
+
+                    {/* Search */}
+                    <div className="mt-6 max-w-md">
+                        <div className="relative">
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <input
+                                type="text"
+                                value={productSearch}
+                                onChange={(e) => setProductSearch(e.target.value)}
+                                placeholder="Search products"
+                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                            />
+                        </div>
+                    </div>
+
+                    {/* Two columns: products (2/3) + cart (1/3) */}
+                    <div className="mt-7 grid grid-cols-3 gap-8 items-start">
+                        {/* Products */}
+                        <div className="col-span-2">
+                            {productCategories.length > 1 && (
+                                <div className="mb-6 max-w-md">
+                                    <SegmentedControl
+                                        variant="capsule"
+                                        options={productCategories.map(cat => ({ value: cat, label: cat }))}
+                                        value={activeCategory}
+                                        onChange={setActiveCategory}
+                                    />
+                                </div>
+                            )}
+                            {sheetProducts.length === 0 ? (
+                                <div className="text-center py-24">
+                                    <ShoppingCart className="mx-auto text-slate-200 mb-2" size={40} />
+                                    <p className="text-sm font-semibold text-slate-400">
+                                        {catalogProducts.length === 0 ? 'No products configured yet.' : 'No matching products.'}
+                                    </p>
+                                </div>
+                            ) : (
+                                <AnimatedTabContent
+                                    tabKey={activeCategory}
+                                    index={activeCategoryIndex}
+                                    className="grid grid-cols-3 gap-x-5 gap-y-8"
+                                >
+                                    {sheetProducts.map(product => renderGridCard(product))}
+                                </AnimatedTabContent>
+                            )}
+                        </div>
+
+                        {/* Cart — sticky sidebar, same design as the mobile cart */}
+                        <div className="col-span-1 sticky top-8 flex flex-col">
+                            {/* Invisible spacer matching the category-tabs block on the left, so
+                                "Cart Total" lines up with the top of the product images, not the tabs. */}
+                            {productCategories.length > 1 && (
+                                <div className="mb-6 invisible" aria-hidden="true">
+                                    <SegmentedControl
+                                        variant="capsule"
+                                        options={productCategories.map(cat => ({ value: cat, label: cat }))}
+                                        value={activeCategory}
+                                        onChange={() => {}}
+                                    />
+                                </div>
+                            )}
+                            {/* Fixed, viewport-relative height (not content-driven) so the panel
+                                always spans down to near the bottom of the screen, empty or full. */}
+                            <div
+                                ref={cartPanelRef}
+                                className="rounded-3xl border border-slate-200 overflow-hidden flex flex-col"
+                                style={{ height: cartPanelHeight != null ? `${cartPanelHeight}px` : 'calc(100vh - 4rem)' }}
+                            >
+                                <div className="px-6 py-5 bg-slate-50 flex-shrink-0">
+                                    <p className="text-xs font-normal text-slate-500">Cart Total</p>
+                                    <p className="text-3xl font-extrabold text-slate-900 mt-1 tracking-tight">
+                                        K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </p>
+                                </div>
+                                <div className="flex-1 overflow-y-auto p-5">
+                                    {lineItems.length === 0 ? (
+                                        <div className="h-full flex items-center justify-center text-center">
+                                            <p className="text-xs font-thin text-[#5A5A5A] leading-relaxed">
+                                                Items you add will appear here.
+                                            </p>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-5">
+                                            {lineItems.map(li => renderProductCard(li.product))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="p-5 border-t border-slate-100 space-y-3 flex-shrink-0">
+                                    {error && (
+                                        <div className="p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2">
+                                            <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                            <span className="text-[10px] font-semibold leading-normal">{error}</span>
+                                        </div>
+                                    )}
+                                    <button
+                                        onClick={handleProceedToSummary}
+                                        disabled={subtotal <= 0}
+                                        className="w-full bg-black hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5"
+                                    >
+                                        <span>Checkout</span>
+                                        <ChevronRight size={14} strokeWidth={2.5} />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    // Desktop merges the catalogue + cart into one screen; the retrieve portal and
+    // SUMMARY/SUCCESS still use the centered card layout.
+    const isDesktopShop = isDesktop && (step === 'SHOP' || step === 'CATALOG') && !showRetrievePortal;
+
+    useEffect(() => {
+        if (!isDesktopShop) return;
+        const BOTTOM_MARGIN = 32;
+        const MIN_HEIGHT = 360;
+        const measure = () => {
+            const top = cartPanelRef.current?.getBoundingClientRect().top;
+            if (top == null) return;
+            setCartPanelHeight(Math.max(MIN_HEIGHT, window.innerHeight - top - BOTTOM_MARGIN));
+        };
+        measure();
+        window.addEventListener('resize', measure);
+        // Re-measure shortly after mount/update — images, fonts, or the category
+        // tabs appearing can still shift the panel's top offset after first paint.
+        const t = window.setTimeout(measure, 250);
+        return () => { window.removeEventListener('resize', measure); window.clearTimeout(t); };
+    }, [isDesktopShop, productCategories.length, sheetProducts.length, org?.logo_url]);
+
     return (
+        <>
+        {isDesktopShop && renderDesktopShop()}
+        {!isDesktopShop && (
         <div className={`bg-white flex flex-col sm:justify-center sm:py-10 sm:px-4 ${isAppStep ? 'h-[100dvh] sm:h-auto sm:min-h-screen' : 'min-h-screen'}`}>
             <div className={`w-full bg-white overflow-hidden flex flex-col sm:max-w-md sm:mx-auto sm:rounded-[32px] sm:border sm:border-slate-100 sm:shadow-xl ${isAppStep ? 'flex-1 min-h-0 sm:flex-none sm:max-h-[90vh]' : ''}`}>
                 
@@ -2058,21 +2239,6 @@ Status: VERIFIED`;
                 </div>
             )}
 
-            {/* Booking date calendar */}
-            {calendarProduct && (
-                <BookingCalendar
-                    productName={calendarProduct.name}
-                    nightlyPrice={calendarProduct.price}
-                    unavailable={calendarAvailability}
-                    loading={calendarLoading}
-                    initial={bookingDates[calendarProduct.id]
-                        ? { checkIn: bookingDates[calendarProduct.id].checkIn, checkOut: bookingDates[calendarProduct.id].checkOut }
-                        : null}
-                    onClose={() => setCalendarProduct(null)}
-                    onConfirm={(ci, co, nights) => handleConfirmBooking(calendarProduct.id, ci, co, nights)}
-                />
-            )}
-
             {/* Footer Brand Info */}
             {step !== 'SHOP' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && (
             <div className="mt-auto pt-8 pb-6 text-center space-y-2">
@@ -2086,5 +2252,22 @@ Status: VERIFIED`;
             </div>
             )}
         </div>
+        )}
+
+        {/* Booking date calendar — shared across desktop + mobile */}
+        {calendarProduct && (
+            <BookingCalendar
+                productName={calendarProduct.name}
+                nightlyPrice={calendarProduct.price}
+                unavailable={calendarAvailability}
+                loading={calendarLoading}
+                initial={bookingDates[calendarProduct.id]
+                    ? { checkIn: bookingDates[calendarProduct.id].checkIn, checkOut: bookingDates[calendarProduct.id].checkOut }
+                    : null}
+                onClose={() => setCalendarProduct(null)}
+                onConfirm={(ci, co, nights) => handleConfirmBooking(calendarProduct.id, ci, co, nights)}
+            />
+        )}
+        </>
     );
 };
