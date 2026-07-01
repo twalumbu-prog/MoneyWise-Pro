@@ -1208,6 +1208,18 @@ async function categorizeSplitPaymentRevenue(orgId: string, entryId: string) {
         .update({ account_id: account.id, status: 'ACCOUNTED' })
         .eq('id', entryId);
 
+    // Re-post the GL journal now that the entry carries a real income account.
+    // createEntry/finalizePendingIntent already posted a journal when this row was
+    // created, but back then account_id was null so the contra landed in Suspense
+    // (equity). Without this re-post the revenue is stranded in Suspense and never
+    // reaches the P&L on the double-entry reporting path — the manual categorization
+    // paths (updateEntryAccount/narrateEntry) re-post for exactly this reason.
+    try {
+        await ledgerService.repostForCashbookEntry(entryId);
+    } catch (glErr: any) {
+        console.warn(`[Lenco Sync] Journal re-post failed for split-inflow entry ${entryId}:`, glErr.message);
+    }
+
     // Auto-post to QuickBooks immediately instead of waiting for a manual
     // "Post to QB" click - this is Blue Opus's own commission revenue, so
     // there's never a categorization judgment call for a human to make.

@@ -17,6 +17,15 @@ interface ReportGroup {
     name: string;
 }
 
+// Format a Date using its LOCAL calendar components (YYYY-MM-DD). Using
+// toISOString() instead converts local midnight to UTC and, in timezones east of
+// UTC (e.g. Zambia, UTC+2), shifts every month boundary back a day — so June is
+// queried as [May 31 .. Jun 29], dropping the 30th's transactions and pulling in
+// May 31's. That off-by-a-day window is what made the reports read differently on
+// devices in different timezones. (buildChartPeriods already uses this same fix.)
+const toLocalISODate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 // Helper to calculate percentage change
 const getPercentageChange = (current: number, previous: number) => {
     if (previous === 0) {
@@ -122,9 +131,9 @@ export const Reporting: React.FC = () => {
             end.setMonth(quarterStartMonth + 3, 0);
         }
 
-        const startStr = start.toISOString().split('T')[0];
-        const endStr = end.toISOString().split('T')[0];
-        
+        const startStr = toLocalISODate(start);
+        const endStr = toLocalISODate(end);
+
         // Formatting label
         const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         let label = '';
@@ -158,8 +167,8 @@ export const Reporting: React.FC = () => {
             end.setMonth(quarterStartMonth + 3, 0);
         }
 
-        const startStr = start.toISOString().split('T')[0];
-        const endStr = end.toISOString().split('T')[0];
+        const startStr = toLocalISODate(start);
+        const endStr = toLocalISODate(end);
 
         return { start: startStr, end: endStr };
     }, [currentDate, periodType]);
