@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import posthog from '../lib/posthog';
+import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
 import {
     Loader2,
     ArrowRight,
@@ -447,9 +448,11 @@ export const PublicPay: React.FC = () => {
         setCurrentReference(ref);
         setError(null);
 
-        posthog.capture('checkout_payment_started', {
+        const checkoutStartedAt = Date.now();
+        trackEvent('public_catalogue_checkout', 'payment', 'started', {
+            workflow_id: ref,
+            organization_id: org.id,
             wallet_id: wallet.id,
-            organization_name: org.name,
             subtotal,
             total_payable: totalPayable,
             item_count: lineItems.length,
@@ -518,13 +521,15 @@ export const PublicPay: React.FC = () => {
                             if (verifyRes.data.verified) {
                                 setVerificationStep('SUCCESS');
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
-                                posthog.capture('checkout_payment_completed', {
+                                trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
+                                    workflow_id: ref,
+                                    organization_id: org.id,
                                     wallet_id: wallet.id,
-                                    organization_name: org.name,
                                     subtotal,
                                     total_payable: totalPayable,
                                     receipt_number: verifyRes.data.referenceNumber,
                                     payment_method: paymentMethod,
+                                    duration_ms: Date.now() - checkoutStartedAt,
                                 });
                                 setStep('SUCCESS');
                                 return;
@@ -532,15 +537,21 @@ export const PublicPay: React.FC = () => {
                         } catch (err) {
                             console.error('Public Verification attempt failed:', err);
                         }
-                        
+
                         if (attempts < maxAttempts) {
                             setTimeout(pollStatus, 3000);
                         } else {
                             setVerificationStep('FAILED');
                             setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. Please contact the business admin to verify.');
+                            trackVerificationTimeout('public_catalogue_checkout', {
+                                workflow_id: ref,
+                                organization_id: org.id,
+                                attempts,
+                                duration_ms: Date.now() - checkoutStartedAt,
+                            });
                         }
                     };
-                    
+
                     pollStatus();
                 },
                 onClose: () => {
@@ -550,6 +561,13 @@ export const PublicPay: React.FC = () => {
         } catch (err: any) {
             console.error('Failed to initiate checkout intent:', err);
             setError(err.response?.data?.error || 'Failed to initiate deposit checkout. Please try again.');
+            trackEvent('public_catalogue_checkout', 'payment', 'failed', {
+                workflow_id: ref,
+                organization_id: org.id,
+                error_code: err?.response?.status || 'NETWORK_ERROR',
+                error_message: err?.response?.data?.error || err.message,
+                duration_ms: Date.now() - checkoutStartedAt,
+            });
         }
     };
 

@@ -4,7 +4,7 @@ import { cashbookService } from '../services/cashbook.service';
 import { organizationService } from '../services/organization.service';
 import { lencoService } from '../services/lenco.service';
 import { DenominationInput } from './DenominationInput';
-import posthog from '../lib/posthog';
+import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
 
 interface CashInflowModalProps {
     isOpen: boolean;
@@ -87,6 +87,16 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
             return;
         }
 
+        // No gateway reference for a cash entry — generate a client-side
+        // correlation id purely to tie the started/succeeded/failed triad together.
+        const clientCorrelationId = crypto.randomUUID();
+        const inflowStartedAt = Date.now();
+        trackEvent('wallet_deposit', 'cash_inflow', 'started', {
+            workflow_id: clientCorrelationId,
+            organization_id: organizationId || 'unknown',
+            amount: totalAmount,
+            purpose,
+        });
         try {
             setIsSubmitting(true);
             setError(null);
@@ -98,10 +108,12 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                 amount: totalAmount,
                 denominations
             });
-            posthog.capture('inflow_recorded', {
-                inflow_type: 'CASH',
+            trackEvent('wallet_deposit', 'cash_inflow', 'succeeded', {
+                workflow_id: clientCorrelationId,
+                organization_id: organizationId || 'unknown',
                 amount: totalAmount,
                 purpose,
+                duration_ms: Date.now() - inflowStartedAt,
             });
             onSuccess();
             onClose();
@@ -115,6 +127,14 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
             ]);
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to log cash inflow');
+            trackEvent('wallet_deposit', 'cash_inflow', 'failed', {
+                workflow_id: clientCorrelationId,
+                organization_id: organizationId || 'unknown',
+                amount: totalAmount,
+                error_code: err?.response?.status || 'UNKNOWN',
+                error_message: err?.response?.data?.error || err.message,
+                duration_ms: Date.now() - inflowStartedAt,
+            });
         } finally {
             setIsSubmitting(false);
         }
@@ -139,11 +159,17 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
 
         const targetNet = Number(walletAmount);
         const payableGross = targetNet / 0.99;
-        
+        const depositStartedAt = Date.now();
+
         let ref = currentReference;
         if (!ref) {
             ref = `DEP-${Date.now()}-${lencoSubaccountId}-${organizationId}`;
             setCurrentReference(ref);
+            trackEvent('wallet_deposit', 'checkout', 'started', {
+                workflow_id: ref,
+                organization_id: organizationId || 'unknown',
+                target_net: targetNet,
+            });
 
             try {
                 await cashbookService.logWalletDepositIntent(ref, purpose || 'Wallet Deposit', targetNet, walletId);
@@ -194,7 +220,13 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                         if (result.verified) {
                             setVerificationStep('SUCCESS');
                             console.log('Confirmed: Transaction has been logged in the cash ledger of the MoneyWise Wallet.');
-                            
+                            trackEvent('wallet_deposit', 'checkout', 'succeeded', {
+                                workflow_id: ref,
+                                organization_id: organizationId || 'unknown',
+                                target_net: targetNet,
+                                duration_ms: Date.now() - depositStartedAt,
+                            });
+
                             // Fetch reconciliation summary for added layer of confirmation
                             try {
                                 if (organizationId) {
@@ -222,6 +254,12 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                         setVerificationStep('FAILED');
                         setVerificationReason('We confirmed the payment with Lenco, but it hasn\'t appeared in your ledger yet. This could be due to a delay in the banking network.');
                         setIsVerifying(false);
+                        trackVerificationTimeout('wallet_deposit', {
+                            workflow_id: ref,
+                            organization_id: organizationId || 'unknown',
+                            attempts,
+                            duration_ms: Date.now() - depositStartedAt,
+                        });
                     }
                     return false;
                 };

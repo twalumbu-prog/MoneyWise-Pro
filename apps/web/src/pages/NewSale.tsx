@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
-import posthog from '../lib/posthog';
+import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
 import {
     Loader2,
     ArrowLeft,
@@ -233,6 +233,17 @@ export const NewSale: React.FC = () => {
         const amount = Number(manualAmount);
         if (!Number.isFinite(amount) || amount <= 0) { setError('Enter a valid payment amount.'); return; }
         const { accountType, label } = parseMethod(methodValue);
+        // No gateway round-trip on this path, so no reference exists yet to
+        // correlate started→succeeded/failed — generate one client-side purely
+        // for that purpose; replaced by the real res.reference on success.
+        const clientCorrelationId = crypto.randomUUID();
+        const saleStartedAt = Date.now();
+        trackEvent('pos_sale', 'checkout', 'started', {
+            workflow_id: clientCorrelationId,
+            organization_id: org?.id || 'unknown',
+            payment_channel: 'manual',
+            total: amount,
+        });
         try {
             setIsSubmitting(true);
             setError(null);
@@ -256,18 +267,30 @@ export const NewSale: React.FC = () => {
             setCurrentReference(res.reference);
             setPaidMethodLabel(label);
             setPaidTotal(amount);
-            posthog.capture('pos_sale_completed', {
+            trackEvent('pos_sale', 'checkout', 'succeeded', {
+                workflow_id: res.reference,
+                client_correlation_id: clientCorrelationId,
+                organization_id: org?.id || 'unknown',
                 payment_channel: 'manual',
                 method_label: label,
                 total: amount,
                 item_count: lineItems.length,
                 customer_name: customerName.trim(),
                 receipt_number: res.referenceNumber,
+                duration_ms: Date.now() - saleStartedAt,
             });
             setStep('SUCCESS');
         } catch (err: any) {
             console.error('Manual sale failed:', err);
             setError(err?.message || 'Failed to record the sale. Please try again.');
+            trackEvent('pos_sale', 'checkout', 'failed', {
+                workflow_id: clientCorrelationId,
+                organization_id: org?.id || 'unknown',
+                payment_channel: 'manual',
+                error_code: err?.code || 'UNKNOWN',
+                error_message: err?.message || 'Failed to record the sale',
+                duration_ms: Date.now() - saleStartedAt,
+            });
         } finally {
             setIsSubmitting(false);
         }
@@ -319,6 +342,15 @@ export const NewSale: React.FC = () => {
         const ref = `DEP-${Date.now()}-${org.lenco_subaccount_id.substring(0, 8)}-POS`;
         setCurrentReference(ref);
         setError(null);
+
+        const saleStartedAt = Date.now();
+        trackEvent('pos_sale', 'checkout', 'started', {
+            workflow_id: ref,
+            organization_id: org.id,
+            payment_channel: 'moneywise_pos',
+            total: totalPayable,
+            item_count: lineItems.length,
+        });
 
         try {
             const { data: { session } } = await supabase.auth.getSession();
@@ -373,12 +405,15 @@ export const NewSale: React.FC = () => {
                             );
                             if (verifyRes.data.verified) {
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
-                                posthog.capture('pos_sale_completed', {
+                                trackEvent('pos_sale', 'checkout', 'succeeded', {
+                                    workflow_id: ref,
+                                    organization_id: org.id,
                                     payment_channel: 'moneywise_pos',
                                     total: totalPayable,
                                     item_count: lineItems.length,
                                     customer_name: customerName.trim(),
                                     receipt_number: verifyRes.data.referenceNumber,
+                                    duration_ms: Date.now() - saleStartedAt,
                                 });
                                 setStep('SUCCESS');
                                 return;
@@ -391,6 +426,12 @@ export const NewSale: React.FC = () => {
                         } else {
                             setVerificationStep('FAILED');
                             setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. It will reconcile automatically — check the Inflows inbox shortly.');
+                            trackVerificationTimeout('pos_sale', {
+                                workflow_id: ref,
+                                organization_id: org.id,
+                                attempts,
+                                duration_ms: Date.now() - saleStartedAt,
+                            });
                         }
                     };
                     poll();
@@ -400,6 +441,14 @@ export const NewSale: React.FC = () => {
         } catch (err: any) {
             console.error('Failed to start POS checkout:', err);
             setError(err?.response?.data?.error || 'Failed to start the payment. Please try again.');
+            trackEvent('pos_sale', 'checkout', 'failed', {
+                workflow_id: ref,
+                organization_id: org.id,
+                payment_channel: 'moneywise_pos',
+                error_code: err?.response?.status || 'NETWORK_ERROR',
+                error_message: err?.response?.data?.error || err.message,
+                duration_ms: Date.now() - saleStartedAt,
+            });
         }
     };
 

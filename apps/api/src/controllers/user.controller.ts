@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
+import { captureEvent } from '../utils/analytics';
 
 export const getUsers = async (req: AuthRequest, res: any): Promise<any> => {
     try {
@@ -131,6 +132,11 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             return res.status(403).json({ error: 'Only admins can add users' });
         }
 
+        const workflowId = `invite-${Date.now()}`;
+        captureEvent('organization_invite_started', {
+            feature: 'organization_invite', workflow_id: workflowId, organization_id, user_id: (req as any).user.id,
+        });
+
         const normalizedEmail = email.trim().toLowerCase();
 
         // Check if user already exists in the system by email (case-insensitive)
@@ -204,6 +210,10 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
                 throw uoError;
             }
 
+            captureEvent('organization_invite_succeeded', {
+                feature: 'organization_invite', workflow_id: workflowId, organization_id, user_id: (req as any).user.id,
+                path: 'existing_user_added',
+            });
             return res.status(201).json({
                 message: 'Existing user added to organization successfully',
                 userId: targetUserId,
@@ -248,6 +258,10 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
 
         if (authError) {
             console.error('[CreateUser] Invitation failed:', authError);
+            captureEvent('organization_invite_failed', {
+                feature: 'organization_invite', workflow_id: workflowId, organization_id, user_id: (req as any).user.id,
+                error_code: 'auth_provider_error', error_message: authError.message,
+            });
             return res.status(400).json({ error: authError.message });
         }
 
@@ -289,6 +303,10 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             throw uoError;
         }
 
+        captureEvent('organization_invite_succeeded', {
+            feature: 'organization_invite', workflow_id: workflowId, organization_id, user_id: (req as any).user.id,
+            path: 'invitation_sent',
+        });
         res.status(201).json({
             message: 'Invitation sent successfully',
             userId: authData.user.id,
@@ -297,6 +315,10 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
 
     } catch (error: any) {
         console.error('Error creating/inviting user:', error);
+        captureEvent('organization_invite_failed', {
+            feature: 'organization_invite', workflow_id: `invite-${Date.now()}`, organization_id: (req as any).user?.organization_id || 'unknown', user_id: (req as any).user?.id || 'unknown',
+            error_code: 'server_error', error_message: error.message,
+        });
         res.status(500).json({ error: 'Failed to create user', details: error.message });
     }
 };

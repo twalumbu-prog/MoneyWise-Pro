@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../lib/supabase';
 import { LencoService } from '../services/lenco.service';
 import { seedDefaultAccounts } from '../services/account-provisioning.service';
+import { captureEvent } from '../utils/analytics';
 
 interface RegisterUserRequest {
     email: string;
@@ -204,8 +205,18 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
                 .from('organizations')
                 .update({ lenco_subaccount_id: lencoSubaccountId })
                 .eq('id', orgData.id);
-        } catch (lencoError) {
+        } catch (lencoError: any) {
             console.error('Failed to create Lenco subaccount during registration:', lencoError);
+            // Registration still succeeds from the user's perspective (they get a 201
+            // below), so this failure is otherwise completely invisible — the org
+            // just silently has no payment provider configured until someone notices
+            // Payments don't work later. Exactly the "silent failure" class this
+            // dashboard exists to catch.
+            captureEvent('organization_lenco_provisioning_failed', {
+                feature: 'organization_creation', workflow_id: orgData.id, organization_id: orgData.id, user_id: userId,
+                error_code: lencoError?.code || 'lenco_provisioning_error',
+                error_message: String(lencoError?.message || lencoError).slice(0, 500),
+            });
         }
 
         // UPSERT user record into public.users table with organization_id

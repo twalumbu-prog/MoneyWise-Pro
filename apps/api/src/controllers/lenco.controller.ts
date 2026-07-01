@@ -8,6 +8,7 @@ import { ledgerService } from '../services/ledger.service';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 import { QuickBooksService } from '../services/quickbooks.service';
+import { captureEvent } from '../utils/analytics';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
 // credit leg of every external payment link). See categorizeSplitPaymentRevenue.
@@ -710,6 +711,11 @@ export const getProductAvailability = async (req: Request, res: Response) => {
  * overlap check against existing CONFIRMED stays always runs.
  */
 const logWalletDepositIntentCore = async (req: Request, res: Response, allowPastBooking: boolean) => {
+    // Hoisted above the try block so the catch handler can still capture a
+    // `_failed` event with the right feature/workflow_id if something throws.
+    let feature = 'wallet_deposit';
+    let analyticsBase: { feature: string; workflow_id: string; organization_id: string; user_id: string; [key: string]: any } =
+        { feature, workflow_id: 'unknown', organization_id: 'unknown', user_id: (req as any).user?.id || 'anonymous' };
     try {
         const { reference, purpose, amount, walletId, customerName, customerPhone, items, paymentLinkToken } = req.body;
 
@@ -727,6 +733,22 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
         if (walletError || !wallet) {
             return res.status(404).json({ error: 'Wallet not found' });
         }
+
+        // Derive the feature bucket from context: a one-time payment link, the
+        // authenticated POS flow, or the general public/internal wallet deposit.
+        feature = paymentLinkToken ? 'payment_link_checkout' : allowPastBooking ? 'pos_sale' : 'wallet_deposit';
+        analyticsBase = {
+            feature,
+            workflow_id: reference,
+            organization_id: wallet.organization_id,
+            user_id: (req as any).user?.id || 'anonymous',
+        };
+        captureEvent(`${feature}_intent_started`, {
+            ...analyticsBase,
+            status: 'started',
+            amount: amount || 0,
+            item_count: Array.isArray(items) ? items.length : 0,
+        });
 
         // --- Booking pre-validation (before logging anything) --------------------
         // Booking items carry check_in/check_out. Validate the dates, recompute the
@@ -858,9 +880,16 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             }
         }
 
+        captureEvent(`${feature}_intent_logged`, { ...analyticsBase, status: 'succeeded' });
         res.json({ message: 'Intent logged successfully' });
     } catch (error: any) {
         console.error('[Lenco Public Intent] Error:', error);
+        captureEvent(`${feature}_intent_failed`, {
+            ...analyticsBase,
+            status: 'failed',
+            error_code: error?.code || 'UNKNOWN',
+            error_message: String(error?.message || error).slice(0, 500),
+        });
         res.status(500).json({ error: 'Failed to log wallet deposit intent', details: error.message });
     }
 };

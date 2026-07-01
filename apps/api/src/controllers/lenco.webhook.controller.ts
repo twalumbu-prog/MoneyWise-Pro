@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { whatsappService } from '../services/whatsapp.service';
+import { captureEvent, withTiming } from '../utils/analytics';
 
 // MoneyWise settlement merchant (Blue Opus Software Technology). The platform
 // commission collected on external payment links is auto-forwarded here.
@@ -29,14 +30,17 @@ async function sweepPlatformCommission(
     sourceAccountId: string,
     secretKey: string,
     commission: number,
-    originalReference: string
+    originalReference: string,
+    organizationId: string
 ): Promise<void> {
     const splitRef = `SPLIT-${originalReference}`;
+    let status: 'succeeded' | 'failed' | 'skipped' = 'succeeded';
     try {
         // Idempotency guard — don't double-sweep if the webhook / verify poller re-fires.
         const existing = await LencoService.getTransferStatus(splitRef, secretKey);
         if (existing) {
             console.log(`[Lenco Sweep] Commission already forwarded for ${originalReference} (ref: ${splitRef}). Skipping.`);
+            status = 'skipped';
             return;
         }
 
@@ -52,6 +56,16 @@ async function sweepPlatformCommission(
         // Never block the collection on a sweep failure — the surplus stays in the
         // sub-account and can be reconciled/retried.
         console.error(`[Lenco Sweep] FAILED to forward commission for ${originalReference}:`, sweepErr?.message || sweepErr);
+        status = 'failed';
+    } finally {
+        captureEvent('commission_sweep_attempted', {
+            feature: 'commission_sweep',
+            workflow_id: originalReference,
+            organization_id: organizationId,
+            user_id: 'system',
+            status,
+            amount: commission,
+        });
     }
 }
 
@@ -65,6 +79,10 @@ export const handleLencoWebhook = async (req: Request, res: Response) => {
     // that is missing or has an invalid signature to prevent forged events.
     if (!signature) {
         console.warn('[Lenco Webhook] REJECTED: Missing x-lenco-signature header');
+        captureEvent('lenco_webhook_rejected', {
+            feature: 'lenco_webhook', workflow_id: 'unknown', organization_id: 'unknown',
+            user_id: 'system', status: 'failed', error_code: 'missing_signature',
+        });
         return res.status(401).json({ error: 'Unauthorized: Missing signature' });
     }
 
@@ -81,6 +99,10 @@ export const handleLencoWebhook = async (req: Request, res: Response) => {
 
         if (signature !== expectedSignature) {
             console.warn('[Lenco Webhook] REJECTED: Invalid signature');
+            captureEvent('lenco_webhook_rejected', {
+                feature: 'lenco_webhook', workflow_id: 'unknown', organization_id: 'unknown',
+                user_id: 'system', status: 'failed', error_code: 'invalid_signature',
+            });
             return res.status(401).json({ error: 'Unauthorized: Invalid signature' });
         }
     }
@@ -184,6 +206,10 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
     if (!organizationId) {
         console.warn('[Lenco Webhook] FAILURE: No organization identified for collection. Ref:', reference);
+        captureEvent('payment_collection_org_unidentified', {
+            feature: 'payment_collection', workflow_id: reference || 'unknown', organization_id: 'unknown',
+            user_id: 'system', status: 'failed', amount,
+        });
         return false;
     }
 
@@ -217,6 +243,10 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
     if (finalizedDuplicate) {
         console.log(`[Lenco Webhook] DUPLICATE IGNORED: Collection ${reference} already logged as ${finalizedDuplicate.id}.`);
+        captureEvent('payment_collection_deduplicated', {
+            feature: 'payment_collection', workflow_id: reference, organization_id: organizationId,
+            user_id: 'system', duplicate_of: finalizedDuplicate.id,
+        });
         // Heal partial prior runs: a leftover PENDING twin is redundant once a
         // finalized entry exists, and the sale may still be stuck PENDING if the
         // earlier run died between the ledger write and the sale update.
@@ -236,12 +266,20 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // Only fires if THIS heal run owned the ACTIVE→PAID flip (notifications exactly once).
             if (linkPaidOnHeal) {
                 await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
+                captureEvent('payment_receipt_notification_attempted', {
+                    feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
+                    user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPaymentLinkPaid', status: 'attempted',
+                });
             }
         }
         return true;
     }
 
     try {
+        return await withTiming(
+            'payment_collection',
+            { feature: 'payment_collection', workflow_id: reference, organization_id: organizationId, user_id: 'system', amount, identification_stage: identificationStage },
+            async () => {
         console.log(`[Lenco Webhook] Identification successful: ${identificationStage} -> ${organizationId}`);
 
         const formattedAmount = Number(amount).toLocaleString();
@@ -375,7 +413,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                     const secretKey = orgCreds?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
 
                     if (sourceAccountId && secretKey) {
-                        await sweepPlatformCommission(sourceAccountId, secretKey, commission, reference);
+                        await sweepPlatformCommission(sourceAccountId, secretKey, commission, reference, organizationId);
                     } else {
                         console.warn(`[Lenco Sweep] Skipped: missing source account or secret key for org ${organizationId}.`);
                     }
@@ -409,14 +447,24 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // owning finalization (the dedup guard means this tail runs once per ref).
             if (linkPaid) {
                 await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
+                captureEvent('payment_receipt_notification_attempted', {
+                    feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
+                    user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPaymentLinkPaid', status: 'attempted',
+                });
             } else {
                 // Self-guards: skips link refs and no-ops when there are no product sales.
                 await whatsappService.notifyPublicSalePaid(organizationId, reference);
+                captureEvent('payment_receipt_notification_attempted', {
+                    feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
+                    user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPublicSalePaid', status: 'attempted',
+                });
             }
         }
 
         console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);
         return true;
+            }
+        );
     } catch (error) {
         console.error(`[Lenco Webhook] FAILURE: Error processing collection:`, error);
         throw error;

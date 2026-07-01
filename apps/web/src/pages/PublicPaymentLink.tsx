@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
-import posthog from '../lib/posthog';
+import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
 import {
     Loader2,
     AlertCircle,
@@ -117,6 +117,16 @@ export const PublicPaymentLink: React.FC = () => {
         setCurrentReference(ref);
         setError(null);
 
+        const checkoutStartedAt = Date.now();
+        trackEvent('payment_link_checkout', 'payment', 'started', {
+            workflow_id: ref,
+            organization_id: ctx.organization.id,
+            product_name: ctx.product.name,
+            subtotal,
+            total_payable: totalPayable,
+            payment_link_token: token,
+        });
+
         try {
             await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
                 reference: ref,
@@ -161,13 +171,14 @@ export const PublicPaymentLink: React.FC = () => {
                             );
                             if (verifyRes.data.verified) {
                                 setReceiptNumber(verifyRes.data.referenceNumber || null);
-                                posthog.capture('payment_link_paid', {
-                                    token,
-                                    organization_name: ctx.organization.name,
+                                trackEvent('payment_link_checkout', 'payment', 'succeeded', {
+                                    workflow_id: ref,
+                                    organization_id: ctx.organization.id,
                                     product_name: ctx.product.name,
                                     subtotal,
                                     total_payable: totalPayable,
                                     receipt_number: verifyRes.data.referenceNumber,
+                                    duration_ms: Date.now() - checkoutStartedAt,
                                 });
                                 setStep('SUCCESS');
                                 return;
@@ -180,6 +191,12 @@ export const PublicPaymentLink: React.FC = () => {
                         } else {
                             setVerificationStep('FAILED');
                             setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. Please contact the business to confirm.');
+                            trackVerificationTimeout('payment_link_checkout', {
+                                workflow_id: ref,
+                                organization_id: ctx.organization.id,
+                                attempts,
+                                duration_ms: Date.now() - checkoutStartedAt,
+                            });
                         }
                     };
                     pollStatus();
@@ -190,6 +207,13 @@ export const PublicPaymentLink: React.FC = () => {
             });
         } catch (err: any) {
             setError(err.response?.data?.error || 'Failed to initiate payment. Please try again.');
+            trackEvent('payment_link_checkout', 'payment', 'failed', {
+                workflow_id: ref,
+                organization_id: ctx.organization.id,
+                error_code: err?.response?.status || 'NETWORK_ERROR',
+                error_message: err?.response?.data?.error || err.message,
+                duration_ms: Date.now() - checkoutStartedAt,
+            });
         }
     };
 

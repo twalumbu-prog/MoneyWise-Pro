@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { ledgerService } from './ledger.service';
+import { withTiming } from '../utils/analytics';
 
 /**
  * Flip a one-time payment link tied to this collection reference to PAID so it
@@ -13,19 +14,23 @@ import { ledgerService } from './ledger.service';
  * notifications) exactly once.
  */
 export async function markPaymentLinkPaid(orgId: string, reference: string): Promise<boolean> {
+    const base = { feature: 'payment_link_finalization', workflow_id: reference, organization_id: orgId, user_id: 'system' };
     try {
-        const { data, error } = await supabase
-            .from('payment_links')
-            .update({ status: 'PAID', paid_at: new Date().toISOString() })
-            .eq('organization_id', orgId)
-            .eq('reference', reference)
-            .eq('status', 'ACTIVE')
-            .select('id');
-        if (error) {
-            console.error(`[ProductRouting] Failed to mark payment link PAID for ref ${reference}:`, error.message);
-            return false;
-        }
-        return Array.isArray(data) && data.length > 0;
+        // withTiming needs the inner op to throw on failure to record it as
+        // _failed; this outer try/catch preserves the function's original
+        // contract of never throwing to its own callers (always resolves,
+        // returns false on any error).
+        return await withTiming('payment_link_finalization', base, async () => {
+            const { data, error } = await supabase
+                .from('payment_links')
+                .update({ status: 'PAID', paid_at: new Date().toISOString() })
+                .eq('organization_id', orgId)
+                .eq('reference', reference)
+                .eq('status', 'ACTIVE')
+                .select('id');
+            if (error) throw new Error(error.message);
+            return Array.isArray(data) && data.length > 0;
+        });
     } catch (err: any) {
         console.error(`[ProductRouting] markPaymentLinkPaid error for ref ${reference}:`, err.message);
         return false;
@@ -92,7 +97,16 @@ export async function confirmBookingsForReference(orgId: string, reference: stri
  * there is nothing to split.
  */
 export async function applyProductRevenueRouting(orgId: string, reference: string): Promise<void> {
+    const base = { feature: 'revenue_routing', workflow_id: reference, organization_id: orgId, user_id: 'system' };
     try {
+        // withTiming wraps the whole body: early returns below (already-split,
+        // no primary entry, no sales, single unchanged group) resolve normally
+        // and are recorded as _succeeded even though nothing was posted — a
+        // known limitation (see plan), not fixed this pass. A genuine thrown
+        // error (e.g. the repostForCashbookEntry call below) is caught by the
+        // outer catch, which preserves this function's original contract of
+        // never throwing to its own callers.
+        return await withTiming('revenue_routing', base, async () => {
         // Already split on a prior run? Sibling entries carry a `::g` suffix.
         const { data: existingSiblings } = await supabase
             .from('cashbook_entries')
@@ -210,6 +224,7 @@ export async function applyProductRevenueRouting(orgId: string, reference: strin
         for (const id of entriesToRepost) {
             await ledgerService.repostForCashbookEntry(id);
         }
+        });
     } catch (err: any) {
         console.error(`[ProductRouting] applyProductRevenueRouting failed for ref ${reference}:`, err.message);
     }

@@ -2,16 +2,25 @@ import { supabase } from '../lib/supabase';
 import { LencoService } from './lenco.service';
 import { RequisitionMessageService } from './requisition_message.service';
 import { ledgerService } from './ledger.service';
+import { withTiming } from '../utils/analytics';
 
 // Fire-and-forget GL posting: never block or fail a cash write on a posting error
-// (the reconciliation safety net repairs any gaps).
-const postJournalAsync = (cashbookEntryId: string) => {
-    ledgerService.repostForCashbookEntry(cashbookEntryId)
-        .catch(err => console.error(`[Ledger] async repost failed for entry ${cashbookEntryId}:`, err?.message));
+// (the reconciliation safety net repairs any gaps). withTiming re-throws
+// unchanged, so the existing .catch(console.error) still catches it —
+// instrumentation only observes, it doesn't change this contract.
+const postJournalAsync = (cashbookEntryId: string, organizationId: string) => {
+    withTiming(
+        'accounting_journal_post',
+        { feature: 'accounting_journal_post', workflow_id: cashbookEntryId, organization_id: organizationId, user_id: 'system', source_type: 'CASHBOOK' },
+        () => ledgerService.repostForCashbookEntry(cashbookEntryId)
+    ).catch(err => console.error(`[Ledger] async repost failed for entry ${cashbookEntryId}:`, err?.message));
 };
-const postJournalForRequisitionAsync = (requisitionId: string) => {
-    ledgerService.repostForRequisition(requisitionId)
-        .catch(err => console.error(`[Ledger] async repost failed for requisition ${requisitionId}:`, err?.message));
+const postJournalForRequisitionAsync = (requisitionId: string, organizationId: string) => {
+    withTiming(
+        'accounting_journal_post',
+        { feature: 'accounting_journal_post', workflow_id: requisitionId, organization_id: organizationId, user_id: 'system', source_type: 'REQUISITION' },
+        () => ledgerService.repostForRequisition(requisitionId)
+    ).catch(err => console.error(`[Ledger] async repost failed for requisition ${requisitionId}:`, err?.message));
 };
 
 export interface CashbookEntry {
@@ -162,7 +171,7 @@ export const cashbookService = {
             .single();
 
         // 4. Post the balanced journal entry for the GL (non-blocking).
-        postJournalAsync(data.id);
+        postJournalAsync(data.id, organizationId);
 
         return updatedData || data;
     },
@@ -295,7 +304,7 @@ export const cashbookService = {
             .single();
 
         // The PENDING intent is now COMPLETED — post its balanced journal entry.
-        postJournalAsync(intentId);
+        postJournalAsync(intentId, organizationId);
 
         return fresh || updated;
     },
@@ -448,7 +457,7 @@ export const cashbookService = {
         console.log(`[Ledger Finalization] Ledger finalized for ${requisitionId}.`);
 
         // Re-post the GL for this requisition so the expense split reflects the fee line item.
-        postJournalForRequisitionAsync(requisitionId);
+        postJournalForRequisitionAsync(requisitionId, disbursement.organization_id);
 
         // D. Trigger message repair to show DISBURSAL_SUCCESS card
         await RequisitionMessageService.repairLifecycleMessages(requisitionId).catch(err => 
@@ -713,7 +722,7 @@ export const cashbookService = {
                     .eq('id', adoptable.id);
 
                 await this.recalculateBalancesFrom(organizationId, adoptable.date, adoptable.created_at, adoptable.account_type || 'CASH', adoptable.wallet_id);
-                postJournalAsync(adoptable.id);
+                postJournalAsync(adoptable.id, organizationId);
             } else {
                 console.error(`[finalizeDisbursement] No disbursement ledger entry found for requisition ${requisitionId} and no unlinked outflow (gross K${grossDisbursed.toFixed(2)}) to adopt. Skipping ledger write to avoid double-counting — manual reconciliation required.`);
             }
@@ -741,7 +750,7 @@ export const cashbookService = {
         await this.recalculateBalancesFrom(organizationId, originalEntry.date, originalEntry.created_at, originalEntry.account_type || 'CASH', originalEntry.wallet_id);
 
         // 4. Re-post the GL with the finalized (actual) amount.
-        postJournalAsync(originalEntry.id);
+        postJournalAsync(originalEntry.id, organizationId);
     },
 
     /**
@@ -796,7 +805,7 @@ export const cashbookService = {
         await this.recalculateBalancesFrom(organizationId, entry.date, entry.created_at, entry.account_type || 'CASH', entry.wallet_id);
 
         // 5. Re-post the GL with the updated amount.
-        postJournalAsync(entry.id);
+        postJournalAsync(entry.id, organizationId);
 
         return entry;
     },

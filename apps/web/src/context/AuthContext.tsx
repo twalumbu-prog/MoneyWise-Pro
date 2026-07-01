@@ -3,6 +3,28 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { apiFetch } from '../lib/api';
 import posthog from '../lib/posthog';
+import { trackEvent } from '../lib/analytics';
+
+// Best-effort mapping of backend/Supabase error strings to stable categories.
+// Note: Supabase's "Invalid login credentials" deliberately does not
+// distinguish wrong password from unknown user (anti account-enumeration) —
+// both land under 'invalid_credentials'.
+function categorizeAuthError(message: string): string {
+    const m = (message || '').toLowerCase();
+    if (m.includes('username') && m.includes('taken')) return 'duplicate_username';
+    if (m.includes('username not found') || m.includes('username') && m.includes('not found')) return 'username_not_found';
+    if (m.includes('password') && m.includes('character')) return 'weak_password';
+    if (m.includes('invalid password') || m.includes('invalid login credentials')) return 'invalid_credentials';
+    if (m.includes('email not confirmed')) return 'email_not_confirmed';
+    if (m.includes('organization') && (m.includes('already exists') || m.includes('taken'))) return 'duplicate_organization_name';
+    if (m.includes('organization not found')) return 'organization_not_found';
+    if (m.includes('missing required fields')) return 'validation_error';
+    if (m.includes('failed to create user account') || m.includes('auth error')) return 'auth_provider_error';
+    if (m.includes('failed to create organization') || m.includes('failed to create user profile') || m.includes('failed to link user')) return 'database_error';
+    if (m.includes('internal server error')) return 'server_error';
+    if (m.includes('failed to fetch') || m.includes('networkerror') || m.includes('network request failed')) return 'network_error';
+    return 'unknown';
+}
 
 export interface NotificationCounts {
     requisitions: number;
@@ -162,6 +184,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const signInWithPassword = async (loginIdentifier: string, password: string) => {
         let email = loginIdentifier;
+        const loginStartedAt = Date.now();
+        const workflowId = crypto.randomUUID();
+        trackEvent('auth', 'login', 'started', { workflow_id: workflowId });
 
         // Check if input is likely a username (no @ symbol)
         if (!loginIdentifier.includes('@')) {
@@ -180,7 +205,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
                 const data = await response.json();
                 email = data.email;
-            } catch (error) {
+            } catch (error: any) {
+                trackEvent('auth', 'login', 'failed', {
+                    workflow_id: workflowId,
+                    error_code: categorizeAuthError(error?.message || ''),
+                    error_message: error?.message,
+                    duration_ms: Date.now() - loginStartedAt,
+                });
                 throw error;
             }
         }
@@ -189,7 +220,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email,
             password,
         });
-        if (error) throw error;
+        if (error) {
+            trackEvent('auth', 'login', 'failed', {
+                workflow_id: workflowId,
+                error_code: categorizeAuthError(error.message),
+                error_message: error.message,
+                duration_ms: Date.now() - loginStartedAt,
+            });
+            throw error;
+        }
+        trackEvent('auth', 'login', 'succeeded', {
+            workflow_id: workflowId,
+            duration_ms: Date.now() - loginStartedAt,
+        });
         posthog.capture('user_signed_in', { email });
     };
 
@@ -214,6 +257,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signUp = async (email: string, password: string, name: string, organizationName: string, username: string) => {
+        const workflowId = crypto.randomUUID();
+        const startedAt = Date.now();
+        trackEvent('organization_creation', 'signup', 'started', { workflow_id: workflowId, organization_name: organizationName });
+
         const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
         const response = await fetch(`${apiUrl}/auth/register`, {
             method: 'POST',
@@ -232,6 +279,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await response.json();
 
         if (!response.ok) {
+            const errorMessage: string = data.suggestion ? JSON.stringify(data) : (data.error || 'Registration failed');
+            trackEvent('organization_creation', 'signup', 'failed', {
+                workflow_id: workflowId,
+                organization_name: organizationName,
+                error_code: categorizeAuthError(data.error || ''),
+                error_message: data.error || errorMessage,
+                duration_ms: Date.now() - startedAt,
+            });
             // If the error contains a suggestion, stringify the whole thing so the caller can parse it
             if (data.suggestion) {
                 throw new Error(JSON.stringify(data));
@@ -239,11 +294,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             throw new Error(data.error || 'Registration failed');
         }
 
+        trackEvent('organization_creation', 'signup', 'succeeded', {
+            workflow_id: workflowId,
+            organization_name: organizationName,
+            duration_ms: Date.now() - startedAt,
+        });
         posthog.capture('organization_created', { email, organization_name: organizationName });
         return data;
     };
 
     const joinOrganization = async (email: string, password: string, name: string, organizationId: string, username: string) => {
+        const workflowId = crypto.randomUUID();
+        const startedAt = Date.now();
+        trackEvent('organization_join', 'request', 'started', { workflow_id: workflowId, organization_id: organizationId });
+
         const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
         const response = await fetch(`${apiUrl}/auth/join-request`, {
             method: 'POST',
@@ -262,9 +326,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = await response.json();
 
         if (!response.ok) {
+            trackEvent('organization_join', 'request', 'failed', {
+                workflow_id: workflowId,
+                organization_id: organizationId,
+                error_code: categorizeAuthError(data.error || ''),
+                error_message: data.error,
+                duration_ms: Date.now() - startedAt,
+            });
             throw new Error(data.error || 'Join request failed');
         }
 
+        trackEvent('organization_join', 'request', 'succeeded', {
+            workflow_id: workflowId,
+            organization_id: organizationId,
+            duration_ms: Date.now() - startedAt,
+        });
         posthog.capture('organization_join_requested', { email, organization_id: organizationId });
         return data;
     };
