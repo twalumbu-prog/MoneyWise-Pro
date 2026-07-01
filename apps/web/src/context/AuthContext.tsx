@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { apiFetch } from '../lib/api';
 import posthog from '../lib/posthog';
 
 export interface NotificationCounts {
@@ -61,23 +62,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const refreshNotifications = async () => {
         try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (!session) return;
-            const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
-            const response = await fetch(`${apiUrl}/users/notifications`, {
-                headers: { 'Authorization': `Bearer ${session.access_token}` }
-            });
-
-            if (response.status === 401) {
-                console.warn('Session expired (401). Signing out...');
-                await signOut();
-                return;
-            }
-
-            if (response.ok) {
-                const data = await response.json();
-                setNotificationCounts(data);
-            }
+            // Route through apiFetch so this inherits the resilient token
+            // refresh/retry. This runs on a 30s background interval, so a transient
+            // 401 must NOT sign the user out — apiFetch only signs out when the
+            // session is genuinely invalid, and otherwise throws (caught below).
+            const response = await apiFetch('/users/notifications');
+            const data = await response.json();
+            setNotificationCounts(data);
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
         }
