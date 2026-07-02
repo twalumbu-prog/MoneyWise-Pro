@@ -11,6 +11,7 @@ import {
     closeBook,
     classifyBulk,
     postEntryToQuickBooks,
+    createQbAccount,
     updateEntryAccount,
     logWalletDepositIntent,
     narrateEntry,
@@ -81,6 +82,9 @@ router.post('/classify-bulk', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), c
 
 // Post to QuickBooks (Cashier, Accountant, Admin)
 router.post('/post-to-qb', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), postEntryToQuickBooks);
+
+// Create a new QuickBooks account for an existing local chart-of-accounts row (Admin only)
+router.post('/create-qb-account', requireRole(['ADMIN']), createQbAccount);
 
 // Update entry account (Cashier, Accountant, Admin)
 router.patch('/:entryId/account', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), updateEntryAccount);

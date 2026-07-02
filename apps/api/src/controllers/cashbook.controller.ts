@@ -619,6 +619,32 @@ export const classifyBulk = async (req: any, res: any): Promise<any> => {
 };
 
 /**
+ * Create a QuickBooks Online account for an existing local chart-of-accounts row
+ * that isn't linked yet, and save the returned QB Id back onto it.
+ */
+export const createQbAccount = async (req: any, res: any): Promise<any> => {
+    try {
+        const { accountId } = req.body;
+        const organizationId = (req as any).user.organization_id;
+
+        if (!accountId) {
+            return res.status(400).json({ error: 'accountId is required' });
+        }
+
+        const result = await QuickBooksService.createAccount(organizationId, accountId);
+
+        if (result.success) {
+            res.json(result);
+        } else {
+            res.status(400).json(result);
+        }
+    } catch (error: any) {
+        console.error('Error creating QuickBooks account:', error);
+        res.status(500).json({ error: 'Failed to create QuickBooks account', details: error.message });
+    }
+};
+
+/**
  * Post a specific cashbook entry to QuickBooks
  */
 export const postEntryToQuickBooks = async (req: any, res: any): Promise<any> => {

@@ -261,6 +261,70 @@ export class QuickBooksService {
         }
     }
 
+    /**
+     * Create a new Account (chart-of-accounts entry) in QuickBooks Online, then
+     * mirror the returned QB Id back onto the local `accounts` row so the rest
+     * of the app (createDeposit/createLedgerPurchase) can reference it.
+     */
+    static async createAccount(organizationId: string, localAccountId: string) {
+        try {
+            const { data: account, error: accError } = await supabase
+                .from('accounts')
+                .select('id, name, type, subtype, qb_account_id')
+                .eq('id', localAccountId)
+                .eq('organization_id', organizationId)
+                .single();
+
+            if (accError || !account) throw new Error('Local account not found');
+            if (account.qb_account_id) {
+                console.log(`[QB Create Account] ${account.name} already linked to QB account ${account.qb_account_id}`);
+                return { success: true, qbId: account.qb_account_id, alreadyLinked: true };
+            }
+
+            const { accessToken, realmId } = await this.getValidToken(organizationId);
+
+            const payload = {
+                Name: account.name,
+                AccountType: account.type === 'ASSET' ? 'Other Current Asset'
+                    : account.type === 'LIABILITY' ? 'Other Current Liability'
+                    : account.type === 'EQUITY' ? 'Equity'
+                    : account.type === 'INCOME' ? 'Income'
+                    : 'Expense'
+            };
+
+            const { apiBase } = this.getEnv();
+            const response = await fetch(`${apiBase}/${realmId}/account?minorversion=70`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                console.error('[QB Create Account] API Error:', JSON.stringify(result));
+                return { success: false, error: result };
+            }
+
+            const qbId = result.Account?.Id;
+            console.log(`[QB Create Account] ✅ Created "${account.name}" -> QB Id ${qbId}`);
+
+            const { error: updateError } = await supabase
+                .from('accounts')
+                .update({ qb_account_id: qbId })
+                .eq('id', localAccountId);
+            if (updateError) console.error('[QB Create Account] Failed to save qb_account_id locally:', updateError.message);
+
+            return { success: true, qbId };
+        } catch (error: any) {
+            console.error('[QB Create Account] Exception:', error.message);
+            return { success: false, error: error.message };
+        }
+    }
+
     static async createExpense(
         requisitionId: string,
         userId: string | undefined,
