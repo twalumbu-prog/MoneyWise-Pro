@@ -332,6 +332,41 @@ export class LencoService {
     }
 
     /**
+     * Initiate a mobile money collection request. Customer approves on their
+     * phone (USSD/push); status comes back `pay-offline` immediately, and the
+     * caller must poll getCollectionStatus (or wait for the webhook) to learn
+     * the final outcome.
+     */
+    static async initiateMobileMoneyCollection(collection: {
+        amount: number,
+        reference: string,
+        phone: string,
+        operator: 'airtel' | 'mtn' | 'tnm' | 'zamtel',
+        country?: 'zm' | 'mw',
+        bearer?: 'merchant' | 'customer'
+    }, secretKey?: string) {
+        try {
+            const body = {
+                amount: collection.amount,
+                reference: collection.reference,
+                phone: collection.phone,
+                operator: collection.operator,
+                country: collection.country || 'zm',
+                bearer: collection.bearer || 'merchant'
+            };
+
+            const response = await axios.post(`${this.BASE_URL}/collections/mobile-money`, body, {
+                headers: this.getHeaders(secretKey),
+                timeout: 20000
+            });
+            return response.data.data;
+        } catch (error: any) {
+            console.error('Lenco mobile money collection failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to initiate mobile money collection');
+        }
+    }
+
+    /**
      * Check collection status
      */
     static async getCollectionStatus(reference: string, secretKey?: string) {
@@ -341,8 +376,21 @@ export class LencoService {
             });
             return response.data.data;
         } catch (error: any) {
-            console.error('Lenco collection status check failed:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || 'Failed to check status');
+            const lencoError = error.response?.data;
+            const status = error.response?.status;
+
+            if (status === 404 || lencoError?.message === 'Payment details was not found') {
+                return null;
+            }
+
+            if (status === 403) {
+                console.error(`[Lenco] Collection status request blocked (403). Possible Cloudflare challenge. Ref: ${reference}`);
+                throw new Error('Access to Lenco API was blocked by security filters. Please try again later.');
+            }
+
+            console.error('Lenco collection status check failed:', lencoError || error.message);
+            const errorMessage = typeof lencoError === 'string' ? lencoError : (lencoError?.message || error.message);
+            throw new Error(`Lenco API error: ${errorMessage}`);
         }
     }
 

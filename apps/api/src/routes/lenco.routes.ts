@@ -18,7 +18,9 @@ import {
     getSaleReceiptDetails,
     getPublicSalesByPhone,
     getPublicSaleReceiptDetails,
-    syncAllLencoTransactions
+    syncAllLencoTransactions,
+    testInitiateCollection,
+    testCollectionStatus
 } from '../controllers/lenco.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -38,6 +40,10 @@ router.get('/public-sale-receipt/:reference', getPublicSaleReceiptDetails);
 
 // Cron sync endpoint (secured inside the handler via LENCO_SYNC_SECRET)
 router.post('/sync', syncAllLencoTransactions);
+
+// TEMPORARY: Collections API migration diagnostics (secured via LENCO_SYNC_SECRET). Remove after validation.
+router.post('/test-collection/initiate', testInitiateCollection);
+router.get('/test-collection/status/:reference', testCollectionStatus);
 
 // Protected routes
 router.use(requireAuth);

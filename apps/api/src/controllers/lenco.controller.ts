@@ -2037,3 +2037,50 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
         return res.status(500).json({ error: 'Internal server error during synchronization', details: error.message });
     }
 };
+
+/**
+ * TEMPORARY diagnostic endpoints for validating the Collections API migration
+ * (own-UX mobile money checkout, replacing the LencoPay widget). Runs the real
+ * Lenco call from the deployed API's IP, since /collections/status gets
+ * Cloudflare-403'd from some dev networks. Gated the same way as /sync — remove
+ * once the migration is validated.
+ */
+function checkSyncSecret(req: Request, res: Response): boolean {
+    const authHeader = req.headers['authorization'];
+    const syncSecret = process.env.LENCO_SYNC_SECRET;
+    if (syncSecret && authHeader !== `Bearer ${syncSecret}`) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return false;
+    }
+    return true;
+}
+
+export const testInitiateCollection = async (req: Request, res: Response) => {
+    if (!checkSyncSecret(req, res)) return;
+    try {
+        const { amount, phone, operator, reference } = req.body;
+        if (!amount || !phone || !operator) {
+            return res.status(400).json({ error: 'amount, phone, and operator are required' });
+        }
+        const result = await LencoService.initiateMobileMoneyCollection({
+            amount: Number(amount),
+            reference: reference || `TEST-COLLECT-${Date.now()}`,
+            phone,
+            operator
+        });
+        return res.json({ success: true, data: result });
+    } catch (error: any) {
+        return res.status(500).json({ error: error.message });
+    }
+};
+
+export const testCollectionStatus = async (req: Request, res: Response) => {
+    if (!checkSyncSecret(req, res)) return;
+    try {
+        const { reference } = req.params;
+        const result = await LencoService.getCollectionStatus(reference);
+        return res.json({ success: true, data: result });
+    } catch (error: any) {
+        return res.status(500).json({ error: error.message });
+    }
+};
