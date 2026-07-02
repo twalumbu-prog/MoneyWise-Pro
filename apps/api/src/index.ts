@@ -40,6 +40,13 @@ console.log('[API] Server starting up...');
 
 import pool from './db';
 
+// Bumped whenever a statement is added below. Cold starts check this against the
+// DB-persisted marker first and skip the full DDL replay if already applied —
+// each cold Vercel instance otherwise opened a fresh direct connection and reran
+// ~15 sequential DDL statements just to find out they were all no-ops, which is
+// what was exhausting Postgres's connection limit under concurrent traffic.
+const MIGRATION_VERSION = 1;
+
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
     if (!directUrl) {
@@ -47,16 +54,34 @@ const runMigration = async () => {
     }
 
     const migrationPool = directUrl
-        ? new Pool({ 
-            connectionString: directUrl, 
+        ? new Pool({
+            connectionString: directUrl,
             ssl: directUrl.includes('supabase.co') || directUrl.includes('.db.elephantsql.com')
                 ? { rejectUnauthorized: false }
-                : false
+                : false,
+            max: 2,
+            idleTimeoutMillis: 5000,
+            connectionTimeoutMillis: 5000,
           })
         : pool;
 
     try {
-        console.log('[Migration] Starting startup migration...');
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.schema_migrations (
+                id SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+                version INT NOT NULL DEFAULT 0
+            );
+            INSERT INTO public.schema_migrations (id, version) VALUES (1, 0)
+            ON CONFLICT (id) DO NOTHING;
+        `);
+        const { rows } = await migrationPool.query('SELECT version FROM public.schema_migrations WHERE id = 1;');
+        const appliedVersion = rows[0]?.version ?? 0;
+        if (appliedVersion >= MIGRATION_VERSION) {
+            console.log(`[Migration] Already at version ${appliedVersion}, skipping DDL replay.`);
+            return;
+        }
+
+        console.log(`[Migration] Applying migrations (${appliedVersion} -> ${MIGRATION_VERSION})...`);
 
         // ... existing migrations ...
         await migrationPool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS category TEXT;');
@@ -296,6 +321,9 @@ const runMigration = async () => {
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');
         await migrationPool.query("NOTIFY pgrst, 'reload config';");
+
+        await migrationPool.query('UPDATE public.schema_migrations SET version = $1 WHERE id = 1;', [MIGRATION_VERSION]);
+        console.log(`[Migration] Marked schema at version ${MIGRATION_VERSION}.`);
 
     } catch (err) {
         console.error('[Migration] Failed to run startup migration:', err);

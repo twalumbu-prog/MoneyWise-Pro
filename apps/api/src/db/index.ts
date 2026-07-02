@@ -18,6 +18,13 @@ const pool = new Pool({
     ssl: dbUrl?.includes('supabase.co') || dbUrl?.includes('.db.elephantsql.com')
         ? { rejectUnauthorized: false }
         : false,
+    // Bounded for serverless: each cold Vercel instance gets its own pool, so an
+    // unbounded default (10) multiplied across concurrent cold instances is what
+    // exhausts Postgres's connection limit. connectionTimeoutMillis makes a stuck
+    // connection attempt fail fast instead of hanging until the function times out.
+    max: 3,
+    idleTimeoutMillis: 10000,
+    connectionTimeoutMillis: 5000,
 });
 
 pool.on('error', (err) => {
