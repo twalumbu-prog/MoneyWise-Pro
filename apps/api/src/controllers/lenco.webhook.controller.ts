@@ -87,18 +87,40 @@ export const handleLencoWebhook = async (req: Request, res: Response) => {
         return res.status(401).json({ error: 'Unauthorized: Missing signature' });
     }
 
-    // We attempt to verify against the global key. In a multi-tenant setup,
-    // once Lenco supports per-account webhook keys, this should be fetched
-    // per organization (see audit report Issue 4).
-    const apiToken = process.env.LENCO_SECRET_KEY;
-    if (apiToken) {
-        const webhookHashKey = crypto.createHash("sha256").update(apiToken).digest("hex");
-        const rawBody = (req as any).rawBody;
-        const expectedSignature = crypto.createHmac('sha512', webhookHashKey)
-            .update(rawBody || JSON.stringify(req.body))
-            .digest('hex');
+    const event = req.body;
 
-        if (signature !== expectedSignature) {
+    // Lenco signs each webhook with the secret key of the account that owns the
+    // event. Orgs with their own lenco_secret_key (multi-tenant subaccounts) sign
+    // with THAT key, not the platform's global LENCO_SECRET_KEY — verifying only
+    // against the global key silently rejected (401) every webhook for those
+    // orgs, which is how failed/successful transfers went undetected. Resolve the
+    // org from the event's accountId (unverified at this point, but a forged
+    // accountId simply fails signature verification below since an attacker
+    // doesn't have that org's real key) and accept a match against either key.
+    const accountId = event?.data?.accountId || event?.data?.account_id;
+    const candidateKeys = new Set<string>();
+    if (process.env.LENCO_SECRET_KEY) candidateKeys.add(process.env.LENCO_SECRET_KEY);
+    if (accountId) {
+        const { data: keyOrg } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key')
+            .eq('lenco_subaccount_id', accountId)
+            .maybeSingle();
+        if (keyOrg?.lenco_secret_key) candidateKeys.add(keyOrg.lenco_secret_key);
+    }
+
+    if (candidateKeys.size > 0) {
+        const rawBody = (req as any).rawBody;
+        const bodyToSign = rawBody || JSON.stringify(req.body);
+        const isValidSignature = [...candidateKeys].some((key) => {
+            const webhookHashKey = crypto.createHash("sha256").update(key).digest("hex");
+            const expectedSignature = crypto.createHmac('sha512', webhookHashKey)
+                .update(bodyToSign)
+                .digest('hex');
+            return signature === expectedSignature;
+        });
+
+        if (!isValidSignature) {
             console.warn('[Lenco Webhook] REJECTED: Invalid signature');
             captureEvent('lenco_webhook_rejected', {
                 feature: 'lenco_webhook', workflow_id: 'unknown', organization_id: 'unknown',
@@ -108,7 +130,6 @@ export const handleLencoWebhook = async (req: Request, res: Response) => {
         }
     }
 
-    const event = req.body;
     console.log('[Lenco Webhook] Received event:', event.event);
 
     try {

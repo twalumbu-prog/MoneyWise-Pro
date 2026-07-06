@@ -9,6 +9,7 @@ import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForRefe
 import { calculatePlatformFee } from '../utils/platformFee';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent } from '../utils/analytics';
+import { ensureWalletTransferConfirmed } from './disbursement.controller';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
 // credit leg of every external payment link). See categorizeSplitPaymentRevenue.
@@ -604,7 +605,9 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                 lenco_public_key: org.lenco_public_key || null,
                 payment_test_mode: org.payment_test_mode || false
             },
-            products: products || []
+            products: products || [],
+            // Kill-switch for the own-UX mobile money checkout — see getPaymentLinkContext.
+            collections_api_enabled: process.env.LENCO_COLLECTIONS_API_ENABLED === 'true'
         });
     } catch (error: any) {
         console.error('[Lenco Public Context] Error:', error);
@@ -661,7 +664,11 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             product: link.products,
             customer_name: link.customer_name,
             customer_phone: link.customer_phone,
-            amount: Number(link.amount)
+            amount: Number(link.amount),
+            // Kill-switch for the own-UX mobile money checkout. When false/unset the
+            // frontend uses the existing LencoPay widget. Flip LENCO_COLLECTIONS_API_ENABLED
+            // on the API to switch every client instantly (no frontend redeploy).
+            collections_api_enabled: process.env.LENCO_COLLECTIONS_API_ENABLED === 'true'
         });
     } catch (error: any) {
         console.error('[Lenco Payment Link Context] Error:', error);
@@ -922,6 +929,132 @@ export const logInternalWalletDepositIntent = async (req: Request, res: Response
         return res.status(404).json({ error: 'Wallet not found' });
     }
     return logWalletDepositIntentCore(req, res, true);
+};
+
+/**
+ * Public: server-initiate a mobile money collection for the own-UX checkout
+ * (replacing the LencoPay widget). The caller has already logged the PENDING
+ * intent via /public-wallet-deposit-intent, so this only fires the Lenco charge
+ * and returns the pay-offline collection; the frontend then polls the existing
+ * /public-verify-status/:reference, which finalizes the ledger + commission sweep
+ * exactly as the widget path did.
+ *
+ * Amount is the GROSS the customer pays (subtotal + platform fee), matching what
+ * the widget charged — the intent stores the net subtotal, so finalization
+ * derives and sweeps the same commission.
+ */
+const VALID_MOMO_OPERATORS = ['airtel', 'mtn', 'zamtel', 'tnm'];
+
+/** Resolve {organizationId, secretKey} from a public walletId — shared by every public-collection endpoint. */
+async function resolveOrgFromWallet(walletId: string): Promise<{ organizationId: string; secretKey?: string } | null> {
+    const { data: wallet, error: walletError } = await supabase
+        .from('organization_wallets')
+        .select('organization_id')
+        .eq('id', walletId)
+        .single();
+    if (walletError || !wallet) return null;
+
+    const { data: org } = await supabase
+        .from('organizations')
+        .select('lenco_secret_key')
+        .eq('id', wallet.organization_id)
+        .maybeSingle();
+
+    return { organizationId: wallet.organization_id, secretKey: org?.lenco_secret_key || process.env.LENCO_SECRET_KEY };
+}
+
+export const initiatePublicMobileMoneyCollection = async (req: Request, res: Response) => {
+    try {
+        const { reference, amount, phone, operator, walletId } = req.body;
+
+        if (!reference || !amount || !phone || !operator || !walletId) {
+            return res.status(400).json({ error: 'reference, amount, phone, operator, and walletId are required' });
+        }
+        if (!VALID_MOMO_OPERATORS.includes(operator)) {
+            return res.status(400).json({ error: `operator must be one of: ${VALID_MOMO_OPERATORS.join(', ')}` });
+        }
+
+        const resolved = await resolveOrgFromWallet(walletId);
+        if (!resolved) return res.status(404).json({ error: 'Wallet not found' });
+
+        const collection = await LencoService.initiateMobileMoneyCollection({
+            amount: Number(amount),
+            reference,
+            phone,
+            operator
+        }, resolved.secretKey);
+
+        captureEvent('payment_link_collection_initiated', {
+            feature: 'payment_link_checkout', workflow_id: reference, organization_id: resolved.organizationId,
+            user_id: 'anonymous', status: 'started', amount: Number(amount), payment_method: 'mobile-money',
+        });
+
+        return res.json({ success: true, data: collection });
+    } catch (error: any) {
+        console.error('[Lenco Public Collection] Initiate error:', error.message);
+        return res.status(500).json({ error: error.message || 'Failed to initiate mobile money collection' });
+    }
+};
+
+/**
+ * Public: resolve the account holder name for a mobile money number before
+ * charging it — same trust signal the internal disbursement wizard shows
+ * ("Account Holder: ..."), so the customer can confirm it's really their line
+ * before we send a prompt to it.
+ */
+export const resolvePublicMobileMoneyName = async (req: Request, res: Response) => {
+    try {
+        const { phone, operator, walletId } = req.body;
+        if (!phone || !operator || !walletId) {
+            return res.status(400).json({ error: 'phone, operator, and walletId are required' });
+        }
+        if (!VALID_MOMO_OPERATORS.includes(operator)) {
+            return res.status(400).json({ error: `operator must be one of: ${VALID_MOMO_OPERATORS.join(', ')}` });
+        }
+
+        const resolved = await resolveOrgFromWallet(walletId);
+        if (!resolved) return res.status(404).json({ error: 'Wallet not found' });
+
+        const account = await LencoService.resolveMobileMoney(phone, operator, resolved.secretKey);
+        return res.json({ success: true, accountName: account.accountName });
+    } catch (error: any) {
+        console.error('[Lenco Public Collection] Resolve name error:', error.message);
+        return res.status(500).json({ error: error.message || 'Could not verify this number' });
+    }
+};
+
+/**
+ * Public: explicit customer-initiated "give up waiting" on a not-yet-confirmed
+ * collection attempt.
+ *
+ * IMPORTANT: this does NOT cancel anything on Lenco's side — the Collections API
+ * has no cancel-collection endpoint, so once a mobile money prompt has been sent
+ * to the telco it will still arrive on the customer's phone regardless of what
+ * happens here. This endpoint therefore does not delete the PENDING intent
+ * (cashbook entry / product sales / bookings): if the customer approves the
+ * prompt anyway after "cancelling" in our UI, the webhook must still be able to
+ * find the PENDING row and finalize it in place (ledger + product revenue
+ * routing + booking confirmation + payment-link PAID flip). Deleting it early
+ * previously caused a late approval to land as an orphaned generic inflow with
+ * none of that product-level bookkeeping. Genuine abandonment is still cleaned
+ * up later by the existing 15-minute grace-window logic in verifyCollectionStatus.
+ */
+export const cancelPublicCollectionIntent = async (req: Request, res: Response) => {
+    try {
+        const { reference } = req.body;
+        if (!reference) {
+            return res.status(400).json({ error: 'reference is required' });
+        }
+
+        captureEvent('payment_collection_cancelled_by_customer', {
+            feature: 'payment_collection', workflow_id: reference, organization_id: 'unknown', user_id: 'anonymous',
+        });
+
+        return res.json({ success: true });
+    } catch (error: any) {
+        console.error('[Lenco Public Collection] Cancel error:', error.message);
+        return res.status(500).json({ error: error.message || 'Failed to cancel payment' });
+    }
 };
 
 /**
@@ -2007,6 +2140,66 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                 }
             } catch (janitorErr: any) {
                 console.error(`[Lenco Sync][Janitor] Error for org ${org.name}:`, janitorErr.message);
+            }
+
+            // ─── Stuck wallet-disbursement janitor ────────────────────────────
+            // A requisition's status flips to RECEIVED at disbursal time, before
+            // Lenco confirms anything — it's an optimistic lock, not a confirmed
+            // outcome. Confirmation normally happens via the initial synchronous
+            // poll, an in-memory deferred retry, or the transfer webhook. All three
+            // can miss: the deferred retry is fire-and-forget in-process and does
+            // not survive a serverless function ending; the webhook can be missed
+            // or (previously) rejected for orgs signing with their own key; and a
+            // FAILED transfer never appears in the account transaction feed above
+            // (no money moved), so the debit-matching loop can never catch it.
+            // This re-checks each unconfirmed digital disbursement directly against
+            // /transfers/status, which is the only reliable source for a failure —
+            // finalizing successes and reverting failures so the requisition status
+            // never drifts from what actually happened on Lenco.
+            try {
+                const CANDIDATE_MIN_AGE_MS = 2 * 60 * 1000; // let the live disbursal flow finish first
+                const candidateCutoff = new Date(Date.now() - CANDIDATE_MIN_AGE_MS).toISOString();
+
+                const { data: pendingDisbursements } = await supabase
+                    .from('disbursements')
+                    .select('requisition_id, external_reference, requisitions!inner(status, organization_id, updated_at)')
+                    .eq('requisitions.organization_id', orgId)
+                    .in('requisitions.status', ['RECEIVED', 'DISBURSED'])
+                    .not('external_reference', 'is', null)
+                    .lt('requisitions.updated_at', candidateCutoff)
+                    .limit(25);
+
+                const candidates = (pendingDisbursements || []).filter(
+                    (d: any) => !d.external_reference.startsWith('SIM-PAY-') && !d.external_reference.startsWith('SIM-EXC-')
+                );
+
+                if (candidates.length > 0) {
+                    const reqIds = candidates.map((d: any) => d.requisition_id);
+                    const { data: finalizedEntries } = await supabase
+                        .from('cashbook_entries')
+                        .select('requisition_id')
+                        .in('requisition_id', reqIds)
+                        .eq('entry_type', 'DISBURSEMENT')
+                        .is('voucher_id', null)
+                        .neq('status', 'PENDING');
+                    const finalizedSet = new Set((finalizedEntries || []).map((e: any) => e.requisition_id));
+
+                    for (const disb of candidates) {
+                        if (finalizedSet.has(disb.requisition_id)) continue;
+                        try {
+                            const result = await ensureWalletTransferConfirmed(disb.requisition_id, orgId);
+                            if (result.confirmed) {
+                                console.log(`[Lenco Sync][Disbursement Janitor] Confirmed requisition ${String(disb.requisition_id).slice(0, 8)}.`);
+                            } else if (result.status === 'failed' || result.status === 'not_found') {
+                                console.warn(`[Lenco Sync][Disbursement Janitor] Reverted requisition ${String(disb.requisition_id).slice(0, 8)} — transfer ${result.status} on Lenco.`);
+                            }
+                        } catch (reconErr: any) {
+                            console.error(`[Lenco Sync][Disbursement Janitor] Error reconciling requisition ${disb.requisition_id}:`, reconErr.message);
+                        }
+                    }
+                }
+            } catch (disbJanitorErr: any) {
+                console.error(`[Lenco Sync][Disbursement Janitor] Error for org ${org.name}:`, disbJanitorErr.message);
             }
 
             // GL reconciliation safety net: re-post any cashbook entries whose journal is
