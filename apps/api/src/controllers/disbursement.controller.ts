@@ -819,14 +819,14 @@ export async function ensureWalletTransferConfirmed(
     // If a wallet-disbursement ledger row already exists in ANY non-pending state, the transfer
     // was finalized earlier (immediate success, webhook, poller, or periodic sync). The old
     // DISBURSED-only check missed rows already advanced to COMPLETED, so it re-verified and
-    // re-finalized already-confirmed transfers — creating duplicate outflows. `voucher_id IS NULL`
-    // keeps "Actual for Req" voucher entries (which also use entry_type='DISBURSEMENT') from matching.
+    // re-finalized already-confirmed transfers — creating duplicate outflows. Do NOT exclude
+    // voucher_id — a confirmed change deposit sets voucher_id on this SAME row, so filtering it
+    // out made the guard blind to the row it exists to detect (see cashbook.service.ts).
     const { data: existingLedger } = await supabase
         .from('cashbook_entries')
         .select('id')
         .eq('requisition_id', requisitionId)
         .eq('entry_type', 'DISBURSEMENT')
-        .is('voucher_id', null)
         .neq('status', 'PENDING')
         .limit(1);
     if (existingLedger && existingLedger.length > 0) return { confirmed: true };
@@ -931,13 +931,13 @@ export const verifyDisbursementStatus = async (req: any, res: any): Promise<any>
             // Skip if a wallet-disbursement entry already exists in ANY non-pending state
             // (DISBURSED or, once confirmed/synced, COMPLETED) — checking DISBURSED-only let
             // re-verification of an already-completed transfer create a duplicate outflow.
-            // `voucher_id IS NULL` keeps "Actual for Req" voucher entries from matching.
+            // Do NOT exclude voucher_id — a confirmed change deposit sets voucher_id on this
+            // SAME row, so filtering it out made the guard blind to the row it exists to detect.
             const { data: existingLedger } = await supabase
                 .from('cashbook_entries')
                 .select('id')
                 .eq('requisition_id', id)
                 .eq('entry_type', 'DISBURSEMENT')
-                .is('voucher_id', null)
                 .neq('status', 'PENDING')
                 .limit(1);
 

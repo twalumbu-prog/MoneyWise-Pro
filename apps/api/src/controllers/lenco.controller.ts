@@ -1961,14 +1961,14 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                         // requisition in ANY non-pending state. Matching DISBURSED-only missed rows
                         // already advanced to COMPLETED, so the sync re-finalized confirmed
                         // disbursements into duplicate outflows. (finalizeWalletDisbursementLedger
-                        // self-guards too; this avoids the redundant call.) voucher_id IS NULL
-                        // excludes "Actual for Req" voucher entries.
+                        // self-guards too; this avoids the redundant call.) Do NOT exclude
+                        // voucher_id — a confirmed change deposit sets voucher_id on this SAME
+                        // row, so filtering it out made the guard blind to the row it exists to detect.
                         const { data: existingLedger } = await supabase
                             .from('cashbook_entries')
                             .select('id')
                             .eq('requisition_id', requisitionId)
                             .eq('entry_type', 'DISBURSEMENT')
-                            .is('voucher_id', null)
                             .neq('status', 'PENDING')
                             .limit(1);
 
@@ -2175,12 +2175,15 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
 
                 if (candidates.length > 0) {
                     const reqIds = candidates.map((d: any) => d.requisition_id);
+                    // Do NOT exclude voucher_id — a confirmed change deposit sets voucher_id on
+                    // this SAME row, so filtering it out made the janitor blind to requisitions
+                    // that were already disbursed, re-triggering ensureWalletTransferConfirmed
+                    // (which can even revert an already-completed disbursement on a stale Lenco lookup).
                     const { data: finalizedEntries } = await supabase
                         .from('cashbook_entries')
                         .select('requisition_id')
                         .in('requisition_id', reqIds)
                         .eq('entry_type', 'DISBURSEMENT')
-                        .is('voucher_id', null)
                         .neq('status', 'PENDING');
                     const finalizedSet = new Set((finalizedEntries || []).map((e: any) => e.requisition_id));
 

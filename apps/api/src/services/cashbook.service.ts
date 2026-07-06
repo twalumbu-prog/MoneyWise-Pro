@@ -390,14 +390,16 @@ export const cashbookService = {
         // status='DISBURSED'. Once Lenco confirms/syncs the transfer the row moves to
         // COMPLETED, so the old DISBURSED-only check let a re-trigger (verify-disbursement,
         // periodic Lenco sync, webhook, deferred poll, or the repair script) create a second
-        // outflow for an already-disbursed requisition. `voucher_id IS NULL` excludes the
-        // "Actual for Req" voucher entries, which also use entry_type='DISBURSEMENT'.
+        // outflow for an already-disbursed requisition. Do NOT exclude voucher_id — when a
+        // change deposit is confirmed, finalizeDisbursement updates THIS SAME row in place
+        // (setting voucher_id on it), so filtering on voucher_id IS NULL made the guard blind
+        // to the very row it exists to detect, letting the next re-trigger create a phantom
+        // duplicate DISBURSEMENT entry for the requisition.
         const { data: existingLedger } = await supabase
             .from('cashbook_entries')
             .select('id')
             .eq('requisition_id', requisitionId)
             .eq('entry_type', 'DISBURSEMENT')
-            .is('voucher_id', null)
             .neq('status', 'PENDING')
             .limit(1);
 
