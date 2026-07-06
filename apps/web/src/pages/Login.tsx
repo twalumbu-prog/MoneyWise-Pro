@@ -108,8 +108,12 @@ export const Login: React.FC = () => {
         try {
             if (signupMode === 'CREATE') {
                 await signUp(loginIdentifier, password, name, organizationName, username);
-                setMessage('Account & Organization created! You are now signed in.');
                 setSuggestion('');
+                // Sign the user straight in — the home redirect then routes new
+                // organizations into the onboarding wizard automatically, so the
+                // user never returns to this login page.
+                setMessage('Account created! Setting up your workspace…');
+                await signInWithPassword(loginIdentifier, password);
             } else {
                 await joinOrganization(loginIdentifier, password, name, organizationId, username);
                 setMessage('Join request submitted! An admin must approve your account.');

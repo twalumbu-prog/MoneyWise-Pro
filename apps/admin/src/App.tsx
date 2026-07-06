@@ -5,6 +5,8 @@ import { Layout } from './components/Layout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import OrgDetail from './pages/OrgDetail';
+import WalletPool from './pages/WalletPool';
+import TestCollections from './pages/TestCollections';
 
 export default function App() {
     return (
@@ -28,6 +30,26 @@ export default function App() {
                             <ProtectedRoute>
                                 <Layout>
                                     <OrgDetail />
+                                </Layout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/wallet-pool"
+                        element={
+                            <ProtectedRoute>
+                                <Layout>
+                                    <WalletPool />
+                                </Layout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/test-collections"
+                        element={
+                            <ProtectedRoute>
+                                <Layout>
+                                    <TestCollections />
                                 </Layout>
                             </ProtectedRoute>
                         }

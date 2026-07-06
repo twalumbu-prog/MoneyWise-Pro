@@ -15,6 +15,9 @@ import {
     getProductAvailability,
     logPublicWalletDepositIntent,
     logInternalWalletDepositIntent,
+    initiatePublicMobileMoneyCollection,
+    resolvePublicMobileMoneyName,
+    cancelPublicCollectionIntent,
     getSaleReceiptDetails,
     getPublicSalesByPhone,
     getPublicSaleReceiptDetails,
@@ -35,6 +38,9 @@ router.get('/public-context/:wallet_id', getPublicWalletContext);
 router.get('/public-payment-link/:token', getPaymentLinkContext);
 router.get('/public-product-availability/:productId', getProductAvailability);
 router.post('/public-wallet-deposit-intent', logPublicWalletDepositIntent);
+router.post('/public-collection/mobile-money', initiatePublicMobileMoneyCollection);
+router.post('/public-collection/resolve-momo', resolvePublicMobileMoneyName);
+router.post('/public-collection/cancel', cancelPublicCollectionIntent);
 router.get('/public-sales/by-phone/:phone', getPublicSalesByPhone);
 router.get('/public-sale-receipt/:reference', getPublicSaleReceiptDetails);
 

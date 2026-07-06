@@ -33,6 +33,22 @@ export async function getSessionSafe(timeoutMs = 5000) {
  * surfaces as an error instead of an endless spinner.
  */
 export async function apiGet<T>(path: string, timeoutMs = 90000): Promise<T> {
+    return apiSend<T>('GET', path, undefined, timeoutMs);
+}
+
+export async function apiPost<T>(path: string, body?: unknown, timeoutMs = 30000): Promise<T> {
+    return apiSend<T>('POST', path, body, timeoutMs);
+}
+
+export async function apiPatch<T>(path: string, body?: unknown, timeoutMs = 30000): Promise<T> {
+    return apiSend<T>('PATCH', path, body, timeoutMs);
+}
+
+export async function apiPut<T>(path: string, body?: unknown, timeoutMs = 30000): Promise<T> {
+    return apiSend<T>('PUT', path, body, timeoutMs);
+}
+
+async function apiSend<T>(method: string, path: string, body: unknown, timeoutMs: number): Promise<T> {
     const session = await getSessionSafe();
     if (!session) throw new ApiError(401, 'Not signed in');
 
@@ -40,7 +56,12 @@ export async function apiGet<T>(path: string, timeoutMs = 90000): Promise<T> {
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
         const res = await fetch(`${API_URL}${path.startsWith('/') ? path : `/${path}`}`, {
-            headers: { Authorization: `Bearer ${session.access_token}` },
+            method,
+            headers: {
+                Authorization: `Bearer ${session.access_token}`,
+                ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+            },
+            body: body !== undefined ? JSON.stringify(body) : undefined,
             signal: controller.signal,
         });
 

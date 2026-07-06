@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { productService, Product, ProductType } from '../../services/product.service';
+import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS } from '../../services/product.service';
 import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { supabase } from '../../lib/supabase';
@@ -28,14 +28,6 @@ import {
 
 interface WalletOption { id: string; name: string; is_main?: boolean; }
 interface AccountOption { id: string; code: string; name: string; type: string; }
-
-const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string; hint: string }[] = [
-    { value: 'PRODUCT', label: 'Product (tangible)', hint: 'A physical item sold at a fixed price, by quantity.' },
-    { value: 'SERVICE_FIXED', label: 'Service — fixed price', hint: 'A service offered at one established price.' },
-    { value: 'SERVICE_VARIABLE', label: 'Service — variable price', hint: 'Price is set by you when sharing a one-time link.' },
-    { value: 'SERVICE_BOOKING', label: 'Service (Booking – Apartments)', hint: 'Guests pick check-in / check-out on a calendar. Total = nights × nightly rate. Booked dates are blocked so you never double-book.' },
-    { value: 'DONATION', label: 'Donation', hint: 'The payer decides the amount to give.' }
-];
 
 const typeBadgeClass = (t?: ProductType) => {
     switch (t) {

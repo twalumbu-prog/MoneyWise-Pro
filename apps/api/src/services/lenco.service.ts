@@ -346,14 +346,17 @@ export class LencoService {
         bearer?: 'merchant' | 'customer'
     }, secretKey?: string) {
         try {
-            const body = {
+            const body: Record<string, any> = {
                 amount: collection.amount,
                 reference: collection.reference,
                 phone: collection.phone,
                 operator: collection.operator,
-                country: collection.country || 'zm',
-                bearer: collection.bearer || 'merchant'
+                country: collection.country || 'zm'
             };
+            // Only pin the fee bearer when explicitly asked; otherwise let the
+            // account's own default apply, matching the LencoPay widget (which
+            // never sends a bearer either).
+            if (collection.bearer) body.bearer = collection.bearer;
 
             const response = await axios.post(`${this.BASE_URL}/collections/mobile-money`, body, {
                 headers: this.getHeaders(secretKey),

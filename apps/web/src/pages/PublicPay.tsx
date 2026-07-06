@@ -39,6 +39,7 @@ import {
 import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
+import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
 import BookingCalendar from '../components/BookingCalendar';
 import { BookingRange } from '../services/product.service';
 
@@ -127,21 +128,64 @@ interface PublicContextResponse {
     organization: OrgContext;
     wallet: WalletContext;
     products: Product[];
+    collections_api_enabled?: boolean;
 }
+
+// Detect the Zambian mobile money operator from a phone prefix.
+// Mirrors LencoService.resolveMobileOperator on the API.
+function detectOperator(phone: string): 'airtel' | 'mtn' | 'zamtel' | null {
+    const clean = (phone || '').replace(/[^0-9]/g, '');
+    const normalized = clean.startsWith('260') ? '0' + clean.slice(3) : clean;
+    if (normalized.startsWith('097') || normalized.startsWith('077')) return 'airtel';
+    if (normalized.startsWith('096') || normalized.startsWith('076')) return 'mtn';
+    if (normalized.startsWith('095') || normalized.startsWith('075')) return 'zamtel';
+    return null;
+}
+
+const OPERATOR_COLORS: Record<string, string> = {
+    airtel: 'text-red-500',
+    mtn: 'text-amber-500',
+    zamtel: 'text-emerald-500',
+};
+
+// Latency threshold (measured from the account-name lookup, which shares the
+// customer's current network path) above which the waiting screen warns that
+// confirmation may take longer than usual.
+const SLOW_LATENCY_MS = 1200;
 
 export const PublicPay: React.FC = () => {
     const { wallet_id } = useParams<{ wallet_id: string }>();
 
     // UI Steps
-    //  SHOP    = product catalogue grid (entry page)
-    //  CATALOG = the cart (added items)
-    //  SUMMARY = checkout breakdown + customer details + Pay
-    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'CATALOG' | 'SUMMARY' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
-    
+    //  SHOP     = product catalogue grid (entry page)
+    //  CATALOG  = the cart (added items)
+    //  SUMMARY  = checkout breakdown + customer details + Pay
+    //  CHECKOUT = dedicated payment-method page (Collections API own-UX only)
+    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'CATALOG' | 'SUMMARY' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
+
     // Data Context
     const [org, setOrg] = useState<OrgContext | null>(null);
     const [wallet, setWallet] = useState<WalletContext | null>(null);
     const [products, setProducts] = useState<Product[]>([]);
+    // Own-UX checkout (Collections API) kill-switch — see loadContext.
+    const [collectionsApiEnabled, setCollectionsApiEnabled] = useState(false);
+    const [checkoutMethod, setCheckoutMethod] = useState<'mobile-money' | 'card'>('mobile-money');
+    const [checkoutPhone, setCheckoutPhone] = useState('');
+    const [resolvedAccountName, setResolvedAccountName] = useState('');
+    const [resolvingAccountName, setResolvingAccountName] = useState(false);
+    const [resolveFailed, setResolveFailed] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    // Distinguishes the "approve on your phone" wait from the post-approval ledger sync.
+    const [awaitingApproval, setAwaitingApproval] = useState(false);
+    // Own-UX payment lifecycle phase (null = not on the premium screen, e.g. widget path).
+    const [paymentPhase, setPaymentPhase] = useState<PaymentPhase | null>(null);
+    const [failureIsDeclined, setFailureIsDeclined] = useState(false);
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const [networkLatencyMs, setNetworkLatencyMs] = useState<number | null>(null);
+    const [cancelling, setCancelling] = useState(false);
+    // Flipped on Cancel so an in-flight poll loop stops recursing instead of racing
+    // a fresh attempt (each retry uses a brand-new setTimeout chain).
+    const pollCancelledRef = useRef(false);
     
     // Inputs & Forms
     const [customerName, setCustomerName] = useState('');
@@ -234,6 +278,7 @@ export const PublicPay: React.FC = () => {
             setOrg(response.data.organization);
             setWallet(response.data.wallet);
             setProducts(response.data.products);
+            setCollectionsApiEnabled(response.data.collections_api_enabled === true);
 
             // Reached the server, but the business hasn't connected a payment provider.
             if (!response.data.wallet.lenco_subaccount_id) {
@@ -268,6 +313,50 @@ export const PublicPay: React.FC = () => {
     useEffect(() => {
         loadContext();
     }, [loadContext]);
+
+    // Resolve the mobile money account holder's name as the customer types a valid
+    // number — the same trust signal shown on the internal disbursement wizard. Also
+    // doubles as our network-speed probe: its round-trip latency estimates how long
+    // the upcoming status polling is likely to take.
+    useEffect(() => {
+        if (step !== 'CHECKOUT' || checkoutMethod !== 'mobile-money' || !wallet) return;
+        const operator = detectOperator(checkoutPhone);
+        if (!operator) {
+            setResolvedAccountName('');
+            setResolveFailed(false);
+            return;
+        }
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            setResolvingAccountName(true);
+            setResolveFailed(false);
+            const startedAt = Date.now();
+            try {
+                const res = await axios.post(`${API_URL}/lenco/public-collection/resolve-momo`, {
+                    phone: checkoutPhone, operator, walletId: wallet.id,
+                });
+                if (cancelled) return;
+                setNetworkLatencyMs(Date.now() - startedAt);
+                setResolvedAccountName(res.data?.accountName || '');
+                if (!res.data?.accountName) setResolveFailed(true);
+            } catch {
+                if (cancelled) return;
+                setNetworkLatencyMs(Date.now() - startedAt);
+                setResolvedAccountName('');
+                setResolveFailed(true);
+            } finally {
+                if (!cancelled) setResolvingAccountName(false);
+            }
+        }, 500);
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [checkoutPhone, checkoutMethod, step, wallet]);
+
+    // Tick the elapsed-time counter while waiting for the customer to approve on their phone.
+    useEffect(() => {
+        if (!awaitingApproval) return;
+        const interval = setInterval(() => setElapsedSeconds(s => s + 1), 1000);
+        return () => clearInterval(interval);
+    }, [awaitingApproval]);
 
     // Mount the sheet, then flip `sheetIn` on the next frame so the CSS transition runs.
     const openProductSheet = () => {
@@ -361,6 +450,14 @@ export const PublicPay: React.FC = () => {
     const processingFee = calculatePlatformFee(subtotal);
     const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
 
+    const isSlowNetwork = networkLatencyMs !== null && networkLatencyMs > SLOW_LATENCY_MS;
+
+    // The premium screen shows the USSD-approval prompt (confirm) briefly, then a
+    // cosmetic "confirming" (polling) pass for the remainder of the wait — matching
+    // the design handoff's own timing proportions.
+    const displayPaymentPhase: PaymentPhase | null =
+        paymentPhase === 'confirm' && elapsedSeconds >= 6 ? 'polling' : paymentPhase;
+
     // Distinct categories present in the catalog → toggle tabs (always lead with "All").
     const productCategories = ['All', ...Array.from(
         new Set(catalogProducts.map(p => (p.category || '').trim()).filter(Boolean))
@@ -381,12 +478,16 @@ export const PublicPay: React.FC = () => {
     // Active category position → drives the directional slide of the product list.
     const activeCategoryIndex = Math.max(0, productCategories.indexOf(activeCategory));
 
-    // Customer details must be present before the Pay button activates.
-    const canPay = customerName.trim().length > 0 && customerPhone.replace(/\D/g, '').length >= 9;
+    // Own-UX flow: identity is derived on the Payment page from the mobile money
+    // account (resolved holder name + the number that pays), so Pay only needs a
+    // valid cart. Widget fallback still collects name/phone on the summary.
+    const canPay = collectionsApiEnabled
+        ? true
+        : customerName.trim().length > 0 && customerPhone.replace(/\D/g, '').length >= 9;
 
     // Full-screen "app" steps fill the viewport (fixed height) so inner content
     // scrolls and footers stay pinned; the simple states just center normally.
-    const isAppStep = step === 'SHOP' || step === 'CATALOG' || step === 'SUMMARY' || step === 'SUCCESS';
+    const isAppStep = step === 'SHOP' || step === 'CATALOG' || step === 'SUMMARY' || step === 'CHECKOUT' || step === 'SUCCESS' || step === 'VERIFYING';
 
     // Cart → Payment Summary. Validates the cart before showing the breakdown;
     // the actual Lenco charge is only triggered by the Pay button on the summary.
@@ -506,7 +607,8 @@ export const PublicPay: React.FC = () => {
                     else if (rawMethod) setPaymentMethod('Mobile Money');
                     setStep('VERIFYING');
                     setVerificationStep('POLLING');
-                    
+                    setAwaitingApproval(false);
+
                     // Poll verification route
                     let attempts = 0;
                     const maxAttempts = 15;
@@ -571,6 +673,227 @@ export const PublicPay: React.FC = () => {
         }
     };
 
+    // Own-UX mobile money checkout: initiate the collection server-side, then poll
+    // the same verify-status endpoint the widget path used. The customer approves on
+    // their phone — no widget, no redirect — so closing/reloading this page can't lose
+    // the payment (the reference is server-tracked from the moment it's initiated).
+    const handlePayMobileMoney = async () => {
+        if (lineItems.length === 0) {
+            setError('Please select at least one product or service to purchase.');
+            return;
+        }
+        if (pendingDonations.length > 0) {
+            setError(`Please enter an amount for: ${pendingDonations.map(li => li.product.name).join(', ')}`);
+            return;
+        }
+        if (subtotal <= 0) {
+            setError('Please select at least one product or service to purchase.');
+            return;
+        }
+        const operator = detectOperator(checkoutPhone);
+        if (!operator) {
+            setError('Please enter a valid Zambian mobile money number (Airtel, MTN, or Zamtel).');
+            return;
+        }
+        if (!wallet || !org) return;
+
+        // Identity comes from the paying mobile money account itself: the resolved
+        // account-holder name + the number the prompt is sent to. Stored into the
+        // shared customer state so the receipt/success screens keep working.
+        const payerName = resolvedAccountName || 'Mobile Money Customer';
+        const payerPhone = checkoutPhone;
+        setCustomerName(payerName);
+        setCustomerPhone(payerPhone);
+
+        const productNarration = lineItems
+            .map(li => `${li.product.name} (x${li.quantity})`)
+            .join(', ');
+        const ref = `DEP-${Date.now()}-${wallet.lenco_subaccount_id!.substring(0, 8)}-PUB`;
+        setCurrentReference(ref);
+        setError(null);
+        setSubmitting(true);
+        setPaymentMethod('Mobile Money');
+        pollCancelledRef.current = false;
+        // Enter the premium processing screen at the "initiating" phase while the
+        // intent + collection calls run.
+        setElapsedSeconds(0);
+        setAwaitingApproval(false);
+        setPaymentPhase('initiating');
+        setStep('VERIFYING');
+
+        const checkoutStartedAt = Date.now();
+        trackEvent('public_catalogue_checkout', 'payment', 'started', {
+            workflow_id: ref,
+            organization_id: org.id,
+            wallet_id: wallet.id,
+            subtotal,
+            total_payable: totalPayable,
+            item_count: lineItems.length,
+            payment_method: 'mobile-money',
+        });
+
+        try {
+            // 1. Log the PENDING intent (net subtotal) — same as the widget flow.
+            await axios.post(`${API_URL}/lenco/public-wallet-deposit-intent`, {
+                reference: ref,
+                purpose: `Sale: Products: ${productNarration} | Cust: ${payerPhone}`,
+                amount: subtotal,
+                walletId: wallet.id,
+                customerName: payerName,
+                customerPhone: payerPhone,
+                items: lineItems.map(li => ({
+                    id: li.product.id,
+                    quantity: li.quantity,
+                    price: li.unitPrice,
+                    ...(li.isBooking && li.booking
+                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                        : {})
+                }))
+            });
+
+            // 2. Initiate the collection server-side (gross = subtotal + platform fee).
+            const initRes = await axios.post(`${API_URL}/lenco/public-collection/mobile-money`, {
+                reference: ref,
+                amount: totalPayable,
+                phone: checkoutPhone,
+                operator,
+                walletId: wallet.id,
+            });
+
+            const status = initRes.data?.data?.status;
+            if (status !== 'pay-offline' && status !== 'pending' && status !== 'successful') {
+                throw new Error(`Payment could not be started (status: ${status || 'unknown'}). Please try again.`);
+            }
+
+            // 3. Prompt dispatched — move to the "confirm" phase and poll verify-status
+            // (which finalizes the ledger). The screen auto-advances to "polling" after
+            // a few seconds; success/failure come from the real status below.
+            setVerificationStep('POLLING');
+            setPaymentPhase('confirm');
+            setAwaitingApproval(true);
+            setElapsedSeconds(0);
+            setSubmitting(false);
+
+            let attempts = 0;
+            const maxAttempts = 90; // ~3 min at 2s — room for the USSD approve step, faster success reflection
+            const pollStatus = async () => {
+                if (pollCancelledRef.current) return;
+                attempts++;
+                try {
+                    const verifyRes = await axios.get(
+                        `${API_URL}/lenco/public-verify-status/${ref}?organizationId=${org.id}`
+                    );
+                    if (pollCancelledRef.current) return;
+                    if (verifyRes.data.verified) {
+                        setVerificationStep('SUCCESS');
+                        setReceiptNumber(verifyRes.data.referenceNumber || null);
+                        setAwaitingApproval(false);
+                        setPaymentPhase('success');
+                        trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
+                            workflow_id: ref,
+                            organization_id: org.id,
+                            wallet_id: wallet.id,
+                            subtotal,
+                            total_payable: totalPayable,
+                            receipt_number: verifyRes.data.referenceNumber,
+                            payment_method: 'Mobile Money',
+                            duration_ms: Date.now() - checkoutStartedAt,
+                        });
+                        return;
+                    }
+                    if (verifyRes.data.status === 'failed') {
+                        setVerificationStep('FAILED');
+                        setVerificationReason('The payment was declined or not approved on your phone. You can go back and try again.');
+                        setAwaitingApproval(false);
+                        setFailureIsDeclined(true);
+                        setPaymentPhase('failed');
+                        return;
+                    }
+                } catch (err) {
+                    console.error('Public momo verification attempt failed:', err);
+                }
+                if (pollCancelledRef.current) return;
+                if (attempts < maxAttempts) {
+                    setTimeout(pollStatus, 2000);
+                } else {
+                    setVerificationStep('FAILED');
+                    setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. Please contact the business admin to verify.');
+                    setAwaitingApproval(false);
+                    setFailureIsDeclined(false);
+                    setPaymentPhase('failed');
+                    trackVerificationTimeout('public_catalogue_checkout', {
+                        workflow_id: ref,
+                        organization_id: org.id,
+                        attempts,
+                        duration_ms: Date.now() - checkoutStartedAt,
+                    });
+                }
+            };
+            pollStatus();
+        } catch (err: any) {
+            console.error('Failed to initiate mobile money checkout:', err);
+            setSubmitting(false);
+            setAwaitingApproval(false);
+            setPaymentPhase(null);
+            setStep('CHECKOUT');
+            setError(err.response?.data?.error || err.message || 'Failed to start the payment. Please try again.');
+            trackEvent('public_catalogue_checkout', 'payment', 'failed', {
+                workflow_id: ref,
+                organization_id: org.id,
+                error_code: err?.response?.status || 'NETWORK_ERROR',
+                error_message: err?.response?.data?.error || err.message,
+                payment_method: 'mobile-money',
+                duration_ms: Date.now() - checkoutStartedAt,
+            });
+        }
+    };
+
+    // Customer-initiated "stop waiting" on a pending mobile money attempt. This only
+    // stops OUR polling and returns them to the checkout form — Lenco has no API to
+    // cancel a mobile money prompt already sent to the telco, so if they approve it
+    // anyway after "cancelling" here, the webhook still finalizes it correctly (we
+    // deliberately do NOT delete the PENDING intent server-side; see the /cancel
+    // endpoint's comment for why that used to lose product-level bookkeeping).
+    const handleCancelPayment = async () => {
+        setCancelling(true);
+        pollCancelledRef.current = true;
+        try {
+            await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
+        } catch (err) {
+            console.error('Failed to cancel payment intent:', err);
+        } finally {
+            setCancelling(false);
+            setAwaitingApproval(false);
+            setElapsedSeconds(0);
+            setPaymentPhase(null);
+            setStep('CHECKOUT');
+        }
+    };
+
+    // Success "View receipt" → the existing full receipt screen.
+    const handleViewReceipt = () => {
+        setPaymentPhase(null);
+        setStep('SUCCESS');
+    };
+
+    // Failed "Try again" → back to the payment form with a fresh attempt.
+    const handleRetryPayment = () => {
+        pollCancelledRef.current = true;
+        setPaymentPhase(null);
+        setVerificationStep('POLLING');
+        setError(null);
+        setStep('CHECKOUT');
+    };
+
+    // Failed "Cancel" → leave the flow back to the cart.
+    const handleDismissFailed = () => {
+        pollCancelledRef.current = true;
+        setPaymentPhase(null);
+        setVerificationStep('POLLING');
+        setError(null);
+        setStep('CATALOG');
+    };
+
     const handleConfirmPaymentManual = async () => {
         if (!org || !currentReference) return;
         
@@ -607,6 +930,11 @@ export const PublicPay: React.FC = () => {
         setLastTransactionId(null);
         setConfirmManualError(null);
         setIsConfirmingManual(false);
+        setAwaitingApproval(false);
+        setPaymentPhase(null);
+        setElapsedSeconds(0);
+        setResolvedAccountName('');
+        setResolveFailed(false);
         setStep('SHOP');
         setError(null);
     };
@@ -1872,37 +2200,40 @@ Status: VERIFIED`;
                                 </div>
                             </div>
 
-                            {/* Your details — collected here, just before paying */}
-                            <div className="mt-4 rounded-3xl border border-slate-200 p-5">
-                                <div className="flex items-center gap-2 mb-3">
-                                    <User size={16} className="text-slate-900" />
-                                    <h5 className="text-sm font-bold text-slate-900">
-                                        Your Details <span className="text-rose-500">*</span>
-                                    </h5>
-                                </div>
-                                <div className="space-y-3">
-                                    <div className="relative">
-                                        <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                        <input
-                                            type="text"
-                                            value={customerName}
-                                            onChange={(e) => setCustomerName(e.target.value)}
-                                            placeholder="Your full name"
-                                            className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
-                                        />
+                            {/* Widget fallback only: collect name/phone before paying. The own-UX
+                                flow derives both from the mobile money account on the Payment page. */}
+                            {!collectionsApiEnabled && (
+                                <div className="mt-4 rounded-3xl border border-slate-200 p-5">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <User size={16} className="text-slate-900" />
+                                        <h5 className="text-sm font-bold text-slate-900">
+                                            Your Details <span className="text-rose-500">*</span>
+                                        </h5>
                                     </div>
-                                    <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                        <input
-                                            type="tel"
-                                            value={customerPhone}
-                                            onChange={(e) => setCustomerPhone(e.target.value)}
-                                            placeholder="Phone number"
-                                            className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
-                                        />
+                                    <div className="space-y-3">
+                                        <div className="relative">
+                                            <User className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                            <input
+                                                type="text"
+                                                value={customerName}
+                                                onChange={(e) => setCustomerName(e.target.value)}
+                                                placeholder="Your full name"
+                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                            <input
+                                                type="tel"
+                                                value={customerPhone}
+                                                onChange={(e) => setCustomerPhone(e.target.value)}
+                                                placeholder="Phone number"
+                                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
+                            )}
 
                             {error && (
                                 <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2 animate-in fade-in duration-200">
@@ -1919,7 +2250,19 @@ Status: VERIFIED`;
                                 <span className="text-xs font-medium">Secure payments powered by Lenco</span>
                             </div>
                             <button
-                                onClick={handlePay}
+                                onClick={() => {
+                                    if (!canPay) return;
+                                    if (collectionsApiEnabled) {
+                                        setError(null);
+                                        setCheckoutPhone(customerPhone);
+                                        setResolvedAccountName('');
+                                        setResolveFailed(false);
+                                        setCheckoutMethod('mobile-money');
+                                        setStep('CHECKOUT');
+                                    } else {
+                                        handlePay();
+                                    }
+                                }}
                                 disabled={!canPay}
                                 className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
                                     canPay
@@ -1943,8 +2286,156 @@ Status: VERIFIED`;
                     </div>
                 )}
 
-                {/* 4. Verifying Payment Status Step */}
-                {step === 'VERIFYING' && (
+                {/* 3b. Dedicated checkout page — payment method toggle at the top,
+                    mobile money phone entry + account-holder confirmation below */}
+                {step === 'CHECKOUT' && org && (
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]">
+                        {/* Top bar — back + title, toggle directly beneath */}
+                        <div className="px-6 pt-7 pb-4 border-b border-slate-100">
+                            <div className="flex items-center gap-3 mb-4">
+                                <button
+                                    onClick={() => { setStep('SUMMARY'); setError(null); }}
+                                    className="p-2 -ml-2 rounded-xl hover:bg-slate-100 transition-colors"
+                                >
+                                    <ArrowLeft size={18} className="text-slate-500" />
+                                </button>
+                                <div>
+                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Payment</h3>
+                                    <p className="text-[10px] font-semibold text-slate-400">{org.name} · K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
+                                <button
+                                    onClick={() => { setCheckoutMethod('mobile-money'); setError(null); }}
+                                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                                        checkoutMethod === 'mobile-money' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'
+                                    }`}
+                                >
+                                    <Smartphone size={13} /> Mobile Money
+                                </button>
+                                <button
+                                    onClick={() => { setCheckoutMethod('card'); setError(null); }}
+                                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
+                                        checkoutMethod === 'card' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'
+                                    }`}
+                                >
+                                    <CreditCard size={13} /> Card
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto px-6 py-6">
+                            {checkoutMethod === 'mobile-money' ? (
+                                <>
+                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
+                                        Mobile Money Number
+                                    </label>
+                                    <div className="relative">
+                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input
+                                            type="tel"
+                                            value={checkoutPhone}
+                                            onChange={(e) => setCheckoutPhone(e.target.value)}
+                                            placeholder="e.g. 0971234567"
+                                            className="w-full bg-neutral-100 rounded-xl pl-11 pr-20 py-3.5 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-slate-200"
+                                        />
+                                        {detectOperator(checkoutPhone) && (
+                                            <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                                <span className={`text-[10px] font-black px-2 py-1 rounded bg-white border border-slate-100 uppercase tracking-tighter ${OPERATOR_COLORS[detectOperator(checkoutPhone)!]}`}>
+                                                    {detectOperator(checkoutPhone)}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {checkoutPhone.length >= 9 && (
+                                        <div className="mt-3 p-4 rounded-2xl bg-blue-50/70 border border-blue-100 flex items-center gap-3">
+                                            {resolvingAccountName ? (
+                                                <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                            ) : resolvedAccountName ? (
+                                                <Check size={16} className="text-emerald-500 flex-shrink-0" />
+                                            ) : (
+                                                <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
+                                            )}
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-600">Account Holder</p>
+                                                <p className="text-sm font-bold text-slate-800 truncate">
+                                                    {resolvingAccountName
+                                                        ? 'Verifying number…'
+                                                        : resolvedAccountName || (resolveFailed ? 'Could not verify — check the number' : 'Waiting for a valid number…')}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {error && (
+                                        <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2">
+                                            <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                            <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="text-center py-10 px-4 bg-slate-50/70 border border-slate-100 rounded-2xl">
+                                    <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
+                                        <CreditCard size={22} />
+                                    </div>
+                                    <h4 className="text-sm font-black text-slate-700 uppercase tracking-wider">Card — Coming Soon</h4>
+                                    <p className="text-[11px] font-semibold text-slate-400 mt-2 max-w-[220px] mx-auto leading-relaxed">
+                                        Card payments aren’t available here yet. Please use Mobile Money for now.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="sticky bottom-0 mt-auto bg-white border-t border-slate-100 px-6 pt-4 pb-6">
+                            {checkoutMethod === 'mobile-money' ? (
+                                <button
+                                    onClick={handlePayMobileMoney}
+                                    disabled={submitting || !detectOperator(checkoutPhone) || resolvingAccountName}
+                                    className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                                        !submitting && detectOperator(checkoutPhone) && !resolvingAccountName
+                                            ? 'bg-black hover:bg-slate-800 text-white'
+                                            : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                                    }`}
+                                >
+                                    {submitting ? <Loader2 size={16} className="animate-spin" /> : <Smartphone size={16} />}
+                                    <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                                </button>
+                            ) : (
+                                <button disabled className="w-full py-4 rounded-xl font-bold text-sm bg-neutral-100 text-zinc-400 cursor-not-allowed">
+                                    Coming Soon
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                )}
+
+                {/* 4a. Premium processing screen (own-UX): initiating → confirm → polling → success/failed */}
+                {step === 'VERIFYING' && displayPaymentPhase && org && (
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]">
+                        <PaymentWaitingScreen
+                            phase={displayPaymentPhase}
+                            amount={totalPayable}
+                            businessName={org.name}
+                            payerPhone={checkoutPhone}
+                            operator={detectOperator(checkoutPhone)}
+                            isSlowNetwork={isSlowNetwork}
+                            elapsedSeconds={elapsedSeconds}
+                            reference={receiptNumber || currentReference}
+                            failureIsDeclined={failureIsDeclined}
+                            failureReason={verificationReason}
+                            cancelling={cancelling}
+                            onCancel={handleCancelPayment}
+                            onRetry={handleRetryPayment}
+                            onDismiss={handleDismissFailed}
+                            onDone={handleViewReceipt}
+                        />
+                    </div>
+                )}
+
+                {/* 4b. Verifying (widget path) / failure states */}
+                {step === 'VERIFYING' && !displayPaymentPhase && (
                     <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
                         {verificationStep === 'POLLING' ? (
                             <>
@@ -2257,8 +2748,8 @@ Status: VERIFIED`;
                 </div>
             )}
 
-            {/* Footer Brand Info */}
-            {step !== 'SHOP' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && (
+            {/* Footer Brand Info — hidden on the premium processing screen, which has its own header */}
+            {step !== 'SHOP' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && !(step === 'VERIFYING' && displayPaymentPhase) && (
             <div className="mt-auto pt-8 pb-6 text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                     <Building2 size={12} />

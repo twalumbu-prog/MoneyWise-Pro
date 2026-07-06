@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { onboardingService } from './services/onboarding.service';
 import { Login } from './pages/Login';
+import { Onboarding } from './pages/Onboarding';
 // src/App.tsx unused Dashboard removed
 import { RequisitionList } from './pages/RequisitionList';
 import { RequisitionCreate } from './pages/RequisitionCreate';
@@ -66,13 +68,65 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     return <>{children}</>;
 };
 
-// Redirect requestors to requisitions page by default
+// Orgs whose onboarding is known-finished this session — avoids re-checking on
+// every visit to '/'. COMPLETED is terminal, so caching it is always safe.
+const onboardingDoneCache = new Set<string>();
+
+// Redirect requestors to requisitions page by default; send admins of
+// organizations with unfinished onboarding back into the wizard. `needsOnboarding`
+// is a tri-state (null = still determining) so this NEVER paints RequisitionList
+// on a stale/uninitialized snapshot — the dashboard only renders once we've
+// positively established the user doesn't need the wizard. This is what makes the
+// post-signup transition into onboarding feel seamless instead of flashing the
+// real dashboard for a frame first.
 const HomeRedirect = () => {
-    const { userRole, userStatus } = useAuth();
+    const { userRole, userStatus, organizationId } = useAuth();
+    const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
+
+    useEffect(() => {
+        if (userStatus === 'PENDING_APPROVAL') return;
+        if (!userRole) return; // AuthContext profile fetch hasn't resolved yet
+
+        if (userRole !== 'ADMIN' || !organizationId) {
+            setNeedsOnboarding(false);
+            return;
+        }
+        if (onboardingDoneCache.has(organizationId)) {
+            setNeedsOnboarding(false);
+            return;
+        }
+
+        let cancelled = false;
+        onboardingService.getState()
+            .then(s => {
+                if (cancelled) return;
+                if (s.progress.status === 'COMPLETED') {
+                    onboardingDoneCache.add(organizationId);
+                    setNeedsOnboarding(false);
+                } else {
+                    setNeedsOnboarding(true);
+                }
+            })
+            .catch(() => { if (!cancelled) setNeedsOnboarding(false); }) // on failure, let the user into the app
+            ;
+        return () => { cancelled = true; };
+    }, [userRole, userStatus, organizationId]);
 
     if (userStatus === 'PENDING_APPROVAL') {
         // Handled by ProtectedRoute but just for safety
         return null;
+    }
+
+    if (needsOnboarding === null) {
+        return (
+            <div className="min-h-screen flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+            </div>
+        );
+    }
+
+    if (needsOnboarding) {
+        return <Navigate to="/onboarding" replace />;
     }
 
     if (userRole === 'REQUESTOR') {
@@ -94,6 +148,14 @@ function App() {
                     <Route path="/disconnect" element={<Disconnect />} />
                     <Route path="/pay/:wallet_id" element={<PublicPay />} />
                     <Route path="/pl/:token" element={<PublicPaymentLink />} />
+                    <Route
+                        path="/onboarding"
+                        element={
+                            <ProtectedRoute>
+                                <Onboarding />
+                            </ProtectedRoute>
+                        }
+                    />
                     <Route
                         path="/"
                         element={

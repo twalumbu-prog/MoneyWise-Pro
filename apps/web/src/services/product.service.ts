@@ -5,6 +5,16 @@ const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replac
 
 export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING';
 
+/** Single source of truth for the product-type choices shown wherever a
+ *  listing is created or edited (Settings' product manager, onboarding). */
+export const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string; hint: string }[] = [
+    { value: 'PRODUCT', label: 'Product (tangible)', hint: 'A physical item sold at a fixed price, by quantity.' },
+    { value: 'SERVICE_FIXED', label: 'Service — fixed price', hint: 'A service offered at one established price.' },
+    { value: 'SERVICE_VARIABLE', label: 'Service — variable price', hint: 'Price is set by you when sharing a one-time link.' },
+    { value: 'SERVICE_BOOKING', label: 'Service (Booking – Apartments)', hint: 'Guests pick check-in / check-out on a calendar. Total = nights × nightly rate. Booked dates are blocked so you never double-book.' },
+    { value: 'DONATION', label: 'Donation', hint: 'The payer decides the amount to give.' },
+];
+
 export interface BookingRange {
     check_in: string;  // YYYY-MM-DD
     check_out: string; // YYYY-MM-DD (exclusive — turnover day stays bookable)
