@@ -86,6 +86,20 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             });
         }
 
+        // 2b. Validate the selected wallet has enough balance to cover this disbursement
+        if (finalWalletId) {
+            const walletBalance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', finalWalletId);
+            if (walletBalance < totalDeduction) {
+                await supabase
+                    .from('requisitions')
+                    .update({ status: 'AUTHORISED' })
+                    .eq('id', id);
+                return res.status(400).json({
+                    error: `Insufficient wallet balance. This wallet has K${walletBalance.toFixed(2)} available, but the disbursement requires K${totalDeduction.toFixed(2)}.`
+                });
+            }
+        }
+
         // 3. Process Lenco Payout if using Wallet
         let lencoReference = null;
         const targetOrgId = requisition.organization_id;
@@ -1100,6 +1114,17 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
             return res.status(400).json({ error: `Disbursement amount must equal the excess amount (K${excess}).` });
         }
 
+        // Validate the selected wallet has enough balance to cover this excess disbursement
+        if (requisition.wallet_id) {
+            const estimatedFee = isDigital ? LencoService.calculatePayoutFee(payoutAmount, payment_method) : 0;
+            const walletBalance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', requisition.wallet_id);
+            if (walletBalance < payoutAmount + estimatedFee) {
+                return res.status(400).json({
+                    error: `Insufficient wallet balance. This wallet has K${walletBalance.toFixed(2)} available, but the disbursement requires K${(payoutAmount + estimatedFee).toFixed(2)}.`
+                });
+            }
+        }
+
         let lencoReference = null;
         const stableRef = `EXC-${id.slice(0, 8)}-${excess.toFixed(0)}`;
 
@@ -1417,6 +1442,24 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
         if (itemsError || !lineItems || lineItems.length === 0) {
             await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
             return res.status(400).json({ error: 'No valid line items found to disburse' });
+        }
+
+        // Validate the selected wallet has enough balance to cover the full payroll payout
+        if (finalWalletId) {
+            const totalPayrollAmount = lineItems
+                .filter((item: any) => !item.description.toLowerCase().includes('withdrawal fee') && !item.description.toLowerCase().includes('transaction charges'))
+                .reduce((sum: number, item: any) => {
+                    const amt = Number(item.estimated_amount);
+                    return sum + amt + LencoService.calculatePayoutFee(amt, item.payment_method || 'BANK');
+                }, 0);
+
+            const walletBalance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', finalWalletId);
+            if (walletBalance < totalPayrollAmount) {
+                await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+                return res.status(400).json({
+                    error: `Insufficient wallet balance. This wallet has K${walletBalance.toFixed(2)} available, but the payroll payout requires K${totalPayrollAmount.toFixed(2)}.`
+                });
+            }
         }
 
         const successfulDisbursements: Array<{ item: any; amount: number; fee: number; reference: string }> = [];

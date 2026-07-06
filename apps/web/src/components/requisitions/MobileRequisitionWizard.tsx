@@ -125,6 +125,7 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     const [autoAuthorize, setAutoAuthorize] = useState(false);
     const [wallets, setWallets] = useState<any[]>([]);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+    const [selectedWalletBalance, setSelectedWalletBalance] = useState<number | null>(null);
 
     // Org department config
     const [useDepartments, setUseDepartments] = useState(false);
@@ -184,6 +185,21 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
             console.error('Failed to load wallets:', err);
         }
     };
+
+    useEffect(() => {
+        if (!autoAuthorize || useMyAccount || !selectedWalletId) {
+            setSelectedWalletBalance(null);
+            return;
+        }
+        let cancelled = false;
+        cashbookService.getBalance('MONEYWISE_WALLET', undefined, selectedWalletId)
+            .then(balance => { if (!cancelled) setSelectedWalletBalance(Number(balance) || 0); })
+            .catch(err => {
+                console.error('Failed to load wallet balance:', err);
+                if (!cancelled) setSelectedWalletBalance(null);
+            });
+        return () => { cancelled = true; };
+    }, [autoAuthorize, useMyAccount, selectedWalletId]);
 
     const fetchPaymentInfo = async () => {
         try {
@@ -263,6 +279,11 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
         ? lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0)
         : (Number(manualAmount) || 0);
 
+    const isWalletBalanceInsufficient = autoAuthorize && !useMyAccount &&
+        !!selectedWalletId &&
+        selectedWalletBalance !== null &&
+        getTotal() > selectedWalletBalance;
+
     const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
         setLineItems(prev => prev.map(item => {
             if (item.id !== id) return item;
@@ -321,6 +342,10 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
     };
 
     const handleSubmit = async () => {
+        if (isWalletBalanceInsufficient) {
+            setError(`This wallet only has K${selectedWalletBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} available, but K${getTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })} is needed. Choose another wallet or top it up first.`);
+            return;
+        }
         setSubmitting(true);
         setError(null);
         setActiveRequisitionId(null);
@@ -796,6 +821,11 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                                 <ArrowRight size={16} className="rotate-90" />
                                             </div>
                                         </div>
+                                        {isWalletBalanceInsufficient && (
+                                            <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+                                                This wallet only has K{selectedWalletBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} available — this request needs K{getTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}. Choose another wallet or top it up first.
+                                            </p>
+                                        )}
                                     </div>
                                 )}
 
@@ -846,8 +876,8 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                             </button>
                             <button
                                 onClick={handleSubmit}
-                                disabled={submitting}
-                                className="flex-1 h-16 bg-[#006AFF] rounded-full text-white font-bold text-base active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                                disabled={submitting || isWalletBalanceInsufficient}
+                                className="flex-1 h-16 bg-[#006AFF] rounded-full text-white font-bold text-base active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {submitting ? (
                                     <>

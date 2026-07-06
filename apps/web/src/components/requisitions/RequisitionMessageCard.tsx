@@ -132,6 +132,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     // Wallets & Subwallets State
     const [wallets, setWallets] = useState<any[]>([]);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
+    const [selectedWalletBalance, setSelectedWalletBalance] = useState<number | null>(null);
 
     // Excess Disbursal State (separate from normal disbursal to avoid conflicts)
     const [excessMethod, setExcessMethod] = useState<string | null>(null);
@@ -396,6 +397,32 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         }
     }, [activeMethod, wallets.length]);
 
+    useEffect(() => {
+        if (activeMethod !== 'MONEYWISE_WALLET' || !selectedWalletId) {
+            setSelectedWalletBalance(null);
+            return;
+        }
+        let cancelled = false;
+        const loadBalance = async () => {
+            try {
+                const balance = await cashbookService.getBalance('MONEYWISE_WALLET', undefined, selectedWalletId);
+                if (!cancelled) setSelectedWalletBalance(Number(balance) || 0);
+            } catch (err) {
+                console.error('Failed to load wallet balance in RequisitionMessageCard:', err);
+                if (!cancelled) setSelectedWalletBalance(null);
+            }
+        };
+        loadBalance();
+        return () => { cancelled = true; };
+    }, [activeMethod, selectedWalletId]);
+
+    const walletTotalDue = Number(requisitionData?.estimated_total || 0) +
+        lencoService.calculatePayoutFee(Number(requisitionData?.estimated_total || 0), activeMethod || paymentType);
+    const isWalletBalanceInsufficient = activeMethod === 'MONEYWISE_WALLET' &&
+        !!selectedWalletId &&
+        selectedWalletBalance !== null &&
+        walletTotalDue > selectedWalletBalance;
+
     const hasInitializedForm = useRef(false);
 
     useEffect(() => {
@@ -657,6 +684,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
         if (isLencoTransfer && wallets.length > 0 && !selectedWalletId) {
             setDisburseError('Please select a source subwallet for the transfer.');
             setIsProcessing(false);
+            return;
+        }
+
+        if (isLencoTransfer && isWalletBalanceInsufficient) {
+            setDisburseError(`This wallet only has K${selectedWalletBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} available, but K${walletTotalDue.toLocaleString(undefined, { minimumFractionDigits: 2 })} is needed for this disbursement. Select a different wallet or top it up first.`);
             return;
         }
 
@@ -1825,6 +1857,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 <ChevronDown size={18} />
                                                                             </div>
                                                                         </div>
+                                                                        {isWalletBalanceInsufficient && (
+                                                                            <div className="flex items-start space-x-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                                <AlertTriangle size={14} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                                                                                <p className="text-[11px] font-medium text-amber-800 leading-relaxed">
+                                                                                    This wallet only has K{selectedWalletBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} available — this transfer needs K{walletTotalDue.toLocaleString(undefined, { minimumFractionDigits: 2 })} (incl. fee). Choose another wallet or top it up first.
+                                                                                </p>
+                                                                            </div>
+                                                                        )}
                                                                     </div>
                                                                 )}
 
@@ -1899,9 +1939,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     >
                                                                         Back
                                                                     </button>
-                                                                    <button 
+                                                                    <button
                                                                         onClick={handleDisburse}
-                                                                        disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider)}
+                                                                        disabled={!recipientValue || (paymentType === 'MOBILE_MONEY' && !recipientProvider) || isWalletBalanceInsufficient}
                                                                         className="flex-[2] h-11 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-100/50 flex items-center justify-center space-x-2"
                                                                     >
                                                                         <span>Send Money</span>
