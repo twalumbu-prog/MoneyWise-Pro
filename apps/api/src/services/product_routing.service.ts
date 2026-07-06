@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { ledgerService } from './ledger.service';
 import { withTiming } from '../utils/analytics';
+import { QuickBooksService } from './quickbooks.service';
 
 /**
  * Flip a one-time payment link tied to this collection reference to PAID so it
@@ -174,6 +175,13 @@ export async function applyProductRevenueRouting(orgId: string, reference: strin
         await supabase.from('cashbook_entries').update(primaryUpdate).eq('id', entry.id);
         if (primary.wallet_id) affectedWallets.add(primary.wallet_id);
 
+        // ACCOUNTED here only means "deterministically categorized" — it isn't posted to
+        // QuickBooks yet. Fire that off now instead of leaving qb_sync_status stuck PENDING.
+        if (primary.account_id) {
+            QuickBooksService.autoPostInflowIfLinked(orgId, entry.id, primary.account_id, 'system-product-routing')
+                .catch(err => console.error(`[ProductRouting] Auto-post to QB failed for ${entry.id}:`, err?.message));
+        }
+
         // Sibling entries for the remaining groups.
         for (let i = 1; i < groupList.length; i++) {
             const g = groupList[i];
@@ -205,7 +213,13 @@ export async function applyProductRevenueRouting(orgId: string, reference: strin
                 console.error(`[ProductRouting] Failed to create split inflow for ref ${reference}:`, sibErr.message);
                 continue;
             }
-            if (sibling?.id) entriesToRepost.push(sibling.id);
+            if (sibling?.id) {
+                entriesToRepost.push(sibling.id);
+                if (g.account_id) {
+                    QuickBooksService.autoPostInflowIfLinked(orgId, sibling.id, g.account_id, 'system-product-routing')
+                        .catch(err => console.error(`[ProductRouting] Auto-post to QB failed for ${sibling.id}:`, err?.message));
+                }
+            }
             if (g.wallet_id) affectedWallets.add(g.wallet_id);
         }
 

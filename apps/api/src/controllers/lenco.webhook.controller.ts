@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { whatsappService } from '../services/whatsapp.service';
+import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 
 // MoneyWise settlement merchant (Blue Opus Software Technology). The platform
@@ -385,6 +386,11 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                         .update({ account_id: ruleMatch.accountId, status: 'ACCOUNTED' })
                         .eq('id', newEntry.id);
                     console.log(`[Lenco Webhook] Auto-classified inflow "${actualNarration}" → account ${ruleMatch.accountId} (rule: ${ruleMatch.ruleId})`);
+
+                    // Being "accounted" locally isn't the same as being posted to QuickBooks —
+                    // actually push it now instead of leaving qb_sync_status stuck PENDING.
+                    QuickBooksService.autoPostInflowIfLinked(organizationId, newEntry.id, ruleMatch.accountId, 'system-lenco-webhook')
+                        .catch(err => console.error(`[Lenco Webhook] Auto-post to QB failed for ${newEntry.id}:`, err?.message));
                 }
             } catch (classifyErr) {
                 console.error('[Lenco Webhook] Auto-classify error (non-fatal):', classifyErr);

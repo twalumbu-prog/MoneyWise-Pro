@@ -262,6 +262,32 @@ export class QuickBooksService {
     }
 
     /**
+     * Auto-post an INFLOW cashbook entry to QuickBooks the moment it's deterministically
+     * categorized (rule engine / product routing), instead of leaving it marked ACCOUNTED
+     * locally with no real QB sync. Intended to be called fire-and-forget — QB sync state
+     * (qb_sync_status/qb_deposit_id) is the source of truth for whether it actually landed;
+     * failures are logged on the entry itself and repairable later, same as any other post.
+     * No-ops quietly if the account isn't linked to QuickBooks yet (qb_account_id is null) —
+     * the entry just stays PENDING until it's linked, same as before this existed.
+     */
+    static async autoPostInflowIfLinked(organizationId: string, entryId: string, localAccountId: string, userId: string) {
+        if (!localAccountId) return;
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('qb_account_id')
+            .eq('id', localAccountId)
+            .maybeSingle();
+
+        if (!account?.qb_account_id) return; // Not linked to QB yet — leave PENDING.
+
+        const result = await this.createDeposit(organizationId, entryId, account.qb_account_id, userId);
+        if (!result.success) {
+            console.warn(`[QB Auto-Post] Failed to auto-post entry ${entryId}:`, result.error);
+        }
+        return result;
+    }
+
+    /**
      * Create a new Account (chart-of-accounts entry) in QuickBooks Online, then
      * mirror the returned QB Id back onto the local `accounts` row so the rest
      * of the app (createDeposit/createLedgerPurchase) can reference it.
