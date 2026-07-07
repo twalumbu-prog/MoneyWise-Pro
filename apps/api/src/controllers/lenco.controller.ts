@@ -1455,12 +1455,25 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
         return res.status(401).json({ error: 'Unauthorized: Invalid sync secret' });
     }
 
+    // Vercel kills this function at maxDuration (30s) regardless of what's still
+    // in flight. With enough orgs, and up to 40 pages of collections fetched per
+    // org, total processing time can exceed that ceiling — and an unordered org
+    // list meant whichever orgs happened to sort last after the cutoff simply
+    // never got synced, cycle after cycle (this is how Blue Opus Software's
+    // inflows went unrecorded for days). Bail out gracefully with time to spare
+    // instead of letting Vercel hard-kill mid-write, and always process the
+    // least-recently-synced orgs first so a time-budget bailout rotates fairly
+    // instead of permanently starving the same orgs.
+    const SYNC_START_MS = Date.now();
+    const SYNC_TIME_BUDGET_MS = 25_000;
+
     try {
-        // 1. Fetch all organizations with a linked Lenco subaccount
+        // 1. Fetch all organizations with a linked Lenco subaccount, oldest-synced first
         const { data: orgs, error: orgsError } = await supabase
             .from('organizations')
-            .select('id, name, lenco_subaccount_id, lenco_secret_key, lenco_sync_cutoff_date')
-            .not('lenco_subaccount_id', 'is', null);
+            .select('id, name, lenco_subaccount_id, lenco_secret_key, lenco_sync_cutoff_date, last_lenco_synced_at')
+            .not('lenco_subaccount_id', 'is', null)
+            .order('last_lenco_synced_at', { ascending: true, nullsFirst: true });
 
         if (orgsError) {
             console.error('[Lenco Sync] Error fetching organizations:', orgsError);
@@ -1476,9 +1489,18 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
         const syncResults: any[] = [];
 
         for (const org of orgs) {
+            if (Date.now() - SYNC_START_MS > SYNC_TIME_BUDGET_MS) {
+                console.warn(`[Lenco Sync] Time budget exceeded — deferring remaining ${orgs.length - syncResults.length} org(s) to the next cycle.`);
+                break;
+            }
+
             const orgId = org.id;
             const subaccountId = org.lenco_subaccount_id;
             const secretKey = org.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+
+            // Stamp every attempted org immediately so a hung/slow org doesn't
+            // keep re-sorting to the front of the next cycle's queue.
+            await supabase.from('organizations').update({ last_lenco_synced_at: new Date().toISOString() }).eq('id', orgId);
 
             if (!subaccountId) continue;
             if (!secretKey) {
