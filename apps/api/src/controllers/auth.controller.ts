@@ -377,12 +377,35 @@ export const completeInvitation = async (req: any, res: any): Promise<any> => {
             return res.status(401).json({ error: 'Unauthorized' });
         }
 
+        // Enforce our own 12-hour invite window on top of Supabase's own link expiry —
+        // the user already has a valid session by this point (they clicked a Supabase
+        // link that hasn't expired), but our business rule is stricter.
+        const { data: userRow, error: fetchError } = await supabase
+            .from('users')
+            .select('organization_id, invite_expires_at')
+            .eq('id', userId)
+            .single();
+
+        if (fetchError) throw fetchError;
+
+        if (userRow?.invite_expires_at && new Date(userRow.invite_expires_at) < new Date()) {
+            return res.status(410).json({ error: 'This invitation has expired. Ask your organization admin to resend it.' });
+        }
+
         const { error } = await supabase
             .from('users')
-            .update({ status: 'ACTIVE' })
+            .update({ status: 'ACTIVE', invite_expires_at: null })
             .eq('id', userId);
 
         if (error) throw error;
+
+        if (userRow?.organization_id) {
+            await supabase
+                .from('user_organizations')
+                .update({ status: 'ACTIVE' })
+                .eq('user_id', userId)
+                .eq('organization_id', userRow.organization_id);
+        }
 
         res.json({ message: 'Registration finalized successfully' });
     } catch (error: any) {

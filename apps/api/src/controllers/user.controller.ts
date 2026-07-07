@@ -2,6 +2,9 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
+import { emailService } from '../services/email.service';
+
+const INVITE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 export const getUsers = async (req: AuthRequest, res: any): Promise<any> => {
     try {
@@ -242,18 +245,24 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
 
         const FRONTEND_URL = getFrontendUrl();
 
-        // 1. Invite user via Supabase Auth
-        const { data: authData, error: authError } = await (supabase.auth as any).admin.inviteUserByEmail(normalizedEmail, {
-            data: {
-                name,
-                role,
-                organization_id,
-                employee_id: employeeId || `EMP-${Date.now()}`,
-                username: username || null,
-                status: 'INVITED',
-                full_name: name
+        // 1. Create the invited auth user and mint an invite link via Supabase Auth,
+        // but don't let Supabase send its own invite email (unreliable) — we deliver
+        // the action_link ourselves via Resend below.
+        const { data: authData, error: authError } = await (supabase.auth as any).admin.generateLink({
+            type: 'invite',
+            email: normalizedEmail,
+            options: {
+                data: {
+                    name,
+                    role,
+                    organization_id,
+                    employee_id: employeeId || `EMP-${Date.now()}`,
+                    username: username || null,
+                    status: 'INVITED',
+                    full_name: name
+                },
+                redirectTo: `${FRONTEND_URL}/join`,
             },
-            redirectTo: `${FRONTEND_URL}/join`,
         });
 
         if (authError) {
@@ -270,9 +279,10 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
         }
 
         // 2. Upsert user record in DB linked to organization with 'INVITED' status
-        // Even though the database trigger handles this, we do it explicitly to be sure 
+        // Even though the database trigger handles this, we do it explicitly to be sure
         // and to handle fields the trigger might miss or to override defaults.
         const finalEmployeeId = employeeId || `EMP-${Date.now()}`;
+        const inviteExpiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
         const { error: dbError } = await supabase.from('users').upsert({
             id: authData.user.id,
             email: normalizedEmail,
@@ -281,7 +291,8 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             employee_id: finalEmployeeId,
             organization_id: organization_id,
             username: username || null,
-            status: 'INVITED'
+            status: 'INVITED',
+            invite_expires_at: inviteExpiresAt
         });
 
         if (dbError) {
@@ -289,18 +300,35 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             throw dbError;
         }
 
-        // Insert into public.user_organizations
-        const { error: uoError } = await supabase.from('user_organizations').insert({
+        // Upsert public.user_organizations — the handle_new_user DB trigger already
+        // inserts this row as part of the auth.users insert above, so a plain insert()
+        // here always collided on the (user_id, organization_id) unique constraint.
+        const { error: uoError } = await supabase.from('user_organizations').upsert({
             user_id: authData.user.id,
             organization_id: organization_id,
             role,
             employee_id: finalEmployeeId,
             status: 'INVITED'
-        });
+        }, { onConflict: 'user_id,organization_id' });
 
         if (uoError) {
-            console.error('[CreateUser] user_organizations insert failed:', uoError);
+            console.error('[CreateUser] user_organizations upsert failed:', uoError);
             throw uoError;
+        }
+
+        // 3. Deliver the invite ourselves via Resend (non-fatal: the invite/user record
+        // already exists even if the email send hiccups — admin can use "Resend").
+        const { data: orgRow } = await supabase.from('organizations').select('name').eq('id', organization_id).maybeSingle();
+        try {
+            await emailService.sendTeamInvite({
+                to: normalizedEmail,
+                inviteeName: name,
+                orgName: orgRow?.name || 'your organization',
+                role,
+                actionLink: authData.properties.action_link,
+            });
+        } catch (emailErr: any) {
+            console.error('[CreateUser] Failed to send invite email:', emailErr);
         }
 
         captureEvent('organization_invite_succeeded', {
@@ -547,23 +575,44 @@ export const resendInvite = async (req: AuthRequest, res: any): Promise<any> => 
             console.error('[ResendInvite] Warning: Auth hard delete failed:', authDeleteError);
         }
 
-        // 2. Resend invitation via creating a new one
-        const { error: authError } = await (supabase.auth as any).admin.inviteUserByEmail(targetUser.email, {
-            data: {
-                name: targetUser.name,
-                role: targetUser.role,
-                organization_id: targetUser.organization_id,
-                employee_id: targetUser.employee_id,
-                username: targetUser.username,
-                status: 'INVITED',
-                full_name: targetUser.name
+        // 2. Resend invitation via creating a new one. Same as createUser: mint the
+        // link via generateLink and deliver it ourselves instead of Supabase's email.
+        const { data: authData, error: authError } = await (supabase.auth as any).admin.generateLink({
+            type: 'invite',
+            email: targetUser.email,
+            options: {
+                data: {
+                    name: targetUser.name,
+                    role: targetUser.role,
+                    organization_id: targetUser.organization_id,
+                    employee_id: targetUser.employee_id,
+                    username: targetUser.username,
+                    status: 'INVITED',
+                    full_name: targetUser.name
+                },
+                redirectTo: `${FRONTEND_URL}/join`,
             },
-            redirectTo: `${FRONTEND_URL}/join`,
         });
 
         if (authError) {
             console.error('[ResendInvite] Invitation failed:', authError);
             return res.status(400).json({ error: authError.message });
+        }
+
+        const inviteExpiresAt = new Date(Date.now() + INVITE_TTL_MS).toISOString();
+        await supabase.from('users').update({ invite_expires_at: inviteExpiresAt }).eq('id', authData.user.id);
+
+        const { data: orgRow } = await supabase.from('organizations').select('name').eq('id', organization_id).maybeSingle();
+        try {
+            await emailService.sendTeamInvite({
+                to: targetUser.email,
+                inviteeName: targetUser.name,
+                orgName: orgRow?.name || 'your organization',
+                role: targetUser.role,
+                actionLink: authData.properties.action_link,
+            });
+        } catch (emailErr: any) {
+            console.error('[ResendInvite] Failed to send invite email:', emailErr);
         }
 
         res.json({ message: 'Invitation resent successfully' });

@@ -346,6 +346,30 @@ export const emailService = {
     },
 
     /**
+     * Invite a new team member to join an organization. Sent via our own Resend
+     * integration instead of Supabase's built-in invite email (which the org found
+     * unreliable) — the auth user/invite token is still created via
+     * supabase.auth.admin.generateLink, we just own delivery of the link.
+     */
+    async sendTeamInvite(params: { to: string; inviteeName: string; orgName: string; role: string; actionLink: string }) {
+        const { to, inviteeName, orgName, role, actionLink } = params;
+        const body = `
+            <h2>You've been invited to join ${orgName}</h2>
+            <p>Hi ${inviteeName || 'there'},</p>
+            <p>You've been invited to join <strong>${orgName}</strong> on MoneyWise as a <strong>${role}</strong>.</p>
+            <p>Click below to set your password and activate your account. This link expires in <strong>12 hours</strong>.</p>
+            <a href="${actionLink}" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Accept Invitation</a>
+            <p style="margin-top:16px; font-size:12px; color:#9ca3af;">If this invitation expires, ask your organization admin to resend it.</p>
+        `;
+
+        await this.sendEmail({
+            to,
+            subject: `You've been invited to join ${orgName} on MoneyWise`,
+            html: this.wrapTemplate(body),
+        });
+    },
+
+    /**
      * Wrap body in a nice HTML email container
      */
     wrapTemplate(content: string) {
