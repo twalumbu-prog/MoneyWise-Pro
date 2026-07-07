@@ -16,6 +16,19 @@ interface EmailParams {
     to: string | string[];
     subject: string;
     html: string;
+    text?: string;
+}
+
+// A bare HTML body with no plain-text alternative is a well-known spam signal —
+// most legitimate mail includes both parts. Auto-derive one when callers don't
+// supply their own.
+function htmlToPlainText(html: string): string {
+    return html
+        .replace(/<style[\s\S]*?<\/style>/gi, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 export const emailService = {
@@ -116,18 +129,6 @@ export const emailService = {
                     break;
             }
 
-            // ---------------------------------------------------------------------------
-            // TEST OVERRIDE: Redirect all emails to account owner for testing
-            // ---------------------------------------------------------------------------
-            // Since we are on Resend's free tier without a verified domain, we can ONLY
-            // send to the registered account email. We override the real recipients here.
-            const TEST_RECIPIENT = 'twalumbuaccsdept@gmail.com';
-            if (process.env.NODE_ENV !== 'production' || true) { // Forced for now as per user request
-                console.log(`[EmailService] TEST MODE: Redirecting email for ${type} from [${recipients.join(', ')}] to ${TEST_RECIPIENT}`);
-                recipients = [TEST_RECIPIENT];
-            }
-            // ---------------------------------------------------------------------------
-
             if (recipients.length > 0) {
                 await this.sendEmail({
                     to: recipients,
@@ -141,6 +142,207 @@ export const emailService = {
         } catch (error) {
             console.error('[EmailService] Failed to send notification:', error);
         }
+    },
+
+    /**
+     * Email confirmation for a paid one-time payment link, sent to the organization's
+     * registered admin email (organizations.email). Mirrors
+     * whatsappService.notifyPaymentLinkPaid; called alongside it, exactly once per ref.
+     */
+    async notifyPaymentLinkPaid(organizationId: string, reference: string) {
+        try {
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('name, email')
+                .eq('id', organizationId)
+                .maybeSingle();
+
+            if (!org?.email) {
+                console.warn(`[EmailService] No admin email configured for org ${organizationId}; skipping payment-link notification.`);
+                return;
+            }
+
+            const { data: link, error: linkError } = await supabase
+                .from('payment_links')
+                .select('customer_name, customer_phone, amount, products(name)')
+                .eq('organization_id', organizationId)
+                .eq('reference', reference)
+                .maybeSingle();
+
+            if (linkError || !link) {
+                console.warn(`[EmailService] No payment link found for ref ${reference}; skipping notification.`);
+                return;
+            }
+
+            const productName = (link as any).products?.name || 'your order';
+            const amount = Number(link.amount);
+            const html = this.renderPaymentEmail({
+                amount,
+                customerName: link.customer_name || 'Customer',
+                customerPhone: link.customer_phone || undefined,
+                serviceLabel: productName,
+                reference,
+                when: new Date(),
+            });
+
+            await this.sendEmail({
+                to: [org.email],
+                subject: `You just got paid — K${amount.toLocaleString()}`,
+                html,
+            });
+            console.log(`[EmailService] Payment-link notification sent to ${org.email} for ref ${reference}`);
+        } catch (error) {
+            console.error(`[EmailService] Failed to send payment-link notification for ref ${reference}:`, error);
+        }
+    },
+
+    /**
+     * Email confirmation for a paid public catalogue checkout (one or more product_sales
+     * rows sharing a reference, no one-time payment_links row). Mirrors
+     * whatsappService.notifyPublicSalePaid; skips references owned by a one-time link.
+     */
+    async notifyPublicSalePaid(organizationId: string, reference: string) {
+        try {
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('name, email')
+                .eq('id', organizationId)
+                .maybeSingle();
+
+            if (!org?.email) {
+                console.warn(`[EmailService] No admin email configured for org ${organizationId}; skipping sale notification.`);
+                return;
+            }
+
+            const { data: link } = await supabase
+                .from('payment_links')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('reference', reference)
+                .maybeSingle();
+            if (link) return; // owned by notifyPaymentLinkPaid
+
+            const { data: sales, error: salesError } = await supabase
+                .from('product_sales')
+                .select('customer_name, customer_phone, quantity, amount_paid, products(name)')
+                .eq('organization_id', organizationId)
+                .eq('reference', reference);
+
+            if (salesError || !sales || sales.length === 0) return;
+
+            const customerName = (sales[0] as any).customer_name || 'Customer';
+            const customerPhone = (sales[0] as any).customer_phone || '';
+            const total = sales.reduce((sum: number, s: any) => sum + Number(s.amount_paid || 0), 0);
+            const lines = sales
+                .map((s: any) => `${s.quantity || 1}x ${s.products?.name || 'Item'}`)
+                .join(', ');
+
+            const html = this.renderPaymentEmail({
+                amount: total,
+                customerName,
+                customerPhone: customerPhone || undefined,
+                serviceLabel: lines,
+                reference,
+                when: new Date(),
+            });
+
+            await this.sendEmail({
+                to: [org.email],
+                subject: `You just got paid — K${total.toLocaleString()}`,
+                html,
+            });
+            console.log(`[EmailService] Sale notification sent to ${org.email} for ref ${reference} (${sales.length} item(s))`);
+        } catch (error) {
+            console.error(`[EmailService] Failed to send sale notification for ref ${reference}:`, error);
+        }
+    },
+
+    /**
+     * Render the "payment received" celebration email (design: MoneyWise Payment Email,
+     * option 1a). Amount is split into whole/decimal so the decimals render smaller,
+     * matching the design's big-number treatment.
+     */
+    renderPaymentEmail(params: {
+        amount: number;
+        customerName: string;
+        customerPhone?: string;
+        serviceLabel: string;
+        reference: string;
+        when: Date;
+    }) {
+        const { amount, customerName, customerPhone, serviceLabel, reference, when } = params;
+        const [whole, decimals = '00'] = amount.toFixed(2).split('.');
+        const formattedWhole = Number(whole).toLocaleString();
+        const formattedWhen = when.toLocaleString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit'
+        });
+        const ctaUrl = `${FRONTEND_URL}/cashbook`;
+        const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
+
+        // Fixed-width label column so every value starts at the same x position,
+        // with a real gap between label and value (not just space-between on a flex
+        // row, which several email clients collapse).
+        const detailRow = (label: string, value: string, shaded = false, mono = false) => `
+            <tr>
+                <td style="padding:16px 22px; border-bottom:1px solid #F0F2F4; ${shaded ? 'background:#FAFBFC;' : ''} font-size:14px; color:#7A8189; font-weight:500; width:150px; white-space:nowrap; vertical-align:middle;">${label}</td>
+                <td style="padding:16px 22px 16px 0; border-bottom:1px solid #F0F2F4; ${shaded ? 'background:#FAFBFC;' : ''} font-size:${mono ? '13px' : '14px'}; font-weight:700; text-align:left; vertical-align:middle; ${mono ? "font-family:ui-monospace,'SF Mono',Menlo,monospace; color:#5C636B;" : ''}">${value}</td>
+            </tr>
+        `;
+
+        return `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1">
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900&family=Figtree:ital,wght@0,400;0,500;0,600;0,700;0,800;0,900&display=swap" rel="stylesheet">
+            </head>
+            <body style="margin:0; background:#EAECEF; font-family:${FONT_STACK}; color:#16181D;">
+                <div style="max-width:640px; margin:0 auto; padding:32px 16px;">
+                    <div style="background:#fff; border:1px solid #E2E5E9; border-radius:14px; overflow:hidden; box-shadow:0 30px 60px -30px rgba(22,24,29,0.28);">
+
+                        <div style="padding:30px 44px 8px; text-align:center;">
+                            <div style="display:inline-flex; align-items:center;">
+                                <span style="font-size:19px; font-weight:800; letter-spacing:-0.02em; font-family:${FONT_STACK};">MoneyWise</span>
+                            </div>
+                        </div>
+
+                        <div style="padding:26px 44px 38px; text-align:center;">
+                            <div style="font-size:15px; font-weight:700; color:#2563FF; letter-spacing:0.02em;">🎉 You just got paid</div>
+                            <div style="margin:16px auto 6px;">
+                                <div style="font-size:64px; font-weight:900; letter-spacing:-0.035em; line-height:1; font-variant-numeric:tabular-nums;">K${formattedWhole}<span style="font-size:34px; font-weight:800; color:#7A8189;">.${decimals}</span></div>
+                            </div>
+                            <div style="font-size:16px; color:#5C636B; margin-top:12px;">from <strong style="color:#16181D;">${customerName}</strong> for your <strong style="color:#16181D;">${serviceLabel}</strong></div>
+                        </div>
+
+                        <div style="padding:0 44px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #EAECEF; border-radius:16px; border-collapse:separate; overflow:hidden;">
+                                ${detailRow('Service', serviceLabel)}
+                                ${detailRow('Customer', customerName)}
+                                ${customerPhone ? detailRow('Phone', customerPhone) : ''}
+                                ${detailRow('Payment method', 'Mobile Money')}
+                                ${detailRow('Date', formattedWhen)}
+                                ${detailRow('Transaction ID', reference, true, true)}
+                            </table>
+                        </div>
+
+                        <div style="padding:30px 44px 8px; text-align:center;">
+                            <a href="${ctaUrl}" style="display:block; background:#2563FF; color:#fff; font-size:16px; font-weight:800; padding:17px 24px; border-radius:12px; text-decoration:none; font-family:${FONT_STACK};">View payment in MoneyWise</a>
+                        </div>
+
+                        <div style="margin-top:26px; padding:24px 44px 34px; border-top:1px solid #F0F2F4; text-align:center;">
+                            <div style="display:inline-flex; align-items:center; margin-bottom:12px;">
+                                <span style="font-size:14px; font-weight:800;">MoneyWise</span>
+                            </div>
+                            <div style="font-size:12px; color:#9AA0A7; line-height:1.6;">This is an automated payment notification from MoneyWise.</div>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
     },
 
     /**
@@ -221,6 +423,7 @@ export const emailService = {
             to: params.to,
             subject: params.subject,
             html: params.html,
+            text: params.text || htmlToPlainText(params.html),
         });
 
         if (error) {

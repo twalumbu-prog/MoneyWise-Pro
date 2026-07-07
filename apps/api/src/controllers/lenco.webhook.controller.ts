@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { whatsappService } from '../services/whatsapp.service';
+import { emailService } from '../services/email.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 
@@ -288,6 +289,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // Only fires if THIS heal run owned the ACTIVE→PAID flip (notifications exactly once).
             if (linkPaidOnHeal) {
                 await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
+                await emailService.notifyPaymentLinkPaid(organizationId, reference);
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
                     user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPaymentLinkPaid', status: 'attempted',
@@ -474,6 +476,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             // owning finalization (the dedup guard means this tail runs once per ref).
             if (linkPaid) {
                 await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
+                await emailService.notifyPaymentLinkPaid(organizationId, reference);
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
                     user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPaymentLinkPaid', status: 'attempted',
@@ -481,6 +484,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             } else {
                 // Self-guards: skips link refs and no-ops when there are no product sales.
                 await whatsappService.notifyPublicSalePaid(organizationId, reference);
+                await emailService.notifyPublicSalePaid(organizationId, reference);
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
                     user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPublicSalePaid', status: 'attempted',
