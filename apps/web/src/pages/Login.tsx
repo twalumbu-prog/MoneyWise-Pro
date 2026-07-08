@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Loader2, Search, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Search, Eye, EyeOff, Mail } from 'lucide-react';
 
 export const Login: React.FC = () => {
     const [isSignup, setIsSignup] = useState(false);
     const [signupMode, setSignupMode] = useState<'CREATE' | 'JOIN'>('CREATE');
+    const [forgotMode, setForgotMode] = useState(false);
+    const [forgotEmail, setForgotEmail] = useState('');
+    const [forgotSent, setForgotSent] = useState(false);
 
     const [loginIdentifier, setLoginIdentifier] = useState('');
     const [password, setPassword] = useState('');
@@ -89,6 +92,30 @@ export const Login: React.FC = () => {
             await signInWithPassword(loginIdentifier, password);
         } catch (error: any) {
             setMessage('Error logging in: ' + (error.message || 'Unknown error'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleForgotPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setLoading(true);
+        setMessage('');
+        try {
+            const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+            const res = await fetch(`${apiUrl}/auth/forgot-password`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: forgotEmail }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data.error || 'Failed to send reset link');
+            }
+            // Endpoint returns a generic message whether or not the account exists.
+            setForgotSent(true);
+        } catch (error: any) {
+            setMessage('Error: ' + (error.message || 'Unknown error'));
         } finally {
             setLoading(false);
         }
@@ -213,6 +240,100 @@ export const Login: React.FC = () => {
                                 Log out of account
                             </button>
                         </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    if (forgotMode) {
+        const backToLogin = () => {
+            setForgotMode(false);
+            setForgotSent(false);
+            setForgotEmail('');
+            setMessage('');
+        };
+        return (
+            <div className="min-h-screen bg-brand-gray flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans relative">
+                <div className="absolute top-0 left-0 w-full p-6 sm:p-8">
+                    <div className="flex items-center space-x-3">
+                        <img src="/logo.png" alt="MoneyWise" className="h-8 w-8" />
+                        <h1 className="text-xl font-bold text-brand-navy tracking-tight leading-tight">MoneyWise Pro</h1>
+                    </div>
+                </div>
+
+                <div className="sm:mx-auto sm:w-full sm:max-w-md mt-24 sm:mt-8">
+                    <h2 className="text-center text-xl font-bold text-brand-navy mb-2">
+                        Reset your password
+                    </h2>
+                    <p className="text-center text-sm text-gray-500 mb-8">
+                        Enter your account email and we'll send you a link to reset your password.
+                    </p>
+                </div>
+
+                <div className="sm:mx-auto sm:w-full sm:max-w-md">
+                    <div className="bg-white py-10 px-6 rounded-2xl border border-gray-100 sm:px-12">
+                        {forgotSent ? (
+                            <div className="text-center">
+                                <div className="mx-auto w-14 h-14 bg-green-100 rounded-full flex items-center justify-center mb-5">
+                                    <Mail className="h-7 w-7 text-green-600" />
+                                </div>
+                                <h3 className="text-lg font-bold text-brand-navy mb-2">Check your inbox</h3>
+                                <p className="text-sm text-gray-500 mb-8">
+                                    If an account exists for <span className="font-bold text-brand-navy">{forgotEmail}</span>, a password reset link is on its way. It expires in 1 hour.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={backToLogin}
+                                    className="w-full flex justify-center py-3 px-4 border border-gray-200 rounded-xl shadow-sm text-sm font-bold text-gray-700 bg-white hover:bg-gray-50 transition-all"
+                                >
+                                    Back to sign in
+                                </button>
+                            </div>
+                        ) : (
+                            <form className="space-y-6" onSubmit={handleForgotPassword}>
+                                <div>
+                                    <label htmlFor="forgot-email" className="block text-sm font-bold text-brand-navy mb-1">
+                                        Email address
+                                    </label>
+                                    <div className="mt-1">
+                                        <input
+                                            id="forgot-email"
+                                            name="forgot-email"
+                                            type="email"
+                                            autoComplete="email"
+                                            required
+                                            className="appearance-none block w-full px-4 py-3 border border-gray-200 rounded-xl shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] sm:text-sm transition-all"
+                                            value={forgotEmail}
+                                            onChange={(e) => setForgotEmail(e.target.value)}
+                                            placeholder="you@example.com"
+                                        />
+                                    </div>
+                                </div>
+
+                                {message && (
+                                    <div className="rounded-xl p-4 flex items-center bg-red-50 text-red-700 border border-red-100">
+                                        <p className="text-sm font-bold">{message}</p>
+                                    </div>
+                                )}
+
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl text-sm font-bold text-white bg-[#006AFF] hover:bg-[#0052CC] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#006AFF] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                                >
+                                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Send reset link'}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={backToLogin}
+                                    className="w-full text-center text-sm font-bold text-gray-500 hover:text-gray-700 transition-colors"
+                                >
+                                    Back to sign in
+                                </button>
+                            </form>
+                        )}
                     </div>
                 </div>
             </div>
@@ -442,6 +563,21 @@ export const Login: React.FC = () => {
                                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                                 </button>
                             </div>
+                            {!isSignup && (
+                                <div className="mt-2 text-right">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setForgotEmail(loginIdentifier.includes('@') ? loginIdentifier : '');
+                                            setForgotMode(true);
+                                            setMessage('');
+                                        }}
+                                        className="text-sm font-bold text-[#006AFF] hover:text-[#0052CC] transition-colors"
+                                    >
+                                        Forgot password?
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {message && (

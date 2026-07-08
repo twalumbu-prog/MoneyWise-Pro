@@ -2,8 +2,9 @@ import { Router } from 'express';
 import { 
     registerUser, 
     simpleSignup, 
-    resolveUsername, 
-    completeInvitation, 
+    resolveUsername,
+    forgotPassword,
+    completeInvitation,
     searchOrganizations, 
     joinRequest,
     getMyOrganizations,
@@ -16,6 +17,7 @@ const router = Router();
 router.post('/register', registerUser);
 router.post('/signup', simpleSignup);
 router.post('/resolve-username', resolveUsername);
+router.post('/forgot-password', forgotPassword);
 
 // New join request flow endpoints
 router.get('/organizations/search', searchOrganizations);

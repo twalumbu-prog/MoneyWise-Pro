@@ -21,6 +21,7 @@ import { PrivacyPolicy } from './pages/PrivacyPolicy';
 import { TermsOfService } from './pages/TermsOfService';
 import { Disconnect } from './pages/Disconnect';
 import { Join } from './pages/Join';
+import { ResetPassword } from './pages/ResetPassword';
 import { Audit } from './pages/Audit';
 import { Menu } from './pages/Menu';
 import { PublicPay } from './pages/PublicPay';
@@ -143,6 +144,7 @@ function App() {
                 <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/join" element={<Join />} />
+                    <Route path="/reset-password" element={<ResetPassword />} />
                     <Route path="/privacy" element={<PrivacyPolicy />} />
                     <Route path="/terms" element={<TermsOfService />} />
                     <Route path="/disconnect" element={<Disconnect />} />

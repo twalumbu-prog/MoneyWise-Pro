@@ -370,19 +370,41 @@ export const emailService = {
     },
 
     /**
+     * Password reset email. Like sendTeamInvite, the recovery token is minted via
+     * supabase.auth.admin.generateLink({ type: 'recovery' }) and we deliver the
+     * action_link ourselves via Resend (Supabase's own recovery email was unreliable).
+     */
+    async sendPasswordReset(params: { to: string; name?: string; actionLink: string }) {
+        const { to, name, actionLink } = params;
+        const body = `
+            <h2>Reset your password</h2>
+            <p>Hi ${name || 'there'},</p>
+            <p>We received a request to reset the password for your MoneyWise account. Click the button below to choose a new password. This link expires in <strong>1 hour</strong>.</p>
+            <a href="${actionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Reset Password</a>
+            <p style="margin-top:16px; font-size:12px; color:#9ca3af;">If you didn't request a password reset, you can safely ignore this email — your password will stay the same.</p>
+        `;
+
+        await this.sendEmail({
+            to,
+            subject: 'Reset your MoneyWise password',
+            html: this.wrapTemplate(body),
+        });
+    },
+
+    /**
      * Wrap body in a nice HTML email container
      */
     wrapTemplate(content: string) {
         return `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f0f0f0; border-radius: 12px; color: #1f2937;">
                 <div style="text-align: center; margin-bottom: 24px;">
-                    <h1 style="color: #4f46e5; margin: 0;">AE&CF</h1>
+                    <h1 style="color: #4f46e5; margin: 0;">MoneyWise</h1>
                     <p style="color: #6b7280; font-size: 12px; margin: 4px 0 0;">MoneyWise Cashflow Management</p>
                 </div>
                 ${content}
                 <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #f0f0f0; font-size: 11px; color: #9ca3af; text-align: center;">
                     <p>This is an automated message from the MoneyWise system.</p>
-                    <p>&copy; 2026 AE&CF. All rights reserved.</p>
+                    <p>&copy; 2026 MoneyWise. All rights reserved.</p>
                 </div>
             </div>
         `;

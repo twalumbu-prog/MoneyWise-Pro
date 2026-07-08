@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../lib/supabase';
 import { seedDefaultAccounts } from '../services/account-provisioning.service';
 import { captureEvent } from '../utils/analytics';
+import { emailService } from '../services/email.service';
 
 interface RegisterUserRequest {
     email: string;
@@ -369,6 +370,68 @@ export const resolveUsername = async (req: any, res: any): Promise<any> => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 };
+/**
+ * Start the password-reset flow. Mints a Supabase recovery link and delivers it via
+ * Resend (Supabase's own recovery email was unreliable — same reasoning as team invites).
+ *
+ * Always responds 200 with the same generic message regardless of whether the email
+ * maps to a real account, so this endpoint can't be used to enumerate registered users.
+ */
+export const forgotPassword = async (req: any, res: any): Promise<any> => {
+    const genericResponse = {
+        message: 'If an account exists for that email, a password reset link is on its way.',
+    };
+
+    try {
+        const { email } = req.body;
+
+        if (!email || typeof email !== 'string') {
+            return res.status(400).json({ error: 'Email is required' });
+        }
+
+        const normalizedEmail = email.trim().toLowerCase();
+
+        // Look up the user's display name for a friendlier email (best-effort).
+        const { data: userRow } = await supabase
+            .from('users')
+            .select('name')
+            .ilike('email', normalizedEmail)
+            .maybeSingle();
+
+        // Mint a recovery link. If the email doesn't belong to a real auth user,
+        // generateLink errors — we swallow it and still return the generic response.
+        const { data: linkData, error: linkError } = await (supabase.auth as any).admin.generateLink({
+            type: 'recovery',
+            email: normalizedEmail,
+            options: {
+                redirectTo: `${getFrontendUrl()}/reset-password`,
+            },
+        });
+
+        if (linkError || !linkData?.properties?.action_link) {
+            // Don't reveal that the account is missing — log and return success.
+            console.warn(`[ForgotPassword] No recovery link generated for ${normalizedEmail}:`, linkError?.message);
+            return res.json(genericResponse);
+        }
+
+        try {
+            await emailService.sendPasswordReset({
+                to: normalizedEmail,
+                name: userRow?.name,
+                actionLink: linkData.properties.action_link,
+            });
+        } catch (emailErr: any) {
+            console.error('[ForgotPassword] Failed to send reset email:', emailErr);
+        }
+
+        return res.json(genericResponse);
+    } catch (error: any) {
+        console.error('Forgot password error:', error);
+        // Still return the generic message so failures don't leak account existence.
+        return res.json(genericResponse);
+    }
+};
+
 export const completeInvitation = async (req: any, res: any): Promise<any> => {
     try {
         const userId = req.user.id;
