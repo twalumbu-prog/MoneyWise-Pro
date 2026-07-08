@@ -3,10 +3,42 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Advercase — display font for page titles & the Moneywise wordmark */
+@font-face {
+  font-family: 'Advercase';
+  src: url('/fonts/Advercase-Regular.woff2') format('woff2'),
+       url('/fonts/Advercase-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Advercase';
+  src: url('/fonts/Advercase-Bold.woff2') format('woff2'),
+       url('/fonts/Advercase-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 @layer base {
   html, body, input, button, textarea, select {
     font-family: 'DM Sans', sans-serif !important;
   }
+}
+
+/* Font utilities — the global DM Sans rules (here and the `*` rule in index.html)
+   are !important, so these must be !important too; the class selector
+   out-specifies both, letting elements opt into the display/accent fonts. */
+.font-advercase {
+  font-family: 'Advercase', 'DM Sans', sans-serif !important;
+}
+.font-figtree {
+  font-family: 'Figtree', 'DM Sans', sans-serif !important;
+}
+.font-grotesk {
+  font-family: 'Space Grotesk', 'DM Sans', sans-serif !important;
 }
 
 /* iMessage style typing animation */

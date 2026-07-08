@@ -11,12 +11,13 @@ import { MobileStaffLoanWizard } from '../components/requisitions/MobileStaffLoa
 import { MobileSalaryAdvanceWizard } from '../components/requisitions/MobileSalaryAdvanceWizard';
 import { MobilePayrollWizard } from '../components/requisitions/MobilePayrollWizard';
 import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, Filter, ShoppingBag } from 'lucide-react';
+import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
 import { InflowInbox, inflowTitle, InflowRow } from '../components/InflowInbox';
 import { cashbookService } from '../services/cashbook.service';
+import { useNewnessTracker } from '../hooks/useNewnessTracker';
 
 interface Requisition {
     id: string;
@@ -56,7 +57,7 @@ const MOBILE_STATUS_LABELS: Record<string, string> = {
 export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { userRole, refreshNotifications } = useAuth();
+    const { userRole, refreshNotifications, organizationId } = useAuth();
     const [requisitions, setRequisitions] = useState<Requisition[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -118,6 +119,28 @@ export const RequisitionList: React.FC = () => {
 
     const isRequestor = userRole === 'REQUESTOR';
 
+    // "New since last visit" glow — one tracker per tab so an unread inflow
+    // doesn't also light up outflow rows and vice versa.
+    const outflowsSeen = useNewnessTracker(organizationId ? `inbox_outflows_seen_${organizationId}` : null);
+    const inflowsSeen = useNewnessTracker(organizationId ? `inbox_inflows_seen_${organizationId}` : null);
+    const hasNewOutflow = requisitions.some(r => outflowsSeen.isNew(r.created_at));
+    // Ignore unfinished PENDING intents — they're hidden from the list, so a dot
+    // pointing at one would have nothing to show.
+    const hasNewInflow = inflows.some(r => r.status !== 'PENDING' && inflowsSeen.isNew(r.created_at || r.date));
+
+    // Start a tab's fade countdown only once its fetch has settled AND its new
+    // items are actually rendered on the active tab — a slow sync must never
+    // eat into the highlight window. The other tab keeps its toggle dot until
+    // the user opens it.
+    useEffect(() => {
+        if (inboxMode === 'outflows' && !loading && hasNewOutflow) outflowsSeen.observe();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inboxMode, loading, hasNewOutflow]);
+    useEffect(() => {
+        if (inboxMode === 'inflows' && !inflowsLoading && hasNewInflow) inflowsSeen.observe();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inboxMode, inflowsLoading, hasNewInflow]);
+
     useEffect(() => {
         loadRequisitions();
         departmentService.list()
@@ -154,8 +177,12 @@ export const RequisitionList: React.FC = () => {
         }
     };
 
-    // Lazily load the inflows ledger the first time the user opens that view, and
-    // refresh it whenever they switch back to it (e.g. after recording a sale).
+    // Load inflows once up front (not just when the tab is opened) so the
+    // "new inflow" dot on the Inflows toggle is accurate even while viewing
+    // Outflows, then keep refreshing on every switch back (e.g. after a sale).
+    useEffect(() => {
+        loadInflows();
+    }, []);
     useEffect(() => {
         if (inboxMode === 'inflows') loadInflows();
     }, [inboxMode]);
@@ -320,7 +347,7 @@ export const RequisitionList: React.FC = () => {
 
     return (
         <>
-            <Layout noPadding={true} backgroundColor="bg-white">
+            <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white">
             <div className={`space-y-0 md:space-y-8 ${isRequestor ? 'pb-32' : ''} md:max-w-[1440px] md:mx-auto md:px-12 md:py-8`}>
                 {/* Desktop Action Row (Unified with Navigation Edges) */}
                 <div className="hidden md:block pt-2 mb-4">
@@ -385,15 +412,31 @@ export const RequisitionList: React.FC = () => {
 
                     return (
                         <>
-                            {/* Mobile Outflows/Inflows toggle — styled like the Reports view toggle */}
-                            <div className="md:hidden px-6 pt-3 pb-1">
+                            {/* Mobile Outflows/Inflows toggle — capsule chip on a rounded track */}
+                            <div className="md:hidden px-4 pt-2 pb-1">
                                 <SegmentedControl
-                                    variant="pill"
+                                    variant="capsule"
                                     value={inboxMode}
                                     onChange={(v) => setInboxMode(v as 'outflows' | 'inflows')}
                                     options={[
-                                        { value: 'outflows', label: 'Outflows' },
-                                        { value: 'inflows', label: 'Inflows' },
+                                        {
+                                            value: 'inflows',
+                                            label: (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    {hasNewInflow && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                                    Inflows
+                                                </span>
+                                            ),
+                                        },
+                                        {
+                                            value: 'outflows',
+                                            label: (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    {hasNewOutflow && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                                    Outflows
+                                                </span>
+                                            ),
+                                        },
                                     ]}
                                 />
                             </div>
@@ -427,39 +470,39 @@ export const RequisitionList: React.FC = () => {
                             )}
 
                             {/* Mobile Search & Sort/Filter Bar */}
-                            <div className="md:hidden px-6 pt-2 pb-3">
-                                <div className="flex items-center bg-white border border-gray-100 rounded-full px-4 py-3 shadow-sm">
-                                    <Search className="text-gray-400 mr-2 flex-shrink-0" size={18} />
+                            <div className="md:hidden px-5 pt-4 pb-3">
+                                <div className="flex items-center bg-white rounded-[32px] pl-6 pr-2.5 py-2.5 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-black/5">
+                                    <Search className="text-zinc-500 mr-4 flex-shrink-0" size={20} strokeWidth={1.5} />
                                     <input
                                         type="text"
                                         placeholder="Search..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="flex-1 bg-transparent border-none outline-none text-sm text-brand-navy placeholder:text-gray-400 font-bold"
+                                        className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-brand-navy placeholder:text-stone-300 font-normal"
                                     />
-                                    <div className="w-[1px] h-6 bg-gray-100 mx-2 flex-shrink-0" />
                                     <button
                                         onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
-                                        className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ${
-                                            sortOrder !== 'desc' ? 'bg-[#F0F7FF] text-[#006AFF]' : 'text-gray-400 hover:text-brand-navy'
+                                        className={`w-10 h-10 rounded-full transition-all flex-shrink-0 flex items-center justify-center ${
+                                            sortOrder !== 'desc' ? 'text-[#006AFF]' : 'text-zinc-600 hover:text-brand-navy'
                                         }`}
                                         title="Sort by Date"
                                     >
-                                        <ArrowUpDown size={18} />
+                                        <ArrowUpDown size={16} />
                                     </button>
-                                    {inboxMode === 'outflows' && (
+                                    {inboxMode === 'outflows' && (<>
+                                    <div className="w-[1px] h-5 bg-slate-200 flex-shrink-0" />
                                     <button
                                         onClick={() => setIsFilterSheetOpen(true)}
-                                        className={`p-1.5 rounded-xl transition-all flex-shrink-0 flex items-center justify-center ml-1 ${
+                                        className={`w-10 h-10 rounded-full transition-all flex-shrink-0 flex items-center justify-center ${
                                             !activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || filterStartDate || filterEndDate
-                                                ? 'bg-[#F0F7FF] text-[#006AFF]'
-                                                : 'text-gray-400 hover:text-brand-navy'
+                                                ? 'text-[#006AFF]'
+                                                : 'text-zinc-600 hover:text-brand-navy'
                                         }`}
                                         title="Filters"
                                     >
-                                        <Filter size={18} />
+                                        <ListFilter size={16} />
                                     </button>
-                                    )}
+                                    </>)}
                                 </div>
                             </div>
 
@@ -573,32 +616,34 @@ export const RequisitionList: React.FC = () => {
                     {!loading && !error && sortedRequisitions.length > 0 && (
                         <>
                             {/* Mobile Card View (Unified Component Styling) */}
-                            <div className="md:hidden space-y-6 px-6">
+                            <div className="md:hidden space-y-5 px-5">
                                 {groupRequisitionsByDate(sortedRequisitions).map((group) => (
-                                    <div key={group.dateKey} className="space-y-3">
-                                        <h4 className="text-[12px] font-bold text-black px-1">
+                                    <div key={group.dateKey} className="space-y-2">
+                                        <h4 className="text-xs font-bold text-black px-2.5 leading-5">
                                             {group.dateLabel}
                                         </h4>
-                                        <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                                        <div className="bg-white rounded-[20px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-gray-200 p-5 flex flex-col gap-7">
                                             {group.requisitions.map((req) => {
                                                 const statusConfig = getStatusConfig(req.status);
-                                                
+
                                                 const getStatusIcon = (status: string) => {
                                                     const config = getStatusConfig(status);
                                                     switch (config.iconType) {
-                                                        case 'clock': return <Clock size={13} className="text-blue-500" />;
-                                                        case 'check-circle': return <CheckCircle2 size={13} className="text-[#006AFF]" />;
-                                                        case 'check': return <Check size={13} className="text-emerald-500" />;
-                                                        case 'alert': return <AlertCircle size={13} className="text-red-500" />;
-                                                        case 'rotate': return <RotateCcw size={13} className="text-gray-400" />;
-                                                        default: return <Clock size={13} className="text-gray-400" />;
+                                                        case 'clock': return <Clock size={15} className="text-blue-700" strokeWidth={1.5} />;
+                                                        case 'check-circle': return <CheckCircle2 size={15} className="text-blue-700" strokeWidth={1.5} />;
+                                                        case 'check': return <Check size={15} className="text-emerald-500" strokeWidth={1.5} />;
+                                                        case 'alert': return <AlertCircle size={15} className="text-red-500" strokeWidth={1.5} />;
+                                                        case 'rotate': return <RotateCcw size={15} className="text-gray-400" strokeWidth={1.5} />;
+                                                        default: return <Clock size={15} className="text-gray-400" strokeWidth={1.5} />;
                                                     }
                                                 };
 
+                                                const isNew = outflowsSeen.isNew(req.created_at);
+
                                                 return (
-                                                    <div 
-                                                        key={req.id} 
-                                                        className="p-5 active:bg-gray-50 transition-colors cursor-pointer"
+                                                    <div
+                                                        key={req.id}
+                                                        className="flex flex-col gap-1 active:opacity-70 transition-opacity cursor-pointer"
                                                         onClick={async () => {
                                                             try {
                                                                 const fullReq = await requisitionService.getById(req.id);
@@ -613,20 +658,27 @@ export const RequisitionList: React.FC = () => {
                                                             }
                                                         }}
                                                     >
-                                                        <div className="text-[11px] font-bold text-gray-400 mb-1.5">
-                                                            {req.requestor_name || 'System User'}
+                                                        <div className="flex items-center gap-1.5 py-1">
+                                                            <span className={`text-xs text-zinc-500 transition-all duration-500 ${isNew ? 'font-extrabold' : 'font-bold'}`}>
+                                                                {req.requestor_name || 'System User'}
+                                                            </span>
+                                                            {isNew && (
+                                                                <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-[9px] font-bold text-white leading-none tracking-wide">
+                                                                    NEW
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        <div className="flex justify-between items-start gap-4 mb-2">
-                                                            <h3 className="font-normal text-[15px] text-brand-navy leading-tight line-clamp-2">
+                                                        <div className="flex justify-between items-center gap-4">
+                                                            <h3 className="font-normal text-base text-black leading-tight line-clamp-2">
                                                                 {req.description}
                                                             </h3>
-                                                            <div className="font-normal text-[15px] text-brand-navy tracking-tight whitespace-nowrap text-right">
+                                                            <div className="font-medium text-base text-black whitespace-nowrap text-right">
                                                                 K{req.estimated_total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                             </div>
                                                         </div>
-                                                        <div className="flex items-center gap-1.5">
+                                                        <div className="flex items-center gap-1 mt-1">
                                                             {getStatusIcon(req.status)}
-                                                            <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                                            <span className="text-xs font-normal text-slate-400">
                                                                 {statusConfig.label}
                                                             </span>
                                                         </div>
@@ -692,39 +744,47 @@ export const RequisitionList: React.FC = () => {
                         {sortedInflows.length > 0 && (
                             <>
                                 {/* Mobile Card View */}
-                                <div className="md:hidden space-y-6 px-6">
+                                <div className="md:hidden space-y-5 px-5">
                                     {groupInflowsByDate(sortedInflows).map((group) => (
-                                        <div key={group.dateKey} className="space-y-3">
-                                            <h4 className="text-[12px] font-bold text-black px-1">{group.dateLabel}</h4>
-                                            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden">
+                                        <div key={group.dateKey} className="space-y-2">
+                                            <h4 className="text-xs font-bold text-black px-2.5 leading-5">{group.dateLabel}</h4>
+                                            <div className="bg-white rounded-[20px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-gray-200 p-5 flex flex-col gap-7">
                                                 {group.rows.map((row) => {
                                                     const statusConfig = getStatusConfig(row.status || 'COMPLETED');
                                                     const getStatusIcon = (status: string) => {
                                                         switch (getStatusConfig(status).iconType) {
-                                                            case 'clock': return <Clock size={13} className="text-blue-500" />;
-                                                            case 'check-circle': return <CheckCircle2 size={13} className="text-[#006AFF]" />;
-                                                            case 'check': return <Check size={13} className="text-emerald-500" />;
-                                                            case 'alert': return <AlertCircle size={13} className="text-red-500" />;
-                                                            case 'rotate': return <RotateCcw size={13} className="text-gray-400" />;
-                                                            default: return <Clock size={13} className="text-gray-400" />;
+                                                            case 'clock': return <Clock size={15} className="text-blue-700" strokeWidth={1.5} />;
+                                                            case 'check-circle': return <CheckCircle2 size={15} className="text-blue-700" strokeWidth={1.5} />;
+                                                            case 'check': return <Check size={15} className="text-emerald-500" strokeWidth={1.5} />;
+                                                            case 'alert': return <AlertCircle size={15} className="text-red-500" strokeWidth={1.5} />;
+                                                            case 'rotate': return <RotateCcw size={15} className="text-gray-400" strokeWidth={1.5} />;
+                                                            default: return <Clock size={15} className="text-gray-400" strokeWidth={1.5} />;
                                                         }
                                                     };
+                                                    const isNew = inflowsSeen.isNew(row.created_at || row.date);
                                                     return (
-                                                        <div key={row.id} className="p-5 transition-colors">
-                                                            <div className="text-[11px] font-bold text-gray-400 mb-1.5">
-                                                                {row.reference_number || 'Receipt'}
+                                                        <div key={row.id} className="flex flex-col gap-1">
+                                                            <div className="flex items-center gap-1.5 py-1">
+                                                                <span className={`text-xs text-zinc-500 transition-all duration-500 ${isNew ? 'font-extrabold' : 'font-bold'}`}>
+                                                                    {row.reference_number || 'Receipt'}
+                                                                </span>
+                                                                {isNew && (
+                                                                    <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-[9px] font-bold text-white leading-none tracking-wide">
+                                                                        NEW
+                                                                    </span>
+                                                                )}
                                                             </div>
-                                                            <div className="flex justify-between items-start gap-4 mb-2">
-                                                                <h3 className="font-normal text-[15px] text-brand-navy leading-tight line-clamp-2">
+                                                            <div className="flex justify-between items-center gap-4">
+                                                                <h3 className="font-normal text-base text-black leading-tight line-clamp-2">
                                                                     {inflowTitle(row.description)}
                                                                 </h3>
-                                                                <div className="font-normal text-[15px] text-emerald-600 tracking-tight whitespace-nowrap text-right">
+                                                                <div className="font-medium text-base text-black whitespace-nowrap text-right">
                                                                     +K{(row.debit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                 </div>
                                                             </div>
-                                                            <div className="flex items-center gap-1.5">
+                                                            <div className="flex items-center gap-1 mt-1">
                                                                 {getStatusIcon(row.status || 'COMPLETED')}
-                                                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
+                                                                <span className="text-xs font-normal text-slate-400">
                                                                     {statusConfig.label}
                                                                 </span>
                                                             </div>

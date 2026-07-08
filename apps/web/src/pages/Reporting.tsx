@@ -7,6 +7,7 @@ import { BudgetModal } from '../components/BudgetModal';
 import { ChevronLeft, ChevronRight, BarChart3, ChevronDown, ChevronUp, Loader2, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
+import { FinancialDigest } from '../components/FinancialDigest';
 import budgetBg from '../assets/Frame 24.png';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
@@ -74,6 +75,33 @@ export const Reporting: React.FC = () => {
     const [newGroupName, setNewGroupName] = useState('');
     
     const { organizationId: orgId } = useAuth();
+
+    // "Since last login" marker used to glow newly-arrived transactions. It's
+    // frozen for the whole browser session (sessionStorage) so it doesn't move
+    // while the user navigates between tabs, and only advanced when the page
+    // actually unloads (logout reload / tab close), which opens the next
+    // session's comparison window — i.e. the highlights refresh once the
+    // session ends.
+    const lastSeenRef = useRef<number>(0);
+    useEffect(() => {
+        if (!orgId) return;
+        const sessionKey = `report_seenMarker_${orgId}`;
+        let marker = sessionStorage.getItem(sessionKey);
+        if (marker === null) {
+            marker = localStorage.getItem(`report_lastSeen_${orgId}`) ?? '0';
+            sessionStorage.setItem(sessionKey, marker);
+        }
+        lastSeenRef.current = Number(marker) || 0;
+        const markSeen = () => localStorage.setItem(`report_lastSeen_${orgId}`, String(Date.now()));
+        window.addEventListener('pagehide', markSeen);
+        return () => window.removeEventListener('pagehide', markSeen);
+    }, [orgId]);
+
+    const isNewTxn = (dateStr?: string) => {
+        if (!lastSeenRef.current || !dateStr) return false;
+        const t = new Date(dateStr).getTime();
+        return !isNaN(t) && t > lastSeenRef.current;
+    };
 
     const [sortField, setSortField] = useState<'name' | 'amount' | 'variance'>('amount');
     const [sortDesc, setSortDesc] = useState(true);
@@ -987,7 +1015,7 @@ export const Reporting: React.FC = () => {
     const timeframeIndex = TIMEFRAME_ORDER.indexOf(chartTimeframe);
 
     return (
-        <Layout noPadding={true} backgroundColor="bg-white" title="Reports">
+        <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white" title="Reports">
             {/* Desktop View */}
             <div className="hidden md:block max-w-6xl mx-auto space-y-6 px-4 md:px-12 py-4 md:py-8">
                 {/* Header & Controls */}
@@ -1439,7 +1467,7 @@ export const Reporting: React.FC = () => {
 
             {/* Mobile Responsive View */}
             <div
-                className="md:hidden flex flex-col bg-white pt-2 overflow-x-hidden"
+                className="md:hidden flex flex-col bg-gray-50 pt-2 overflow-x-hidden"
                 style={isChartOpen ? {
                     position: 'fixed',
                     top: '4.5rem', left: 0, right: 0,
@@ -1450,8 +1478,8 @@ export const Reporting: React.FC = () => {
             >
                 {/* Mobile View Toggle */}
                 <SegmentedControl
-                    className="mx-6 mb-4"
-                    variant="pill"
+                    className="mx-4 mb-4"
+                    variant="capsule"
                     value={reportView}
                     onChange={(v) => setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS')}
                     options={[
@@ -1462,11 +1490,8 @@ export const Reporting: React.FC = () => {
 
                 {!isChartOpen && (
                 <div
-                    className="mx-6 mb-6 rounded-[28px] p-6 text-white shadow-lg relative overflow-hidden"
+                    className="mx-5 mb-5 rounded-2xl p-5 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] relative overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900"
                     style={{
-                        backgroundImage: `url(${budgetBg})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
                         animation: 'atabs-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
                     }}
                 >
@@ -1474,7 +1499,7 @@ export const Reporting: React.FC = () => {
                     {reportView === 'PROFIT_LOSS' ? (
                         <>
                             <div className="flex items-center justify-between mb-1">
-                                <p className="text-white/60 text-xs font-bold uppercase tracking-wider">
+                                <p className="font-figtree text-xs font-normal uppercase tracking-wide leading-4 text-white">
                                     Total Profit
                                 </p>
                                 <button
@@ -1510,7 +1535,7 @@ export const Reporting: React.FC = () => {
                     ) : (
                         <>
                             <div className="flex items-center justify-between mb-1">
-                                <p className="text-white/60 text-xs font-bold uppercase tracking-wider">
+                                <p className="font-figtree text-xs font-normal uppercase tracking-wide leading-4 text-white">
                                     Net Worth
                                 </p>
                                 <button
@@ -1547,6 +1572,9 @@ export const Reporting: React.FC = () => {
                     </AnimatedTabContent>
                 </div>
                 )}
+
+                {/* Financial Digest — AI "what changed since last visit" cards */}
+                {!isChartOpen && <FinancialDigest />}
 
                 {/* Month Dropdown / Timeframe Buttons & Pill Controls Row */}
                 <div className={`mx-6 ${isChartOpen ? 'mb-3' : 'mb-5'} flex items-center justify-between relative`}>
@@ -1959,16 +1987,9 @@ export const Reporting: React.FC = () => {
                     </div>
 
                     {/* Delta card — flex-shrink-0, anchored at bottom of the chart flex column */}
-                    <div
-                        className="flex-shrink-0 rounded-[28px] p-6 text-white shadow-lg overflow-hidden"
-                        style={{
-                            backgroundImage: `url(${budgetBg})`,
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                        }}
-                    >
+                    <div className="flex-shrink-0 rounded-2xl p-6 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900">
                         <div className="flex items-center justify-between mb-1">
-                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider">
+                            <p className="font-figtree text-xs font-normal uppercase tracking-wide leading-4 text-white">
                                 {reportView === 'PROFIT_LOSS' ? 'Net Profit' : 'Net Worth'}
                             </p>
                             <button
@@ -2075,40 +2096,81 @@ export const Reporting: React.FC = () => {
                                             )}
 
                                             {/* Subaccounts list */}
-                                            <div className="space-y-1">
+                                            <div className="space-y-5">
                                                 {groupData.items.map((row: any) => {
                                                     const rowChange = getPercentageChange(row.total_amount, row.prev_total_amount);
                                                     const isRowExpanded = expandedAccount === row.account_id;
 
+                                                    // Delta bar: grey baseline = the amount already there last time we
+                                                    // rendered; the coloured segment = the change since then. Blue when
+                                                    // the balance grew, a desaturated red when it shrank, all-grey when
+                                                    // it's unchanged. Widths are proportional to the larger of the two
+                                                    // amounts so both increases and decreases fill to the same endpoint.
+                                                    const prev = Number(row.prev_total_amount) || 0;
+                                                    const curr = Number(row.total_amount) || 0;
+                                                    const maxAmt = Math.max(prev, curr, 1);
+                                                    const changed = Math.abs(curr - prev) > 0.005;
+                                                    const isIncrease = curr > prev;
+                                                    const basePct = (Math.min(prev, curr) / maxAmt) * 100;
+                                                    const deltaPct = (Math.abs(curr - prev) / maxAmt) * 100;
+                                                    const deltaAmt = curr - prev;
+
+                                                    const items = accountItems[row.account_id] || [];
+                                                    const hasNew = items.some(it => isNewTxn(it.date));
+
                                                     return (
-                                                        <div key={`subacc-${row.account_id}`} className="py-2">
-                                                            <div 
+                                                        <div key={`subacc-${row.account_id}`}>
+                                                            <div
                                                                 onClick={() => toggleExpand(row.account_id)}
-                                                                className="cursor-pointer flex justify-between items-start"
+                                                                className="cursor-pointer flex flex-col gap-2"
                                                             >
-                                                                <div className="pr-4">
-                                                                    <h4 className="text-xs font-bold text-gray-700 flex items-center gap-1">
-                                                                        {isRowExpanded ? <ChevronDown size={14} className="text-gray-400" /> : <ChevronRight size={14} className="text-gray-400" />}
-                                                                        {row.account_name}
+                                                                {/* Name + amount */}
+                                                                <div className="flex justify-between items-center gap-3">
+                                                                    <h4 className="text-base font-medium text-black flex items-center gap-1.5 min-w-0">
+                                                                        {isRowExpanded ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
+                                                                        <span className="truncate">{row.account_name}</span>
+                                                                        {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] flex-shrink-0" />}
                                                                     </h4>
-                                                                    <span className="text-[10px] text-gray-400 font-semibold block mt-0.5 pl-4.5">
-                                                                        {row.budgeted_amount > 0 
-                                                                            ? `${row.total_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}/ ${row.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}` 
-                                                                            : `${row.transaction_count} transactions`
-                                                                        }
+                                                                    <span className="text-base font-medium text-black whitespace-nowrap">
+                                                                        K{curr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                                     </span>
                                                                 </div>
-                                                                <div className="text-right flex-shrink-0">
-                                                                    <span className="text-xs font-bold text-gray-900 block">
-                                                                        K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                                    </span>
-                                                                    <span className={`text-[10px] font-bold mt-0.5 inline-block ${
-                                                                        row.type === 'EXPENSE' || row.type === 'LIABILITY'
-                                                                            ? (rowChange.isIncrease ? 'text-red-400' : 'text-emerald-500')
-                                                                            : (rowChange.isIncrease ? 'text-emerald-500' : 'text-red-400')
-                                                                    }`}>
-                                                                        {rowChange.isIncrease ? '↗' : '↘'} {rowChange.value}%
-                                                                    </span>
+
+                                                                {/* Delta indicator bar */}
+                                                                <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden flex">
+                                                                    {changed ? (
+                                                                        <>
+                                                                            <div className="h-full bg-gray-300" style={{ width: `${basePct}%` }} />
+                                                                            <div
+                                                                                className="h-full"
+                                                                                style={{
+                                                                                    width: `${deltaPct}%`,
+                                                                                    backgroundColor: isIncrease ? '#3B82F6' : '#E88E8E',
+                                                                                }}
+                                                                            />
+                                                                        </>
+                                                                    ) : (
+                                                                        <div className="h-full bg-gray-300" style={{ width: '100%' }} />
+                                                                    )}
+                                                                </div>
+
+                                                                {/* before → after · change (%) */}
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-1.5 text-neutral-500 text-[10px] font-normal">
+                                                                        <span>{prev.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                        <ChevronRight size={11} className="text-slate-400" />
+                                                                        <span>{curr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                    </div>
+                                                                    <div className="text-[10px] font-normal text-neutral-500">
+                                                                        {changed ? (
+                                                                            <>
+                                                                                {isIncrease ? '+' : '-'}K{Math.abs(deltaAmt).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
+                                                                                (<span className="font-bold">{isIncrease ? '+' : '-'}{rowChange.value}%</span>)
+                                                                            </>
+                                                                        ) : (
+                                                                            <>– (<span className="font-bold">-%</span>)</>
+                                                                        )}
+                                                                    </div>
                                                                 </div>
                                                             </div>
 
@@ -2128,31 +2190,37 @@ export const Reporting: React.FC = () => {
                                                                             Set Budget
                                                                         </button>
                                                                     </div>
-                                                                    
+
                                                                     {itemsLoading ? (
                                                                         <div className="flex items-center text-xs text-gray-500 py-2">
                                                                             <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#006AFF]" />
                                                                             Loading items...
                                                                         </div>
-                                                                    ) : !accountItems[row.account_id]?.length ? (
+                                                                    ) : !items.length ? (
                                                                         <div className="text-xs text-gray-400 py-1 italic">No transactions found for this period.</div>
                                                                     ) : (
                                                                         <div className="space-y-2">
-                                                                            {accountItems[row.account_id].map(item => (
+                                                                            {items.map(item => {
+                                                                                const fresh = isNewTxn(item.date);
+                                                                                return (
                                                                                 <div key={item.id} className="text-xs flex justify-between items-start py-1 border-b border-gray-100 last:border-0 last:pb-0">
                                                                                     <div className="flex-1 pr-3">
-                                                                                        <p className="font-bold text-gray-800 line-clamp-1">{item.description}</p>
+                                                                                        <p className={`line-clamp-1 flex items-center gap-1.5 ${fresh ? 'font-black text-gray-900' : 'font-bold text-gray-800'}`}>
+                                                                                            {fresh && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] flex-shrink-0" />}
+                                                                                            {item.description}
+                                                                                        </p>
                                                                                         <div className="flex items-center gap-1.5 text-[9px] text-gray-400 mt-0.5">
                                                                                             <span>{item.requisition_ref || 'N/A'}</span>
                                                                                             <span>•</span>
                                                                                             <span>{new Date(item.date).toLocaleDateString(undefined, { day: 'numeric', month: 'numeric', year: 'numeric' })}</span>
                                                                                         </div>
                                                                                     </div>
-                                                                                    <span className="font-black text-gray-900 whitespace-nowrap">
+                                                                                    <span className={`whitespace-nowrap ${fresh ? 'font-black text-gray-900' : 'font-black text-gray-900'}`}>
                                                                                         K{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                                                                     </span>
                                                                                 </div>
-                                                                            ))}
+                                                                                );
+                                                                            })}
                                                                         </div>
                                                                     )}
                                                                 </div>

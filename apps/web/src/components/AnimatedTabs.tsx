@@ -92,7 +92,7 @@ export function SegmentedControl({
     const trackClass = isPill
         ? 'relative flex bg-gray-100 p-1 rounded-xl border border-gray-200'
         : isCapsule
-        ? 'relative flex bg-gray-100/80 p-0.5 rounded-[80px]'
+        ? 'relative flex bg-gray-50 p-0.5 rounded-[80px]'
         : 'relative flex items-center gap-1.5';
 
     const highlightClass = isPill

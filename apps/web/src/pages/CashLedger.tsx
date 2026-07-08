@@ -30,7 +30,10 @@ import {
     AlertTriangle,
     Download,
     Flag,
-    Link2
+    Link2,
+    ArrowDownToLine,
+    ArrowLeftRight,
+    ListFilter
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -48,6 +51,7 @@ import ExportLedgerModal from '../components/ExportLedgerModal';
 import budgetBg from '../assets/Frame 24.png';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
+import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
 
 
 const SearchableAccountSelect: React.FC<{
@@ -137,6 +141,19 @@ const SearchableAccountSelect: React.FC<{
 };
 
 
+// Moneywise "M" wave mark used on the dark wallet cards.
+const MoneywiseMark: React.FC<{ className?: string }> = ({ className }) => (
+    <svg viewBox="0 0 34 18" fill="none" className={className} aria-hidden>
+        <path
+            d="M2 15 C5 3, 8 3, 11.5 9 C15 15, 18 15, 21.5 9 C25 3, 28 3, 31.5 12"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            fill="none"
+        />
+    </svg>
+);
+
 const renderMobileStatusIcon = (status: string) => {
     const config = getStatusConfig(status);
     const colorClass = config.color === 'blue' ? 'text-[#006AFF]' : 
@@ -213,8 +230,46 @@ const CashLedger: React.FC = () => {
     const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null);
     const [showPendingIntents, setShowPendingIntents] = useState(false);
 
-    const { userRole } = useAuth();
+    const { userRole, organizationName, organizationId } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
+
+    // Mobile wallet-card carousel (snap-scroll) state
+    const walletScrollRef = useRef<HTMLDivElement>(null);
+    const walletScrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [activeSlide, setActiveSlide] = useState(0);
+
+    // "New since last visit" glow for the Main Wallets / External Accounts
+    // toggle + transaction rows. Newness is tracked with a cutoff PER WALLET
+    // (and per external account type), because money can land in several
+    // wallets at once: each wallet's highlight must survive until that
+    // specific wallet's ledger has actually been displayed. A small org-wide
+    // recent-entries sample per category powers the toggle dots, independent
+    // of the paginated `entries` list for the selected wallet.
+    const newnessKey = (suffix: string) => `wallet_seen_${organizationId}_${suffix}`;
+    // Tracker for whichever wallet/account is currently displayed — the fade
+    // countdown only ever runs against the visible list's own key.
+    const walletSeen = useNewnessTracker(
+        organizationId
+            ? (categoryGroup === 'MONEYWISE'
+                ? (selectedWalletId ? newnessKey(`w_${selectedWalletId}`) : null)
+                : newnessKey(`a_${selectedAccountType}`))
+            : null
+    );
+    const [recentMoneywiseEntries, setRecentMoneywiseEntries] = useState<CashbookEntry[]>([]);
+    const [recentExternalEntries, setRecentExternalEntries] = useState<CashbookEntry[]>([]);
+    // Compare on the full created_at timestamp; the `date` column is day-granular
+    // (parses to midnight) and would never read as newer than the visit cutoff.
+    const entryStamp = (e: any) => (e.created_at as string) || e.date;
+    // Toggle dots: check each sampled entry against its OWN wallet's stored
+    // cutoff (pure localStorage reads — no timers), skipping hidden PENDING
+    // intents. A dot therefore persists until the user opens the specific
+    // wallet holding the new payment and its list actually renders.
+    const hasNewMoneywise = !!organizationId && recentMoneywiseEntries.some(e =>
+        e.status !== 'PENDING' && isNewSinceStored(newnessKey(`w_${(e as any).wallet_id}`), entryStamp(e))
+    );
+    const hasNewExternal = !!organizationId && recentExternalEntries.some(e =>
+        e.status !== 'PENDING' && isNewSinceStored(newnessKey(`a_${e.account_type}`), entryStamp(e))
+    );
 
     const loadWallets = async (shouldSetDefault = false) => {
         try {
@@ -245,6 +300,51 @@ const CashLedger: React.FC = () => {
     useEffect(() => {
         loadData();
     }, [startDate, endDate, selectedAccountType, selectedWalletId]);
+
+    // Lightweight org-wide sample per category, purely to power the "new
+    // transaction" toggle dots — independent of whichever wallet/account is
+    // currently selected in the main `entries` list. Refreshed on mount and
+    // whenever the tab regains focus, so a payment completed in a Lenco
+    // popup/redirect is reflected the moment the user returns to the app.
+    useEffect(() => {
+        const loadRecentSamples = () => {
+            cashbookService.getEntries({ accountType: 'MONEYWISE_WALLET', limit: 20 })
+                .then(setRecentMoneywiseEntries)
+                .catch(err => console.error('Failed to load recent MoneyWise entries:', err));
+            Promise.all([
+                cashbookService.getEntries({ accountType: 'CASH', limit: 10 }),
+                cashbookService.getEntries({ accountType: 'AIRTEL_MONEY', limit: 10 }),
+                cashbookService.getEntries({ accountType: 'BANK', limit: 10 }),
+            ])
+                .then(([cash, airtel, bank]) => setRecentExternalEntries([...(cash || []), ...(airtel || []), ...(bank || [])]))
+                .catch(err => console.error('Failed to load recent external entries:', err));
+        };
+        loadRecentSamples();
+        const onVisible = () => { if (document.visibilityState === 'visible') loadRecentSamples(); };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => document.removeEventListener('visibilitychange', onVisible);
+    }, []);
+
+    // Snap the mobile wallet carousel back to the first card when switching
+    // between MoneyWise wallets and external accounts.
+    useEffect(() => {
+        setActiveSlide(0);
+        walletScrollRef.current?.scrollTo({ left: 0 });
+    }, [categoryGroup]);
+
+    // Wallets arrive asynchronously after the initial render (which shows just
+    // the "Add Subwallet" card while the fetch is in flight). Once real wallet
+    // cards get inserted before it, force the carousel back to slide 0 — even
+    // with scroll-anchoring disabled this keeps the very first load reliably
+    // landing on the first wallet instead of wherever it happened to settle.
+    const hadWalletsRef = useRef(false);
+    useEffect(() => {
+        if (wallets.length > 0 && !hadWalletsRef.current) {
+            hadWalletsRef.current = true;
+            setActiveSlide(0);
+            walletScrollRef.current?.scrollTo({ left: 0 });
+        }
+    }, [wallets]);
 
     const loadAccounts = async () => {
         try {
@@ -517,6 +617,17 @@ const CashLedger: React.FC = () => {
         });
         return groups;
     }, [processedEntries]);
+
+    // Arm the fade countdown ONLY once the sync has finished and the visible,
+    // filtered list for the currently selected wallet/account actually contains
+    // a new row on screen. A slow "Synchronizing Ledger" spinner therefore
+    // never eats into the highlight window, and a payment sitting in a
+    // different wallet keeps its glow until that wallet's UI has rendered it.
+    const displayedHasNew = !loading && processedEntries.some(e => walletSeen.isNew(entryStamp(e)));
+    useEffect(() => {
+        if (displayedHasNew) walletSeen.observe();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [displayedHasNew]);
 
     const formatCurrency = (amount: number) => {
         return `K${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -1479,7 +1590,7 @@ Status: VERIFIED`;
 
     if (loading && entries.length === 0) {
         return (
-            <Layout>
+            <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white">
                 <div className="flex flex-col items-center justify-center min-h-[60vh]">
                     <div className="relative">
                         <div className="w-16 h-16 border-4 border-[#006AFF]/10 border-t-[#006AFF] rounded-full animate-spin" />
@@ -1513,215 +1624,198 @@ Status: VERIFIED`;
         { value: 'EXTERNAL', label: 'External Accounts' },
     ];
 
+    // ----- Mobile wallet-card carousel helpers -----
+    const externalAccounts = [
+        { id: 'CASH', name: 'Cash Account' },
+        { id: 'AIRTEL_MONEY', name: 'Airtel Money' },
+        { id: 'BANK', name: 'Bank Account' },
+    ] as const;
+    const slideCount = categoryGroup === 'MONEYWISE'
+        ? Math.max(wallets.length, 1) + (!isRequestor && wallets.length > 0 ? 1 : 0)
+        : externalAccounts.length;
+
+    const walletStride = () => {
+        const el = walletScrollRef.current;
+        const first = el?.firstElementChild as HTMLElement | null;
+        return first ? first.offsetWidth + 16 : 0; // 16px = gap-4
+    };
+
+    // Track the snapped slide while scrolling; once the scroll settles, promote
+    // the snapped card to the selected wallet / external account.
+    const handleWalletCarouselScroll = () => {
+        const stride = walletStride();
+        const el = walletScrollRef.current;
+        if (!el || !stride) return;
+        const idx = Math.max(0, Math.min(slideCount - 1, Math.round(el.scrollLeft / stride)));
+        setActiveSlide(idx);
+        if (walletScrollTimer.current) clearTimeout(walletScrollTimer.current);
+        walletScrollTimer.current = setTimeout(() => {
+            if (categoryGroup === 'MONEYWISE') {
+                const w = wallets[idx];
+                if (w && w.id !== selectedWalletId) setSelectedWalletId(w.id);
+            } else {
+                const acc = externalAccounts[idx];
+                if (acc && acc.id !== selectedAccountType) setSelectedAccountType(acc.id as any);
+            }
+        }, 160);
+    };
+
+    const scrollToSlide = (idx: number) => {
+        const el = walletScrollRef.current;
+        const stride = walletStride();
+        if (!el || !stride) return;
+        el.scrollTo({ left: idx * stride, behavior: 'smooth' });
+    };
+
+    const mobileCanTransfer = categoryGroup === 'MONEYWISE'
+        ? wallets.length > 1
+        : selectedAccountType === 'CASH' && wallets.length > 0;
+    const mobileCanPayLink = categoryGroup === 'MONEYWISE' && !!selectedWalletId;
+
     return (
-        <Layout noPadding={true} backgroundColor="bg-white">
+        <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white">
             {/* ============ MOBILE LAYOUT ============ */}
-            <div className="md:hidden flex flex-col min-h-screen bg-white pb-24 pt-4 overflow-x-hidden">
+            <div className="md:hidden flex flex-col min-h-screen bg-gray-50 pb-24 pt-2 overflow-x-hidden">
 
                 {/* Mobile Category Toggle */}
-                <div className="px-6 mb-6">
+                <div className="px-4 mb-5">
                     <SegmentedControl
-                        variant="pill"
+                        variant="capsule"
                         value={categoryGroup}
                         onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
-                        options={categoryOptions}
+                        options={[
+                            {
+                                value: 'MONEYWISE',
+                                label: (
+                                    <span className="inline-flex items-center gap-1.5">
+                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                        Main Wallets
+                                    </span>
+                                ),
+                            },
+                            {
+                                value: 'EXTERNAL',
+                                label: (
+                                    <span className="inline-flex items-center gap-1.5">
+                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                        External Accounts
+                                    </span>
+                                ),
+                            },
+                        ]}
                     />
                 </div>
 
-                {/* Mobile Wallet Cards - Horizontal Swipeable */}
+                {/* Mobile Wallet Cards - Horizontal Swipeable Carousel */}
                 <AnimatedTabContent tabKey={categoryGroup} index={categoryIndex}>
-                <div className="flex overflow-x-auto no-scrollbar gap-4 pb-6 px-6 scroll-px-6" style={{ scrollSnapType: 'x mandatory' }}>
-                    {categoryGroup === 'MONEYWISE' ? (
-                        <>
-                            {wallets.map((w) => {
-                                const isActive = selectedWalletId === w.id;
-                                const balanceFormatted = formatCurrency(w.balance || 0);
-                                const currencySymbol = 'ZMW';
-                                const balanceAmountOnly = balanceFormatted.replace('K', '');
-
-                                return (
-                                    <div
-                                        key={w.id}
-                                        onClick={() => setSelectedWalletId(w.id)}
-                                        style={{ 
-                                            scrollSnapAlign: 'start', 
-                                            minWidth: '70vw', 
-                                            maxWidth: '70vw',
-                                            ...(isActive ? {
-                                                backgroundImage: `url(${budgetBg})`,
-                                                backgroundSize: 'cover',
-                                                backgroundPosition: 'center',
-                                            } : {})
-                                        }}
-                                        className={`flex flex-col rounded-[24px] text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative shadow-lg ${
-                                            isActive
-                                                ? 'text-white'
-                                                : 'bg-white border-2 border-transparent shadow-sm opacity-80 text-[#5E6480]'
-                                        }`}
-                                    >
-                                        {/* Card Body */}
-                                        <div className="p-5 flex-1 flex flex-col justify-between">
-                                            <div>
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className={`text-xs font-bold uppercase tracking-wider block ${
-                                                        isActive ? 'text-white/60' : 'text-[#5E6480]/50'
-                                                    }`}>
-                                                        {w.name} {w.is_main && '(Main)'}
-                                                    </span>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setShareWalletId(w.id);
-                                                            setIsShareModalOpen(true);
-                                                        }}
-                                                        className={`p-1.5 rounded-lg transition-colors ${
-                                                            isActive 
-                                                                ? 'text-white/60 hover:text-white hover:bg-white/10' 
-                                                                : 'text-[#5E6480]/50 hover:text-[#5E6480] hover:bg-slate-100'
-                                                        }`}
-                                                        title="Share payment link"
-                                                    >
-                                                        <Link2 size={14} />
-                                                    </button>
-                                                </div>
-                                                <div className="flex items-baseline gap-1.5">
-                                                    <span className={`text-lg font-bold tracking-wider ${
-                                                        isActive ? 'text-white/70' : 'text-[#5E6480]/50'
-                                                    }`}>
-                                                        {currencySymbol}
-                                                    </span>
-                                                    <span className={`text-[32px] font-black leading-none tracking-tight ${
-                                                        isActive ? 'text-white' : 'text-slate-900'
-                                                    }`}>
-                                                        {balanceAmountOnly}
-                                                    </span>
-                                                </div>
-                                                {w.qb_account_name && (
-                                                    <div className={`text-[9px] mt-2 font-bold uppercase tracking-wider ${
-                                                        isActive ? 'text-white/75' : 'text-slate-400'
-                                                    }`}>
-                                                        QBO: {w.qb_account_name}
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {/* Action Buttons inside card */}
-                                            {isActive && !isRequestor && (
-                                                <div className="flex gap-2 mt-5">
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
-                                                        className="flex-1 py-2.5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
-                                                    >
-                                                        + Deposit
-                                                    </button>
-                                                    {wallets.length > 1 && (
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); setIsTransferModalOpen(true); }}
-                                                            className="flex-1 py-2.5 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
-                                                        >
-                                                            Transfer
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                            {!isRequestor && (
-                                <div
-                                    onClick={() => setIsCreateWalletModalOpen(true)}
-                                    style={{ 
-                                        scrollSnapAlign: 'start', 
-                                        minWidth: '70vw', 
-                                        maxWidth: '70vw',
-                                        minHeight: '140px'
-                                    }}
-                                    className="flex flex-col justify-center items-center rounded-[24px] text-center border-2 border-dashed border-gray-200 bg-white hover:border-gray-300 text-gray-400 hover:text-gray-600 transition-all duration-300 flex-shrink-0 cursor-pointer p-5 shadow-xs"
-                                >
-                                    <PlusCircle size={28} strokeWidth={2.5} />
-                                    <span className="text-xs font-bold uppercase tracking-widest block mt-2">Add Subwallet</span>
+                {(() => {
+                    // One shared renderer so MoneyWise wallets, external accounts and
+                    // the empty state all get the identical premium dark card.
+                    const renderWalletCard = (key: string, name: string, balance: number) => (
+                        <div
+                            key={key}
+                            className="snap-center shrink-0 w-[calc(100vw-2.5rem)] h-44 px-4 py-5 bg-gradient-to-l from-blue-950 to-slate-900 rounded-2xl shadow-[0px_2px_4px_2px_rgba(0,0,0,0.15)] flex flex-col justify-between overflow-hidden text-white"
+                        >
+                            <div className="flex items-center gap-2">
+                                <span className="flex-1 font-figtree text-xs font-normal uppercase tracking-wide leading-4 text-white truncate">
+                                    {name}
+                                </span>
+                                <MoneywiseMark className="w-8 h-5 text-white flex-shrink-0" />
+                            </div>
+                            <div className="text-[34px] font-bold leading-8 tracking-tight whitespace-nowrap">
+                                K {formatCurrency(balance).replace('K', '')}
+                            </div>
+                            <div className="flex items-end gap-2">
+                                <span className="flex-1 font-figtree text-xs font-extrabold uppercase tracking-wide text-slate-400 truncate">
+                                    {organizationName || 'MoneyWise'}
+                                </span>
+                                <span className="font-advercase text-sm font-bold text-slate-400">Moneywise</span>
+                            </div>
+                            {slideCount > 1 && (
+                                <div className="flex justify-center items-center gap-2.5 pt-1">
+                                    {Array.from({ length: slideCount }).map((_, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={(e) => { e.stopPropagation(); scrollToSlide(i); }}
+                                            aria-label={`Go to card ${i + 1}`}
+                                            className={`w-2 h-2 rounded-full transition-all duration-300 ease-out ${
+                                                i === activeSlide ? 'bg-white scale-110' : 'bg-zinc-300/25'
+                                            }`}
+                                        />
+                                    ))}
                                 </div>
                             )}
-                        </>
-                    ) : (
-                        [
-                            { id: 'CASH', name: 'Cash Account', icon: Coins },
-                            { id: 'AIRTEL_MONEY', name: 'Airtel Money', icon: Smartphone },
-                            { id: 'BANK', name: 'Bank Account', icon: Building2 },
-                        ].map((acc) => {
-                            const isActive = selectedAccountType === acc.id;
-                            const balanceFormatted = formatCurrency(externalBalances[acc.id] || 0);
-                            const currencySymbol = 'K';
-                            const balanceAmountOnly = balanceFormatted.replace('K', '');
+                        </div>
+                    );
 
-                            return (
-                                <div
-                                    key={acc.id}
-                                    onClick={() => setSelectedAccountType(acc.id as any)}
-                                    style={{ 
-                                        scrollSnapAlign: 'start', 
-                                        minWidth: '70vw', 
-                                        maxWidth: '70vw',
-                                        ...(isActive ? {
-                                            backgroundImage: `url(${budgetBg})`,
-                                            backgroundSize: 'cover',
-                                            backgroundPosition: 'center',
-                                        } : {})
-                                    }}
-                                    className={`flex flex-col rounded-[24px] text-left transition-all duration-300 flex-shrink-0 cursor-pointer overflow-hidden relative shadow-lg ${
-                                        isActive
-                                            ? 'text-white'
-                                            : 'bg-white border-2 border-transparent shadow-sm opacity-80 text-[#5E6480]'
-                                    }`}
-                                >
-                                    {/* Card Body */}
-                                    <div className="p-5 flex-1 flex flex-col justify-between">
-                                        <div>
-                                            <span className={`text-xs font-bold uppercase tracking-wider block mb-1 ${
-                                                isActive ? 'text-white/60' : 'text-[#5E6480]/50'
-                                            }`}>
-                                                {acc.name}
+                    return (
+                        <div
+                            ref={walletScrollRef}
+                            onScroll={handleWalletCarouselScroll}
+                            className="flex overflow-x-auto no-scrollbar gap-4 pb-5 px-5 snap-x snap-mandatory scroll-smooth"
+                            style={{ overflowAnchor: 'none' }}
+                        >
+                            {categoryGroup === 'MONEYWISE' ? (
+                                <>
+                                    {wallets.map((w) =>
+                                        renderWalletCard(w.id, w.name, w.balance || 0)
+                                    )}
+                                    {wallets.length === 0 && isRequestor && renderWalletCard('empty', 'Main Wallet', 0)}
+                                    {!isRequestor && (
+                                        <div
+                                            onClick={() => setIsCreateWalletModalOpen(true)}
+                                            className="snap-center shrink-0 w-[calc(100vw-2.5rem)] h-44 flex flex-col justify-center items-center rounded-2xl text-center border-2 border-dashed border-gray-200 bg-white hover:border-gray-300 text-gray-400 hover:text-gray-600 transition-all duration-300 cursor-pointer p-5"
+                                        >
+                                            <PlusCircle size={28} strokeWidth={2.5} />
+                                            <span className="text-xs font-bold uppercase tracking-widest block mt-2">
+                                                {wallets.length === 0 ? 'Add Wallet' : 'Add Subwallet'}
                                             </span>
-                                            <div className="flex items-baseline gap-1.5">
-                                                <span className={`text-lg font-bold tracking-wider ${
-                                                    isActive ? 'text-white/70' : 'text-[#5E6480]/50'
-                                                }`}>
-                                                    {currencySymbol}
-                                                </span>
-                                                <span className={`text-[32px] font-black leading-none tracking-tight ${
-                                                    isActive ? 'text-white' : 'text-slate-900'
-                                                }`}>
-                                                    {balanceAmountOnly}
-                                                </span>
-                                            </div>
                                         </div>
+                                    )}
+                                </>
+                            ) : (
+                                externalAccounts.map((acc) => renderWalletCard(acc.id, acc.name, externalBalances[acc.id] || 0))
+                            )}
+                        </div>
+                    );
+                })()}
 
-                                        {/* Action Buttons inside card */}
-                                        {isActive && !isRequestor && (
-                                            <div className="mt-5 space-y-2">
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); setIsInflowModalOpen(true); }}
-                                                    className="w-full py-3 bg-white/10 rounded-2xl flex items-center justify-center font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
-                                                >
-                                                    + Deposit Funds
-                                                </button>
-                                                {acc.id === 'CASH' && wallets.length > 0 && (
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); setIsCashTransferModalOpen(true); }}
-                                                        className="w-full py-3 bg-white/10 rounded-2xl flex items-center justify-center gap-1.5 font-bold text-xs text-white/90 hover:bg-white/20 transition-all backdrop-blur-md"
-                                                    >
-                                                        <ArrowDownUp size={14} strokeWidth={2.5} /> Transfer to MoneyWise
-                                                    </button>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            );
-                        })
-                    )}
-                </div>
+                {/* Deposit / Transfer / Pay Link action bar */}
+                {!isRequestor && (
+                    <div className="mx-5 mb-2 bg-white rounded-xl shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] outline outline-1 outline-offset-[-1px] outline-zinc-200 px-3 py-4 flex items-center overflow-hidden">
+                        <button
+                            onClick={() => setIsInflowModalOpen(true)}
+                            className="flex-1 flex items-center justify-center gap-2 active:scale-95 transition-transform"
+                        >
+                            <ArrowDownToLine size={16} className="text-black" strokeWidth={1.5} />
+                            <span className="text-sm font-medium text-black leading-5">Deposit</span>
+                        </button>
+                        <div className="w-px h-5 bg-neutral-300 flex-shrink-0" />
+                        <button
+                            onClick={() => {
+                                if (!mobileCanTransfer) return;
+                                if (categoryGroup === 'MONEYWISE') setIsTransferModalOpen(true);
+                                else setIsCashTransferModalOpen(true);
+                            }}
+                            className={`flex-1 flex items-center justify-center gap-1.5 active:scale-95 transition-transform ${mobileCanTransfer ? '' : 'opacity-35'}`}
+                        >
+                            <ArrowLeftRight size={16} className="text-black" strokeWidth={1.5} />
+                            <span className="text-sm font-medium text-black leading-5">Transfer</span>
+                        </button>
+                        <div className="w-px h-5 bg-neutral-300 flex-shrink-0" />
+                        <button
+                            onClick={() => {
+                                if (!mobileCanPayLink) return;
+                                setShareWalletId(selectedWalletId ?? null);
+                                setIsShareModalOpen(true);
+                            }}
+                            className={`flex-1 flex items-center justify-center gap-1.5 active:scale-95 transition-transform ${mobileCanPayLink ? '' : 'opacity-35'}`}
+                        >
+                            <Link2 size={16} className="text-black" strokeWidth={1.5} />
+                            <span className="text-sm font-medium text-black leading-5">Pay Link</span>
+                        </button>
+                    </div>
+                )}
                 </AnimatedTabContent>
 
                 {/* Mobile Transactions Header & Control Pill */}
@@ -1751,36 +1845,34 @@ Status: VERIFIED`;
                         </div>
                     ) : (
                         <>
-                            <h2 className="text-xl font-extrabold text-slate-800 tracking-tight">Transactions</h2>
-                            <div className="bg-gray-100/60 rounded-full px-2.5 py-1.5 flex items-center gap-3 shadow-xs">
+                            <h2 className="font-figtree text-xl font-semibold text-neutral-900 leading-5">Transactions</h2>
+                            <div className="flex items-center">
                                 <button
                                     onClick={() => setIsSearchExpanded(true)}
-                                    className="p-1.5 text-gray-500 hover:text-slate-900 active:scale-90 transition-all rounded-full"
+                                    className="w-10 h-10 flex items-center justify-center text-neutral-700 hover:text-slate-900 active:scale-90 transition-all rounded-full"
                                     aria-label="Search"
                                 >
-                                    <Search size={18} strokeWidth={2.5} />
+                                    <Search size={19} strokeWidth={2} />
                                 </button>
-                                <div className="w-[1px] h-3.5 bg-gray-300/60" />
                                 <button
                                     onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
-                                    className={`p-1.5 text-gray-500 hover:text-slate-900 active:scale-90 transition-all rounded-full ${
-                                        sortBy === 'DATE_ASC' ? 'rotate-180 text-[#006AFF]' : ''
+                                    className={`w-10 h-10 flex items-center justify-center hover:text-slate-900 active:scale-90 transition-all rounded-full ${
+                                        sortBy === 'DATE_ASC' ? 'rotate-180 text-[#006AFF]' : 'text-neutral-700'
                                     }`}
                                     aria-label="Sort"
                                 >
-                                    <ArrowDownUp size={18} strokeWidth={2.5} />
+                                    <ArrowDownUp size={17} strokeWidth={2} />
                                 </button>
-                                <div className="w-[1px] h-3.5 bg-gray-300/60" />
                                 <button
                                     onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                                    className={`p-1.5 text-gray-500 hover:text-slate-900 active:scale-90 transition-all rounded-full ${
+                                    className={`w-10 h-10 flex items-center justify-center hover:text-slate-900 active:scale-90 transition-all rounded-full ${
                                         isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterStatus !== 'ALL'
                                             ? 'text-[#006AFF]'
-                                            : ''
+                                            : 'text-neutral-700'
                                     }`}
                                     aria-label="Filter"
                                 >
-                                    <Filter size={18} strokeWidth={2.5} />
+                                    <ListFilter size={18} strokeWidth={2} />
                                 </button>
                             </div>
                         </>
@@ -1876,18 +1968,23 @@ Status: VERIFIED`;
                     {!loading && groupedEntries.map((group) => (
                         <div key={group.month} className="mb-4">
                             {/* Month Group Header */}
-                            <div className="pl-[44px] py-2">
-                                <span className="text-xs font-bold text-black">{group.month}</span>
+                            <div className="pl-10 py-2">
+                                <span className="text-base font-semibold text-black leading-5">
+                                    {group.month.split(' · ')[1] === String(new Date().getFullYear())
+                                        ? group.month.split(' · ')[0]
+                                        : group.month}
+                                </span>
                             </div>
 
                             {/* Transaction Rows in Card */}
-                            <div className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-xs overflow-hidden divide-y divide-gray-50/80">
+                            <div className="mx-5 bg-white rounded-[20px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] outline outline-1 outline-offset-[-1px] outline-gray-200 overflow-hidden">
                                 {group.entries.map((entry) => {
                                     const isOutflow = entry.credit > 0;
                                     const amount = isOutflow ? entry.credit : entry.debit;
                                     const refNum = entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8);
                                     const rawDescription = entry.requisitions?.description || entry.description;
                                     const description = rawDescription ? rawDescription.split(' | Ref:')[0] : '';
+                                    const isNew = walletSeen.isNew(entryStamp(entry));
 
                                     return (
                                         <React.Fragment key={entry.id}>
@@ -1899,15 +1996,20 @@ Status: VERIFIED`;
                                             >
                                                 {/* Left Side: Description + Flag + Ref */}
                                                 <div className="flex-1 mr-4">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <span className="text-[14px] font-normal text-slate-800 leading-tight">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className={`text-base leading-tight transition-all duration-500 ${isNew ? 'font-bold text-black' : 'font-medium text-black'}`}>
                                                             {description}
                                                         </span>
+                                                        {isNew && (
+                                                            <span className="px-1.5 py-0.5 bg-blue-600 rounded-full text-[9px] font-bold text-white leading-none tracking-wide">
+                                                                NEW
+                                                            </span>
+                                                        )}
                                                         {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT') && (
-                                                            <Flag 
-                                                                size={12} 
-                                                                className={`flex-shrink-0 mt-0.5 ${getMobileFlagColor(entry)}`} 
-                                                                strokeWidth={2.5} 
+                                                            <Flag
+                                                                size={14}
+                                                                className={`flex-shrink-0 ${getMobileFlagColor(entry)}`}
+                                                                strokeWidth={1.5}
                                                             />
                                                         )}
                                                     </div>
@@ -1916,13 +2018,13 @@ Status: VERIFIED`;
                                                         const showStatus = status && status !== 'CLOSED' && status !== 'OPENING';
                                                         if (!showStatus && !refNum) return null;
                                                         return (
-                                                            <div className="flex items-center gap-1.5 mt-1.5">
+                                                            <div className="flex items-center gap-1.5 mt-2">
                                                                 {showStatus && (() => {
                                                                     const config = getStatusConfig(status);
                                                                     return (
-                                                                        <div className="flex items-center bg-white px-2 py-0.5 rounded-full border border-gray-100 shadow-2xs w-fit">
+                                                                        <div className="flex items-center w-fit">
                                                                             {renderMobileStatusIcon(status)}
-                                                                            <span className="text-[9px] font-black text-brand-navy uppercase tracking-widest ml-1 leading-none">
+                                                                            <span className="font-grotesk text-xs font-normal text-neutral-700 ml-1 leading-none">
                                                                                 {config.label}
                                                                             </span>
                                                                         </div>
@@ -1932,7 +2034,7 @@ Status: VERIFIED`;
                                                                     <span className="text-[10px] text-gray-300 font-bold">•</span>
                                                                 )}
                                                                 {refNum && (
-                                                                    <span className="text-[11px] font-normal text-[#808080] tracking-tight uppercase">
+                                                                    <span className="font-grotesk text-xs font-normal text-neutral-700">
                                                                         {refNum}
                                                                     </span>
                                                                 )}
@@ -1943,12 +2045,10 @@ Status: VERIFIED`;
 
                                                 {/* Right Side: Amount + Date */}
                                                 <div className="flex flex-col items-end">
-                                                    <span className={`text-[14px] font-normal leading-tight ${
-                                                        isOutflow ? 'text-slate-800' : 'text-emerald-600'
-                                                    }`}>
-                                                        {isOutflow ? '-' : '+'}{formatCurrency(amount).replace('K', '')}
+                                                    <span className="text-base font-medium leading-tight text-black">
+                                                        {isOutflow ? '-' : '+'}K{formatCurrency(amount).replace('K', '')}
                                                     </span>
-                                                    <span className="text-[11px] font-normal text-[#808080] mt-1.5">
+                                                    <span className="font-grotesk text-xs font-normal text-neutral-700 mt-2">
                                                         {formatDateSlash(entry.date)}
                                                     </span>
                                                 </div>

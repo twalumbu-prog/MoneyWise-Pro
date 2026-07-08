@@ -67,7 +67,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
         const path = location.pathname;
         if (path === '/' || path === '/requisitions') return 'Inbox';
         if (path === '/cashbook') return 'Wallet';
-        if (path === '/reporting') return 'Budgets & Reporting';
+        if (path === '/reporting') return 'Reports';
         if (path === '/intelligence') return 'Business Intelligence';
         if (path === '/audit') return 'Audit';
         if (path === '/settings') return 'Settings';
@@ -90,7 +90,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             {/* Mobile Header */}
             <div className="md:hidden sticky top-0 z-20">
                 <div className={`${backgroundColor} px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80`}>
-                    <h1 className="text-[28px] font-black text-brand-navy tracking-tight">
+                    <h1 className="font-advercase text-3xl font-normal text-black">
                         {getPageTitle()}
                     </h1>
                     <button
