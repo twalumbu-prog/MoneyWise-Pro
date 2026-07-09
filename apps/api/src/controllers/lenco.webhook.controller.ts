@@ -377,13 +377,17 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
             // 1. Log the Inflow — finalize the intent IN PLACE when one exists.
             // (Delete-then-recreate destroyed the intent when the recreate failed.)
+            // Public sales/payment links get their own dedicated "Payment Received"
+            // email further down (notifyPaymentLinkPaid/notifyPublicSalePaid) — skip the
+            // generic inflow notification here so it isn't a duplicate.
             let newEntry: any;
             if (pendingEntry) {
                 newEntry = await cashbookService.finalizePendingIntent(organizationId, pendingEntry.id, {
                     description: actualNarration,
                     debit: inflowAmount,
                     externalReference: reference,
-                    date: new Date().toISOString().split('T')[0]
+                    date: new Date().toISOString().split('T')[0],
+                    skipInflowNotification: isPublicSale
                 });
             } else {
                 newEntry = await cashbookService.createEntry(organizationId, {
@@ -395,7 +399,8 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                     account_type: 'MONEYWISE_WALLET',
                     status: 'UNACCOUNTED',
                     wallet_id: walletId,
-                    external_reference: reference || null
+                    external_reference: reference || null,
+                    skip_inflow_notification: isPublicSale
                 } as any);
             }
 

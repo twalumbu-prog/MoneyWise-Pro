@@ -3,6 +3,13 @@ import { LencoService } from './lenco.service';
 import { RequisitionMessageService } from './requisition_message.service';
 import { ledgerService } from './ledger.service';
 import { withTiming } from '../utils/analytics';
+import { emailService } from './email.service';
+
+// Fire-and-forget: never let a notification failure affect the ledger write.
+const notifyInflowAsync = (organizationId: string, entry: any) => {
+    emailService.notifyWalletInflow(organizationId, entry)
+        .catch(err => console.error(`[Cashbook] Inflow notification failed for entry ${entry?.id}:`, err?.message));
+};
 
 // Fire-and-forget GL posting: never block or fail a cash write on a posting error
 // (the reconciliation safety net repairs any gaps). withTiming re-throws
@@ -121,21 +128,22 @@ export const cashbookService = {
     /**
      * Create a cashbook entry (disbursement, return, inflow, adjustment, or balance)
      */
-    async createEntry(organizationId: string, entry: Omit<CashbookEntry, 'id' | 'balance_after'>): Promise<CashbookEntry> {
+    async createEntry(organizationId: string, entryWithOpts: Omit<CashbookEntry, 'id' | 'balance_after'> & { skip_inflow_notification?: boolean }): Promise<CashbookEntry> {
+        const { skip_inflow_notification, ...entry } = entryWithOpts as any;
         const accountType = entry.account_type || 'CASH';
         const walletId = (entry as any).wallet_id || null;
         let refNum = (entry as any).reference_number || null;
 
         // Auto-generate reference for certain types if not provided
         if (!refNum && ['INFLOW', 'RETURN', 'ADJUSTMENT'].includes(entry.entry_type)) {
-            let prefix = entry.entry_type === 'INFLOW' ? 'CR' : 
+            let prefix = entry.entry_type === 'INFLOW' ? 'CR' :
                           entry.entry_type === 'RETURN' ? 'RT' : 'ADJ';
-            
-            if (entry.entry_type === 'INFLOW' && entry.description && 
+
+            if (entry.entry_type === 'INFLOW' && entry.description &&
                 (entry.description.startsWith('Sale:') || entry.description.startsWith('Revenue:'))) {
                 prefix = 'REC';
             }
-            
+
             const { data } = await supabase.rpc('generate_sequential_reference', {
                 p_org_id: organizationId,
                 p_entity_type: entry.entry_type,
@@ -173,7 +181,16 @@ export const cashbookService = {
         // 4. Post the balanced journal entry for the GL (non-blocking).
         postJournalAsync(data.id, organizationId);
 
-        return updatedData || data;
+        const finalEntry = updatedData || data;
+
+        // 5. Notify the org admin of any real (non-PENDING) inflow, unless the caller
+        // is already sending a dedicated notification for this same event (e.g. the
+        // "Payment Received" email for a payment-link/product-sale collection).
+        if (finalEntry.entry_type === 'INFLOW' && finalEntry.status !== 'PENDING' && !skip_inflow_notification) {
+            notifyInflowAsync(organizationId, finalEntry);
+        }
+
+        return finalEntry;
     },
 
     /**
@@ -199,6 +216,10 @@ export const cashbookService = {
             // Retried on a cross-org unique-index collision (the inflow reference
             // index is global); typically the bank transaction UUID.
             fallbackExternalReference?: string;
+            // Skip the generic "New Inflow" notification because the caller is already
+            // sending a dedicated one (e.g. the payment-link/product-sale "Payment
+            // Received" email).
+            skipInflowNotification?: boolean;
         }
     ): Promise<CashbookEntry> {
         const { data: intent, error: intentError } = await supabase
@@ -305,6 +326,10 @@ export const cashbookService = {
 
         // The PENDING intent is now COMPLETED — post its balanced journal entry.
         postJournalAsync(intentId, organizationId);
+
+        if (!opts.skipInflowNotification) {
+            notifyInflowAsync(organizationId, fresh || updated);
+        }
 
         return fresh || updated;
     },

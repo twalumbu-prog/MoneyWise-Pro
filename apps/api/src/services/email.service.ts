@@ -49,7 +49,10 @@ export const emailService = {
                 return;
             }
 
-            const requisitionLink = `${FRONTEND_URL}/requisitions/${requisitionId}`;
+            // The app opens a single requisition via a query param on the list page
+            // (RequisitionList reads ?id=). There is no /requisitions/:id route, so the
+            // old path form landed on a blank page.
+            const requisitionLink = `${FRONTEND_URL}/requisitions?id=${requisitionId}`;
             const ref = requisition.reference_number || requisitionId.slice(0, 8);
 
             // 2. Determine recipients and content based on type
@@ -59,7 +62,7 @@ export const emailService = {
 
             switch (type) {
                 case 'NEW_REQUISITION':
-                    recipients = await this.getEmailsByRoles(['AUTHORISER', 'ACCOUNTANT', 'ADMIN']);
+                    recipients = await this.getEmailsByRoles(requisition.organization_id, ['AUTHORISER', 'ACCOUNTANT', 'ADMIN']);
                     subject = `New Requisition Submitted: ${ref}`;
                     body = `
                         <h2>New Requisition Pending Review</h2>
@@ -106,7 +109,7 @@ export const emailService = {
                     break;
 
                 case 'CHANGE_SUBMITTED':
-                    recipients = await this.getEmailsByRoles(['CASHIER', 'ACCOUNTANT', 'ADMIN']);
+                    recipients = await this.getEmailsByRoles(requisition.organization_id, ['CASHIER', 'ACCOUNTANT', 'ADMIN']);
                     subject = `Change Submitted for Verification: ${ref}`;
                     body = `
                         <h2>Returned Cash Verification Required</h2>
@@ -254,6 +257,63 @@ export const emailService = {
             console.log(`[EmailService] Sale notification sent to ${org.email} for ref ${reference} (${sales.length} item(s))`);
         } catch (error) {
             console.error(`[EmailService] Failed to send sale notification for ref ${reference}:`, error);
+        }
+    },
+
+    /**
+     * General-purpose "money came in" notification, covering any INFLOW cashbook entry
+     * that isn't already covered by a dedicated notification (notifyPaymentLinkPaid /
+     * notifyPublicSalePaid) — e.g. a plain wallet top-up, a manual cash/bank/mobile-money
+     * inflow logged by staff, or a periodic-sync-healed deposit. Called from
+     * cashbookService.createEntry / finalizePendingIntent for every non-PENDING INFLOW,
+     * unless the caller opts out because a dedicated email is already being sent.
+     */
+    async notifyWalletInflow(organizationId: string, entry: {
+        description: string;
+        debit: number;
+        account_type?: string;
+        wallet_id?: string | null;
+        reference_number?: string | null;
+        external_reference?: string | null;
+        date: string;
+    }) {
+        try {
+            const { data: org } = await supabase
+                .from('organizations')
+                .select('name, email')
+                .eq('id', organizationId)
+                .maybeSingle();
+
+            if (!org?.email) {
+                console.warn(`[EmailService] No admin email configured for org ${organizationId}; skipping inflow notification.`);
+                return;
+            }
+
+            const amount = Number(entry.debit) || 0;
+            if (amount <= 0) return;
+
+            const accountLabel = entry.account_type === 'MONEYWISE_WALLET'
+                ? 'MoneyWise Wallet'
+                : (entry.account_type || 'External Account').replace(/_/g, ' ');
+            const ref = entry.reference_number || entry.external_reference || 'N/A';
+
+            const body = `
+                <h2>New Inflow Recorded</h2>
+                <p>A new inflow of <strong>K${amount.toLocaleString()}</strong> was recorded in your ${accountLabel}.</p>
+                <p><strong>Description:</strong> ${entry.description}</p>
+                <p><strong>Date:</strong> ${entry.date}</p>
+                <p><strong>Reference:</strong> ${ref}</p>
+                <a href="${FRONTEND_URL}/cashbook" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View in Cashbook</a>
+            `;
+
+            await this.sendEmail({
+                to: org.email,
+                subject: `New Inflow: K${amount.toLocaleString()} — ${accountLabel}`,
+                html: this.wrapTemplate(body),
+            });
+            console.log(`[EmailService] Inflow notification sent to ${org.email} for ${accountLabel} (K${amount})`);
+        } catch (error) {
+            console.error(`[EmailService] Failed to send inflow notification:`, error);
         }
     },
 
@@ -420,37 +480,41 @@ export const emailService = {
     },
 
     /**
-     * Get email addresses for all users with specific roles
+     * Get email addresses for all ACTIVE members of a SPECIFIC organization holding
+     * one of the given roles.
+     *
+     * IMPORTANT: this must be scoped to the organization. Membership + per-org role live
+     * in `user_organizations` (a user can belong to several orgs with different roles),
+     * NOT in `public.users.role` (which only reflects the user's currently-active org).
+     * An earlier version queried `public.users` by role with no org filter, which leaked
+     * requisition notifications to admins of every other organization — a cross-tenant
+     * data exposure. Always filter by organization_id here.
      */
-    async getEmailsByRoles(roles: string[]): Promise<string[]> {
-        // 1. Get user IDs from public.users
-        const { data: publicUsers, error: pubError } = await supabase
-            .from('users')
-            .select('id')
-            .in('role', roles);
-
-        if (pubError || !publicUsers) {
-            console.error('[EmailService] Error fetching public users:', pubError);
+    async getEmailsByRoles(organizationId: string, roles: string[]): Promise<string[]> {
+        if (!organizationId) {
+            console.error('[EmailService] getEmailsByRoles called without organizationId — refusing to send to avoid cross-tenant leak.');
             return [];
         }
 
-        console.log(`[EmailService] Found ${publicUsers.length} users with roles: ${roles.join(', ')}`);
-        const userIds = publicUsers.map((u: any) => u.id);
+        const { data, error } = await supabase
+            .from('user_organizations')
+            .select('user:users!inner(email)')
+            .eq('organization_id', organizationId)
+            .in('role', roles)
+            .eq('status', 'ACTIVE');
 
-        // 2. Get emails from auth.users (fetching all for now as listUsers is usually small)
-        // In a large org, we'd want to join or filter more efficiently.
-        const { data, error } = await (supabase.auth as any).admin.listUsers();
-        if (error || !data.users) {
-            console.error('[EmailService] Error fetching auth users:', error);
+        if (error || !data) {
+            console.error('[EmailService] Error fetching org role members:', error);
             return [];
         }
 
-        const recipients = data.users
-            .filter((u: any) => userIds.includes(u.id))
-            .map((u: any) => u.email)
-            .filter((e: any): e is string => !!e);
+        const recipients = [...new Set(
+            data
+                .map((r: any) => r.user?.email)
+                .filter((e: any): e is string => !!e)
+        )];
 
-        console.log(`[EmailService] Matched ${recipients.length} email recipients`);
+        console.log(`[EmailService] Matched ${recipients.length} recipients for org ${organizationId} with roles: ${roles.join(', ')}`);
         return recipients;
     },
 
