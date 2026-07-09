@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { Banknote, Check, File, Building, Upload, X, History, Clock, User, Edit2, CreditCard, Loader2, Wallet, AlertTriangle, Sparkles, CheckCircle, Smartphone } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -20,8 +21,8 @@ const calculateTotal = (denominations: Record<string, number>) => {
 };
 
 export const CashierDashboard: React.FC = () => {
-    const { session } = useAuth();
-    const [requisitions, setRequisitions] = useState<Requisition[]>([]);
+    const { session, organizationId } = useAuth();
+    const queryClient = useQueryClient();
     const [selectedReq, setSelectedReq] = useState<Requisition | null>(null);
     const [denominations, setDenominations] = useState<Record<string, number>>({
         '500': 0, '200': 0, '100': 0, '50': 0, '20': 0, '10': 0, '5': 0, '2': 0, '1': 0, '0.50': 0
@@ -36,7 +37,6 @@ export const CashierDashboard: React.FC = () => {
     const [transferProofFile, setTransferProofFile] = useState<File | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const [isDataLoading, setIsDataLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [processing, setProcessing] = useState(false);
     const [verifying, setVerifying] = useState(false);
@@ -45,16 +45,41 @@ export const CashierDashboard: React.FC = () => {
     
     // Additional Lenco states
     const [subMethod, setSubMethod] = useState<'MOBILE_MONEY' | 'BANK_TRANSFER'>('MOBILE_MONEY');
-    const [banks, setBanks] = useState<any[]>([]);
     const [resolvingAccount, setResolvingAccount] = useState(false);
     const [accountResolved, setAccountResolved] = useState(false);
     const [resolutionError, setResolutionError] = useState<string | null>(null);
     
     // New state for tabs and history
     const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
-    const [history, setHistory] = useState<any[]>([]);
-    const [isHistoryLoading, setIsHistoryLoading] = useState(false);
     const [editingDisb, setEditingDisb] = useState<any | null>(null);
+
+    // ── Cached queries ───────────────────────────────────────────────────────
+    // Shares the ['approvals', org] cache with the Approvals page (same
+    // getAllAdmin fetch) and derives the ready-to-disburse (AUTHORISED) subset.
+    const { data: requisitions = [], isLoading: reqLoading } = useQuery<Requisition[]>({
+        queryKey: ['approvals', organizationId],
+        queryFn: () => requisitionService.getAllAdmin(),
+        enabled: !!organizationId,
+        select: (all) => all.filter((r: any) => r.status === 'AUTHORISED'),
+    });
+    const isDataLoading = reqLoading || !organizationId;
+
+    // Disbursement history — only fetched once the History tab is opened.
+    const { data: history = [], isFetching: isHistoryLoading } = useQuery<any[]>({
+        queryKey: ['disbursement-history', organizationId],
+        queryFn: () => requisitionService.getDisbursementHistory(),
+        enabled: !!organizationId && activeTab === 'history',
+    });
+
+    // Lenco bank list — static reference data, cache hard for the session.
+    const { data: banks = [] } = useQuery<any[]>({
+        queryKey: ['lenco-banks'],
+        queryFn: () => lencoService.getBanks(),
+        staleTime: 60 * 60 * 1000,
+    });
+
+    const loadRequisitions = () => queryClient.invalidateQueries({ queryKey: ['approvals', organizationId] });
+    const loadHistory = () => queryClient.invalidateQueries({ queryKey: ['disbursement-history', organizationId] });
 
     // Wallet status state
     const [walletBalance, setWalletBalance] = useState<number | null>(null);
@@ -62,19 +87,8 @@ export const CashierDashboard: React.FC = () => {
     const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
 
     useEffect(() => {
-        loadRequisitions();
         fetchWalletStatus();
-        loadBanks();
     }, []);
-
-    const loadBanks = async () => {
-        try {
-            const bankList = await lencoService.getBanks();
-            setBanks(bankList);
-        } catch (err) {
-            console.error('Failed to load banks:', err);
-        }
-    };
 
     const fetchWalletStatus = async (orgId?: string) => {
         try {
@@ -138,40 +152,6 @@ export const CashierDashboard: React.FC = () => {
         }
     };
 
-
-    const loadRequisitions = async () => {
-        try {
-            setIsDataLoading(true);
-            // In a real app, we'd have a specific endpoint for ready-to-disburse items
-            // For MVP, reusing admin getAll and filtering client-side
-            const all = await requisitionService.getAllAdmin();
-            const approved = all.filter((r: any) => r.status === 'AUTHORISED');
-            setRequisitions(approved);
-        } catch (err) {
-            console.error('Failed to load requisitions', err);
-            setError('Failed to load requisitions');
-        } finally {
-            setIsDataLoading(false);
-        }
-    };
-
-    const loadHistory = async () => {
-        try {
-            setIsHistoryLoading(true);
-            const data = await requisitionService.getDisbursementHistory();
-            setHistory(data);
-        } catch (err) {
-            console.error('Failed to load history', err);
-        } finally {
-            setIsHistoryLoading(false);
-        }
-    };
-
-    useEffect(() => {
-        if (activeTab === 'history') {
-            loadHistory();
-        }
-    }, [activeTab]);
 
     // Refetch wallet status and pre-fill details when a requisition is selected
     useEffect(() => {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
@@ -76,10 +77,49 @@ export const NewSale: React.FC = () => {
     type Step = 'LOADING' | 'SHOP' | 'CART' | 'PAYMENT' | 'VERIFYING' | 'SUCCESS' | 'ERROR';
     const [step, setStep] = useState<Step>('LOADING');
 
-    const [org, setOrg] = useState<Organization | null>(null);
-    const [mainWalletId, setMainWalletId] = useState<string | null>(null);
-    const [products, setProducts] = useState<Product[]>([]);
     const [error, setError] = useState<string | null>(null);
+
+    // ── Cached POS context ───────────────────────────────────────────────────
+    // Org, catalogue and wallet are shared, org-scoped reference data. Caching
+    // them lets a cashier reopen New Sale straight into the shop instead of
+    // waiting on the LOADING step every time. The `wallets` key is shared with
+    // the Wallet ledger page, so it's usually already warm.
+    const orgQuery = useQuery<Organization>({
+        queryKey: ['organization', 'current'],
+        queryFn: () => organizationService.getOrganization(),
+    });
+    const productsQuery = useQuery<Product[]>({
+        queryKey: ['products', 'active'],
+        queryFn: () => productService.getProducts(),
+        select: (prods) => (prods || []).filter(p => p.is_active),
+    });
+    const walletsQuery = useQuery<any[]>({
+        queryKey: ['wallets', 'current'],
+        queryFn: async () => (await cashbookService.getWallets().catch(() => [])) || [],
+    });
+    const org = orgQuery.data ?? null;
+    const products = productsQuery.data ?? [];
+    const mainWalletId = React.useMemo(() => {
+        const w = walletsQuery.data || [];
+        return (w.find((x: any) => x.is_main) || w[0])?.id ?? null;
+    }, [walletsQuery.data]);
+
+    // Drive the LOADING → SHOP/ERROR step machine off query status. Once org +
+    // catalogue land (wallets is best-effort), enter the shop; on failure of a
+    // required fetch, show the error step. Later steps (CART, PAYMENT…) are
+    // owned by the sale flow and never re-enter LOADING.
+    useEffect(() => {
+        if (step !== 'LOADING') return;
+        if (orgQuery.isError || productsQuery.isError) {
+            const err: any = orgQuery.error || productsQuery.error;
+            setError(err?.response?.data?.error || 'Failed to load products. Please try again.');
+            setStep('ERROR');
+            return;
+        }
+        if (orgQuery.isSuccess && productsQuery.isSuccess && walletsQuery.isFetched) {
+            setStep('SHOP');
+        }
+    }, [step, orgQuery.status, productsQuery.status, walletsQuery.status]);
 
     // Cart
     const [quantities, setQuantities] = useState<Record<string, number>>({});
@@ -116,28 +156,6 @@ export const NewSale: React.FC = () => {
     const [verificationStep, setVerificationStep] = useState<'POLLING' | 'FAILED'>('POLLING');
     const [verificationReason, setVerificationReason] = useState('');
     const [isGeneratingReceipt, setIsGeneratingReceipt] = useState(false);
-
-    useEffect(() => {
-        const load = async () => {
-            try {
-                const [orgData, prods, wallets] = await Promise.all([
-                    organizationService.getOrganization(),
-                    productService.getProducts(),
-                    cashbookService.getWallets().catch(() => []),
-                ]);
-                setOrg(orgData);
-                setProducts((prods || []).filter(p => p.is_active));
-                const main = (wallets || []).find((w: any) => w.is_main) || (wallets || [])[0];
-                setMainWalletId(main?.id || null);
-                setStep('SHOP');
-            } catch (err: any) {
-                console.error('Failed to load New Sale context:', err);
-                setError(err?.response?.data?.error || 'Failed to load products. Please try again.');
-                setStep('ERROR');
-            }
-        };
-        load();
-    }, []);
 
     // ── Cart helpers ─────────────────────────────────────────────────────────
     const setQty = (id: string, qty: number) =>

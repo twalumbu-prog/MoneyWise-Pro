@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import { ArrowLeft, Printer, FileText, Eye } from 'lucide-react';
@@ -8,28 +9,20 @@ import { requisitionService } from '../services/requisition.service';
 export const VoucherDetail: React.FC = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
-    const [voucher, setVoucher] = useState<Voucher | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const queryClient = useQueryClient();
 
-    useEffect(() => {
-        if (id) {
-            loadVoucher(id);
-        }
-    }, [id]);
+    const { data: voucher, isLoading, error: queryError } = useQuery<Voucher>({
+        // Keyed by the voucher id, so navigating between vouchers reuses caches
+        // and a revisit paints instantly before revalidating.
+        queryKey: ['voucher', id],
+        queryFn: () => voucherService.getById(id!),
+        enabled: !!id,
+    });
+    const loading = isLoading && !voucher;
+    const error = queryError ? 'Failed to load voucher details' : null;
 
-    const loadVoucher = async (voucherId: string) => {
-        try {
-            setLoading(true);
-            const data = await voucherService.getById(voucherId);
-            setVoucher(data);
-        } catch (err) {
-            console.error('Failed to load voucher', err);
-            setError('Failed to load voucher details');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const loadVoucher = (voucherId: string) =>
+        queryClient.invalidateQueries({ queryKey: ['voucher', voucherId] });
 
     if (loading) return <Layout><div className="flex justify-center p-12">Loading...</div></Layout>;
     if (error || !voucher) return <Layout><div className="p-12 text-center text-red-600">Error: {error || 'Voucher not found'}</div></Layout>;
@@ -80,12 +73,10 @@ export const VoucherDetail: React.FC = () => {
                                     onClick={async () => {
                                         if (confirm('Are you sure you want to POST this voucher? This cannot be undone.')) {
                                             try {
-                                                setLoading(true); // Reuse loading or add processing state
                                                 await voucherService.post(voucher.id);
-                                                loadVoucher(voucher.id);
+                                                await loadVoucher(voucher.id);
                                             } catch (err: any) {
                                                 alert('Failed to post voucher: ' + err.message);
-                                                setLoading(false);
                                             }
                                         }
                                     }}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { reportService, ExpenditureAggregation, ExpenditureItem } from '../services/report.service';
 import { budgetService, Budget } from '../services/budget.service';
@@ -46,11 +47,7 @@ export const Reporting: React.FC = () => {
     const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY');
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
     
-    const [expenditures, setExpenditures] = useState<ExpenditureAggregation[]>([]);
-    const [prevExpenditures, setPrevExpenditures] = useState<ExpenditureAggregation[]>([]);
-    const [budgets, setBudgets] = useState<Budget[]>([]);
-    const [allAccounts, setAllAccounts] = useState<Account[]>([]);
-    const [loading, setLoading] = useState(false);
+    const queryClient = useQueryClient();
     const [reportView, setReportView] = useState<'PROFIT_LOSS' | 'NET_WORTH'>('PROFIT_LOSS');
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
 
@@ -201,38 +198,46 @@ export const Reporting: React.FC = () => {
         return { start: startStr, end: endStr };
     }, [currentDate, periodType]);
 
-    // Data Fetching
-    const loadData = async () => {
-        setLoading(true);
-        try {
+    // ── Data Fetching (cached) ───────────────────────────────────────────────
+    // The whole report payload for a given period+mode is one cached query, so
+    // stepping between periods (or revisiting the page) paints the previous
+    // result instantly and revalidates in the background. keepPreviousData keeps
+    // the prior period on screen while the next one loads instead of blanking.
+    const reportKey = ['report', orgId, periodType, periodData.start, periodData.end, prevPeriodData.start, prevPeriodData.end, mode];
+    const { data: reportData, isFetching } = useQuery({
+        queryKey: reportKey,
+        queryFn: async () => {
             const [expData, budData, accData, prevExpData] = await Promise.all([
                 reportService.getExpenditures(periodData.start, periodData.end, mode),
                 budgetService.getBudgets(periodData.start, periodData.end, periodType),
                 accountService.getAll(),
-                reportService.getExpenditures(prevPeriodData.start, prevPeriodData.end, mode)
+                reportService.getExpenditures(prevPeriodData.start, prevPeriodData.end, mode),
             ]);
-            setExpenditures(expData);
-            setBudgets(budData);
-            setAllAccounts(accData);
-            setPrevExpenditures(prevExpData);
+            return { expData, budData, accData, prevExpData };
+        },
+        enabled: !!orgId,
+        placeholderData: keepPreviousData,
+    });
+    const expenditures: ExpenditureAggregation[] = reportData?.expData ?? [];
+    const prevExpenditures: ExpenditureAggregation[] = reportData?.prevExpData ?? [];
+    const budgets: Budget[] = reportData?.budData ?? [];
+    const allAccounts: Account[] = reportData?.accData ?? [];
+    const loading = (isFetching && !reportData) || !orgId;
 
-            // Load saved groups from local storage
-            if (orgId) {
-                const savedGroups = localStorage.getItem(`reportGroups_${orgId}`);
-                const savedAssignments = localStorage.getItem(`accountGroups_${orgId}`);
-                const savedGroupingToggle = localStorage.getItem(`isGroupingEnabled_${orgId}`);
-                
-                if (savedGroups) setGroups(JSON.parse(savedGroups));
-                if (savedAssignments) setAccountGroups(JSON.parse(savedAssignments));
-                if (savedGroupingToggle) setIsGroupingEnabled(savedGroupingToggle === 'true');
-            }
+    // Refetch the current period's report (used by budget-save success).
+    const loadData = () => queryClient.invalidateQueries({ queryKey: ['report', orgId] });
 
-        } catch (error) {
-            console.error('Failed to load reporting data:', error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    // Saved report groups live in localStorage, independent of the fetch — load
+    // them once per org (previously re-read on every loadData).
+    useEffect(() => {
+        if (!orgId) return;
+        const savedGroups = localStorage.getItem(`reportGroups_${orgId}`);
+        const savedAssignments = localStorage.getItem(`accountGroups_${orgId}`);
+        const savedGroupingToggle = localStorage.getItem(`isGroupingEnabled_${orgId}`);
+        if (savedGroups) setGroups(JSON.parse(savedGroups));
+        if (savedAssignments) setAccountGroups(JSON.parse(savedAssignments));
+        if (savedGroupingToggle) setIsGroupingEnabled(savedGroupingToggle === 'true');
+    }, [orgId]);
 
     // Build the list of time buckets to plot for the chosen timeframe.
     const buildChartPeriods = (tf: '1D' | '1W' | '1M' | '3M' | 'YTD') => {
@@ -349,9 +354,9 @@ export const Reporting: React.FC = () => {
     const chartLoading = !chartRawCache[`${mode}|${chartTimeframe}`];
 
     useEffect(() => {
-        if (orgId) {
-            loadData();
-        }
+        // The report query refetches automatically when the period/mode key
+        // changes; here we just reset the view state that shouldn't persist
+        // across a period switch.
         setExpandedAccount(null); // Reset expansions on period/mode change
         setSelectedAccounts(new Set()); // Reset selections on period change
     }, [periodData.start, periodData.end, mode, periodType, orgId]);

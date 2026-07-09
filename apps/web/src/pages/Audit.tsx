@@ -1,30 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { ShieldCheck, TrendingUp, AlertTriangle, Search, ExternalLink } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
+import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 
 export const Audit: React.FC = () => {
-    const [loading, setLoading] = useState(true);
-    const [report, setReport] = useState<any>(null);
+    const { organizationId } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('ALL');
 
-    useEffect(() => {
-        fetchReport();
-    }, []);
-
-    const fetchReport = async () => {
-        try {
-            setLoading(true);
-            const data = await requisitionService.getAuditReport();
-            setReport(data);
-        } catch (err) {
-            console.error('Failed to fetch audit report', err);
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { data: report, isLoading } = useQuery<any>({
+        queryKey: ['audit-report', organizationId],
+        queryFn: () => requisitionService.getAuditReport(),
+        enabled: !!organizationId,
+    });
+    const loading = isLoading || !organizationId;
 
     const filteredTransactions = report?.transactions?.filter((t: any) => {
         const matchesSearch = t.description?.toLowerCase().includes(searchTerm.toLowerCase()) || 

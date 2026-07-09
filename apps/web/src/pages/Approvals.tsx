@@ -1,43 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { Check, X, Eye, ChevronRight } from 'lucide-react';
 import { requisitionService, Requisition } from '../services/requisition.service';
+import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import posthog from '../lib/posthog';
 
 export const Approvals: React.FC = () => {
     const navigate = useNavigate();
-    const [requisitions, setRequisitions] = useState<Requisition[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { organizationId } = useAuth();
+    const queryClient = useQueryClient();
     const [processingId, setProcessingId] = useState<string | null>(null);
 
-    useEffect(() => {
-        loadRequisitions();
-    }, []);
-
-    const loadRequisitions = async () => {
+    const approvalsKey = ['approvals', organizationId];
+    const {
+        data: requisitions = [],
+        isLoading,
+        error: queryError,
+    } = useQuery<Requisition[]>({
+        queryKey: approvalsKey,
+        queryFn: () => requisitionService.getAllAdmin(),
+        enabled: !!organizationId,
+    });
+    // Cached data paints instantly; only block on the true first-ever load.
+    const loading = isLoading || !organizationId;
+    // Preserve the old debug-detail extraction from the thrown error message.
+    const error = React.useMemo(() => {
+        if (!queryError) return null;
+        let msg = 'Failed to load requisitions';
         try {
-            setLoading(true);
-            const data = await requisitionService.getAllAdmin();
-            setRequisitions(data);
-            setError(null);
-        } catch (err: any) {
-            console.error(err);
-            let msg = `Failed to load requisitions`;
-            try {
-                const details = JSON.parse(err.message);
-                if (details.debug) {
-                    msg += `. User=${details.debug.userId}`;
-                }
-            } catch (e) {
-                // Ignore
-            }
-            setError(msg);
-        } finally {
-            setLoading(false);
-        }
-    };
+            const details = JSON.parse((queryError as Error).message);
+            if (details.debug) msg += `. User=${details.debug.userId}`;
+        } catch { /* ignore */ }
+        return msg;
+    }, [queryError]);
+
+    const loadRequisitions = () => queryClient.invalidateQueries({ queryKey: approvalsKey });
 
     const handleStatusUpdate = async (id: string, status: 'AUTHORISED' | 'REJECTED') => {
         const req = requisitions.find(r => r.id === id);
