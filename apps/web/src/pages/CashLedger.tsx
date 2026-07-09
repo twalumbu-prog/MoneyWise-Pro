@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { departmentService } from '../services/department.service';
 import { Layout } from '../components/Layout';
@@ -174,9 +175,6 @@ const renderMobileStatusIcon = (status: string) => {
 
 
 const CashLedger: React.FC = () => {
-    const [entries, setEntries] = useState<CashbookEntry[]>([]);
-    const [balance, setBalance] = useState<number>(0);
-    const [loading, setLoading] = useState(true);
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [postingReview, setPostingReview] = useState<{
         type: 'INFLOW' | 'REQUISITION';
@@ -201,13 +199,10 @@ const CashLedger: React.FC = () => {
     const [isExportModalOpen, setIsExportModalOpen] = useState(false);
 
     const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
-    const [accounts, setAccounts] = useState<Account[]>([]);
     const [isSearchExpanded, setIsSearchExpanded] = useState(false);
     const [editingNarration, setEditingNarration] = useState<{ [entryId: string]: string }>({});
 
     // Org department config
-    const [useDepartments, setUseDepartments] = useState(false);
-    const [orgDepartments, setOrgDepartments] = useState<string[]>([]);
 
     // Search, Sort, and Filter State
     const [searchQuery, setSearchQuery] = useState('');
@@ -217,7 +212,6 @@ const CashLedger: React.FC = () => {
     const [filterStatus, setFilterStatus] = useState<string>('ALL');
 
     // Wallets & Subwallets State
-    const [wallets, setWallets] = useState<any[]>([]);
     const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(undefined);
     const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL'>('MONEYWISE');
     const [isCreateWalletModalOpen, setIsCreateWalletModalOpen] = useState(false);
@@ -225,7 +219,6 @@ const CashLedger: React.FC = () => {
     const [isCashTransferModalOpen, setIsCashTransferModalOpen] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
     const [shareWalletId, setShareWalletId] = useState<string | null>(null);
-    const [externalBalances, setExternalBalances] = useState<Record<string, number>>({ CASH: 0, AIRTEL_MONEY: 0, BANK: 0 });
     const [verifyingEntryId, setVerifyingEntryId] = useState<string | null>(null);
     const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null);
     const [showPendingIntents, setShowPendingIntents] = useState(false);
@@ -255,8 +248,97 @@ const CashLedger: React.FC = () => {
                 : newnessKey(`a_${selectedAccountType}`))
             : null
     );
-    const [recentMoneywiseEntries, setRecentMoneywiseEntries] = useState<CashbookEntry[]>([]);
-    const [recentExternalEntries, setRecentExternalEntries] = useState<CashbookEntry[]>([]);
+    // ── Cached queries ───────────────────────────────────────────────────────
+    // This page previously fired ~11 uncached requests per visit behind a
+    // full-screen "Synchronizing Ledger" spinner. Queries share the persisted
+    // cache: revisits paint instantly and revalidate in the background.
+    const queryClient = useQueryClient();
+    const effectiveWalletId = selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined;
+
+    const {
+        data: entries = [],
+        isFetching: entriesFetching,
+    } = useQuery<CashbookEntry[]>({
+        queryKey: ['cashbook-entries', organizationId, { startDate, endDate, accountType: selectedAccountType, walletId: effectiveWalletId }],
+        queryFn: () => cashbookService.getEntries({ startDate, endDate, accountType: selectedAccountType, walletId: effectiveWalletId }),
+        enabled: !!organizationId,
+        // Switching wallets/filters keeps the previous list on screen instead
+        // of flashing the full-page spinner (mirrors the old keep-stale render).
+        placeholderData: keepPreviousData,
+    });
+
+    const { data: balance = 0, isFetching: balanceFetching } = useQuery<number>({
+        queryKey: ['cashbook-balance', organizationId, selectedAccountType, effectiveWalletId ?? null],
+        queryFn: () => cashbookService.getBalance(selectedAccountType, undefined, effectiveWalletId),
+        enabled: !!organizationId,
+        placeholderData: keepPreviousData,
+    });
+
+    // Matches the old single loadData() flag: spinner/glow logic waits for the
+    // ledger AND its balance, never for the background sample fetches.
+    const loading = entriesFetching || balanceFetching || !organizationId;
+
+    const { data: externalBalances = { CASH: 0, AIRTEL_MONEY: 0, BANK: 0 } } = useQuery({
+        queryKey: ['external-balances', organizationId],
+        queryFn: async () => {
+            const [CASH, AIRTEL_MONEY, BANK] = await Promise.all([
+                cashbookService.getBalance('CASH'),
+                cashbookService.getBalance('AIRTEL_MONEY'),
+                cashbookService.getBalance('BANK'),
+            ]);
+            return { CASH, AIRTEL_MONEY, BANK } as Record<string, number>;
+        },
+        enabled: !!organizationId,
+    });
+
+    const { data: wallets = [] } = useQuery<any[]>({
+        queryKey: ['wallets', organizationId],
+        queryFn: async () => (await cashbookService.getWallets()) || [],
+        enabled: !!organizationId,
+    });
+
+    const { data: accounts = [] } = useQuery<Account[]>({
+        queryKey: ['accounts', organizationId],
+        queryFn: () => accountService.getAll(),
+        enabled: !!organizationId,
+    });
+
+    // Same key as the Inbox page — navigating between the two reuses one fetch.
+    const { data: departmentConfig } = useQuery({
+        queryKey: ['departments', organizationId],
+        queryFn: () => departmentService.list(),
+        enabled: !!organizationId,
+    });
+    const useDepartments = departmentConfig?.use_departments ?? false;
+    const orgDepartments = React.useMemo(
+        () => (departmentConfig?.use_departments ? departmentConfig.departments.map(d => d.name) : []),
+        [departmentConfig]
+    );
+
+    // Lightweight org-wide sample per category, purely to power the "new
+    // transaction" toggle dots — independent of whichever wallet/account is
+    // currently selected in the main `entries` list. staleTime 0 preserves the
+    // old always-refresh-on-focus behavior, so a payment completed in a Lenco
+    // popup/redirect is reflected the moment the user returns to the app.
+    const { data: recentSamples } = useQuery({
+        queryKey: ['cashbook-recent', organizationId],
+        queryFn: async () => {
+            const [moneywise, cash, airtel, bank] = await Promise.all([
+                cashbookService.getEntries({ accountType: 'MONEYWISE_WALLET', limit: 20 }),
+                cashbookService.getEntries({ accountType: 'CASH', limit: 10 }),
+                cashbookService.getEntries({ accountType: 'AIRTEL_MONEY', limit: 10 }),
+                cashbookService.getEntries({ accountType: 'BANK', limit: 10 }),
+            ]);
+            return {
+                moneywise: (moneywise || []) as CashbookEntry[],
+                external: [...(cash || []), ...(airtel || []), ...(bank || [])] as CashbookEntry[],
+            };
+        },
+        enabled: !!organizationId,
+        staleTime: 0,
+    });
+    const recentMoneywiseEntries = recentSamples?.moneywise ?? [];
+    const recentExternalEntries = recentSamples?.external ?? [];
     // Compare on the full created_at timestamp; the `date` column is day-granular
     // (parses to midnight) and would never read as newer than the visit cutoff.
     const entryStamp = (e: any) => (e.created_at as string) || e.date;
@@ -271,59 +353,18 @@ const CashLedger: React.FC = () => {
         e.status !== 'PENDING' && isNewSinceStored(newnessKey(`a_${e.account_type}`), entryStamp(e))
     );
 
-    const loadWallets = async (shouldSetDefault = false) => {
-        try {
-            const data = await cashbookService.getWallets();
-            setWallets(data || []);
-            if (data && data.length > 0) {
-                const exists = data.some((w: any) => w.id === selectedWalletId);
-                if (shouldSetDefault || !selectedWalletId || !exists) {
-                    const mainWallet = data.find((w: any) => w.is_main) || data[0];
-                    setSelectedWalletId(mainWallet.id);
-                }
-            }
-        } catch (error) {
-            console.error('Failed to load wallets:', error);
+    // Default wallet selection once wallets arrive, or when the selected one
+    // disappears (e.g. archived). Replaces the old loadWallets(shouldSetDefault):
+    // callers that want to force a reset to Main just setSelectedWalletId(undefined).
+    useEffect(() => {
+        if (wallets.length === 0) return;
+        const exists = wallets.some((w: any) => w.id === selectedWalletId);
+        if (!selectedWalletId || !exists) {
+            const mainWallet = wallets.find((w: any) => w.is_main) || wallets[0];
+            setSelectedWalletId(mainWallet.id);
         }
-    };
-
-    useEffect(() => {
-        loadAccounts();
-        departmentService.list()
-            .then(({ use_departments, departments }) => {
-                setUseDepartments(use_departments);
-                if (use_departments) setOrgDepartments(departments.map(d => d.name));
-            })
-            .catch(() => {});
-    }, []);
-
-    useEffect(() => {
-        loadData();
-    }, [startDate, endDate, selectedAccountType, selectedWalletId]);
-
-    // Lightweight org-wide sample per category, purely to power the "new
-    // transaction" toggle dots — independent of whichever wallet/account is
-    // currently selected in the main `entries` list. Refreshed on mount and
-    // whenever the tab regains focus, so a payment completed in a Lenco
-    // popup/redirect is reflected the moment the user returns to the app.
-    useEffect(() => {
-        const loadRecentSamples = () => {
-            cashbookService.getEntries({ accountType: 'MONEYWISE_WALLET', limit: 20 })
-                .then(setRecentMoneywiseEntries)
-                .catch(err => console.error('Failed to load recent MoneyWise entries:', err));
-            Promise.all([
-                cashbookService.getEntries({ accountType: 'CASH', limit: 10 }),
-                cashbookService.getEntries({ accountType: 'AIRTEL_MONEY', limit: 10 }),
-                cashbookService.getEntries({ accountType: 'BANK', limit: 10 }),
-            ])
-                .then(([cash, airtel, bank]) => setRecentExternalEntries([...(cash || []), ...(airtel || []), ...(bank || [])]))
-                .catch(err => console.error('Failed to load recent external entries:', err));
-        };
-        loadRecentSamples();
-        const onVisible = () => { if (document.visibilityState === 'visible') loadRecentSamples(); };
-        document.addEventListener('visibilitychange', onVisible);
-        return () => document.removeEventListener('visibilitychange', onVisible);
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [wallets, selectedWalletId]);
 
     // Snap the mobile wallet carousel back to the first card when switching
     // between MoneyWise wallets and external accounts.
@@ -346,15 +387,6 @@ const CashLedger: React.FC = () => {
         }
     }, [wallets]);
 
-    const loadAccounts = async () => {
-        try {
-            const data = await accountService.getAll();
-            setAccounts(data);
-        } catch (error) {
-            console.error('Failed to load accounts:', error);
-        }
-    };
-
     // Refresh ledger data AND the currently-open requisition so status-driven UI
     // (e.g. approve/reject buttons after a revert to draft) updates instantly
     // without needing to close and reopen the modal.
@@ -370,41 +402,17 @@ const CashLedger: React.FC = () => {
         }
     };
 
+    // Refresh everything after a mutation (close balance, inflow, transfer,
+    // classification…). Resolves once the active queries have refetched, so
+    // callers that await it can rely on fresh data being on screen.
     const loadData = async () => {
-        setLoading(true);
-        try {
-            const [entriesData, balanceData, cashBal, airtelBal, bankBal] = await Promise.all([
-                cashbookService.getEntries({ 
-                    startDate, 
-                    endDate, 
-                    accountType: selectedAccountType,
-                    walletId: selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined
-                }),
-                cashbookService.getBalance(
-                    selectedAccountType,
-                    undefined,
-                    selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined
-                ),
-                cashbookService.getBalance('CASH'),
-                cashbookService.getBalance('AIRTEL_MONEY'),
-                cashbookService.getBalance('BANK')
-            ]);
-            setEntries(entriesData);
-            setBalance(balanceData);
-            setExternalBalances({
-                CASH: cashBal,
-                AIRTEL_MONEY: airtelBal,
-                BANK: bankBal
-            });
-
-            if (selectedAccountType === 'MONEYWISE_WALLET') {
-                await loadWallets();
-            }
-        } catch (error) {
-            console.error('Failed to load cashbook data:', error);
-        } finally {
-            setLoading(false);
-        }
+        await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['cashbook-entries', organizationId] }),
+            queryClient.invalidateQueries({ queryKey: ['cashbook-balance', organizationId] }),
+            queryClient.invalidateQueries({ queryKey: ['external-balances', organizationId] }),
+            queryClient.invalidateQueries({ queryKey: ['cashbook-recent', organizationId] }),
+            queryClient.invalidateQueries({ queryKey: ['wallets', organizationId] }),
+        ]);
     };
 
     const handleExport = async (format: 'csv' | 'xlsx' | 'pdf', exportStartDate: string, exportEndDate: string) => {
@@ -2756,8 +2764,9 @@ Status: VERIFIED`;
                 isOpen={isCreateWalletModalOpen}
                 onClose={() => setIsCreateWalletModalOpen(false)}
                 onSuccess={async () => {
-                    await loadWallets(true);
-                    loadData();
+                    // Force reselection of the Main wallet once the fresh list lands.
+                    setSelectedWalletId(undefined);
+                    await loadData();
                 }}
             />
 
@@ -2772,7 +2781,7 @@ Status: VERIFIED`;
             <TransferToWalletModal
                 isOpen={isCashTransferModalOpen}
                 onClose={() => setIsCashTransferModalOpen(false)}
-                onSuccess={async () => { await loadWallets(); loadData(); }}
+                onSuccess={loadData}
                 wallets={wallets}
                 sourceBalance={externalBalances.CASH || 0}
                 sourceAccountType="CASH"

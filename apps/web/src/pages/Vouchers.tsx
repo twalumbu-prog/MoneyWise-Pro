@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { voucherService, Voucher } from '../services/voucher.service';
 import { requisitionService } from '../services/requisition.service';
+import { useAuth } from '../context/AuthContext';
 import { FileText, Eye, Clock, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AccountingModal } from '../components/accounting/AccountingModal';
 
 export const Vouchers: React.FC = () => {
     const navigate = useNavigate();
-    const [vouchers, setVouchers] = useState<Voucher[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const { organizationId } = useAuth();
+    const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState<'pending' | 'posted'>('pending');
 
     // Modal State
@@ -18,22 +19,17 @@ export const Vouchers: React.FC = () => {
     const [selectedRequisition, setSelectedRequisition] = useState<any>(null);
     const [loadingDetails, setLoadingDetails] = useState(false);
 
-    useEffect(() => {
-        loadVouchers();
-    }, []);
+    const vouchersKey = ['vouchers', organizationId];
+    const { data: vouchers = [], isLoading, error: loadError } = useQuery<Voucher[]>({
+        queryKey: vouchersKey,
+        queryFn: () => voucherService.getAll(),
+        enabled: !!organizationId,
+    });
+    // Cached data paints instantly; only block on the true first-ever load.
+    const loading = isLoading || !organizationId;
+    const error = loadError ? 'Failed to load vouchers' : null;
 
-    const loadVouchers = async () => {
-        try {
-            setLoading(true);
-            const data = await voucherService.getAll();
-            setVouchers(data);
-        } catch (err) {
-            console.error('Failed to load vouchers', err);
-            setError('Failed to load vouchers');
-        } finally {
-            setLoading(false);
-        }
-    };
+    const loadVouchers = () => queryClient.invalidateQueries({ queryKey: vouchersKey });
 
     const handleVoucherClick = async (voucher: Voucher) => {
         if (voucher.status === 'POSTED' || voucher.status === 'POSTED_TO_QB' as any) {

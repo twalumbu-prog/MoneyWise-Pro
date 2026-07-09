@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { apiFetch } from '../lib/api';
@@ -82,7 +82,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         requisitions: 0, approvals: 0, vouchers: 0, disbursements: 0, settings: 0
     });
 
+    // Live session for interval callbacks: the 30s poll below closes over the
+    // first render, so it must read the session through a ref, not state.
+    const sessionRef = useRef<Session | null>(null);
+
     const refreshNotifications = async () => {
+        // Never poll signed-out — the login page and public payment pages mount
+        // this provider too, and each unauthenticated tick is a guaranteed 401
+        // (wasted mobile data + junk api_fetch_failed analytics events).
+        if (!sessionRef.current) return;
         try {
             // Route through apiFetch so this inherits the resilient token
             // refresh/retry. This runs on a 30s background interval, so a transient
@@ -140,6 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
 
         supabase.auth.getSession().then(({ data: { session } }) => {
+            sessionRef.current = session;
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {
@@ -150,6 +159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            sessionRef.current = session;
             setSession(session);
             setUser(session?.user ?? null);
             if (session?.user) {

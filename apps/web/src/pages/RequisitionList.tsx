@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
 import { FileText, History, XCircle, X } from 'lucide-react';
@@ -58,15 +59,38 @@ export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { userRole, refreshNotifications, organizationId } = useAuth();
-    const [requisitions, setRequisitions] = useState<Requisition[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    const queryClient = useQueryClient();
+
+    const requisitionsKey = ['requisitions', organizationId];
+    const {
+        data: requisitions = [],
+        isLoading: requisitionsLoading,
+        error: requisitionsError,
+    } = useQuery<Requisition[]>({
+        queryKey: requisitionsKey,
+        queryFn: () => requisitionService.getAll(),
+        enabled: !!organizationId,
+    });
+    // Cached data paints instantly; only block on the true first-ever load.
+    const loading = requisitionsLoading || !organizationId;
+    const error = requisitionsError ? 'Failed to load requisitions' : null;
     const [currentView] = useState<'active' | 'history'>('active');
     const [selectedRequisition, setSelectedRequisition] = useState<RequisitionType | null>(null);
     // Outflows = requisitions (existing) · Inflows = money-in ledger entries (sales, deposits, cash inflows)
     const [inboxMode, setInboxMode] = useState<'outflows' | 'inflows'>('outflows');
-    const [inflows, setInflows] = useState<InflowRow[]>([]);
-    const [inflowsLoading, setInflowsLoading] = useState(false);
+    // Inflows are fetched up front too (not just when the tab is opened) so the
+    // "new inflow" dot on the Inflows toggle is accurate even while viewing
+    // Outflows; switching back to the tab refetches (e.g. after a sale).
+    const {
+        data: inflows = [],
+        isFetching: inflowsFetching,
+        refetch: refetchInflows,
+    } = useQuery<InflowRow[]>({
+        queryKey: ['inflows', organizationId],
+        queryFn: async () => (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 200 })) || [],
+        enabled: !!organizationId,
+    });
+    const inflowsLoading = inflowsFetching || !organizationId;
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string[]>(['ALL']);
     const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false); // State for mobile action sheet
@@ -76,8 +100,16 @@ export const RequisitionList: React.FC = () => {
     const [isPayrollWizardOpen, setIsPayrollWizardOpen] = useState(false);
 
     // Org departments config
-    const [useDepartments, setUseDepartments] = useState(false);
-    const [orgDepartments, setOrgDepartments] = useState<string[]>([]);
+    const { data: departmentConfig } = useQuery({
+        queryKey: ['departments', organizationId],
+        queryFn: () => departmentService.list(),
+        enabled: !!organizationId,
+    });
+    const useDepartments = departmentConfig?.use_departments ?? false;
+    const orgDepartments = React.useMemo(
+        () => (departmentConfig?.use_departments ? departmentConfig.departments.map(d => d.name) : []),
+        [departmentConfig]
+    );
 
     // Mobile filter/sort states
     const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
@@ -141,50 +173,19 @@ export const RequisitionList: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [inboxMode, inflowsLoading, hasNewInflow]);
 
-    useEffect(() => {
-        loadRequisitions();
-        departmentService.list()
-            .then(({ use_departments, departments }) => {
-                setUseDepartments(use_departments);
-                if (use_departments) setOrgDepartments(departments.map(d => d.name));
-            })
-            .catch(() => {});
-    }, []);
-
+    // Mutation call sites below await these to know fresh data has landed —
+    // invalidate resolves only after the active query has refetched.
     const loadRequisitions = async () => {
-        try {
-            setLoading(true);
-            const data = await requisitionService.getAll();
-            setRequisitions(data);
-            setError(null);
-        } catch (err) {
-            setError('Failed to load requisitions');
-            console.error(err);
-        } finally {
-            setLoading(false);
-        }
+        await queryClient.invalidateQueries({ queryKey: requisitionsKey });
     };
 
     const loadInflows = async () => {
-        try {
-            setInflowsLoading(true);
-            const data = await cashbookService.getEntries({ entryType: 'INFLOW', limit: 200 });
-            setInflows(data || []);
-        } catch (err) {
-            console.error('Failed to load inflows:', err);
-        } finally {
-            setInflowsLoading(false);
-        }
+        await refetchInflows();
     };
 
-    // Load inflows once up front (not just when the tab is opened) so the
-    // "new inflow" dot on the Inflows toggle is accurate even while viewing
-    // Outflows, then keep refreshing on every switch back (e.g. after a sale).
-    useEffect(() => {
-        loadInflows();
-    }, []);
     useEffect(() => {
         if (inboxMode === 'inflows') loadInflows();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [inboxMode]);
 
     const handleStatusChange = async () => {
@@ -649,7 +650,7 @@ export const RequisitionList: React.FC = () => {
                                                                 const fullReq = await requisitionService.getById(req.id);
                                                                 setSelectedRequisition(fullReq);
                                                                 if (req.has_unread_updates) {
-                                                                    setRequisitions(prev => prev.map(r => r.id === req.id ? { ...r, has_unread_updates: false } : r));
+                                                                    queryClient.setQueryData<Requisition[]>(requisitionsKey, prev => prev?.map(r => r.id === req.id ? { ...r, has_unread_updates: false } : r));
                                                                     requisitionService.markRead(req.id).then(() => refreshNotifications()).catch(console.error);
                                                                 }
                                                             } catch (err) {
@@ -700,7 +701,7 @@ export const RequisitionList: React.FC = () => {
                                             setSelectedRequisition(fullReq);
                                             const clickedReq = sortedRequisitions.find(r => r.id === id);
                                             if (clickedReq?.has_unread_updates) {
-                                                setRequisitions(prev => prev.map(r => r.id === id ? { ...r, has_unread_updates: false } : r));
+                                                queryClient.setQueryData<Requisition[]>(requisitionsKey, prev => prev?.map(r => r.id === id ? { ...r, has_unread_updates: false } : r));
                                                 requisitionService.markRead(id).then(() => refreshNotifications()).catch(console.error);
                                             }
                                         } catch (err) {
