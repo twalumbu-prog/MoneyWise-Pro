@@ -13,7 +13,10 @@ export const Approvals: React.FC = () => {
     const queryClient = useQueryClient();
     const [processingId, setProcessingId] = useState<string | null>(null);
 
-    const approvalsKey = ['approvals', organizationId];
+    // Nested under the 'requisitions' prefix so the realtime Broadcast layer
+    // (which emits 'requisitions' after any requisition write) live-invalidates
+    // this admin list too — an approve/reject on one device refreshes others.
+    const approvalsKey = ['requisitions', 'admin', organizationId];
     const {
         data: requisitions = [],
         isLoading,

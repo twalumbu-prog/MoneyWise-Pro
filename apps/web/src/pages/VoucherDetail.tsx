@@ -12,9 +12,10 @@ export const VoucherDetail: React.FC = () => {
     const queryClient = useQueryClient();
 
     const { data: voucher, isLoading, error: queryError } = useQuery<Voucher>({
-        // Keyed by the voucher id, so navigating between vouchers reuses caches
-        // and a revisit paints instantly before revalidating.
-        queryKey: ['voucher', id],
+        // Keyed under the 'vouchers' prefix (shared with the Vouchers list) so a
+        // revisit paints instantly AND the realtime Broadcast layer, which emits
+        // 'vouchers' after any voucher write, live-invalidates this detail view.
+        queryKey: ['vouchers', id],
         queryFn: () => voucherService.getById(id!),
         enabled: !!id,
     });
@@ -22,7 +23,7 @@ export const VoucherDetail: React.FC = () => {
     const error = queryError ? 'Failed to load voucher details' : null;
 
     const loadVoucher = (voucherId: string) =>
-        queryClient.invalidateQueries({ queryKey: ['voucher', voucherId] });
+        queryClient.invalidateQueries({ queryKey: ['vouchers', voucherId] });
 
     if (loading) return <Layout><div className="flex justify-center p-12">Loading...</div></Layout>;
     if (error || !voucher) return <Layout><div className="p-12 text-center text-red-600">Error: {error || 'Voucher not found'}</div></Layout>;

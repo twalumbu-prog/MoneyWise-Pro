@@ -54,19 +54,22 @@ export const CashierDashboard: React.FC = () => {
     const [editingDisb, setEditingDisb] = useState<any | null>(null);
 
     // ── Cached queries ───────────────────────────────────────────────────────
-    // Shares the ['approvals', org] cache with the Approvals page (same
+    // Shares the admin-requisitions cache with the Approvals page (same
     // getAllAdmin fetch) and derives the ready-to-disburse (AUTHORISED) subset.
     const { data: requisitions = [], isLoading: reqLoading } = useQuery<Requisition[]>({
-        queryKey: ['approvals', organizationId],
+        // Shares the admin list cache with the Approvals page and, being under
+        // the 'requisitions' prefix, is live-invalidated by requisition writes.
+        queryKey: ['requisitions', 'admin', organizationId],
         queryFn: () => requisitionService.getAllAdmin(),
         enabled: !!organizationId,
         select: (all) => all.filter((r: any) => r.status === 'AUTHORISED'),
     });
     const isDataLoading = reqLoading || !organizationId;
 
-    // Disbursement history — only fetched once the History tab is opened.
+    // Disbursement history — only fetched once the History tab is opened. Kept
+    // under 'requisitions' so finalizing a disbursement live-refreshes it.
     const { data: history = [], isFetching: isHistoryLoading } = useQuery<any[]>({
-        queryKey: ['disbursement-history', organizationId],
+        queryKey: ['requisitions', 'disbursement-history', organizationId],
         queryFn: () => requisitionService.getDisbursementHistory(),
         enabled: !!organizationId && activeTab === 'history',
     });
@@ -78,8 +81,8 @@ export const CashierDashboard: React.FC = () => {
         staleTime: 60 * 60 * 1000,
     });
 
-    const loadRequisitions = () => queryClient.invalidateQueries({ queryKey: ['approvals', organizationId] });
-    const loadHistory = () => queryClient.invalidateQueries({ queryKey: ['disbursement-history', organizationId] });
+    const loadRequisitions = () => queryClient.invalidateQueries({ queryKey: ['requisitions', 'admin', organizationId] });
+    const loadHistory = () => queryClient.invalidateQueries({ queryKey: ['requisitions', 'disbursement-history', organizationId] });
 
     // Wallet status state
     const [walletBalance, setWalletBalance] = useState<number | null>(null);
