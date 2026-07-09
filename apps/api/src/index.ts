@@ -33,6 +33,7 @@ import paymentLinkRoutes from './routes/payment_link.routes';
 import departmentRoutes from './routes/department.routes';
 import adminRoutes from './routes/admin.routes';
 import onboardingRoutes from './routes/onboarding.routes';
+import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
 
@@ -351,6 +352,10 @@ app.use(express.json({
         req.rawBody = buf;
     }
 }));
+
+// After any successful authenticated mutation, broadcast an org-scoped cache
+// invalidation so other signed-in devices refresh live (see lib/realtimeBroadcast).
+app.use(broadcastAfterWrite);
 
 // Routes
 app.use('/auth', authRoutes);

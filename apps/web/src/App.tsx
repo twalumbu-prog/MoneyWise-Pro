@@ -28,6 +28,7 @@ import { PublicPay } from './pages/PublicPay';
 import { PublicPaymentLink } from './pages/PublicPaymentLink';
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import { RealtimeCacheSync } from './components/RealtimeCacheSync';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { session, loading, userStatus, signOut } = useAuth();
@@ -140,6 +141,8 @@ const HomeRedirect = () => {
 function App() {
     return (
         <AuthProvider>
+            {/* Live cross-device cache invalidation (no-op while signed out) */}
+            <RealtimeCacheSync />
             <Router>
                 <Routes>
                     <Route path="/login" element={<Login />} />

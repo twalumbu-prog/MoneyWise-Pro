@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { broadcastInvalidate } from '../lib/realtimeBroadcast';
 import { LencoService } from './lenco.service';
 import { RequisitionMessageService } from './requisition_message.service';
 import { ledgerService } from './ledger.service';
@@ -190,6 +191,14 @@ export const cashbookService = {
             notifyInflowAsync(organizationId, finalEntry);
         }
 
+        // 6. Nudge connected clients to refresh their cached ledger views. This
+        // is the service-level hook, so it also covers writes with no HTTP
+        // request behind them (background Lenco sync, public payment intents).
+        void broadcastInvalidate(organizationId, [
+            'cashbook-overview', 'cashbook-entries', 'cashbook-balance',
+            'external-balances', 'cashbook-recent', 'inflows', 'wallets',
+        ]);
+
         return finalEntry;
     },
 
@@ -330,6 +339,12 @@ export const cashbookService = {
         if (!opts.skipInflowNotification) {
             notifyInflowAsync(organizationId, fresh || updated);
         }
+
+        // A PENDING intent just became a real inflow — refresh cached ledger views.
+        void broadcastInvalidate(organizationId, [
+            'cashbook-overview', 'cashbook-entries', 'cashbook-balance',
+            'external-balances', 'cashbook-recent', 'inflows', 'wallets',
+        ]);
 
         return fresh || updated;
     },

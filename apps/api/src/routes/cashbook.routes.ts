@@ -3,6 +3,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import {
     getCashbookEntries,
     getCashBalance,
+    getCashbookOverview,
     getCashbookSummary,
     reconcileCash,
     returnExcessCash,
@@ -43,6 +44,9 @@ router.get('/', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT',
 
 // Get current balance (All roles can view)
 router.get('/balance', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getCashBalance);
+
+// One-round-trip Wallet page payload: entries + balances + wallets + recent samples
+router.get('/overview', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getCashbookOverview);
 
 // Diagnostic route to check if post-to-qb is registered
 router.get('/check-routes', (req, res) => {

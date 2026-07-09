@@ -84,6 +84,33 @@ export const cashbookService = {
         return response.json();
     },
 
+    /**
+     * One-round-trip payload for the Wallet page: entries for the selected
+     * account/wallet, its balance, all three external balances, the wallet
+     * list, and the org-wide recent samples powering the "new" dots.
+     */
+    async getOverview(filters?: {
+        startDate?: string;
+        endDate?: string;
+        accountType?: string;
+        walletId?: string;
+    }): Promise<{
+        entries: any[];
+        balance: number;
+        externalBalances: Record<string, number>;
+        wallets: any[];
+        recent: { moneywise: any[]; external: any[] };
+    }> {
+        const params = new URLSearchParams();
+        if (filters?.startDate) params.append('startDate', filters.startDate);
+        if (filters?.endDate) params.append('endDate', filters.endDate);
+        if (filters?.accountType) params.append('accountType', filters.accountType);
+        if (filters?.walletId) params.append('walletId', filters.walletId);
+
+        const response = await apiFetch(`/cashbook/overview?${params.toString()}`);
+        return response.json();
+    },
+
     async getBalance(accountType: string = 'CASH', organizationId?: string, walletId?: string) {
         const params = new URLSearchParams({ accountType });
         if (organizationId) params.append('organizationId', organizationId);

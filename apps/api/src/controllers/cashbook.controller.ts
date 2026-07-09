@@ -783,8 +783,46 @@ export const narrateEntry = async (req: any, res: any): Promise<any> => {
 };
 
 /**
- * Get all subwallets for an organization
+ * Get all subwallets for an organization.
+ * Shared by GET /wallets and GET /overview: seeds the Main Wallet on the fly
+ * for brand-new organizations and returns each wallet with its live balance.
  */
+const fetchOrgWallets = async (organizationId: string): Promise<any[]> => {
+    let { data: wallets, error } = await supabase
+        .from('organization_wallets')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('is_main', { ascending: false })
+        .order('name', { ascending: true });
+
+    if (error) throw error;
+
+    // If no wallets found (e.g. new organization), seed Main Wallet on the fly
+    if (!wallets || wallets.length === 0) {
+        const { data: newWallet, error: seedError } = await supabase
+            .from('organization_wallets')
+            .insert({
+                organization_id: organizationId,
+                name: 'Main Wallet',
+                is_main: true
+            })
+            .select()
+            .single();
+
+        if (seedError) throw seedError;
+        wallets = [newWallet];
+    }
+
+    // Fetch balances for each wallet dynamically
+    return Promise.all((wallets || []).map(async (wallet: any) => {
+        const balance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', wallet.id);
+        return {
+            ...wallet,
+            balance
+        };
+    }));
+};
+
 export const getWallets = async (req: any, res: any): Promise<any> => {
     try {
         const organizationId = (req as any).user.organization_id;
@@ -793,44 +831,66 @@ export const getWallets = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'User organization context missing' });
         }
 
-        let { data: wallets, error } = await supabase
-            .from('organization_wallets')
-            .select('*')
-            .eq('organization_id', organizationId)
-            .order('is_main', { ascending: false })
-            .order('name', { ascending: true });
-
-        if (error) throw error;
-
-        // If no wallets found (e.g. new organization), seed Main Wallet on the fly
-        if (!wallets || wallets.length === 0) {
-            const { data: newWallet, error: seedError } = await supabase
-                .from('organization_wallets')
-                .insert({
-                    organization_id: organizationId,
-                    name: 'Main Wallet',
-                    is_main: true
-                })
-                .select()
-                .single();
-
-            if (seedError) throw seedError;
-            wallets = [newWallet];
-        }
-
-        // Fetch balances for each wallet dynamically
-        const walletsWithBalances = await Promise.all((wallets || []).map(async (wallet: any) => {
-            const balance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', wallet.id);
-            return {
-                ...wallet,
-                balance
-            };
-        }));
-
-        res.json(walletsWithBalances);
+        res.json(await fetchOrgWallets(organizationId));
     } catch (error: any) {
         console.error('Error fetching wallets:', error);
         res.status(500).json({ error: 'Failed to fetch wallets', details: error.message });
+    }
+};
+
+/**
+ * One-round-trip payload for the Wallet page. The web app used to fan out
+ * seven-plus requests on every visit (entries, selected balance, three
+ * external balances, wallets, recent samples) — brutal on high-latency mobile
+ * links where each round trip costs hundreds of ms. Everything here runs in
+ * parallel server-side, in-region with the database.
+ */
+export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
+    try {
+        const { startDate, endDate, accountType, walletId } = req.query;
+        const organizationId = (req as any).user.organization_id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const effectiveWalletId = accountType === 'MONEYWISE_WALLET' ? (walletId as string | undefined) : undefined;
+
+        const [
+            entries, balance, cashBal, airtelBal, bankBal, wallets,
+            recentMoneywise, recentCash, recentAirtel, recentBank,
+        ] = await Promise.all([
+            cashbookService.getEntries(organizationId, {
+                startDate: startDate as string,
+                endDate: endDate as string,
+                accountType: accountType as string,
+                walletId: effectiveWalletId,
+            }),
+            cashbookService.getCurrentBalance(organizationId, accountType as string, effectiveWalletId),
+            cashbookService.getCurrentBalance(organizationId, 'CASH'),
+            cashbookService.getCurrentBalance(organizationId, 'AIRTEL_MONEY'),
+            cashbookService.getCurrentBalance(organizationId, 'BANK'),
+            fetchOrgWallets(organizationId),
+            // Org-wide samples powering the "new transaction" toggle dots.
+            cashbookService.getEntries(organizationId, { accountType: 'MONEYWISE_WALLET', limit: 20 }),
+            cashbookService.getEntries(organizationId, { accountType: 'CASH', limit: 10 }),
+            cashbookService.getEntries(organizationId, { accountType: 'AIRTEL_MONEY', limit: 10 }),
+            cashbookService.getEntries(organizationId, { accountType: 'BANK', limit: 10 }),
+        ]);
+
+        res.json({
+            entries: entries.map(sanitizeEntry),
+            balance,
+            externalBalances: { CASH: cashBal, AIRTEL_MONEY: airtelBal, BANK: bankBal },
+            wallets,
+            recent: {
+                moneywise: recentMoneywise.map(sanitizeEntry),
+                external: [...recentCash, ...recentAirtel, ...recentBank].map(sanitizeEntry),
+            },
+        });
+    } catch (error: any) {
+        console.error('Error fetching cashbook overview:', error);
+        res.status(500).json({ error: 'Failed to fetch cashbook overview', details: error.message });
     }
 };
 

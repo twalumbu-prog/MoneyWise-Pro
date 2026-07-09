@@ -250,52 +250,36 @@ const CashLedger: React.FC = () => {
     );
     // ── Cached queries ───────────────────────────────────────────────────────
     // This page previously fired ~11 uncached requests per visit behind a
-    // full-screen "Synchronizing Ledger" spinner. Queries share the persisted
-    // cache: revisits paint instantly and revalidate in the background.
+    // full-screen "Synchronizing Ledger" spinner. It's now ONE round trip
+    // (GET /cashbook/overview — the server fans out in parallel next to the
+    // DB) through the persisted cache: revisits paint instantly and revalidate
+    // in the background. staleTime 0 keeps the old always-refresh-on-focus
+    // behavior, so a payment completed in a Lenco popup/redirect is reflected
+    // the moment the user returns to the app.
     const queryClient = useQueryClient();
     const effectiveWalletId = selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined;
 
     const {
-        data: entries = [],
-        isFetching: entriesFetching,
-    } = useQuery<CashbookEntry[]>({
-        queryKey: ['cashbook-entries', organizationId, { startDate, endDate, accountType: selectedAccountType, walletId: effectiveWalletId }],
-        queryFn: () => cashbookService.getEntries({ startDate, endDate, accountType: selectedAccountType, walletId: effectiveWalletId }),
+        data: overview,
+        isFetching: overviewFetching,
+    } = useQuery({
+        queryKey: ['cashbook-overview', organizationId, { startDate, endDate, accountType: selectedAccountType, walletId: effectiveWalletId }],
+        queryFn: () => cashbookService.getOverview({ startDate, endDate, accountType: selectedAccountType, walletId: effectiveWalletId }),
         enabled: !!organizationId,
+        staleTime: 0,
         // Switching wallets/filters keeps the previous list on screen instead
         // of flashing the full-page spinner (mirrors the old keep-stale render).
         placeholderData: keepPreviousData,
     });
 
-    const { data: balance = 0, isFetching: balanceFetching } = useQuery<number>({
-        queryKey: ['cashbook-balance', organizationId, selectedAccountType, effectiveWalletId ?? null],
-        queryFn: () => cashbookService.getBalance(selectedAccountType, undefined, effectiveWalletId),
-        enabled: !!organizationId,
-        placeholderData: keepPreviousData,
-    });
-
-    // Matches the old single loadData() flag: spinner/glow logic waits for the
-    // ledger AND its balance, never for the background sample fetches.
-    const loading = entriesFetching || balanceFetching || !organizationId;
-
-    const { data: externalBalances = { CASH: 0, AIRTEL_MONEY: 0, BANK: 0 } } = useQuery({
-        queryKey: ['external-balances', organizationId],
-        queryFn: async () => {
-            const [CASH, AIRTEL_MONEY, BANK] = await Promise.all([
-                cashbookService.getBalance('CASH'),
-                cashbookService.getBalance('AIRTEL_MONEY'),
-                cashbookService.getBalance('BANK'),
-            ]);
-            return { CASH, AIRTEL_MONEY, BANK } as Record<string, number>;
-        },
-        enabled: !!organizationId,
-    });
-
-    const { data: wallets = [] } = useQuery<any[]>({
-        queryKey: ['wallets', organizationId],
-        queryFn: async () => (await cashbookService.getWallets()) || [],
-        enabled: !!organizationId,
-    });
+    const entries: CashbookEntry[] = overview?.entries ?? [];
+    const balance = overview?.balance ?? 0;
+    const externalBalances: Record<string, number> = overview?.externalBalances ?? { CASH: 0, AIRTEL_MONEY: 0, BANK: 0 };
+    const wallets: any[] = overview?.wallets ?? [];
+    const recentMoneywiseEntries: CashbookEntry[] = overview?.recent?.moneywise ?? [];
+    const recentExternalEntries: CashbookEntry[] = overview?.recent?.external ?? [];
+    // Matches the old single loadData() flag for the spinner/glow logic.
+    const loading = overviewFetching || !organizationId;
 
     const { data: accounts = [] } = useQuery<Account[]>({
         queryKey: ['accounts', organizationId],
@@ -314,31 +298,6 @@ const CashLedger: React.FC = () => {
         () => (departmentConfig?.use_departments ? departmentConfig.departments.map(d => d.name) : []),
         [departmentConfig]
     );
-
-    // Lightweight org-wide sample per category, purely to power the "new
-    // transaction" toggle dots — independent of whichever wallet/account is
-    // currently selected in the main `entries` list. staleTime 0 preserves the
-    // old always-refresh-on-focus behavior, so a payment completed in a Lenco
-    // popup/redirect is reflected the moment the user returns to the app.
-    const { data: recentSamples } = useQuery({
-        queryKey: ['cashbook-recent', organizationId],
-        queryFn: async () => {
-            const [moneywise, cash, airtel, bank] = await Promise.all([
-                cashbookService.getEntries({ accountType: 'MONEYWISE_WALLET', limit: 20 }),
-                cashbookService.getEntries({ accountType: 'CASH', limit: 10 }),
-                cashbookService.getEntries({ accountType: 'AIRTEL_MONEY', limit: 10 }),
-                cashbookService.getEntries({ accountType: 'BANK', limit: 10 }),
-            ]);
-            return {
-                moneywise: (moneywise || []) as CashbookEntry[],
-                external: [...(cash || []), ...(airtel || []), ...(bank || [])] as CashbookEntry[],
-            };
-        },
-        enabled: !!organizationId,
-        staleTime: 0,
-    });
-    const recentMoneywiseEntries = recentSamples?.moneywise ?? [];
-    const recentExternalEntries = recentSamples?.external ?? [];
     // Compare on the full created_at timestamp; the `date` column is day-granular
     // (parses to midnight) and would never read as newer than the visit cutoff.
     const entryStamp = (e: any) => (e.created_at as string) || e.date;
@@ -403,16 +362,10 @@ const CashLedger: React.FC = () => {
     };
 
     // Refresh everything after a mutation (close balance, inflow, transfer,
-    // classification…). Resolves once the active queries have refetched, so
+    // classification…). Resolves once the active query has refetched, so
     // callers that await it can rely on fresh data being on screen.
     const loadData = async () => {
-        await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['cashbook-entries', organizationId] }),
-            queryClient.invalidateQueries({ queryKey: ['cashbook-balance', organizationId] }),
-            queryClient.invalidateQueries({ queryKey: ['external-balances', organizationId] }),
-            queryClient.invalidateQueries({ queryKey: ['cashbook-recent', organizationId] }),
-            queryClient.invalidateQueries({ queryKey: ['wallets', organizationId] }),
-        ]);
+        await queryClient.invalidateQueries({ queryKey: ['cashbook-overview', organizationId] });
     };
 
     const handleExport = async (format: 'csv' | 'xlsx' | 'pdf', exportStartDate: string, exportEndDate: string) => {
