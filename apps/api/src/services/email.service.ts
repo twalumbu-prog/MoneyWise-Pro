@@ -70,7 +70,7 @@ export const emailService = {
                         <p><strong>Description:</strong> ${requisition.description}</p>
                         <p><strong>Estimated Total:</strong> K${Number(requisition.estimated_total).toLocaleString()}</p>
                         <p>Please review and authorise the requisition to proceed.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Requisition</a>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Requisition</a>
                     `;
                     break;
 
@@ -81,7 +81,7 @@ export const emailService = {
                         <h2>Your Requisition has been Approved!</h2>
                         <p><strong>Description:</strong> ${requisition.description}</p>
                         <p>Your requisition has been authorised. You will be notified once the funds are ready for collection.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Track Progress</a>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Track Progress</a>
                     `;
                     break;
 
@@ -89,10 +89,10 @@ export const emailService = {
                     recipients = await this.getUserEmail(requisition.requestor_id);
                     subject = `Requisition Rejected: ${ref}`;
                     body = `
-                        <h2 style="color:#dc2626;">Requisition Rejected</h2>
+                        <h2 style="color:#002E3B;">Requisition Rejected</h2>
                         <p><strong>Description:</strong> ${requisition.description}</p>
                         <p>Unfortunately, your requisition was not approved at this time.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#ef4444;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Details</a>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#002E3B;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Details</a>
                     `;
                     break;
 
@@ -104,7 +104,7 @@ export const emailService = {
                         <p><strong>Description:</strong> ${requisition.description}</p>
                         <p>Funds for your requisition have been prepared and are ready for collection at the cashier's desk.</p>
                         <p>Please remember to acknowledge receipt in the app after collecting the cash.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#9333ea;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Acknowledge Receipt</a>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Acknowledge Receipt</a>
                     `;
                     break;
 
@@ -116,7 +116,7 @@ export const emailService = {
                         <p><strong>Requestor:</strong> ${requisition.requestor.name}</p>
                         <p>The requestor has submitted their final expenditure and returned the unused cash.</p>
                         <p>Please verify the denominations and finalize the ledger entry.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#059669;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Verify & Finalize</a>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Verify & Finalize</a>
                     `;
                     break;
 
@@ -127,7 +127,7 @@ export const emailService = {
                         <h2>Transaction Finalized</h2>
                         <p><strong>Description:</strong> ${requisition.description}</p>
                         <p>Your requisition cycle is now complete. The final expenditure has been verified and recorded.</p>
-                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#4b5563;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Final Record</a>
+                        <a href="${requisitionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View Final Record</a>
                     `;
                     break;
             }
@@ -303,7 +303,7 @@ export const emailService = {
                 <p><strong>Description:</strong> ${entry.description}</p>
                 <p><strong>Date:</strong> ${entry.date}</p>
                 <p><strong>Reference:</strong> ${ref}</p>
-                <a href="${FRONTEND_URL}/cashbook" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View in Cashbook</a>
+                <a href="${FRONTEND_URL}/cashbook" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">View in Cashbook</a>
             `;
 
             await this.sendEmail({
@@ -370,7 +370,7 @@ export const emailService = {
                         </div>
 
                         <div style="padding:26px 44px 38px; text-align:center;">
-                            <div style="font-size:15px; font-weight:700; color:#2563FF; letter-spacing:0.02em;">🎉 You just got paid</div>
+                            <div style="font-size:15px; font-weight:700; color:#006AFF; letter-spacing:0.02em;">🎉 You just got paid</div>
                             <div style="margin:16px auto 6px;">
                                 <div style="font-size:64px; font-weight:900; letter-spacing:-0.035em; line-height:1; font-variant-numeric:tabular-nums;">K${formattedWhole}<span style="font-size:34px; font-weight:800; color:#7A8189;">.${decimals}</span></div>
                             </div>
@@ -389,7 +389,7 @@ export const emailService = {
                         </div>
 
                         <div style="padding:30px 44px 8px; text-align:center;">
-                            <a href="${ctaUrl}" style="display:block; background:#2563FF; color:#fff; font-size:16px; font-weight:800; padding:17px 24px; border-radius:12px; text-decoration:none; font-family:${FONT_STACK};">View payment in MoneyWise</a>
+                            <a href="${ctaUrl}" style="display:block; background:#006AFF; color:#fff; font-size:16px; font-weight:800; padding:17px 24px; border-radius:12px; text-decoration:none; font-family:${FONT_STACK};">View payment in MoneyWise</a>
                         </div>
 
                         <div style="margin-top:26px; padding:24px 44px 34px; border-top:1px solid #F0F2F4; text-align:center;">
@@ -418,7 +418,7 @@ export const emailService = {
             <p>Hi ${inviteeName || 'there'},</p>
             <p>You've been invited to join <strong>${orgName}</strong> on MoneyWise as a <strong>${role}</strong>.</p>
             <p>Click below to set your password and activate your account. This link expires in <strong>12 hours</strong>.</p>
-            <a href="${actionLink}" style="display:inline-block;padding:12px 24px;background-color:#4f46e5;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Accept Invitation</a>
+            <a href="${actionLink}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Accept Invitation</a>
             <p style="margin-top:16px; font-size:12px; color:#9ca3af;">If this invitation expires, ask your organization admin to resend it.</p>
         `;
 
@@ -458,7 +458,7 @@ export const emailService = {
         return `
             <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #f0f0f0; border-radius: 12px; color: #1f2937;">
                 <div style="text-align: center; margin-bottom: 24px;">
-                    <h1 style="color: #4f46e5; margin: 0;">MoneyWise</h1>
+                    <h1 style="color: #006AFF; margin: 0;">MoneyWise</h1>
                     <p style="color: #6b7280; font-size: 12px; margin: 4px 0 0;">MoneyWise Cashflow Management</p>
                 </div>
                 ${content}
