@@ -40,6 +40,7 @@ import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
+import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 import BookingCalendar from '../components/BookingCalendar';
 import { BookingRange } from '../services/product.service';
 
@@ -183,9 +184,19 @@ export const PublicPay: React.FC = () => {
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const [networkLatencyMs, setNetworkLatencyMs] = useState<number | null>(null);
     const [cancelling, setCancelling] = useState(false);
+    // "Check payment status" re-query state (failed / cancelled screens).
+    const [rechecking, setRechecking] = useState(false);
+    const [recheckNote, setRecheckNote] = useState<string | null>(null);
+    // When resuming an in-flight payment after a reload, the live cart is empty, so
+    // the waiting screen's amount/phone come from the persisted payment instead.
+    const [resumedPayment, setResumedPayment] = useState<{ amount: number; phone: string } | null>(null);
     // Flipped on Cancel so an in-flight poll loop stops recursing instead of racing
     // a fresh attempt (each retry uses a brand-new setTimeout chain).
     const pollCancelledRef = useRef(false);
+    // Set once we've resumed an in-flight payment on load, so a second loadContext
+    // run (StrictMode double-invoke, or an ERROR-screen retry) can't clobber the
+    // resumed VERIFYING screen by falling through to the catalogue.
+    const resumedRef = useRef(false);
     
     // Inputs & Forms
     const [customerName, setCustomerName] = useState('');
@@ -302,12 +313,42 @@ export const PublicPay: React.FC = () => {
             preloadImages(catalogImages.slice(6)); // background, not awaited
             await preloadImages([response.data.organization.logo_url, ...catalogImages.slice(0, 6)], 3000);
 
-            setStep('SHOP');
+            // Resume an in-flight payment if the customer reloaded mid-wait: a slow-but-
+            // successful mobile money payment is tracked server-side by its reference, so
+            // we pick that reference back up and keep watching instead of "losing" it.
+            if (!resumedRef.current && response.data.collections_api_enabled) {
+                const saved = loadPendingPayment(response.data.wallet.id);
+                if (saved) {
+                    resumedRef.current = true;
+                    const elapsedAtResume = Math.max(0, Math.floor((Date.now() - saved.startedAt) / 1000));
+                    setCurrentReference(saved.reference);
+                    setCheckoutPhone(saved.phone);
+                    setCustomerPhone(saved.phone);
+                    setResumedPayment({ amount: saved.amount, phone: saved.phone });
+                    setPaymentMethod('Mobile Money');
+                    setVerificationStep('POLLING');
+                    setAwaitingApproval(true);
+                    setPaymentPhase('polling');
+                    setElapsedSeconds(elapsedAtResume);
+                    setStep('VERIFYING');
+                    trackEvent('public_catalogue_checkout', 'resume', 'started', {
+                        workflow_id: saved.reference,
+                        organization_id: saved.orgId,
+                        elapsed_seconds_at_resume: elapsedAtResume,
+                    });
+                    startCompletionPoll(saved.reference, saved.orgId, saved.startedAt);
+                    return;
+                }
+            }
+
+            // Don't drop a resumed payment back to the catalogue on a second run.
+            if (!resumedRef.current) setStep('SHOP');
         } catch (err: any) {
             console.error('Error fetching public pay context:', err);
             setErrorInfo(diagnoseCheckoutError(err));
             setStep('ERROR');
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [wallet_id]);
 
     useEffect(() => {
@@ -673,6 +714,81 @@ export const PublicPay: React.FC = () => {
         }
     };
 
+    // Poll verify-status for a reference until it resolves. Shared by a fresh
+    // payment and by resume-after-reload. On success/decline it clears the saved
+    // recovery record; on a poll timeout it deliberately KEEPS it so a reload or a
+    // manual "Check payment status" can still recover a slow-but-successful payment.
+    const startCompletionPoll = (ref: string, orgId: string, startedAt: number, analytics?: Record<string, any>) => {
+        pollCancelledRef.current = false;
+        let attempts = 0;
+        const maxAttempts = 90; // ~3 min at 2s
+        const pollStatus = async () => {
+            if (pollCancelledRef.current) return;
+            attempts++;
+            try {
+                const verifyRes = await axios.get(
+                    `${API_URL}/lenco/public-verify-status/${ref}?organizationId=${orgId}`
+                );
+                if (pollCancelledRef.current) return;
+                if (verifyRes.data.verified) {
+                    setVerificationStep('SUCCESS');
+                    setReceiptNumber(verifyRes.data.referenceNumber || null);
+                    setAwaitingApproval(false);
+                    setPaymentPhase('success');
+                    clearPendingPayment();
+                    trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
+                        workflow_id: ref,
+                        organization_id: orgId,
+                        ...(analytics || {}),
+                        receipt_number: verifyRes.data.referenceNumber,
+                        payment_method: 'Mobile Money',
+                        duration_ms: Date.now() - startedAt,
+                    });
+                    return;
+                }
+                if (verifyRes.data.status === 'failed') {
+                    setVerificationStep('FAILED');
+                    setVerificationReason('The payment was declined or not approved on your phone. You can go back and try again.');
+                    setAwaitingApproval(false);
+                    setFailureIsDeclined(true);
+                    setPaymentPhase('failed');
+                    clearPendingPayment();
+                    // Distinct from a poll timeout — Lenco itself confirmed the decline.
+                    trackEvent('public_catalogue_checkout', 'payment', 'failed', {
+                        workflow_id: ref,
+                        organization_id: orgId,
+                        ...(analytics || {}),
+                        payment_method: 'mobile-money',
+                        error_code: 'declined',
+                        error_message: 'Customer declined or did not approve the mobile money prompt',
+                        duration_ms: Date.now() - startedAt,
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.error('Public momo verification attempt failed:', err);
+            }
+            if (pollCancelledRef.current) return;
+            if (attempts < maxAttempts) {
+                setTimeout(pollStatus, 2000);
+            } else {
+                setVerificationStep('FAILED');
+                setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
+                setAwaitingApproval(false);
+                setFailureIsDeclined(false);
+                setPaymentPhase('failed');
+                // Keep the saved record — a reload or "Check payment status" can still recover it.
+                trackVerificationTimeout('public_catalogue_checkout', {
+                    workflow_id: ref,
+                    organization_id: orgId,
+                    attempts,
+                    duration_ms: Date.now() - startedAt,
+                });
+            }
+        };
+        pollStatus();
+    };
+
     // Own-UX mobile money checkout: initiate the collection server-side, then poll
     // the same verify-status endpoint the widget path used. The customer approves on
     // their phone — no widget, no redirect — so closing/reloading this page can't lose
@@ -765,73 +881,33 @@ export const PublicPay: React.FC = () => {
                 throw new Error(`Payment could not be started (status: ${status || 'unknown'}). Please try again.`);
             }
 
-            // 3. Prompt dispatched — move to the "confirm" phase and poll verify-status
-            // (which finalizes the ledger). The screen auto-advances to "polling" after
-            // a few seconds; success/failure come from the real status below.
+            // 3. Prompt dispatched — persist a recovery record (so a reload can resume),
+            // move to the "confirm" phase and poll verify-status via the shared poller.
+            savePendingPayment({
+                reference: ref,
+                contextId: wallet.id,
+                orgId: org.id,
+                phone: payerPhone,
+                amount: totalPayable,
+                businessName: org.name,
+                startedAt: checkoutStartedAt,
+            });
+            setResumedPayment(null);
+            setRecheckNote(null);
             setVerificationStep('POLLING');
             setPaymentPhase('confirm');
             setAwaitingApproval(true);
             setElapsedSeconds(0);
             setSubmitting(false);
 
-            let attempts = 0;
-            const maxAttempts = 90; // ~3 min at 2s — room for the USSD approve step, faster success reflection
-            const pollStatus = async () => {
-                if (pollCancelledRef.current) return;
-                attempts++;
-                try {
-                    const verifyRes = await axios.get(
-                        `${API_URL}/lenco/public-verify-status/${ref}?organizationId=${org.id}`
-                    );
-                    if (pollCancelledRef.current) return;
-                    if (verifyRes.data.verified) {
-                        setVerificationStep('SUCCESS');
-                        setReceiptNumber(verifyRes.data.referenceNumber || null);
-                        setAwaitingApproval(false);
-                        setPaymentPhase('success');
-                        trackEvent('public_catalogue_checkout', 'payment', 'succeeded', {
-                            workflow_id: ref,
-                            organization_id: org.id,
-                            wallet_id: wallet.id,
-                            subtotal,
-                            total_payable: totalPayable,
-                            receipt_number: verifyRes.data.referenceNumber,
-                            payment_method: 'Mobile Money',
-                            duration_ms: Date.now() - checkoutStartedAt,
-                        });
-                        return;
-                    }
-                    if (verifyRes.data.status === 'failed') {
-                        setVerificationStep('FAILED');
-                        setVerificationReason('The payment was declined or not approved on your phone. You can go back and try again.');
-                        setAwaitingApproval(false);
-                        setFailureIsDeclined(true);
-                        setPaymentPhase('failed');
-                        return;
-                    }
-                } catch (err) {
-                    console.error('Public momo verification attempt failed:', err);
-                }
-                if (pollCancelledRef.current) return;
-                if (attempts < maxAttempts) {
-                    setTimeout(pollStatus, 2000);
-                } else {
-                    setVerificationStep('FAILED');
-                    setVerificationReason('Payment was submitted but the ledger sync is taking longer than expected. Please contact the business admin to verify.');
-                    setAwaitingApproval(false);
-                    setFailureIsDeclined(false);
-                    setPaymentPhase('failed');
-                    trackVerificationTimeout('public_catalogue_checkout', {
-                        workflow_id: ref,
-                        organization_id: org.id,
-                        attempts,
-                        duration_ms: Date.now() - checkoutStartedAt,
-                    });
-                }
-            };
-            pollStatus();
+            startCompletionPoll(ref, org.id, checkoutStartedAt, {
+                wallet_id: wallet.id,
+                subtotal,
+                total_payable: totalPayable,
+            });
         } catch (err: any) {
             console.error('Failed to initiate mobile money checkout:', err);
+            clearPendingPayment();
             setSubmitting(false);
             setAwaitingApproval(false);
             setPaymentPhase(null);
@@ -857,6 +933,11 @@ export const PublicPay: React.FC = () => {
     const handleCancelPayment = async () => {
         setCancelling(true);
         pollCancelledRef.current = true;
+        trackEvent('public_catalogue_checkout', 'cancel', 'started', {
+            workflow_id: currentReference,
+            organization_id: org?.id || 'unknown',
+            payment_method: 'mobile-money',
+        });
         try {
             await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
         } catch (err) {
@@ -865,30 +946,98 @@ export const PublicPay: React.FC = () => {
             setCancelling(false);
             setAwaitingApproval(false);
             setElapsedSeconds(0);
-            setPaymentPhase(null);
-            setStep('CHECKOUT');
+            setRecheckNote(null);
+            // Show a "Payment stopped" state that sets expectations about the lingering
+            // prompt (Lenco can't recall it) instead of silently bouncing to the form.
+            // The saved recovery record is kept so "Check payment status" / a reload can
+            // still catch it if the customer approves the prompt anyway.
+            setPaymentPhase('cancelled');
+            trackEvent('public_catalogue_checkout', 'cancel', 'succeeded', {
+                workflow_id: currentReference,
+                organization_id: org?.id || 'unknown',
+                payment_method: 'mobile-money',
+            });
+        }
+    };
+
+    // Re-query whether the collection actually went through (used on the failed and
+    // cancelled screens). Recovers a slow-but-successful payment and, crucially,
+    // prevents a double-charge if the customer approved the prompt after cancelling.
+    const handleRecheckPayment = async () => {
+        if (!org || !currentReference) return;
+        setRechecking(true);
+        setRecheckNote(null);
+        const startedAt = Date.now();
+        trackEvent('public_catalogue_checkout', 'recheck', 'started', {
+            workflow_id: currentReference,
+            organization_id: org.id,
+            from_phase: paymentPhase || 'unknown',
+        });
+        try {
+            const verifyRes = await axios.get(
+                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${org.id}`
+            );
+            let outcome: 'verified' | 'declined' | 'pending' = 'pending';
+            if (verifyRes.data.verified) {
+                outcome = 'verified';
+                setReceiptNumber(verifyRes.data.referenceNumber || null);
+                setAwaitingApproval(false);
+                setPaymentPhase('success');
+                clearPendingPayment();
+            } else if (verifyRes.data.status === 'failed') {
+                outcome = 'declined';
+                setRecheckNote('This payment was declined — nothing has been charged. You can try again.');
+                clearPendingPayment();
+            } else {
+                setRecheckNote('Not confirmed yet. If you just approved it, wait a few seconds and check again.');
+            }
+            trackEvent('public_catalogue_checkout', 'recheck', 'succeeded', {
+                workflow_id: currentReference,
+                organization_id: org.id,
+                from_phase: paymentPhase || 'unknown',
+                recheck_outcome: outcome,
+                duration_ms: Date.now() - startedAt,
+            });
+        } catch (err) {
+            console.error('Recheck failed:', err);
+            setRecheckNote('Couldn’t check right now — please try again in a moment.');
+            trackEvent('public_catalogue_checkout', 'recheck', 'failed', {
+                workflow_id: currentReference,
+                organization_id: org.id,
+                from_phase: paymentPhase || 'unknown',
+                duration_ms: Date.now() - startedAt,
+            });
+        } finally {
+            setRechecking(false);
         }
     };
 
     // Success "View receipt" → the existing full receipt screen.
     const handleViewReceipt = () => {
         setPaymentPhase(null);
+        setResumedPayment(null);
         setStep('SUCCESS');
     };
 
     // Failed "Try again" → back to the payment form with a fresh attempt.
     const handleRetryPayment = () => {
         pollCancelledRef.current = true;
+        clearPendingPayment();
         setPaymentPhase(null);
+        setResumedPayment(null);
+        setRecheckNote(null);
         setVerificationStep('POLLING');
         setError(null);
         setStep('CHECKOUT');
     };
 
-    // Failed "Cancel" → leave the flow back to the cart.
+    // Failed "Cancel" / cancelled "Back to cart" → leave the flow back to the cart.
     const handleDismissFailed = () => {
         pollCancelledRef.current = true;
+        clearPendingPayment();
         setPaymentPhase(null);
+        setResumedPayment(null);
+        setRecheckNote(null);
         setVerificationStep('POLLING');
         setError(null);
         setStep('CATALOG');
@@ -2416,20 +2565,24 @@ Status: VERIFIED`;
                     <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]">
                         <PaymentWaitingScreen
                             phase={displayPaymentPhase}
-                            amount={totalPayable}
+                            amount={resumedPayment ? resumedPayment.amount : totalPayable}
                             businessName={org.name}
-                            payerPhone={checkoutPhone}
-                            operator={detectOperator(checkoutPhone)}
+                            payerPhone={resumedPayment ? resumedPayment.phone : checkoutPhone}
+                            operator={detectOperator(resumedPayment ? resumedPayment.phone : checkoutPhone)}
                             isSlowNetwork={isSlowNetwork}
                             elapsedSeconds={elapsedSeconds}
                             reference={receiptNumber || currentReference}
                             failureIsDeclined={failureIsDeclined}
                             failureReason={verificationReason}
                             cancelling={cancelling}
+                            rechecking={rechecking}
+                            recheckNote={recheckNote}
+                            dismissLabel="Back to cart"
                             onCancel={handleCancelPayment}
                             onRetry={handleRetryPayment}
                             onDismiss={handleDismissFailed}
                             onDone={handleViewReceipt}
+                            onRecheck={handleRecheckPayment}
                         />
                     </div>
                 )}
@@ -2509,14 +2662,14 @@ Status: VERIFIED`;
                             <div className="flex flex-col items-center text-center pt-6 pb-1">
                                 <div
                                     className="relative w-24 h-24 animate-in zoom-in-75 duration-300"
-                                    style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,49,41,1))' }}
                                 >
                                     <BadgeCheck
-                                        className="w-24 h-24 text-[#003129]"
-                                        fill="#16a34a"
+                                        className="w-24 h-24 text-[#002962]"
+                                        fill="#006AFF"
                                         strokeWidth={1.5}
+                                        style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
                                     />
-                                    {/* White tick overlaid on top of the seal's own check */}
+                                    {/* White tick overlaid on top of the seal's own check — no shadow, sits flat above it */}
                                     <Check className="absolute inset-0 m-auto w-9 h-9 text-white" strokeWidth={3} />
                                 </div>
                                 <h2 className="text-2xl font-black text-slate-900 mt-6">Congratulations</h2>

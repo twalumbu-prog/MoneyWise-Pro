@@ -51,7 +51,7 @@ function fmtAmount(n: number): string {
     return `K${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 }
 
-export type PaymentPhase = 'initiating' | 'confirm' | 'polling' | 'success' | 'failed';
+export type PaymentPhase = 'initiating' | 'confirm' | 'polling' | 'success' | 'failed' | 'cancelled';
 
 interface PaymentWaitingScreenProps {
     phase: PaymentPhase;
@@ -65,10 +65,14 @@ interface PaymentWaitingScreenProps {
     failureIsDeclined?: boolean;
     failureReason?: string;
     cancelling: boolean;
+    rechecking?: boolean;      // failed/cancelled: a "check payment status" re-query is in flight
+    recheckNote?: string | null; // failed/cancelled: result of the last re-check
+    dismissLabel?: string;     // cancelled: label for the leave-flow button ("Back to cart" / "Close")
     onCancel: () => void;      // polling: stop waiting on this screen
     onRetry?: () => void;      // failed: start over
-    onDismiss?: () => void;    // failed: leave the flow
+    onDismiss?: () => void;    // failed/cancelled: leave the flow
     onDone?: () => void;       // success: view the receipt
+    onRecheck?: () => void;    // failed/cancelled: re-query whether it actually went through
 }
 
 const primaryBtnClass =
@@ -88,20 +92,27 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
     failureIsDeclined,
     failureReason,
     cancelling,
+    rechecking,
+    recheckNote,
+    dismissLabel = 'Close',
     onCancel,
     onRetry,
     onDismiss,
     onDone,
+    onRecheck,
 }) => {
     const opLabel = operator ? operator.toUpperCase() : 'MOBILE MONEY';
-    const showSpinner = phase !== 'success' && phase !== 'failed';
+    const showSpinner = phase === 'initiating' || phase === 'confirm' || phase === 'polling';
 
-    // Polling reassurance copy rotates every second; the slow-network note is
-    // folded into the rotation when the latency probe flagged the connection.
+    // Polling reassurance copy rotates every few seconds — slow enough to actually
+    // read — with the slow-network note folded in when the latency probe flagged
+    // the connection.
+    const POLLING_TIP_INTERVAL_SECONDS = 4;
     const pollingSub = useMemo(() => {
         const tips = ['Verifying with the network…', 'Confirming your payment…', 'Almost there…'];
         if (isSlowNetwork) tips.push('Your connection seems slow — hang on, we’re still checking…');
-        return tips[Math.max(0, Math.floor(elapsedSeconds)) % tips.length];
+        const tick = Math.floor(Math.max(0, elapsedSeconds) / POLLING_TIP_INTERVAL_SECONDS);
+        return tips[tick % tips.length];
     }, [elapsedSeconds, isSlowNetwork]);
 
     const { title, sub } = useMemo(() => {
@@ -118,6 +129,8 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                 return failureIsDeclined
                     ? { title: 'Payment not completed', sub: 'The prompt wasn’t approved in time. Nothing has been charged.' }
                     : { title: 'Not confirmed yet', sub: failureReason || 'We haven’t received confirmation. If you approved it, it may still complete — please check with the business.' };
+            case 'cancelled':
+                return { title: 'Payment stopped', sub: 'You stopped waiting for this payment.' };
         }
     }, [phase, opLabel, payerPhone, pollingSub, amount, businessName, failureIsDeclined, failureReason]);
 
@@ -129,7 +142,7 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
     // instead of the middle of an arbitrary box.
     const handleDismiss = () => {
         if (phase === 'success') onDone?.();
-        else if (phase === 'failed') onDismiss?.();
+        else if (phase === 'failed' || phase === 'cancelled') onDismiss?.();
         else onCancel();
     };
 
@@ -272,20 +285,51 @@ export const PaymentWaitingScreen: React.FC<PaymentWaitingScreenProps> = ({
                 {phase === 'failed' && (
                     <div style={{ animation: 'mwpw-rise .45s ease both' }}>
                         {failureIsDeclined ? (
-                            <div className="flex items-center gap-2.5" style={{ borderRadius: 16, background: '#FEF6F6', border: '1px solid #F5DADB', padding: '14px 16px' }}>
-                                <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0"><circle cx="9" cy="9" r="8" fill="none" stroke="#E5484D" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#E5484D" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#E5484D" /></svg>
-                                <span className="text-[13px] font-semibold" style={{ color: '#8A3B3E' }}>No money has left your wallet.</span>
+                            <div className="flex items-start gap-2.5" style={{ borderRadius: 16, background: '#FEF6F6', border: '1px solid #F5DADB', padding: '14px 16px' }}>
+                                <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0 mt-0.5"><circle cx="9" cy="9" r="8" fill="none" stroke="#E5484D" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#E5484D" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#E5484D" /></svg>
+                                <span className="text-[13px] font-semibold leading-snug" style={{ color: '#8A3B3E' }}>
+                                    No money has left your wallet. If it looks like you were still charged, press "Check payment status" below.
+                                </span>
                             </div>
                         ) : (
                             <div className="flex items-center gap-2.5" style={{ borderRadius: 16, background: '#FFF8EF', border: '1px solid #F5E4CE', padding: '14px 16px' }}>
                                 <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0"><circle cx="9" cy="9" r="8" fill="none" stroke="#B77A1C" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#B77A1C" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#B77A1C" /></svg>
-                                <span className="text-[13px] font-semibold leading-snug" style={{ color: '#8A5A1C' }}>If you approved the prompt, the payment may still complete. Please check with the business before paying again.</span>
+                                <span className="text-[13px] font-semibold leading-snug" style={{ color: '#8A5A1C' }}>If you approved the prompt, the payment may still complete. Check its status below before paying again.</span>
                             </div>
+                        )}
+                        {recheckNote && (
+                            <p className="mt-2.5 text-center text-[12px] font-medium leading-snug text-slate-500">{recheckNote}</p>
                         )}
                         <button onClick={onRetry} className={`mt-3 ${primaryBtnClass}`} style={{ background: ACCENT, boxShadow: `0 10px 22px ${ACCENT}44` }}>
                             Try again
                         </button>
-                        <button onClick={onDismiss} className={`mt-2.5 ${ghostBtnClass}`}>Cancel</button>
+                        {onRecheck && (
+                            <button onClick={onRecheck} disabled={rechecking} className={`mt-2.5 ${ghostBtnClass}`}>
+                                {rechecking ? <Loader2 size={13} className="animate-spin" /> : null}
+                                {rechecking ? 'Checking…' : 'Check payment status'}
+                            </button>
+                        )}
+                        <button onClick={onDismiss} className="mt-2.5 w-full py-3 text-sm font-semibold text-slate-400 transition-colors hover:text-slate-600">Cancel</button>
+                    </div>
+                )}
+
+                {phase === 'cancelled' && (
+                    <div style={{ animation: 'mwpw-rise .45s ease both' }}>
+                        <div className="flex items-start gap-2.5" style={{ borderRadius: 16, background: '#F7F8FA', border: '1px solid #E7EAEF', padding: '14px 16px' }}>
+                            <svg width="18" height="18" viewBox="0 0 18 18" className="flex-shrink-0 mt-0.5"><circle cx="9" cy="9" r="8" fill="none" stroke="#9AA2AE" strokeWidth="1.5" /><path d="M9 4.5 V10" stroke="#9AA2AE" strokeWidth="1.6" strokeLinecap="round" /><circle cx="9" cy="13" r="1" fill="#9AA2AE" /></svg>
+                            <span className="text-[12.5px] font-medium leading-snug" style={{ color: '#6B7480' }}>
+                                A prompt may still show on <span className="font-bold text-slate-700">{maskPhone(payerPhone)}</span> a couple of times — you can safely ignore it. It expires on its own and you’re only charged if you enter your PIN.
+                            </span>
+                        </div>
+                        {recheckNote && (
+                            <p className="mt-2.5 text-center text-[12px] font-medium leading-snug text-slate-500">{recheckNote}</p>
+                        )}
+                        {onRecheck && (
+                            <button onClick={onRecheck} disabled={rechecking} className={`mt-3 ${primaryBtnClass}`} style={{ background: ACCENT, boxShadow: `0 10px 22px ${ACCENT}44` }}>
+                                {rechecking ? <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Checking…</span> : 'Check payment status'}
+                            </button>
+                        )}
+                        <button onClick={onDismiss} className={`mt-2.5 ${ghostBtnClass}`}>{dismissLabel}</button>
                     </div>
                 )}
             </div>

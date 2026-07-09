@@ -20,6 +20,7 @@ import {
 import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
+import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -99,9 +100,17 @@ export const PublicPaymentLink: React.FC = () => {
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
     const [networkLatencyMs, setNetworkLatencyMs] = useState<number | null>(null);
     const [cancelling, setCancelling] = useState(false);
+    // "Check payment status" re-query state (failed / cancelled screens).
+    const [rechecking, setRechecking] = useState(false);
+    const [recheckNote, setRecheckNote] = useState<string | null>(null);
+    // On resume-after-reload the amount comes from the persisted payment.
+    const [resumedPayment, setResumedPayment] = useState<{ amount: number; phone: string } | null>(null);
     // Flipped on Cancel so an in-flight poll loop stops recursing instead of racing
     // a fresh attempt (each retry uses a brand-new setTimeout chain).
     const pollCancelledRef = useRef(false);
+    // Set once we've resumed an in-flight payment on load, so a second loadContext
+    // run (StrictMode double-invoke, or an ERROR-screen retry) can't clobber it.
+    const resumedRef = useRef(false);
 
     // Re-runnable from the ERROR screen's Try Again.
     const loadContext = useCallback(async () => {
@@ -137,12 +146,39 @@ export const PublicPaymentLink: React.FC = () => {
                 setStep('ERROR');
                 return;
             }
-            setStep('READY');
+
+            // Resume an in-flight payment if the customer reloaded mid-wait.
+            if (!resumedRef.current && res.data.collections_api_enabled && token) {
+                const saved = loadPendingPayment(token);
+                if (saved) {
+                    resumedRef.current = true;
+                    const elapsedAtResume = Math.max(0, Math.floor((Date.now() - saved.startedAt) / 1000));
+                    setCurrentReference(saved.reference);
+                    setPhone(saved.phone);
+                    setResumedPayment({ amount: saved.amount, phone: saved.phone });
+                    setVerificationStep('POLLING');
+                    setAwaitingApproval(true);
+                    setPaymentPhase('polling');
+                    setElapsedSeconds(elapsedAtResume);
+                    setStep('VERIFYING');
+                    trackEvent('payment_link_checkout', 'resume', 'started', {
+                        workflow_id: saved.reference,
+                        organization_id: saved.orgId,
+                        elapsed_seconds_at_resume: elapsedAtResume,
+                    });
+                    startCompletionPoll(saved.reference, saved.orgId, saved.startedAt);
+                    return;
+                }
+            }
+
+            // Don't drop a resumed payment back to the ready screen on a second run.
+            if (!resumedRef.current) setStep('READY');
         } catch (err: any) {
             console.error('Error fetching payment-link context:', err);
             setErrorInfo(diagnoseCheckoutError(err));
             setStep('ERROR');
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
 
     useEffect(() => {
@@ -320,6 +356,79 @@ export const PublicPaymentLink: React.FC = () => {
         }
     };
 
+    // Poll verify-status for a reference until it resolves. Shared by a fresh
+    // payment and resume-after-reload. Clears the saved recovery record on
+    // success/decline; keeps it on a poll timeout so a reload or manual re-check
+    // can still recover a slow-but-successful payment.
+    const startCompletionPoll = (ref: string, orgId: string, startedAt: number, analytics?: Record<string, any>) => {
+        pollCancelledRef.current = false;
+        let attempts = 0;
+        const maxAttempts = 90; // ~3 min at 2s
+        const pollStatus = async () => {
+            if (pollCancelledRef.current) return;
+            attempts++;
+            try {
+                const verifyRes = await axios.get(
+                    `${API_URL}/lenco/public-verify-status/${ref}?organizationId=${orgId}`
+                );
+                if (pollCancelledRef.current) return;
+                if (verifyRes.data.verified) {
+                    setReceiptNumber(verifyRes.data.referenceNumber || null);
+                    setAwaitingApproval(false);
+                    setPaymentPhase('success');
+                    clearPendingPayment();
+                    trackEvent('payment_link_checkout', 'payment', 'succeeded', {
+                        workflow_id: ref,
+                        organization_id: orgId,
+                        ...(analytics || {}),
+                        receipt_number: verifyRes.data.referenceNumber,
+                        payment_method: 'mobile-money',
+                        duration_ms: Date.now() - startedAt,
+                    });
+                    return;
+                }
+                if (verifyRes.data.status === 'failed') {
+                    setVerificationStep('FAILED');
+                    setVerificationReason('The payment was declined or not approved on your phone. You can go back and try again.');
+                    setAwaitingApproval(false);
+                    setFailureIsDeclined(true);
+                    setPaymentPhase('failed');
+                    clearPendingPayment();
+                    // Distinct from a poll timeout — Lenco itself confirmed the decline.
+                    trackEvent('payment_link_checkout', 'payment', 'failed', {
+                        workflow_id: ref,
+                        organization_id: orgId,
+                        ...(analytics || {}),
+                        payment_method: 'mobile-money',
+                        error_code: 'declined',
+                        error_message: 'Customer declined or did not approve the mobile money prompt',
+                        duration_ms: Date.now() - startedAt,
+                    });
+                    return;
+                }
+            } catch (err) {
+                console.error('Payment-link momo verification attempt failed:', err);
+            }
+            if (pollCancelledRef.current) return;
+            if (attempts < maxAttempts) {
+                setTimeout(pollStatus, 2000);
+            } else {
+                setVerificationStep('FAILED');
+                setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
+                setAwaitingApproval(false);
+                setFailureIsDeclined(false);
+                setPaymentPhase('failed');
+                trackVerificationTimeout('payment_link_checkout', {
+                    workflow_id: ref,
+                    organization_id: orgId,
+                    attempts,
+                    duration_ms: Date.now() - startedAt,
+                });
+            }
+        };
+        pollStatus();
+    };
+
     // Own-UX mobile money checkout: initiate the collection server-side, then poll
     // the same verify-status endpoint the widget path used. The customer approves on
     // their phone — no widget, no redirect — so closing/reloading this page can't lose
@@ -384,72 +493,33 @@ export const PublicPaymentLink: React.FC = () => {
                 throw new Error(`Payment could not be started (status: ${status || 'unknown'}). Please try again.`);
             }
 
-            // 3. Prompt dispatched — move to the "confirm" phase and poll verify-status
-            // (which finalizes the ledger). The screen auto-advances to "polling" after
-            // a few seconds; success/failure come from the real status below.
+            // 3. Prompt dispatched — persist a recovery record (so a reload can resume),
+            // move to the "confirm" phase and poll verify-status via the shared poller.
+            savePendingPayment({
+                reference: ref,
+                contextId: token,
+                orgId: ctx.organization.id,
+                phone,
+                amount: totalPayable,
+                businessName: ctx.organization.name,
+                startedAt: checkoutStartedAt,
+            });
+            setResumedPayment(null);
+            setRecheckNote(null);
             setVerificationStep('POLLING');
             setPaymentPhase('confirm');
             setAwaitingApproval(true);
             setElapsedSeconds(0);
             setSubmitting(false);
 
-            let attempts = 0;
-            const maxAttempts = 90; // ~3 min at 2s — room for the USSD approve step, faster success reflection
-            const pollStatus = async () => {
-                if (pollCancelledRef.current) return;
-                attempts++;
-                try {
-                    const verifyRes = await axios.get(
-                        `${API_URL}/lenco/public-verify-status/${ref}?organizationId=${ctx.organization.id}`
-                    );
-                    if (pollCancelledRef.current) return;
-                    if (verifyRes.data.verified) {
-                        setReceiptNumber(verifyRes.data.referenceNumber || null);
-                        setAwaitingApproval(false);
-                        setPaymentPhase('success');
-                        trackEvent('payment_link_checkout', 'payment', 'succeeded', {
-                            workflow_id: ref,
-                            organization_id: ctx.organization.id,
-                            product_name: ctx.product.name,
-                            subtotal,
-                            total_payable: totalPayable,
-                            receipt_number: verifyRes.data.referenceNumber,
-                            payment_method: 'mobile-money',
-                            duration_ms: Date.now() - checkoutStartedAt,
-                        });
-                        return;
-                    }
-                    // Lenco reported a terminal failure (declined / wrong PIN / timeout).
-                    if (verifyRes.data.status === 'failed') {
-                        setVerificationStep('FAILED');
-                        setVerificationReason('The payment was declined or not approved on your phone. You can go back and try again.');
-                        setAwaitingApproval(false);
-                        setFailureIsDeclined(true);
-                        setPaymentPhase('failed');
-                        return;
-                    }
-                } catch (err) {
-                    console.error('Payment-link momo verification attempt failed:', err);
-                }
-                if (pollCancelledRef.current) return;
-                if (attempts < maxAttempts) {
-                    setTimeout(pollStatus, 2000);
-                } else {
-                    setVerificationStep('FAILED');
-                    setVerificationReason('We haven’t received confirmation yet. If you approved the payment, it may still be processing — please contact the business to confirm.');
-                    setAwaitingApproval(false);
-                    setFailureIsDeclined(false);
-                    setPaymentPhase('failed');
-                    trackVerificationTimeout('payment_link_checkout', {
-                        workflow_id: ref,
-                        organization_id: ctx.organization.id,
-                        attempts,
-                        duration_ms: Date.now() - checkoutStartedAt,
-                    });
-                }
-            };
-            pollStatus();
+            startCompletionPoll(ref, ctx.organization.id, checkoutStartedAt, {
+                product_name: ctx.product.name,
+                subtotal,
+                total_payable: totalPayable,
+                payment_link_token: token,
+            });
         } catch (err: any) {
+            clearPendingPayment();
             setSubmitting(false);
             setAwaitingApproval(false);
             setPaymentPhase(null);
@@ -475,6 +545,11 @@ export const PublicPaymentLink: React.FC = () => {
     const handleCancelPayment = async () => {
         setCancelling(true);
         pollCancelledRef.current = true;
+        trackEvent('payment_link_checkout', 'cancel', 'started', {
+            workflow_id: currentReference,
+            organization_id: ctx?.organization.id || 'unknown',
+            payment_method: 'mobile-money',
+        });
         try {
             await axios.post(`${API_URL}/lenco/public-collection/cancel`, { reference: currentReference });
         } catch (err) {
@@ -483,30 +558,95 @@ export const PublicPaymentLink: React.FC = () => {
             setCancelling(false);
             setAwaitingApproval(false);
             setElapsedSeconds(0);
-            setPaymentPhase(null);
-            setStep('CHECKOUT');
+            setRecheckNote(null);
+            // Show a "Payment stopped" state that sets expectations about the lingering
+            // prompt (Lenco can't recall it). Saved recovery record kept so "Check payment
+            // status" / a reload can still catch a late approval.
+            setPaymentPhase('cancelled');
+            trackEvent('payment_link_checkout', 'cancel', 'succeeded', {
+                workflow_id: currentReference,
+                organization_id: ctx?.organization.id || 'unknown',
+                payment_method: 'mobile-money',
+            });
+        }
+    };
+
+    // Re-query whether the collection actually went through (failed/cancelled screens).
+    const handleRecheckPayment = async () => {
+        if (!ctx || !currentReference) return;
+        setRechecking(true);
+        setRecheckNote(null);
+        const startedAt = Date.now();
+        trackEvent('payment_link_checkout', 'recheck', 'started', {
+            workflow_id: currentReference,
+            organization_id: ctx.organization.id,
+            from_phase: paymentPhase || 'unknown',
+        });
+        try {
+            const verifyRes = await axios.get(
+                `${API_URL}/lenco/public-verify-status/${currentReference}?organizationId=${ctx.organization.id}`
+            );
+            let outcome: 'verified' | 'declined' | 'pending' = 'pending';
+            if (verifyRes.data.verified) {
+                outcome = 'verified';
+                setReceiptNumber(verifyRes.data.referenceNumber || null);
+                setAwaitingApproval(false);
+                setPaymentPhase('success');
+                clearPendingPayment();
+            } else if (verifyRes.data.status === 'failed') {
+                outcome = 'declined';
+                setRecheckNote('This payment was declined — nothing has been charged. You can try again.');
+                clearPendingPayment();
+            } else {
+                setRecheckNote('Not confirmed yet. If you just approved it, wait a few seconds and check again.');
+            }
+            trackEvent('payment_link_checkout', 'recheck', 'succeeded', {
+                workflow_id: currentReference,
+                organization_id: ctx.organization.id,
+                from_phase: paymentPhase || 'unknown',
+                recheck_outcome: outcome,
+                duration_ms: Date.now() - startedAt,
+            });
+        } catch (err) {
+            console.error('Recheck failed:', err);
+            setRecheckNote('Couldn’t check right now — please try again in a moment.');
+            trackEvent('payment_link_checkout', 'recheck', 'failed', {
+                workflow_id: currentReference,
+                organization_id: ctx.organization.id,
+                from_phase: paymentPhase || 'unknown',
+                duration_ms: Date.now() - startedAt,
+            });
+        } finally {
+            setRechecking(false);
         }
     };
 
     // Success "View receipt" → the existing full receipt screen.
     const handleViewReceipt = () => {
         setPaymentPhase(null);
+        setResumedPayment(null);
         setStep('SUCCESS');
     };
 
     // Failed "Try again" → back to the payment form with a fresh attempt.
     const handleRetryPayment = () => {
         pollCancelledRef.current = true;
+        clearPendingPayment();
         setPaymentPhase(null);
+        setResumedPayment(null);
+        setRecheckNote(null);
         setVerificationStep('POLLING');
         setError(null);
         setStep('CHECKOUT');
     };
 
-    // Failed "Cancel" → leave the flow back to the link's ready screen.
+    // Failed "Cancel" / cancelled "Close" → leave the flow back to the link's ready screen.
     const handleDismissFailed = () => {
         pollCancelledRef.current = true;
+        clearPendingPayment();
         setPaymentPhase(null);
+        setResumedPayment(null);
+        setRecheckNote(null);
         setVerificationStep('POLLING');
         setError(null);
         setStep('READY');
@@ -756,20 +896,24 @@ export const PublicPaymentLink: React.FC = () => {
                     <div className="flex flex-col min-h-[520px]">
                         <PaymentWaitingScreen
                             phase={displayPaymentPhase}
-                            amount={totalPayable}
+                            amount={resumedPayment ? resumedPayment.amount : totalPayable}
                             businessName={ctx.organization.name}
-                            payerPhone={phone}
-                            operator={detectOperator(phone)}
+                            payerPhone={resumedPayment ? resumedPayment.phone : phone}
+                            operator={detectOperator(resumedPayment ? resumedPayment.phone : phone)}
                             isSlowNetwork={isSlowNetwork}
                             elapsedSeconds={elapsedSeconds}
                             reference={receiptNumber || currentReference}
                             failureIsDeclined={failureIsDeclined}
                             failureReason={verificationReason}
                             cancelling={cancelling}
+                            rechecking={rechecking}
+                            recheckNote={recheckNote}
+                            dismissLabel="Close"
                             onCancel={handleCancelPayment}
                             onRetry={handleRetryPayment}
                             onDismiss={handleDismissFailed}
                             onDone={handleViewReceipt}
+                            onRecheck={handleRecheckPayment}
                         />
                     </div>
                 )}
@@ -808,7 +952,7 @@ export const PublicPaymentLink: React.FC = () => {
 
                 {step === 'SUCCESS' && ctx && (
                     <div className="p-8 text-center min-h-[450px] flex flex-col justify-center">
-                        <div className="mx-auto w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mb-5 animate-in zoom-in-75 duration-300">
+                        <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-5 animate-in zoom-in-75 duration-300" style={{ backgroundColor: '#006AFF1A', color: '#002962' }}>
                             <CheckCircle2 size={32} strokeWidth={2.5} />
                         </div>
                         <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">Payment Confirmed!</h3>
