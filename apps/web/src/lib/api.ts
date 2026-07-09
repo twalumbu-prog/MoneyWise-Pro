@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { trackEvent } from './analytics';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -99,7 +100,49 @@ function sendRequest(path: string, options: RequestInit, token: string | null) {
     return fetch(`${API_URL}${path.startsWith('/') ? path : `/${path}`}`, { ...options, headers });
 }
 
+// Strip volatile segments (UUIDs, numeric ids, long tokens) and query strings so
+// endpoints group cleanly in PostHog rather than one series per record id.
+function normalizeEndpoint(path: string): string {
+    return path
+        .split('?')[0]
+        .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, ':id')
+        .replace(/\/\d+(?=\/|$)/g, '/:id')
+        .replace(/\/[A-Za-z0-9_-]{20,}(?=\/|$)/g, '/:token');
+}
+
+/**
+ * Timing wrapper around the real fetch logic. Fires `api_fetch_succeeded` /
+ * `api_fetch_failed` with endpoint + duration_ms so post-login data-load
+ * latency is measurable in PostHog (login was instrumented; data loads weren't).
+ * Pure observation layer — return value and thrown errors pass through unchanged.
+ */
 export async function apiFetch(path: string, options: RequestInit = {}) {
+    const start = performance.now();
+    const baseProps = {
+        workflow_id: crypto.randomUUID(),
+        endpoint: normalizeEndpoint(path),
+        method: (options.method || 'GET').toUpperCase(),
+    };
+    try {
+        const response = await doApiFetch(path, options);
+        trackEvent('api', 'fetch', 'succeeded', {
+            ...baseProps,
+            status_code: response.status,
+            duration_ms: Math.round(performance.now() - start),
+        });
+        return response;
+    } catch (err: any) {
+        trackEvent('api', 'fetch', 'failed', {
+            ...baseProps,
+            duration_ms: Math.round(performance.now() - start),
+            error_code: err?.code || err?.name || 'UNKNOWN',
+            error_message: String(err?.message || err).slice(0, 500),
+        });
+        throw err;
+    }
+}
+
+async function doApiFetch(path: string, options: RequestInit = {}) {
     console.log(`[API Client] Fetching: ${path}`);
 
     const token = await getAccessToken();
