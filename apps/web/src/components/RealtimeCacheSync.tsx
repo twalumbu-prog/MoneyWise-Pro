@@ -15,9 +15,15 @@ import { useAuth } from '../context/AuthContext';
  * and staleTime still keep data moving, exactly as before this existed.
  */
 export const RealtimeCacheSync: React.FC = () => {
-    const { session, organizationId } = useAuth();
+    const { session, organizationId, refreshNotifications } = useAuth();
     const queryClient = useQueryClient();
     const accessToken = session?.access_token;
+
+    // The 30s notification poll was replaced by a 5-min safety net (AuthContext);
+    // these entity changes are the ones that move the navbar badge counts, so we
+    // refresh them on the same broadcast that drives cache invalidation — the
+    // badges now update in real time without any dedicated poll.
+    const NOTIFY_ENTITIES = ['requisitions', 'vouchers', 'cashbook-entries'];
 
     useEffect(() => {
         if (!accessToken || !organizationId) return;
@@ -33,6 +39,11 @@ export const RealtimeCacheSync: React.FC = () => {
                 entities.forEach((prefix) =>
                     queryClient.invalidateQueries({ queryKey: [prefix] })
                 );
+                // Push notification-badge refresh (counts live in AuthContext
+                // state, not the query cache, so they need an explicit refetch).
+                if (entities.some((e) => NOTIFY_ENTITIES.includes(e))) {
+                    refreshNotifications();
+                }
             })
             .subscribe();
 

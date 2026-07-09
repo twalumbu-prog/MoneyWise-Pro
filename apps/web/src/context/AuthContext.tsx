@@ -174,7 +174,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
         });
 
-        const numInterval = window.setInterval(refreshNotifications, 30000);
+        // Notification counts are pushed in real time via the Broadcast channel
+        // (see RealtimeCacheSync), so this interval is now only a safety net for
+        // missed events on a dropped socket. Raised 30s → 5min: the old 30s poll
+        // kept a serverless instance continuously warm per open tab, which was a
+        // major driver of Vercel Fluid provisioned-memory + Active-CPU cost.
+        const numInterval = window.setInterval(refreshNotifications, 300000);
 
         return () => {
             subscription.unsubscribe();
