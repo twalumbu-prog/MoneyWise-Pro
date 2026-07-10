@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { onboardingService } from './services/onboarding.service';
 import { Login } from './pages/Login';
@@ -138,12 +139,26 @@ const HomeRedirect = () => {
     return <RequisitionList />;
 };
 
+// MoneyWise Pro is a client-side-routed SPA (react-router, no full page
+// reloads between screens). <SpeedInsights/>'s Web Vitals collection is tied
+// to the browser's real navigation event, which only fires once per hard
+// load — without this, a user could navigate the whole app for an hour and
+// only ever report ONE measurement. Passing `route` re-triggers collection on
+// every in-app navigation, so it needs useLocation() and must live inside
+// <Router>, not in main.tsx (which found b/c only 1 LCP + 3 FCP/TTFB/CLS
+// datapoints were recorded across an entire real user session on 2026-07-10).
+const SpeedInsightsRouteTracker: React.FC = () => {
+    const location = useLocation();
+    return <SpeedInsights route={location.pathname} />;
+};
+
 function App() {
     return (
         <AuthProvider>
             {/* Live cross-device cache invalidation (no-op while signed out) */}
             <RealtimeCacheSync />
             <Router>
+                <SpeedInsightsRouteTracker />
                 <Routes>
                     <Route path="/login" element={<Login />} />
                     <Route path="/join" element={<Join />} />
