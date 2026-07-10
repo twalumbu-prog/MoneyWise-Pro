@@ -153,19 +153,16 @@ export const emailService = {
 
     /**
      * Email confirmation for a paid one-time payment link, sent to the organization's
-     * registered admin email (organizations.email). Mirrors
-     * whatsappService.notifyPaymentLinkPaid; called alongside it, exactly once per ref.
+     * admin(s) — organizations.email if set, otherwise every ACTIVE ADMIN member (see
+     * getOrgNotificationRecipients). Mirrors whatsappService.notifyPaymentLinkPaid;
+     * called alongside it, exactly once per ref.
      */
     async notifyPaymentLinkPaid(organizationId: string, reference: string) {
         try {
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('name, email')
-                .eq('id', organizationId)
-                .maybeSingle();
+            const { emails } = await this.getOrgNotificationRecipients(organizationId);
 
-            if (!org?.email) {
-                console.warn(`[EmailService] No admin email configured for org ${organizationId}; skipping payment-link notification.`);
+            if (emails.length === 0) {
+                console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping payment-link notification.`);
                 return;
             }
 
@@ -193,11 +190,11 @@ export const emailService = {
             });
 
             await this.sendEmail({
-                to: [org.email],
+                to: emails,
                 subject: `You just got paid — K${amount.toLocaleString()}`,
                 html,
             });
-            console.log(`[EmailService] Payment-link notification sent to ${org.email} for ref ${reference}`);
+            console.log(`[EmailService] Payment-link notification sent to ${emails.join(', ')} for ref ${reference}`);
         } catch (error) {
             console.error(`[EmailService] Failed to send payment-link notification for ref ${reference}:`, error);
         }
@@ -210,14 +207,10 @@ export const emailService = {
      */
     async notifyPublicSalePaid(organizationId: string, reference: string) {
         try {
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('name, email')
-                .eq('id', organizationId)
-                .maybeSingle();
+            const { emails } = await this.getOrgNotificationRecipients(organizationId);
 
-            if (!org?.email) {
-                console.warn(`[EmailService] No admin email configured for org ${organizationId}; skipping sale notification.`);
+            if (emails.length === 0) {
+                console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping sale notification.`);
                 return;
             }
 
@@ -254,11 +247,11 @@ export const emailService = {
             });
 
             await this.sendEmail({
-                to: [org.email],
+                to: emails,
                 subject: `You just got paid — K${total.toLocaleString()}`,
                 html,
             });
-            console.log(`[EmailService] Sale notification sent to ${org.email} for ref ${reference} (${sales.length} item(s))`);
+            console.log(`[EmailService] Sale notification sent to ${emails.join(', ')} for ref ${reference} (${sales.length} item(s))`);
         } catch (error) {
             console.error(`[EmailService] Failed to send sale notification for ref ${reference}:`, error);
         }
@@ -282,14 +275,10 @@ export const emailService = {
         date: string;
     }) {
         try {
-            const { data: org } = await supabase
-                .from('organizations')
-                .select('name, email')
-                .eq('id', organizationId)
-                .maybeSingle();
+            const { emails } = await this.getOrgNotificationRecipients(organizationId);
 
-            if (!org?.email) {
-                console.warn(`[EmailService] No admin email configured for org ${organizationId}; skipping inflow notification.`);
+            if (emails.length === 0) {
+                console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping inflow notification.`);
                 return;
             }
 
@@ -311,11 +300,11 @@ export const emailService = {
             `;
 
             await this.sendEmail({
-                to: org.email,
+                to: emails,
                 subject: `New Inflow: K${amount.toLocaleString()} — ${accountLabel}`,
                 html: this.wrapTemplate(body),
             });
-            console.log(`[EmailService] Inflow notification sent to ${org.email} for ${accountLabel} (K${amount})`);
+            console.log(`[EmailService] Inflow notification sent to ${emails.join(', ')} for ${accountLabel} (K${amount})`);
         } catch (error) {
             console.error(`[EmailService] Failed to send inflow notification:`, error);
         }
@@ -496,6 +485,33 @@ export const emailService = {
                 </div>
             </div>
         `;
+    },
+
+    /**
+     * Resolve who should receive payment/inflow notifications for an organization.
+     *
+     * organizations.email is a manually-entered field that most orgs never fill in —
+     * an audit found 14 of 17 live organizations had it unset, silently swallowing
+     * every payment-received / inflow email for them (confirmed live: a real payment
+     * to TAEMJA General Dealers produced zero email because org.email was null).
+     * Falls back to that org's ACTIVE ADMIN members, which always exist, instead of
+     * silently dropping the notification.
+     */
+    async getOrgNotificationRecipients(organizationId: string): Promise<{ orgName: string; emails: string[] }> {
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('name, email')
+            .eq('id', organizationId)
+            .maybeSingle();
+
+        const orgName = org?.name || 'your organization';
+
+        if (org?.email) {
+            return { orgName, emails: [org.email] };
+        }
+
+        const adminEmails = await this.getEmailsByRoles(organizationId, ['ADMIN']);
+        return { orgName, emails: adminEmails };
     },
 
     /**
