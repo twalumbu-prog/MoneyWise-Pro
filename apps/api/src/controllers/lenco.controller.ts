@@ -2211,6 +2211,13 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
 
                     for (const disb of candidates) {
                         if (finalizedSet.has(disb.requisition_id)) continue;
+                        // Each iteration is a live Lenco API call; up to 25 of them could
+                        // alone exceed the function's time budget. Bail with time to spare
+                        // — same shared clock as the org loop and the ledger sweep below.
+                        if (Date.now() > SYNC_START_MS + SYNC_TIME_BUDGET_MS) {
+                            console.warn(`[Lenco Sync][Disbursement Janitor] Time budget exceeded for org ${org.name} — deferring remaining candidates to the next cycle.`);
+                            break;
+                        }
                         try {
                             const result = await ensureWalletTransferConfirmed(disb.requisition_id, orgId);
                             if (result.confirmed) {
@@ -2230,8 +2237,11 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
             // GL reconciliation safety net: re-post any cashbook entries whose journal is
             // missing or stale (e.g. line items recategorized, or a path that skipped the
             // live hooks). Idempotent and a no-op when everything is already posted.
+            // Shares this request's own clock/budget (not runSweep's standalone default)
+            // so a slow or pathological org's sweep can never itself blow the function's
+            // maxDuration — see [[vercel-cost-pause]] for the 2026-07-10 504 this fixes.
             try {
-                await ledgerService.runSweep(orgId);
+                await ledgerService.runSweep(orgId, SYNC_START_MS + SYNC_TIME_BUDGET_MS);
             } catch (sweepErr: any) {
                 console.error(`[Lenco Sync][Ledger Sweep] Error for org ${org.name}:`, sweepErr.message);
             }

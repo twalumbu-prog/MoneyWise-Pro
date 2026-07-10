@@ -319,8 +319,16 @@ export const ledgerService = {
      * Reconciliation safety net: re-post every cashbook entry whose journal is missing
      * or stale for one org. Idempotent; safe to run on a schedule. Returns the count
      * repaired so callers can log/no-op quietly when there is nothing to do.
+     *
+     * The detector RPC is capped at 50 rows/call (migration 20260710070000), but an
+     * org can still have entries that NEVER succeed — e.g. missing both a Main
+     * Wallet and Uncategorised Asset account, so resolveCashAccount() returns null
+     * forever. Those get rediscovered every call; `deadlineMs` bounds how long this
+     * loop can run regardless, so one pathological org can't consume a caller's
+     * whole time budget (this is what caused POST /lenco/sync to 504 on 2026-07-10 —
+     * see [[vercel-cost-pause]] / the cron's own SYNC_TIME_BUDGET_MS for context).
      */
-    async runSweep(organizationId: string): Promise<number> {
+    async runSweep(organizationId: string, deadlineMs: number = Date.now() + 8_000): Promise<number> {
         const { data, error } = await supabase.rpc('cashbook_entries_needing_repost', {
             p_organization_id: organizationId
         });
@@ -328,12 +336,17 @@ export const ledgerService = {
             console.error(`[Ledger] sweep detector failed for org ${organizationId}:`, error.message);
             return 0;
         }
+        const rows = (data as { id: string }[]) || [];
         let repaired = 0;
-        for (const row of (data as { id: string }[]) || []) {
+        for (const row of rows) {
+            if (Date.now() > deadlineMs) {
+                console.warn(`[Ledger] sweep time budget exceeded for org ${organizationId} — deferring remaining ${rows.length - repaired} entr(y/ies) to the next run.`);
+                break;
+            }
             await this.repostForCashbookEntry(row.id);
             repaired++;
         }
-        if (repaired > 0) console.log(`[Ledger] sweep repaired ${repaired} entries for org ${organizationId}.`);
+        if (repaired > 0) console.log(`[Ledger] sweep processed ${repaired} entries for org ${organizationId}.`);
         return repaired;
     },
 
