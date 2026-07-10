@@ -179,7 +179,14 @@ export const registerUser = async (req: any, res: any): Promise<any> => {
             .from('organizations')
             .insert({
                 name: orgName,
-                slug: slug
+                slug: slug,
+                // Wire the founding admin's email in immediately so payment/inflow/
+                // requisition notifications work from the first transaction, instead of
+                // depending solely on the ACTIVE-ADMIN fallback (getOrgNotificationRecipients)
+                // to resolve it at send time. An org created without this sat with
+                // organizations.email null until someone set it manually — confirmed live
+                // as the cause of TAEMJA General Dealers never receiving payment emails.
+                email: normalizedEmail
             })
             .select()
             .single();
