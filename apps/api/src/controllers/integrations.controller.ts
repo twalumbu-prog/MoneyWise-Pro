@@ -32,11 +32,11 @@ export const quickBooksCallback = async (req: Request, res: Response<any>) => {
 
     try {
         await QuickBooksService.exchangeCodeForToken(code as string, realmId as string, organizationId);
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://moneywise.blueopus.cloud' : 'http://localhost:5173');
         res.redirect(`${frontendUrl}/settings?tab=integrations&status=success`);
     } catch (error: any) {
         console.error('[QB Callback Error]', error);
-        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+        const frontendUrl = process.env.FRONTEND_URL || (process.env.NODE_ENV === 'production' ? 'https://moneywise.blueopus.cloud' : 'http://localhost:5173');
         res.redirect(`${frontendUrl}/settings?tab=integrations&status=error&message=${encodeURIComponent(error.message)}`);
     }
 };

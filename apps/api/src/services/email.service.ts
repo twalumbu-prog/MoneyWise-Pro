@@ -2,7 +2,11 @@ import { Resend } from 'resend';
 import { supabase } from '../lib/supabase';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+// Falling back to localhost in production would send email recipients on other
+// machines to a dead address — fall back to the real production domain instead,
+// matching the pattern used in auth.controller.ts / user.controller.ts.
+const FRONTEND_URL = process.env.FRONTEND_URL
+    || (process.env.NODE_ENV === 'production' ? 'https://moneywise.blueopus.cloud' : 'http://localhost:5173');
 
 export type NotificationType =
     | 'NEW_REQUISITION'

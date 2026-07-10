@@ -14,7 +14,7 @@ interface RegisterUserRequest {
 
 const getFrontendUrl = () => {
     if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
-    if (process.env.NODE_ENV === 'production') return 'https://money-wise-pro-web.vercel.app';
+    if (process.env.NODE_ENV === 'production') return 'https://moneywise.blueopus.cloud';
     return 'http://localhost:5173';
 };
 
