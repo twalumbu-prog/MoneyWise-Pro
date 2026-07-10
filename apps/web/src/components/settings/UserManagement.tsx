@@ -45,12 +45,15 @@ export const UserManagement: React.FC = () => {
         setError(null);
 
         try {
-            await userService.create({
+            const result = await userService.create({
                 ...newUser
             });
             setIsAddModalOpen(false);
             setNewUser({ email: '', name: '', role: 'REQUESTOR', employeeId: '', username: '' });
-            alert('Invitation sent! The user will receive an email to join and set their password.');
+            // The backend distinguishes a real invite email from silently linking an
+            // already-registered account — surface its actual message instead of a
+            // generic one that's wrong half the time.
+            alert(result?.message || 'Team member added successfully.');
             await loadUsers();
         } catch (err: any) {
             setError(err.message);

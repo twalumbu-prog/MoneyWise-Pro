@@ -213,12 +213,27 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
                 throw uoError;
             }
 
+            // This path links an already-registered account directly — there's no
+            // password to set, so sendTeamInvite doesn't apply. Without a notification
+            // here, the person was silently added to a new org with zero email at all.
+            const { data: orgRow } = await supabase.from('organizations').select('name').eq('id', organization_id).maybeSingle();
+            try {
+                await emailService.notifyAddedToOrganization({
+                    to: normalizedEmail,
+                    name: name || normalizedEmail.split('@')[0],
+                    orgName: orgRow?.name || 'your organization',
+                    role: role || 'REQUESTOR',
+                });
+            } catch (emailErr: any) {
+                console.error('[CreateUser] Failed to send added-to-org email:', emailErr);
+            }
+
             captureEvent('organization_invite_succeeded', {
                 feature: 'organization_invite', workflow_id: workflowId, organization_id, user_id: (req as any).user.id,
                 path: 'existing_user_added',
             });
             return res.status(201).json({
-                message: 'Existing user added to organization successfully',
+                message: `${name || normalizedEmail} already had a MoneyWise account, so they were added directly (no password-setup email needed) — we sent them a notification that they now have access to this organization.`,
                 userId: targetUserId,
                 status: 'ACTIVE'
             });

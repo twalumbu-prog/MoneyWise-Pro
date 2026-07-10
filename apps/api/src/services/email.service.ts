@@ -430,6 +430,30 @@ export const emailService = {
     },
 
     /**
+     * Notify someone who already has a MoneyWise account that an admin just added
+     * them to ANOTHER organization. This path skips sendTeamInvite entirely (no
+     * password to set — they already have an account), so without this the person
+     * was silently linked into a new org with zero notification.
+     */
+    async notifyAddedToOrganization(params: { to: string; name: string; orgName: string; role: string }) {
+        const { to, name, orgName, role } = params;
+        const body = `
+            <h2>You've been added to ${orgName}</h2>
+            <p>Hi ${name || 'there'},</p>
+            <p>An admin has added your existing MoneyWise account to <strong>${orgName}</strong> as a <strong>${role}</strong>.</p>
+            <p>Sign in and use the organization switcher to access it.</p>
+            <a href="${FRONTEND_URL}" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Open MoneyWise</a>
+            <p style="margin-top:16px; font-size:12px; color:#9ca3af;">If you weren't expecting this, contact that organization's admin.</p>
+        `;
+
+        await this.sendEmail({
+            to,
+            subject: `You've been added to ${orgName} on MoneyWise`,
+            html: this.wrapTemplate(body),
+        });
+    },
+
+    /**
      * Password reset email. Like sendTeamInvite, the recovery token is minted via
      * supabase.auth.admin.generateLink({ type: 'recovery' }) and we deliver the
      * action_link ourselves via Resend (Supabase's own recovery email was unreliable).
