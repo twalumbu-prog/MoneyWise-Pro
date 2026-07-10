@@ -14,6 +14,7 @@
         "@tanstack/query-sync-storage-persister": "^5.101.2",
         "@tanstack/react-query": "^5.101.2",
         "@tanstack/react-query-persist-client": "^5.101.2",
+        "@vercel/speed-insights": "^2.0.0",
         "axios": "^1.13.2",
         "browser-image-compression": "^2.0.2",
         "heic2any": "^0.0.4",
