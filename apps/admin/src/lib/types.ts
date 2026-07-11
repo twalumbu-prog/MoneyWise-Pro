@@ -60,6 +60,7 @@ export interface ReconTxnRow {
     difference: number;
     walletId: string | null;
     entryType: string | null;
+    requisitionId: string | null;
 }
 
 export interface OrgDetailResponse extends OrgReconSummary {

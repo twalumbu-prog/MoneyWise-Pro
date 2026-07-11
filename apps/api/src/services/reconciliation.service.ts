@@ -347,6 +347,8 @@ export interface ReconTxnRow {
     difference: number;
     walletId: string | null;
     entryType: string | null;
+    /** Lets the UI group batch payouts (e.g. payroll children) under one consolidated line. */
+    requisitionId: string | null;
 }
 
 export interface OrgReconDetail extends OrgReconSummary {
@@ -397,7 +399,7 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
 
         const { data: entries } = await supabase
             .from('cashbook_entries')
-            .select('id, date, description, debit, credit, external_reference, wallet_id, entry_type, status')
+            .select('id, date, description, debit, credit, external_reference, wallet_id, entry_type, status, requisition_id')
             .eq('organization_id', org.id)
             .eq('account_type', 'MONEYWISE_WALLET')
             .order('date', { ascending: false });
@@ -451,6 +453,7 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
                     difference: round2(mwAmount - lencoValue),
                     walletId: e.wallet_id,
                     entryType: e.entry_type,
+                    requisitionId: e.requisition_id ?? null,
                 });
             } else {
                 rows.push({
@@ -467,6 +470,7 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
                     difference: round2(-lencoValue),
                     walletId: null,
                     entryType: null,
+                    requisitionId: null,
                 });
             }
         }
@@ -493,6 +497,7 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
                 difference: round2(mwAmount),
                 walletId: (e as any).wallet_id,
                 entryType: (e as any).entry_type,
+                requisitionId: (e as any).requisition_id ?? null,
             });
         }
 

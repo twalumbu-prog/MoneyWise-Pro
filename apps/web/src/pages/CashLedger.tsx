@@ -564,6 +564,41 @@ const CashLedger: React.FC = () => {
 
     }, [entries, searchQuery, filterDepartment, filterAccount, filterStatus, sortBy, showPendingIntents]);
 
+    // Collapse batch payouts (e.g. payroll: several DISBURSEMENT rows sharing one
+    // requisition_id) into ONE synthetic consolidated line, requisition-style. The
+    // parent keeps the requisition_id so the existing expandable breakdown drawer
+    // shows the per-employee sub-lines; the individual child ledger rows (which each
+    // reconcile 1:1 against their own Lenco debit) are hidden from the list.
+    const collapseBatchDisbursements = (list: CashbookEntry[]): CashbookEntry[] => {
+        const byReq: Record<string, CashbookEntry[]> = {};
+        for (const e of list) {
+            if (e.entry_type === 'DISBURSEMENT' && e.requisition_id && Number(e.credit) > 0) {
+                (byReq[e.requisition_id] = byReq[e.requisition_id] || []).push(e);
+            }
+        }
+        const out: CashbookEntry[] = [];
+        const consumed = new Set<string>();
+        for (const e of list) {
+            const kids = e.entry_type === 'DISBURSEMENT' && e.requisition_id ? byReq[e.requisition_id] : undefined;
+            if (kids && kids.length > 1) {
+                if (consumed.has(e.requisition_id!)) continue; // children folded into the parent
+                consumed.add(e.requisition_id!);
+                const total = Math.round(kids.reduce((s, k) => s + Number(k.credit || 0), 0) * 100) / 100;
+                out.push({
+                    ...(e as any),
+                    id: `batch-${e.requisition_id}`,
+                    description: e.requisitions?.description || `Batch payout (${kids.length} payments)`,
+                    credit: total,
+                    debit: 0,
+                    balance_after: kids[kids.length - 1].balance_after,
+                } as any);
+            } else {
+                out.push(e);
+            }
+        }
+        return out;
+    };
+
     const groupedEntries = React.useMemo(() => {
         const groups: { month: string, entries: CashbookEntry[] }[] = [];
         processedEntries.forEach(entry => {
@@ -576,6 +611,7 @@ const CashLedger: React.FC = () => {
             }
             group.entries.push(entry);
         });
+        for (const g of groups) g.entries = collapseBatchDisbursements(g.entries);
         return groups;
     }, [processedEntries]);
 

@@ -1589,7 +1589,7 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
         // 5. Finalize Ledger & Transaction Fees based on ALL successful disbursements so far
         const { data: allDisbursements, error: allDisbError } = await supabase
             .from('disbursements')
-            .select('total_prepared, payment_method')
+            .select('total_prepared, payment_method, external_reference, recipient_account_name')
             .eq('requisition_id', id);
 
         if (allDisbError) {
@@ -1600,18 +1600,33 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
         const totalFees = allDisbursements.reduce((sum, d) => sum + LencoService.calculatePayoutFee(Number(d.total_prepared), d.payment_method || 'BANK'), 0);
         const totalDeduction = totalAmountPaid + totalFees;
 
-        // Check if cashbook entry already exists
-        const { data: existingEntry } = await supabase
+        // ─── Ledger: ONE CHILD ROW PER EMPLOYEE (requisition-style consolidated view) ───
+        // Previously this block wrote a single consolidated DISBURSEMENT row. The Lenco
+        // sync could never match that row (24 small bank debits vs one big ledger
+        // credit), so it mirrored every payout AGAIN as individual rows — a guaranteed
+        // double-count (Twalumbu K71,354.03, fixed 2026-07-11).
+        //
+        // Now: one row per successful payout, at GROSS (amount + payout fee), in the
+        // MAIN wallet, with external_reference NULL. The sync's adopt-by-amount matcher
+        // ("ADOPT an existing unlinked outflow" in lenco.controller.ts) tags each row
+        // with its real Lenco txn id within ~5 min — every sub-line reconciles 1:1
+        // against the bank, nothing duplicates. The UI groups rows sharing a
+        // requisition_id into one expandable consolidated line.
+        //
+        // Idempotency: each child stores its payout's Lenco client reference in
+        // reference_number; retries skip refs already logged.
+        const { data: existingRows } = await supabase
             .from('cashbook_entries')
-            .select('id, date, created_at')
+            .select('id, date, created_at, reference_number')
             .eq('requisition_id', id)
-            .eq('entry_type', 'DISBURSEMENT')
-            .maybeSingle();
+            .eq('entry_type', 'DISBURSEMENT');
 
-        const ledgerDescription = `Batch Payroll payout for Requisition #${id.slice(0, 8)} (${allDisbursements.length} employees)`;
+        // Legacy: a requisition already carrying an old-style consolidated row (no
+        // reference_number) keeps being updated in place — don't mix the two shapes.
+        const legacyConsolidated = (existingRows || []).find((r: any) => !r.reference_number);
 
-        if (existingEntry) {
-            // Update existing entry
+        if (legacyConsolidated) {
+            const ledgerDescription = `Batch Payroll payout for Requisition #${id.slice(0, 8)} (${allDisbursements.length} employees)`;
             await supabase
                 .from('cashbook_entries')
                 .update({
@@ -1619,25 +1634,49 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                     description: ledgerDescription,
                     updated_at: new Date().toISOString()
                 })
-                .eq('id', existingEntry.id);
+                .eq('id', legacyConsolidated.id);
 
             // Recalculate balances starting from this entry's date
             await cashbookService.recalculateBalancesFrom(
                 organizationId,
-                existingEntry.date,
-                existingEntry.created_at,
+                legacyConsolidated.date,
+                legacyConsolidated.created_at,
                 'MONEYWISE_WALLET'
             );
         } else {
-            // Log new entry
-            await cashbookService.logDisbursement(
-                organizationId,
-                id,
-                totalDeduction,
-                cashier_id,
-                ledgerDescription,
-                'MONEYWISE_WALLET'
-            );
+            const { data: mainWallet } = await supabase
+                .from('organization_wallets')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('is_main', true)
+                .maybeSingle();
+
+            const loggedRefs = new Set((existingRows || []).map((r: any) => r.reference_number).filter(Boolean));
+
+            for (const d of allDisbursements) {
+                const payoutRef = (d as any).external_reference;
+                if (!payoutRef || loggedRefs.has(payoutRef)) continue;
+
+                const paid = Number(d.total_prepared);
+                const fee = LencoService.calculatePayoutFee(paid, d.payment_method || 'BANK');
+                const gross = Math.round((paid + fee) * 100) / 100;
+
+                await cashbookService.createEntry(organizationId, {
+                    entry_type: 'DISBURSEMENT',
+                    description: `Payroll for ${(d as any).recipient_account_name || 'employee'} — Requisition #${id.slice(0, 8)}`,
+                    debit: 0,
+                    credit: gross,
+                    date: new Date().toISOString().split('T')[0],
+                    requisition_id: id,
+                    created_by: cashier_id,
+                    status: 'DISBURSED',
+                    account_type: 'MONEYWISE_WALLET',
+                    wallet_id: mainWallet?.id || null,
+                    reference_number: payoutRef,
+                    external_reference: null // REQUIRED null — the sync adopts by amount+date, then tags the Lenco txn id
+                } as any);
+                loggedRefs.add(payoutRef);
+            }
         }
 
         // Record or update single withdrawal fee line item if fees > 0

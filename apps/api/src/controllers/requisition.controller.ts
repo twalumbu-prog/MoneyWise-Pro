@@ -2644,36 +2644,46 @@ export const deleteRequisition = async (req: AuthRequest, res: Response): Promis
         }
 
         // 4.2 Delete messages
-        await supabase
+        const { error: msgDelErr } = await supabase
             .from('requisition_messages')
             .delete()
             .eq('requisition_id', id);
+        if (msgDelErr) throw new Error(`Failed to delete requisition messages: ${msgDelErr.message}`);
 
         // 4.3 Delete disbursements
-        await supabase
+        const { error: disbDelErr } = await supabase
             .from('disbursements')
             .delete()
             .eq('requisition_id', id);
+        if (disbDelErr) throw new Error(`Failed to delete disbursements: ${disbDelErr.message}`);
 
         // 4.4 Delete line items
-        await supabase
+        const { error: liDelErr } = await supabase
             .from('line_items')
             .delete()
             .eq('requisition_id', id);
+        if (liDelErr) throw new Error(`Failed to delete line items: ${liDelErr.message}`);
 
         // 4.5 Delete audit logs
-        await supabase
+        const { error: auditDelErr } = await supabase
             .from('audit_logs')
             .delete()
             .eq('entity_id', id);
+        if (auditDelErr) throw new Error(`Failed to delete audit logs: ${auditDelErr.message}`);
 
-        // 4.6 Delete cashbook entries
-        await supabase
+        // 4.6 Delete cashbook entries.
+        // IMPORTANT: if this fails we MUST abort before deleting the requisition —
+        // otherwise a ledger row survives with a dangling requisition_id and becomes an
+        // invisible orphan (wallet views miss it, but org-level reconciliation counts it).
+        // That exact silent failure orphaned a duplicate K71,354.03 payroll outflow on
+        // Twalumbu (fixed 2026-07-11). All child deletes above are error-checked too.
+        const { error: cbDelErr } = await supabase
             .from('cashbook_entries')
             .delete()
             .eq('requisition_id', id);
+        if (cbDelErr) throw new Error(`Failed to delete cashbook entries: ${cbDelErr.message}`);
 
-        // 5. Delete requisition
+        // 5. Delete requisition (only after ALL child cleanup verifiably succeeded)
         const { error: deleteError } = await supabase
             .from('requisitions')
             .delete()

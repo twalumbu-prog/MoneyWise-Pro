@@ -1,7 +1,8 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
     ArrowLeft, Loader2, RefreshCw, Info, ArrowDownLeft, ArrowUpRight, AlertTriangle,
+    ChevronRight, Layers,
 } from 'lucide-react';
 import { apiGet } from '../lib/api';
 import type { OrgDetailResponse, SectionRecon, TxnMatchStatus, ReconTxnRow } from '../lib/types';
@@ -42,6 +43,53 @@ function SummaryCard({ title, section, accent }: { title: string; section: Secti
     );
 }
 
+/** One reconciliation transaction row; `indent` renders it as a batch sub-line. */
+function TxnRowTr({ r, indent }: { r: ReconTxnRow; indent?: boolean }) {
+    return (
+        <tr className={`border-b border-slate-100 last:border-0 hover:bg-slate-50 ${indent ? 'bg-slate-50/40' : ''}`}>
+            <td className={`whitespace-nowrap px-4 py-3 text-slate-500 ${indent ? 'pl-9' : ''}`}>{formatDate(r.date)}</td>
+            <td className="px-3 py-3">
+                <div className="max-w-[320px] truncate text-slate-700" title={r.description}>
+                    {indent && <span className="mr-1 text-slate-300">└</span>}
+                    {r.description || '—'}
+                </div>
+                {(r.reference || r.lencoId) && (
+                    <div className="max-w-[320px] truncate text-[11px] text-slate-400" title={r.reference || r.lencoId || ''}>
+                        {r.reference || r.lencoId}
+                    </div>
+                )}
+                {r.category !== 'NORMAL' && (
+                    <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                        r.category === 'PLATFORM_FEE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                    }`}>
+                        {r.category === 'PLATFORM_FEE' ? 'MoneyWise fee' : 'Change return'}
+                    </span>
+                )}
+            </td>
+            <td className="px-3 py-3 text-center">
+                {r.direction === 'inflow' ? (
+                    <ArrowDownLeft className="mx-auto h-4 w-4 text-emerald-500" />
+                ) : (
+                    <ArrowUpRight className="mx-auto h-4 w-4 text-rose-500" />
+                )}
+            </td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-700">{money(r.moneywiseAmount)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-700">{money(r.lencoAmount)}</td>
+            <td className="px-3 py-3 text-right tabular-nums text-slate-400">{r.bankFee ? money(r.bankFee) : '—'}</td>
+            <td
+                className={`px-3 py-3 text-right tabular-nums font-medium ${
+                    isWithinTolerance(r.difference) ? 'text-emerald-600' : 'text-rose-600'
+                }`}
+            >
+                {money(r.difference)}
+            </td>
+            <td className="px-3 py-3">
+                <MatchBadge status={r.matchStatus} />
+            </td>
+        </tr>
+    );
+}
+
 export default function OrgDetail() {
     const { orgId } = useParams<{ orgId: string }>();
     const [data, setData] = useState<OrgDetailResponse | null>(null);
@@ -71,6 +119,35 @@ export default function OrgDetail() {
         if (filter === 'ALL') return rows;
         return rows.filter((r) => r.matchStatus === filter);
     }, [data, filter]);
+
+    // Group batch payouts (≥2 outflow rows sharing a requisition, e.g. payroll) into one
+    // consolidated line that expands to its per-payment sub-lines — requisition-style.
+    // Reconciliation still happens per sub-line; the parent just aggregates them.
+    const [expandedBatches, setExpandedBatches] = useState<Record<string, boolean>>({});
+    type DisplayItem = { kind: 'row'; row: ReconTxnRow } | { kind: 'batch'; reqId: string; rows: ReconTxnRow[] };
+    const displayItems = useMemo<DisplayItem[]>(() => {
+        const byReq = new Map<string, ReconTxnRow[]>();
+        for (const r of filtered) {
+            if (r.requisitionId && r.direction === 'outflow') {
+                const list = byReq.get(r.requisitionId) ?? [];
+                list.push(r);
+                byReq.set(r.requisitionId, list);
+            }
+        }
+        const items: DisplayItem[] = [];
+        const consumed = new Set<string>();
+        for (const r of filtered) {
+            const batch = r.requisitionId && r.direction === 'outflow' ? byReq.get(r.requisitionId) : undefined;
+            if (batch && batch.length > 1) {
+                if (consumed.has(r.requisitionId!)) continue;
+                consumed.add(r.requisitionId!);
+                items.push({ kind: 'batch', reqId: r.requisitionId!, rows: batch });
+            } else {
+                items.push({ kind: 'row', row: r });
+            }
+        }
+        return items;
+    }, [filtered]);
 
     if (loading) {
         return (
@@ -199,49 +276,64 @@ export default function OrgDetail() {
                         </tr>
                     </thead>
                     <tbody>
-                        {filtered.map((r, i) => (
-                            <tr key={`${r.lencoId ?? r.reference ?? i}-${i}`} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                                <td className="whitespace-nowrap px-4 py-3 text-slate-500">{formatDate(r.date)}</td>
-                                <td className="px-3 py-3">
-                                    <div className="max-w-[320px] truncate text-slate-700" title={r.description}>
-                                        {r.description || '—'}
-                                    </div>
-                                    {(r.reference || r.lencoId) && (
-                                        <div className="max-w-[320px] truncate text-[11px] text-slate-400" title={r.reference || r.lencoId || ''}>
-                                            {r.reference || r.lencoId}
-                                        </div>
-                                    )}
-                                    {r.category !== 'NORMAL' && (
-                                        <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                                            r.category === 'PLATFORM_FEE' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                        {displayItems.map((item, i) => {
+                            if (item.kind === 'row') {
+                                return <TxnRowTr key={`r-${item.row.lencoId ?? item.row.reference ?? i}-${i}`} r={item.row} />;
+                            }
+                            const { reqId, rows } = item;
+                            const open = !!expandedBatches[reqId];
+                            const sum = (f: (r: ReconTxnRow) => number | null) =>
+                                Math.round(rows.reduce((s, r) => s + (f(r) ?? 0), 0) * 100) / 100;
+                            const mwSum = sum((r) => r.moneywiseAmount);
+                            const lencoSum = sum((r) => r.lencoAmount);
+                            const diffSum = sum((r) => r.difference);
+                            const feeSum = sum((r) => r.bankFee);
+                            const matchedCount = rows.filter((r) => r.matchStatus === 'MATCHED').length;
+                            return (
+                                <Fragment key={`b-${reqId}`}>
+                                    <tr
+                                        className="cursor-pointer border-b border-slate-100 bg-slate-50/60 hover:bg-slate-100"
+                                        onClick={() => setExpandedBatches((p) => ({ ...p, [reqId]: !p[reqId] }))}
+                                    >
+                                        <td className="whitespace-nowrap px-4 py-3 text-slate-500">
+                                            <span className="inline-flex items-center gap-1">
+                                                <ChevronRight className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} />
+                                                {formatDate(rows[0].date)}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 py-3">
+                                            <div className="flex items-center gap-1.5 font-medium text-brand-navy">
+                                                <Layers className="h-3.5 w-3.5 text-slate-400" />
+                                                Batch payout — {rows.length} payments
+                                            </div>
+                                            <div className="text-[11px] text-slate-400">
+                                                Requisition #{reqId.slice(0, 8)} · {matchedCount}/{rows.length} matched to Lenco
+                                            </div>
+                                        </td>
+                                        <td className="px-3 py-3 text-center">
+                                            <ArrowUpRight className="mx-auto h-4 w-4 text-rose-500" />
+                                        </td>
+                                        <td className="px-3 py-3 text-right tabular-nums font-medium text-slate-700">{money(mwSum)}</td>
+                                        <td className="px-3 py-3 text-right tabular-nums font-medium text-slate-700">{money(lencoSum)}</td>
+                                        <td className="px-3 py-3 text-right tabular-nums text-slate-400">{feeSum ? money(feeSum) : '—'}</td>
+                                        <td className={`px-3 py-3 text-right tabular-nums font-semibold ${
+                                            isWithinTolerance(diffSum) ? 'text-emerald-600' : 'text-rose-600'
                                         }`}>
-                                            {r.category === 'PLATFORM_FEE' ? 'MoneyWise fee' : 'Change return'}
-                                        </span>
-                                    )}
-                                </td>
-                                <td className="px-3 py-3 text-center">
-                                    {r.direction === 'inflow' ? (
-                                        <ArrowDownLeft className="mx-auto h-4 w-4 text-emerald-500" />
-                                    ) : (
-                                        <ArrowUpRight className="mx-auto h-4 w-4 text-rose-500" />
-                                    )}
-                                </td>
-                                <td className="px-3 py-3 text-right tabular-nums text-slate-700">{money(r.moneywiseAmount)}</td>
-                                <td className="px-3 py-3 text-right tabular-nums text-slate-700">{money(r.lencoAmount)}</td>
-                                <td className="px-3 py-3 text-right tabular-nums text-slate-400">{r.bankFee ? money(r.bankFee) : '—'}</td>
-                                <td
-                                    className={`px-3 py-3 text-right tabular-nums font-medium ${
-                                        isWithinTolerance(r.difference) ? 'text-emerald-600' : 'text-rose-600'
-                                    }`}
-                                >
-                                    {money(r.difference)}
-                                </td>
-                                <td className="px-3 py-3">
-                                    <MatchBadge status={r.matchStatus} />
-                                </td>
-                            </tr>
-                        ))}
-                        {filtered.length === 0 && (
+                                            {money(diffSum)}
+                                        </td>
+                                        <td className="px-3 py-3">
+                                            {matchedCount === rows.length
+                                                ? <MatchBadge status="MATCHED" />
+                                                : <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-700">{matchedCount}/{rows.length} matched</span>}
+                                        </td>
+                                    </tr>
+                                    {open && rows.map((r, j) => (
+                                        <TxnRowTr key={`bc-${reqId}-${j}`} r={r} indent />
+                                    ))}
+                                </Fragment>
+                            );
+                        })}
+                        {displayItems.length === 0 && (
                             <tr>
                                 <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-400">
                                     No transactions in this view.
