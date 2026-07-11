@@ -29,7 +29,7 @@ import {
 import { calculatePlatformFee } from 'shared';
 import { SegmentedControl } from '../components/AnimatedTabs';
 import BookingCalendar from '../components/BookingCalendar';
-import { productService, Product, BookingRange } from '../services/product.service';
+import { productService, Product, BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
 import { organizationService, Organization } from '../services/organization.service';
 import { cashbookService } from '../services/cashbook.service';
 import { lencoService } from '../services/lenco.service';
@@ -205,7 +205,7 @@ export const NewSale: React.FC = () => {
     const lineItems = catalog
         .map(p => {
             const isDonation = p.product_type === 'DONATION';
-            const isBooking = p.product_type === 'SERVICE_BOOKING';
+            const isBooking = isBookingProductType(p.product_type);
             const quantity = quantities[p.id] || 0;
             const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : (p.price || 0);
             const booking = isBooking ? bookingDates[p.id] : undefined;
@@ -633,7 +633,8 @@ export const NewSale: React.FC = () => {
                                         const qty = quantities[p.id] || 0;
                                         const isInCart = qty > 0;
                                         const isDonation = p.product_type === 'DONATION';
-                                        const isBooking = p.product_type === 'SERVICE_BOOKING';
+                                        const isBooking = isBookingProductType(p.product_type);
+                                        const bookingUnit = getBookingTerminology(p.product_type).unit;
                                         const stay = bookingDates[p.id];
                                         return (
                                             <div key={p.id} className={`rounded-2xl border p-3 flex flex-col transition-all ${isInCart ? 'border-emerald-300 bg-emerald-50/40' : 'border-slate-100 bg-white'}`}>
@@ -655,11 +656,11 @@ export const NewSale: React.FC = () => {
                                                 <div className="text-[13px] font-black text-emerald-600 mt-1">
                                                     {isDonation
                                                         ? 'Open amount'
-                                                        : `K${(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}${isBooking ? ' / night' : ''}`}
+                                                        : `K${(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}${isBooking ? ` / ${bookingUnit}` : ''}`}
                                                 </div>
                                                 {isBooking && isInCart && stay && (
                                                     <div className="text-[10px] font-semibold text-teal-700 mt-0.5 truncate">
-                                                        {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} night{stay.nights === 1 ? '' : 's'}
+                                                        {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
                                                     </div>
                                                 )}
 
@@ -740,7 +741,7 @@ export const NewSale: React.FC = () => {
                                                 </div>
                                             ) : li.isBooking && li.booking ? (
                                                 <div className="text-[12px] font-semibold text-teal-700">
-                                                    {formatStayRange(li.booking.checkIn, li.booking.checkOut)} · {li.quantity} night{li.quantity === 1 ? '' : 's'}
+                                                    {formatStayRange(li.booking.checkIn, li.booking.checkOut)} · {li.quantity} {getBookingTerminology(li.product.product_type).unit}{li.quantity === 1 ? '' : 's'}
                                                 </div>
                                             ) : (
                                                 <div className="text-[12px] font-semibold text-slate-400">
@@ -1016,6 +1017,7 @@ export const NewSale: React.FC = () => {
                     onClose={() => setCalendarProduct(null)}
                     onConfirm={(ci, co, nights) => handleConfirmBooking(calendarProduct.id, ci, co, nights)}
                     allowPast
+                    {...getBookingTerminology(calendarProduct.product_type)}
                 />
             )}
         </div>

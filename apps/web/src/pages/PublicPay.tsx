@@ -42,7 +42,7 @@ import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 import BookingCalendar from '../components/BookingCalendar';
-import { BookingRange } from '../services/product.service';
+import { BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -107,7 +107,7 @@ interface Product {
     price: number;
     is_active: boolean;
     image_url?: string | null;
-    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING';
+    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY';
     category?: string | null;
 }
 
@@ -472,8 +472,8 @@ export const PublicPay: React.FC = () => {
     const lineItems = catalogProducts
         .map(p => {
             const isDonation = p.product_type === 'DONATION';
-            const isBooking = p.product_type === 'SERVICE_BOOKING';
-            // For bookings, the stored quantity is the number of nights.
+            const isBooking = isBookingProductType(p.product_type);
+            // For bookings, the stored quantity is the number of nights/days.
             const quantity = selectedQuantities[p.id] || 0;
             const unitPrice = isDonation ? (donationAmounts[p.id] || 0) : p.price;
             const booking = isBooking ? bookingDates[p.id] : undefined;
@@ -1440,7 +1440,8 @@ Status: VERIFIED`;
     // A single selectable product/service row, shown inside the Add Products sheet.
     const renderProductCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
-        const isBooking = product.product_type === 'SERVICE_BOOKING';
+        const isBooking = isBookingProductType(product.product_type);
+        const bookingUnit = getBookingTerminology(product.product_type).unit;
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
         const stay = bookingDates[product.id];
@@ -1489,7 +1490,7 @@ Status: VERIFIED`;
                             ) : (
                                 <>
                                     <span className="text-orange-600 text-base font-semibold">
-                                        K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{isBooking ? ' / night' : ''}
+                                        K{product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}{isBooking ? ` / ${bookingUnit}` : ''}
                                     </span>
                                     {!isBooking && product.description && (
                                         <>
@@ -1511,7 +1512,7 @@ Status: VERIFIED`;
                             className="inline-flex items-center gap-1.5 self-start px-3 py-1.5 bg-teal-50 text-teal-700 rounded-full text-[11px] font-bold hover:bg-teal-100 transition-colors"
                         >
                             <CalendarDays size={12} />
-                            {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} night{stay.nights === 1 ? '' : 's'}
+                            {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
                         </button>
                     )}
 
@@ -1618,7 +1619,8 @@ Status: VERIFIED`;
     // A single catalogue grid card (image on top, name + price, add control).
     const renderGridCard = (product: Product) => {
         const isDonation = product.product_type === 'DONATION';
-        const isBooking = product.product_type === 'SERVICE_BOOKING';
+        const isBooking = isBookingProductType(product.product_type);
+        const bookingUnit = getBookingTerminology(product.product_type).unit;
         const qty = selectedQuantities[product.id] || 0;
         const isInCart = qty > 0;
         const stay = bookingDates[product.id];
@@ -1669,12 +1671,12 @@ Status: VERIFIED`;
                             {isDonation
                                 ? 'Open amount'
                                 : isBooking
-                                    ? `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} / night`
+                                    ? `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} / ${bookingUnit}`
                                     : `K ${product.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
                         </span>
                         {isBooking && isInCart && stay && (
                             <span className="text-[10px] font-semibold text-teal-700 truncate">
-                                {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} night{stay.nights === 1 ? '' : 's'}
+                                {formatStayRange(stay.checkIn, stay.checkOut)} · {stay.nights} {bookingUnit}{stay.nights === 1 ? '' : 's'}
                             </span>
                         )}
                     </div>
@@ -2712,7 +2714,7 @@ Status: VERIFIED`;
                                             <span className="text-xs text-zinc-600 truncate">
                                                 {li.product.name}
                                                 {li.isBooking && li.booking
-                                                    ? ` · ${formatStayRange(li.booking.checkIn, li.booking.checkOut)} (${li.quantity} night${li.quantity === 1 ? '' : 's'})`
+                                                    ? ` · ${formatStayRange(li.booking.checkIn, li.booking.checkOut)} (${li.quantity} ${getBookingTerminology(li.product.product_type).unit}${li.quantity === 1 ? '' : 's'})`
                                                     : !li.isDonation && li.quantity > 1 ? ` (x${li.quantity})` : ''}
                                             </span>
                                             <span className="text-xs text-zinc-600 flex-shrink-0">
@@ -2928,6 +2930,7 @@ Status: VERIFIED`;
                     : null}
                 onClose={() => setCalendarProduct(null)}
                 onConfirm={(ci, co, nights) => handleConfirmBooking(calendarProduct.id, ci, co, nights)}
+                {...getBookingTerminology(calendarProduct.product_type)}
             />
         )}
         </>

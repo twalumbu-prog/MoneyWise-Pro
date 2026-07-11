@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
-const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION', 'SERVICE_BOOKING'];
+const VALID_PRODUCT_TYPES = ['PRODUCT', 'SERVICE_FIXED', 'SERVICE_VARIABLE', 'DONATION', 'SERVICE_BOOKING', 'SERVICE_BOOKING_DAILY'];
 
 /**
  * Validates that an optional wallet/income-account reference belongs to the

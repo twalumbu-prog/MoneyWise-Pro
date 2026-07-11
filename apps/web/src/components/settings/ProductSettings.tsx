@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS } from '../../services/product.service';
+import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType } from '../../services/product.service';
 import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { supabase } from '../../lib/supabase';
@@ -34,6 +34,7 @@ const typeBadgeClass = (t?: ProductType) => {
         case 'SERVICE_FIXED': return 'bg-indigo-100 text-indigo-800';
         case 'SERVICE_VARIABLE': return 'bg-amber-100 text-amber-800';
         case 'SERVICE_BOOKING': return 'bg-teal-100 text-teal-800';
+        case 'SERVICE_BOOKING_DAILY': return 'bg-cyan-100 text-cyan-800';
         case 'DONATION': return 'bg-pink-100 text-pink-800';
         default: return 'bg-slate-100 text-slate-700';
     }
@@ -186,7 +187,8 @@ export const ProductSettings: React.FC = () => {
 
     const isDonation = formData.product_type === 'DONATION';
     const isVariable = formData.product_type === 'SERVICE_VARIABLE';
-    const isBooking = formData.product_type === 'SERVICE_BOOKING';
+    const isBooking = isBookingProductType(formData.product_type);
+    const isDailyBooking = formData.product_type === 'SERVICE_BOOKING_DAILY';
     const priceRequired = !isDonation && !isVariable;
 
     // Existing categories across the catalog — offered as suggestions so admins
@@ -613,7 +615,7 @@ export const ProductSettings: React.FC = () => {
                                 {!isDonation && (
                                     <div>
                                         <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                                            {isBooking ? 'Price per night (K)' : isVariable ? 'Default / quoted price (K)' : 'Price (K)'}
+                                            {isBooking ? `Price per ${isDailyBooking ? 'day' : 'night'} (K)` : isVariable ? 'Default / quoted price (K)' : 'Price (K)'}
                                             {priceRequired && <span className="text-red-500"> *</span>}
                                         </label>
                                         <div className="relative">

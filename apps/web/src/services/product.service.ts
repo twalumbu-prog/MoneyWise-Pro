@@ -3,7 +3,7 @@ import axios from 'axios';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING';
+export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY';
 
 /** Single source of truth for the product-type choices shown wherever a
  *  listing is created or edited (Settings' product manager, onboarding). */
@@ -12,6 +12,7 @@ export const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string; hint: st
     { value: 'SERVICE_FIXED', label: 'Service — fixed price', hint: 'A service offered at one established price.' },
     { value: 'SERVICE_VARIABLE', label: 'Service — variable price', hint: 'Price is set by you when sharing a one-time link.' },
     { value: 'SERVICE_BOOKING', label: 'Service (Booking – Apartments)', hint: 'Guests pick check-in / check-out on a calendar. Total = nights × nightly rate. Booked dates are blocked so you never double-book.' },
+    { value: 'SERVICE_BOOKING_DAILY', label: 'Service (Booking – Daily Rental)', hint: 'Customers pick a pickup and drop-off date on a calendar. Total = days × daily rate. Booked dates are blocked so you never double-book.' },
     { value: 'DONATION', label: 'Donation', hint: 'The payer decides the amount to give.' },
 ];
 
@@ -19,6 +20,32 @@ export interface BookingRange {
     check_in: string;  // YYYY-MM-DD
     check_out: string; // YYYY-MM-DD (exclusive — turnover day stays bookable)
 }
+
+/** Both booking flavors (apartments / daily rental) share identical date-range,
+ *  availability, and pricing mechanics — only the customer-facing wording differs. */
+export const isBookingProductType = (t?: string | null): boolean =>
+    t === 'SERVICE_BOOKING' || t === 'SERVICE_BOOKING_DAILY';
+
+export interface BookingTerminology {
+    unit: 'night' | 'day';
+    /** e.g. "Check-in" / "Pickup" */
+    startLabel: string;
+    /** e.g. "Check-out" / "Drop-off" */
+    endLabel: string;
+}
+
+/** Single source of truth for the wording swap between the two booking flavors. */
+export const getBookingTerminology = (t?: string | null): BookingTerminology =>
+    t === 'SERVICE_BOOKING_DAILY'
+        ? { unit: 'day', startLabel: 'Pickup', endLabel: 'Drop-off' }
+        : { unit: 'night', startLabel: 'Check-in', endLabel: 'Check-out' };
+
+/** "3 nights" / "1 day" — the pluralized unit count used across cart lines,
+ *  order summaries, and the calendar footer. */
+export const formatBookingDuration = (count: number, t?: string | null): string => {
+    const { unit } = getBookingTerminology(t);
+    return `${count} ${unit}${count === 1 ? '' : 's'}`;
+};
 
 export interface Product {
     id: string;

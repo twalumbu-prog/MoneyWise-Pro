@@ -4,7 +4,7 @@ import {
     Plus, Pencil, Trash2, Copy, X, ShoppingBag, Loader2, ImagePlus, PackageOpen,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS } from '../../services/product.service';
+import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType } from '../../services/product.service';
 import { StepFooter, ErrorBanner, PrimaryButton, GhostButton, Toggle, TextField } from './ui';
 import { ProductTypeSelect } from './ProductTypeSelect';
 
@@ -256,7 +256,8 @@ const ProductModal: React.FC<{
     };
 
     const isVariable = form.product_type === 'SERVICE_VARIABLE';
-    const isBooking = form.product_type === 'SERVICE_BOOKING';
+    const isBooking = isBookingProductType(form.product_type);
+    const isDailyBooking = form.product_type === 'SERVICE_BOOKING_DAILY';
     const priceRequired = !isDonation && !isVariable;
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -391,7 +392,7 @@ const ProductModal: React.FC<{
                         {!isDonation && (
                             <div>
                                 <label htmlFor="product-price" className="block text-sm font-bold text-gray-800 mb-1">
-                                    {isBooking ? 'Price per night' : isVariable ? 'Default / quoted price' : 'Selling Price'}
+                                    {isBooking ? `Price per ${isDailyBooking ? 'day' : 'night'}` : isVariable ? 'Default / quoted price' : 'Selling Price'}
                                 </label>
                                 <div className="relative">
                                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">ZMW</span>

@@ -19,6 +19,12 @@ interface BookingCalendarProps {
      * regardless of this flag.
      */
     allowPast?: boolean;
+    /** Wording swap for booking flavors that share this exact date-range/pricing
+     *  mechanic but call it something else to the customer (e.g. daily rental
+     *  "Pickup"/"Drop-off" instead of apartment "Check-in"/"Check-out"). */
+    startLabel?: string;
+    endLabel?: string;
+    unit?: 'night' | 'day';
 }
 
 // --- Timezone-stable date helpers (operate on 'YYYY-MM-DD' strings) -----------
@@ -52,7 +58,8 @@ const MONTHS_BACK = 12;         // how far back you can browse when allowPast is
 const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
 const BookingCalendar: React.FC<BookingCalendarProps> = ({
-    productName, nightlyPrice, unavailable, loading, initial, onClose, onConfirm, allowPast = false
+    productName, nightlyPrice, unavailable, loading, initial, onClose, onConfirm, allowPast = false,
+    startLabel = 'Check-in', endLabel = 'Check-out', unit = 'night'
 }) => {
     const today = todayStr();
     const [checkIn, setCheckIn] = useState<string | null>(initial?.checkIn || null);
@@ -178,12 +185,12 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
                 {/* Selected summary chips */}
                 <div className="px-5 pt-4 flex items-center gap-2 flex-shrink-0">
                     <div className={`flex-1 rounded-xl border px-3 py-2 ${checkIn ? 'border-slate-900' : 'border-slate-200'}`}>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Check-in</p>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{startLabel}</p>
                         <p className="text-xs font-bold text-slate-900">{checkIn ? prettyDate(checkIn) : 'Add date'}</p>
                     </div>
                     <ChevronRight size={14} className="text-slate-300 flex-shrink-0" />
                     <div className={`flex-1 rounded-xl border px-3 py-2 ${checkOut ? 'border-slate-900' : 'border-slate-200'}`}>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Check-out</p>
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{endLabel}</p>
                         <p className="text-xs font-bold text-slate-900">{checkOut ? prettyDate(checkOut) : 'Add date'}</p>
                     </div>
                 </div>
@@ -275,7 +282,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
                                     K{total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </p>
                                 <p className="text-[11px] font-medium text-slate-400">
-                                    {nights} night{nights === 1 ? '' : 's'} · K{nightlyPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}/night
+                                    {nights} {unit}{nights === 1 ? '' : 's'} · K{nightlyPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}/{unit}
                                     {(checkIn || checkOut) && (
                                         <button onClick={reset} className="ml-2 text-slate-400 hover:text-rose-500 underline">clear</button>
                                     )}
@@ -283,7 +290,7 @@ const BookingCalendar: React.FC<BookingCalendarProps> = ({
                             </>
                         ) : (
                             <p className="text-[11px] font-medium text-slate-400">
-                                {selectingCheckout ? 'Pick your check-out date' : 'Pick your check-in date'}
+                                {selectingCheckout ? `Pick your ${endLabel.toLowerCase()} date` : `Pick your ${startLabel.toLowerCase()} date`}
                             </p>
                         )}
                     </div>
