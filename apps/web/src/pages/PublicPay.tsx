@@ -1812,13 +1812,13 @@ Status: VERIFIED`;
                     {/* Search */}
                     <div className="mt-6 max-w-md">
                         <div className="relative">
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55595E]" size={16} />
                             <input
                                 type="text"
                                 value={productSearch}
                                 onChange={(e) => setProductSearch(e.target.value)}
-                                placeholder="Search products"
-                                className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                aria-label="Search products"
+                                className="w-full pl-11 pr-4 py-3.5 bg-[#F5F5F5] rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
                             />
                         </div>
                     </div>
@@ -1831,6 +1831,8 @@ Status: VERIFIED`;
                                 <div className="mb-6 max-w-md">
                                     <SegmentedControl
                                         variant="capsule"
+                                        trackBgClassName="bg-[#F5F5F5]"
+                                        inactiveTextClassName="text-black"
                                         options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                         value={activeCategory}
                                         onChange={setActiveCategory}
@@ -1863,6 +1865,8 @@ Status: VERIFIED`;
                                 <div className="mb-6 invisible" aria-hidden="true">
                                     <SegmentedControl
                                         variant="capsule"
+                                        trackBgClassName="bg-[#F5F5F5]"
+                                        inactiveTextClassName="text-black"
                                         options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                         value={activeCategory}
                                         onChange={() => {}}
@@ -2089,13 +2093,13 @@ Status: VERIFIED`;
                         {/* Search */}
                         <div className="px-4 flex-shrink-0">
                             <div className="relative">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[#55595E]" size={16} />
                                 <input
                                     type="text"
                                     value={productSearch}
                                     onChange={(e) => setProductSearch(e.target.value)}
-                                    placeholder="Search products"
-                                    className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
+                                    aria-label="Search products"
+                                    className="w-full pl-11 pr-4 py-3.5 bg-[#F5F5F5] rounded-full text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 transition-all"
                                 />
                             </div>
                         </div>
@@ -2105,6 +2109,8 @@ Status: VERIFIED`;
                             <div className="px-4 pt-4 flex-shrink-0">
                                 <SegmentedControl
                                     variant="capsule"
+                                    trackBgClassName="bg-[#F5F5F5]"
+                                    inactiveTextClassName="text-black"
                                     options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                     value={activeCategory}
                                     onChange={setActiveCategory}
@@ -2854,6 +2860,8 @@ Status: VERIFIED`;
                             <div className="px-4 pt-6 flex-shrink-0">
                                 <SegmentedControl
                                     variant="capsule"
+                                    trackBgClassName="bg-[#F5F5F5]"
+                                    inactiveTextClassName="text-black"
                                     options={productCategories.map(cat => ({ value: cat, label: cat }))}
                                     value={activeCategory}
                                     onChange={setActiveCategory}

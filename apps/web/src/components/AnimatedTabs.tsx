@@ -38,6 +38,10 @@ interface SegmentedControlProps {
     /** 'pill' = filled white chip on a gray track; 'outline' = blue-outlined chip on transparent track; 'capsule' = fully-rounded pill on a rounded-full track. */
     variant?: 'pill' | 'outline' | 'capsule';
     className?: string;
+    /** Override the track's background (defaults to the variant's own bg-*). */
+    trackBgClassName?: string;
+    /** Override the inactive tab's text color (defaults to the variant's own text-*). */
+    inactiveTextClassName?: string;
 }
 
 interface HighlightRect {
@@ -53,6 +57,8 @@ export function SegmentedControl({
     onChange,
     variant = 'pill',
     className = '',
+    trackBgClassName,
+    inactiveTextClassName,
 }: SegmentedControlProps) {
     const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
     const [rect, setRect] = useState<HighlightRect>({ left: 0, top: 0, width: 0, height: 0 });
@@ -90,9 +96,9 @@ export function SegmentedControl({
     const isCapsule = variant === 'capsule';
 
     const trackClass = isPill
-        ? 'relative flex bg-gray-100 p-1 rounded-xl border border-gray-200'
+        ? `relative flex ${trackBgClassName || 'bg-gray-100'} p-1 rounded-xl border border-gray-200`
         : isCapsule
-        ? 'relative flex bg-gray-50 p-0.5 rounded-[80px]'
+        ? `relative flex ${trackBgClassName || 'bg-gray-50'} p-0.5 rounded-[80px]`
         : 'relative flex items-center gap-1.5';
 
     const highlightClass = isPill
@@ -125,7 +131,7 @@ export function SegmentedControl({
                       }`
                     : isCapsule
                     ? `relative z-10 flex-1 py-2 px-2.5 text-xs text-center leading-4 transition-colors duration-200 ${
-                          active ? 'text-gray-900' : 'text-gray-400'
+                          active ? 'text-gray-900' : (inactiveTextClassName || 'text-gray-400')
                       }`
                     : `relative z-10 px-3 py-1.5 rounded-xl text-sm transition-colors duration-200 ${
                           active ? 'text-[#006AFF] font-bold' : 'text-[#7C8FA2] font-normal'
