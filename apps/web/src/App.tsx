@@ -3,30 +3,28 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { SpeedInsights } from '@vercel/speed-insights/react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { onboardingService } from './services/onboarding.service';
-import { Login } from './pages/Login';
-import { Onboarding } from './pages/Onboarding';
-// src/App.tsx unused Dashboard removed
-import { RequisitionList } from './pages/RequisitionList';
-import { RequisitionCreate } from './pages/RequisitionCreate';
-import { NewSale } from './pages/NewSale';
-import { Approvals } from './pages/Approvals';
-import { CashierDashboard } from './pages/CashierDashboard';
-// RequisitionDetail removed
-import { Vouchers } from './pages/Vouchers';
-import { VoucherDetail } from './pages/VoucherDetail';
-import CashLedger from './pages/CashLedger';
-import { Reporting } from './pages/Reporting';
-import { Settings } from './pages/Settings';
-import { Intelligence } from './pages/Intelligence';
-import { PrivacyPolicy } from './pages/PrivacyPolicy';
-import { TermsOfService } from './pages/TermsOfService';
-import { Disconnect } from './pages/Disconnect';
-import { Join } from './pages/Join';
-import { ResetPassword } from './pages/ResetPassword';
-import { Audit } from './pages/Audit';
-import { Menu } from './pages/Menu';
-import { PublicPay } from './pages/PublicPay';
-import { PublicPaymentLink } from './pages/PublicPaymentLink';
+const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
+const Onboarding = React.lazy(() => import('./pages/Onboarding').then(m => ({ default: m.Onboarding })));
+const RequisitionList = React.lazy(() => import('./pages/RequisitionList').then(m => ({ default: m.RequisitionList })));
+const RequisitionCreate = React.lazy(() => import('./pages/RequisitionCreate').then(m => ({ default: m.RequisitionCreate })));
+const NewSale = React.lazy(() => import('./pages/NewSale').then(m => ({ default: m.NewSale })));
+const Approvals = React.lazy(() => import('./pages/Approvals').then(m => ({ default: m.Approvals })));
+const CashierDashboard = React.lazy(() => import('./pages/CashierDashboard').then(m => ({ default: m.CashierDashboard })));
+const Vouchers = React.lazy(() => import('./pages/Vouchers').then(m => ({ default: m.Vouchers })));
+const VoucherDetail = React.lazy(() => import('./pages/VoucherDetail').then(m => ({ default: m.VoucherDetail })));
+const CashLedger = React.lazy(() => import('./pages/CashLedger'));
+const Reporting = React.lazy(() => import('./pages/Reporting').then(m => ({ default: m.Reporting })));
+const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const Intelligence = React.lazy(() => import('./pages/Intelligence').then(m => ({ default: m.Intelligence })));
+const PrivacyPolicy = React.lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+const TermsOfService = React.lazy(() => import('./pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
+const Disconnect = React.lazy(() => import('./pages/Disconnect').then(m => ({ default: m.Disconnect })));
+const Join = React.lazy(() => import('./pages/Join').then(m => ({ default: m.Join })));
+const ResetPassword = React.lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
+const Audit = React.lazy(() => import('./pages/Audit').then(m => ({ default: m.Audit })));
+const Menu = React.lazy(() => import('./pages/Menu').then(m => ({ default: m.Menu })));
+const PublicPay = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
+const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
@@ -159,136 +157,138 @@ function App() {
             <RealtimeCacheSync />
             <Router>
                 <SpeedInsightsRouteTracker />
-                <Routes>
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/join" element={<Join />} />
-                    <Route path="/reset-password" element={<ResetPassword />} />
-                    <Route path="/privacy" element={<PrivacyPolicy />} />
-                    <Route path="/terms" element={<TermsOfService />} />
-                    <Route path="/disconnect" element={<Disconnect />} />
-                    <Route path="/pay/:wallet_id" element={<PublicPay />} />
-                    <Route path="/pl/:token" element={<PublicPaymentLink />} />
-                    <Route
-                        path="/onboarding"
-                        element={
-                            <ProtectedRoute>
-                                <Onboarding />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/"
-                        element={
-                            <ProtectedRoute>
-                                <HomeRedirect />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/requisitions"
-                        element={
-                            <ProtectedRoute>
-                                <RequisitionList />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/requisitions/new"
-                        element={
-                            <ProtectedRoute>
-                                <RequisitionCreate />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/sales/new"
-                        element={
-                            <ProtectedRoute>
-                                <NewSale />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/approvals"
-                        element={
-                            <ProtectedRoute>
-                                <Approvals />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/disbursements"
-                        element={
-                            <ProtectedRoute>
-                                <CashierDashboard />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/vouchers"
-                        element={
-                            <ProtectedRoute>
-                                <Vouchers />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/vouchers/:id"
-                        element={
-                            <ProtectedRoute>
-                                <VoucherDetail />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/cashbook"
-                        element={
-                            <ProtectedRoute>
-                                <CashLedger />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/reporting"
-                        element={
-                            <ProtectedRoute>
-                                <Reporting />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/settings"
-                        element={
-                            <ProtectedRoute>
-                                <Settings />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/intelligence"
-                        element={
-                            <ProtectedRoute>
-                                <Intelligence />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/audit"
-                        element={
-                            <ProtectedRoute>
-                                <Audit />
-                            </ProtectedRoute>
-                        }
-                    />
-                    <Route
-                        path="/menu"
-                        element={
-                            <ProtectedRoute>
-                                <Menu />
-                            </ProtectedRoute>
-                        }
-                    />
-                </Routes>
+                <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-600" /></div>}>
+                    <Routes>
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/join" element={<Join />} />
+                        <Route path="/reset-password" element={<ResetPassword />} />
+                        <Route path="/privacy" element={<PrivacyPolicy />} />
+                        <Route path="/terms" element={<TermsOfService />} />
+                        <Route path="/disconnect" element={<Disconnect />} />
+                        <Route path="/pay/:wallet_id" element={<PublicPay />} />
+                        <Route path="/pl/:token" element={<PublicPaymentLink />} />
+                        <Route
+                            path="/onboarding"
+                            element={
+                                <ProtectedRoute>
+                                    <Onboarding />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/"
+                            element={
+                                <ProtectedRoute>
+                                    <HomeRedirect />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/requisitions"
+                            element={
+                                <ProtectedRoute>
+                                    <RequisitionList />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/requisitions/new"
+                            element={
+                                <ProtectedRoute>
+                                    <RequisitionCreate />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/sales/new"
+                            element={
+                                <ProtectedRoute>
+                                    <NewSale />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/approvals"
+                            element={
+                                <ProtectedRoute>
+                                    <Approvals />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/disbursements"
+                            element={
+                                <ProtectedRoute>
+                                    <CashierDashboard />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/vouchers"
+                            element={
+                                <ProtectedRoute>
+                                    <Vouchers />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/vouchers/:id"
+                            element={
+                                <ProtectedRoute>
+                                    <VoucherDetail />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/cashbook"
+                            element={
+                                <ProtectedRoute>
+                                    <CashLedger />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/reporting"
+                            element={
+                                <ProtectedRoute>
+                                    <Reporting />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/settings"
+                            element={
+                                <ProtectedRoute>
+                                    <Settings />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/intelligence"
+                            element={
+                                <ProtectedRoute>
+                                    <Intelligence />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/audit"
+                            element={
+                                <ProtectedRoute>
+                                    <Audit />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/menu"
+                            element={
+                                <ProtectedRoute>
+                                    <Menu />
+                                </ProtectedRoute>
+                            }
+                        />
+                    </Routes>
+                </React.Suspense>
                 <PWAInstallPrompt />
             </Router>
         </AuthProvider>

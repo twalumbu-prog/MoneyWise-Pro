@@ -578,7 +578,7 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                 .single(),
             supabase
                 .from('products')
-                .select('*')
+                .select('id, name, description, price, image_url, category, product_type')
                 .eq('organization_id', wallet.organization_id)
                 .eq('is_active', true)
                 .order('name', { ascending: true })

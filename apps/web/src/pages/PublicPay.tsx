@@ -315,7 +315,7 @@ export const PublicPay: React.FC = () => {
                 .filter(p => p.product_type !== 'SERVICE_VARIABLE')
                 .map(p => p.image_url);
             preloadImages(catalogImages.slice(6)); // background, not awaited
-            await preloadImages([response.data.organization.logo_url, ...catalogImages.slice(0, 6)], 3000);
+            preloadImages([response.data.organization.logo_url, ...catalogImages.slice(0, 6)], 3000);
 
             // Resume an in-flight payment if the customer reloaded mid-wait: a slow-but-
             // successful mobile money payment is tracked server-side by its reference, so
@@ -1641,7 +1641,7 @@ Status: VERIFIED`;
                 {/* Image */}
                 <div className="relative w-full aspect-square bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center">
                     {product.image_url ? (
-                        <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                        <img src={product.image_url} alt={product.name} loading="lazy" className="w-full h-full object-cover" />
                     ) : (
                         <ShoppingBag size={28} className="text-neutral-300" />
                     )}

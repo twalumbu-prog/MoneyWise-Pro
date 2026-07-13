@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
@@ -37,6 +37,8 @@ import { productService, paymentLinkService, Product, BookingRange, isBookingPro
 import { organizationService, Organization } from '../services/organization.service';
 import { cashbookService } from '../services/cashbook.service';
 import { lencoService } from '../services/lenco.service';
+import { useDebounce } from 'use-debounce';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { supabase } from '../lib/supabase';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -239,9 +241,19 @@ export const NewSale: React.FC = () => {
     const processingFee = subtotal > 0 ? calculatePlatformFee(subtotal) : 0;
     const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
 
+    const [debouncedSearch] = useDebounce(search, 300);
+
     const filteredCatalog = catalog.filter(p => {
-        const q = search.trim().toLowerCase();
+        const q = debouncedSearch.trim().toLowerCase();
         return !q || p.name.toLowerCase().includes(q) || (p.description || '').toLowerCase().includes(q);
+    });
+
+    const parentRef = useRef<HTMLDivElement>(null);
+    const rowVirtualizer = useVirtualizer({
+        count: Math.ceil(filteredCatalog.length / 2),
+        getScrollElement: () => parentRef.current,
+        estimateSize: () => 240,
+        overscan: 4,
     });
 
     const productNarration = lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ');
@@ -705,12 +717,34 @@ export const NewSale: React.FC = () => {
                                 />
                             </div>
                         </div>
-                        <div className="flex-1 overflow-y-auto px-5 pb-32">
+                        <div ref={parentRef} className="flex-1 overflow-y-auto px-5 pb-32">
                             {filteredCatalog.length === 0 ? (
                                 <div className="text-center py-20 text-slate-400 font-medium text-sm">No products found.</div>
                             ) : (
-                                <div className="grid grid-cols-2 gap-3">
-                                    {filteredCatalog.map(p => {
+                                <div
+                                    style={{
+                                        height: `${rowVirtualizer.getTotalSize()}px`,
+                                        width: '100%',
+                                        position: 'relative',
+                                    }}
+                                >
+                                    {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                        const startIndex = virtualRow.index * 2;
+                                        const items = filteredCatalog.slice(startIndex, startIndex + 2);
+                                        return (
+                                            <div
+                                                key={virtualRow.index}
+                                                style={{
+                                                    position: 'absolute',
+                                                    top: 0,
+                                                    left: 0,
+                                                    width: '100%',
+                                                    height: `${virtualRow.size}px`,
+                                                    transform: `translateY(${virtualRow.start}px)`,
+                                                }}
+                                                className="grid grid-cols-2 gap-3 pb-3"
+                                            >
+                                                {items.map(p => {
                                         const qty = quantities[p.id] || 0;
                                         const isInCart = qty > 0;
                                         const isDonation = p.product_type === 'DONATION';
@@ -721,7 +755,7 @@ export const NewSale: React.FC = () => {
                                             <div key={p.id} className={`rounded-2xl border p-3 flex flex-col transition-all ${isInCart ? `${accent.cardBorder} ${accent.cardBg}` : 'border-slate-100 bg-white'}`}>
                                                 <div className="relative">
                                                     {p.image_url ? (
-                                                        <img src={p.image_url} alt={p.name} className="w-full h-24 object-cover rounded-xl mb-2" />
+                                                        <img src={p.image_url} alt={p.name} loading="lazy" className="w-full h-24 object-cover rounded-xl mb-2" />
                                                     ) : (
                                                         <div className="w-full h-24 rounded-xl mb-2 bg-slate-50 flex items-center justify-center text-slate-300">
                                                             <ShoppingBag size={26} />
@@ -778,6 +812,9 @@ export const NewSale: React.FC = () => {
                                                         <Plus size={14} /> Add to Cart
                                                     </button>
                                                 )}
+                                            </div>
+                                        );
+                                                })}
                                             </div>
                                         );
                                     })}
