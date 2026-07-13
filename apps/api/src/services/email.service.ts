@@ -1,5 +1,6 @@
 import { Resend } from 'resend';
 import { supabase } from '../lib/supabase';
+import PDFDocument from 'pdfkit';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 // Falling back to localhost in production would send email recipients on other
@@ -64,6 +65,94 @@ function normalizePaymentLinkItems(link: { items?: any; amount: number; products
 
 function paymentLinkItemLabel(items: PaymentLinkItemRow[]): string {
     return items.map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''}`).join(', ') || 'your order';
+}
+
+/**
+ * Generate a PDF receipt buffer using pdfkit. Mirrors the jsPDF receipt design
+ * used in NewSale.tsx but runs entirely server-side so it can be emailed as an
+ * attachment.
+ */
+function generateReceiptPdf(params: {
+    orgName: string;
+    customerName: string;
+    customerPhone?: string | null;
+    items: PaymentLinkItemRow[];
+    total: number;
+    reference: string;
+    date: Date;
+}): Promise<Buffer> {
+    const { orgName, customerName, customerPhone, items, total, reference, date } = params;
+    return new Promise((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+        const chunks: Buffer[] = [];
+        doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+        doc.on('error', reject);
+
+        const PRIMARY   = '#1e293b';
+        const ACCENT    = '#2563eb';
+        const MUTED     = '#64748b';
+        const LIGHT     = '#f8fafc';
+        const BORDER    = '#e2e8f0';
+        const money = (n: number) => `K ${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+        // ── Header ──────────────────────────────────────────────────────────
+        doc.fontSize(20).fillColor(PRIMARY).font('Helvetica-Bold').text(orgName.toUpperCase(), 50, 50);
+        doc.fontSize(9).fillColor(MUTED).font('Helvetica').text('Official Payment Receipt', 50, 74);
+        doc.fontSize(11).fillColor(ACCENT).font('Helvetica-Bold').text('RECEIPT', 545, 58, { align: 'right' });
+        doc.moveTo(50, 88).lineTo(545, 88).strokeColor(BORDER).lineWidth(0.5).stroke();
+
+        // ── Meta ────────────────────────────────────────────────────────────
+        doc.fontSize(9).fillColor('#334155').font('Helvetica');
+        doc.text(`Reference: ${reference}`, 50, 100);
+        doc.text(`Date: ${date.toLocaleString()}`, 50, 114);
+        doc.text(`Payment Method: Mobile Money`, 50, 128);
+        doc.font('Helvetica-Bold').text('Bill To:', 350, 100);
+        doc.font('Helvetica').text(customerName || 'Customer', 350, 114);
+        if (customerPhone) doc.text(`Phone: ${customerPhone}`, 350, 128);
+        doc.moveTo(50, 145).lineTo(545, 145).strokeColor(BORDER).stroke();
+
+        // ── Table header ────────────────────────────────────────────────────
+        doc.rect(50, 152, 495, 18).fill(LIGHT);
+        doc.fontSize(9).fillColor('#475569').font('Helvetica-Bold');
+        doc.text('Item Description', 58, 157);
+        doc.text('Qty',   330, 157, { width: 50, align: 'center' });
+        doc.text('Unit Price', 390, 157, { width: 70, align: 'right' });
+        doc.text('Total',      470, 157, { width: 70, align: 'right' });
+
+        // ── Table rows ──────────────────────────────────────────────────────
+        let y = 178;
+        doc.font('Helvetica').fillColor('#334155');
+        items.forEach(item => {
+            const lineTotal = item.unit_price * item.quantity;
+            let label = item.name;
+            if (item.check_in && item.check_out) label += `\n${item.check_in} → ${item.check_out} · ${item.quantity} day(s)`;
+            doc.fontSize(9).text(label, 58, y, { width: 260 });
+            const rowH = doc.heightOfString(label, { width: 260 });
+            if (!item.check_in) doc.text(String(item.quantity), 330, y, { width: 50, align: 'center' });
+            doc.text(money(item.unit_price), 390, y, { width: 70, align: 'right' });
+            doc.text(money(lineTotal),       470, y, { width: 70, align: 'right' });
+            y += Math.max(rowH, 14) + 8;
+            doc.moveTo(50, y - 4).lineTo(545, y - 4).strokeColor('#f1f5f9').stroke();
+        });
+
+        // ── Totals ──────────────────────────────────────────────────────────
+        y += 4;
+        doc.fontSize(11).font('Helvetica-Bold').fillColor(PRIMARY);
+        doc.text('Total Paid:', 390, y, { width: 70, align: 'right' });
+        doc.text(money(total), 470, y, { width: 70, align: 'right' });
+
+        // ── Footer ──────────────────────────────────────────────────────────
+        y += 28;
+        doc.moveTo(50, y).lineTo(545, y).strokeColor(BORDER).stroke();
+        y += 14;
+        doc.fontSize(9).font('Helvetica-Oblique').fillColor('#94a3b8')
+            .text('Thank you for your payment!', 50, y, { align: 'center', width: 495 });
+        doc.fontSize(8).font('Helvetica').fillColor('#94a3b8')
+            .text('Secured by MoneyWise Ledger Gateway', 50, y + 14, { align: 'center', width: 495 });
+
+        doc.end();
+    });
 }
 
 export const emailService = {
@@ -249,6 +338,7 @@ export const emailService = {
                     orgName: org?.name || 'the business',
                     orgLogoUrl: org?.logo_url || null,
                     customerName: link.customer_name || 'Customer',
+                    customerPhone: link.customer_phone || null,
                     items,
                     total: amount,
                     reference,
@@ -557,11 +647,12 @@ export const emailService = {
         orgName: string;
         orgLogoUrl?: string | null;
         customerName: string;
+        customerPhone?: string | null;
         items: { name: string; quantity: number; unit_price: number; check_in?: string; check_out?: string }[];
         total: number;
         reference: string;
     }) {
-        const { to, orgName, orgLogoUrl, customerName, items, total, reference } = params;
+        const { to, orgName, orgLogoUrl, customerName, customerPhone, items, total, reference } = params;
         const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
         const money = (n: number) => `K${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
@@ -615,7 +706,7 @@ export const emailService = {
                         </div>
 
                         <div style="margin-top:14px; padding:20px 44px 30px; border-top:1px solid #F0F2F4; text-align:center;">
-                            <div style="font-size:12px; color:#9AA0A7; line-height:1.6;">This is your receipt for a payment processed via Lenco. Powered by MoneyWise.</div>
+                            <div style="font-size:12px; color:#9AA0A7; line-height:1.6;">This is your receipt for a payment processed via Lenco. Powered by MoneyWise. A PDF copy is attached.</div>
                         </div>
                     </div>
                 </div>
@@ -623,12 +714,44 @@ export const emailService = {
             </html>
         `;
 
-        await this.sendEmail({
+        // Generate PDF receipt and attach it to the email.
+        // Non-fatal — if PDF generation fails the HTML receipt still goes out.
+        let pdfAttachment: { filename: string; content: string } | undefined;
+        try {
+            const pdfBuffer = await generateReceiptPdf({
+                orgName,
+                customerName,
+                customerPhone: customerPhone ?? null,
+                items,
+                total,
+                reference,
+                date: new Date(),
+            });
+            pdfAttachment = {
+                filename: `receipt-${reference}.pdf`,
+                content: pdfBuffer.toString('base64'),
+            };
+        } catch (pdfErr) {
+            console.error(`[EmailService] PDF generation failed for ref ${reference} — sending HTML-only receipt:`, pdfErr);
+        }
+
+        if (!process.env.RESEND_API_KEY) {
+            console.warn('[EmailService] RESEND_API_KEY not set. Skipping receipt email send.');
+            return;
+        }
+        const { error } = await resend.emails.send({
+            from: process.env.EMAIL_FROM || 'MoneyWise <notifications@resend.dev>',
             to,
             subject: `Payment received — ${money(total)}`,
             html,
+            text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
+            ...(pdfAttachment ? { attachments: [{ filename: pdfAttachment.filename, content: pdfAttachment.content }] } : {}),
         });
-        console.log(`[EmailService] Payment receipt sent to ${to} for ref ${reference}`);
+        if (error) {
+            console.error('[EmailService] Resend error sending receipt:', error);
+            throw error;
+        }
+        console.log(`[EmailService] Payment receipt sent to ${to} for ref ${reference}${pdfAttachment ? ' (with PDF)' : ' (HTML only)'}`);
     },
 
     /**

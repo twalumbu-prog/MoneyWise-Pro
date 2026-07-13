@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, Copy, Link2, ExternalLink, Download, Receipt } from 'lucide-react';
+import { X, Check, Copy, Link2, ExternalLink, Download } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { organizationService } from '../services/organization.service';
 import { useAuth } from '../context/AuthContext';
