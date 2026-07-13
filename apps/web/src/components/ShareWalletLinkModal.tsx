@@ -162,8 +162,8 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                                 onClick={onGenerateInvoiceLink}
                                 className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 rounded-2xl flex items-center justify-center font-black text-xs uppercase tracking-wider text-white transition-all space-x-2 shadow-md shadow-slate-950/10"
                             >
-                                <Receipt size={14} strokeWidth={2.5} />
                                 <span>OTP Link</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                             </button>
                         )}
                     </div>

@@ -29,6 +29,7 @@ import {
     Copy,
     Link2,
     Receipt,
+    X,
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 import { SegmentedControl } from '../components/AnimatedTabs';
@@ -1141,7 +1142,14 @@ export const NewSale: React.FC = () => {
 
                 {/* ── SUCCESS: generated payment link (link mode) ── */}
                 {step === 'SUCCESS' && isLinkMode && generatedLink && (
-                    <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[70vh] text-center">
+                    <div className="relative flex-1 flex flex-col items-center justify-center p-8 min-h-[70vh] text-center">
+                        <button
+                            onClick={() => navigate('/cashbook')}
+                            className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                            aria-label="Close"
+                        >
+                            <X size={20} />
+                        </button>
                         {/* Blue success seal, matching the public portal's success screen */}
                         <div className="relative w-20 h-20 animate-in zoom-in-75 duration-300">
                             <BadgeCheck
