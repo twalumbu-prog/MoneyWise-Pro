@@ -11,8 +11,9 @@ export type ReconStatus =
 
 export interface SectionRecon {
     moneywise: number;
-    lenco: number;
-    difference: number;
+    /** null when Lenco could not be reached this cycle — distinct from a genuine 0 balance. */
+    lenco: number | null;
+    difference: number | null;
 }
 
 export interface FeesBreakdown {

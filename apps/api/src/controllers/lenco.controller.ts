@@ -569,27 +569,29 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Wallet not found' });
         }
 
-        // 2. Fetch organization details
-        const { data: org, error: orgError } = await supabase
-            .from('organizations')
-            .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
-            .eq('id', wallet.organization_id)
-            .single();
+        // 2 & 3. Fetch organization details and products concurrently
+        const [orgResult, productsResult] = await Promise.all([
+            supabase
+                .from('organizations')
+                .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+                .eq('id', wallet.organization_id)
+                .single(),
+            supabase
+                .from('products')
+                .select('*')
+                .eq('organization_id', wallet.organization_id)
+                .eq('is_active', true)
+                .order('name', { ascending: true })
+        ]);
 
+        const { data: org, error: orgError } = orgResult;
         console.log('[Lenco Public Context] Org query result:', { org, orgError });
 
         if (orgError || !org) {
             return res.status(404).json({ error: 'Organization not found' });
         }
 
-        // 3. Fetch active products for the organization
-        const { data: products, error: productsError } = await supabase
-            .from('products')
-            .select('*')
-            .eq('organization_id', wallet.organization_id)
-            .eq('is_active', true)
-            .order('name', { ascending: true });
-
+        const { data: products, error: productsError } = productsResult;
         if (productsError) throw productsError;
 
         res.json({
@@ -638,14 +640,46 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Payment link not found' });
         }
 
-        const { data: org, error: orgError } = await supabase
-            .from('organizations')
-            .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
-            .eq('id', link.organization_id)
-            .single();
+        const [orgResult, walletResult] = await Promise.all([
+            supabase
+                .from('organizations')
+                .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+                .eq('id', link.organization_id)
+                .single(),
+            supabase
+                .from('organization_wallets')
+                .select('id, name')
+                .eq('id', link.wallet_id)
+                .single()
+        ]);
 
+        const { data: org, error: orgError } = orgResult;
         if (orgError || !org) {
             return res.status(404).json({ error: 'Organization not found' });
+        }
+
+        const { data: wallet, error: walletError } = walletResult;
+        if (walletError || !wallet) {
+            return res.status(404).json({ error: 'Wallet not found' });
+        }
+
+        // Multi-item invoice link: hydrate the snapshotted basket with product images.
+        let items: any[] | null = null;
+        if (Array.isArray(link.items) && link.items.length > 0) {
+            const ids = [...new Set(link.items.map((it: any) => it.product_id).filter(Boolean))];
+            const { data: prods } = ids.length
+                ? await supabase.from('products').select('id, image_url').in('id', ids)
+                : { data: [] as any[] };
+            const imgById: Record<string, string | null> = {};
+            for (const p of (prods || []) as any[]) imgById[p.id] = p.image_url || null;
+            items = link.items.map((it: any) => ({
+                product_id: it.product_id,
+                name: it.name,
+                image_url: imgById[it.product_id] || null,
+                quantity: Number(it.quantity) || 1,
+                unit_price: Number(it.unit_price) || 0,
+                ...(it.check_in && it.check_out ? { check_in: it.check_in, check_out: it.check_out } : {})
+            }));
         }
 
         res.json({
@@ -662,6 +696,7 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
                 payment_test_mode: org.payment_test_mode || false
             },
             product: link.products,
+            items,
             customer_name: link.customer_name,
             customer_phone: link.customer_phone,
             amount: Number(link.amount),

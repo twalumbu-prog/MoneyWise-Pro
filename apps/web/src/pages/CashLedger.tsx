@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { cashbookService, CashbookEntry } from '../services/cashbook.service';
 import { departmentService } from '../services/department.service';
@@ -175,6 +176,7 @@ const renderMobileStatusIcon = (status: string) => {
 
 
 const CashLedger: React.FC = () => {
+    const navigate = useNavigate();
     const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
     const [postingReview, setPostingReview] = useState<{
         type: 'INFLOW' | 'REQUISITION';
@@ -2784,6 +2786,12 @@ Status: VERIFIED`;
                 }}
                 walletName={wallets.find(w => w.id === shareWalletId)?.name || ''}
                 shareUrl={shareWalletId ? `${window.location.origin}/pay/${shareWalletId}` : ''}
+                onGenerateInvoiceLink={shareWalletId ? () => {
+                    const wid = shareWalletId;
+                    setIsShareModalOpen(false);
+                    setShareWalletId(null);
+                    navigate(`/sales/new?mode=link&wallet=${wid}`);
+                } : undefined}
             />
         </Layout>
     );

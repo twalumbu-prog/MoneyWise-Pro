@@ -109,7 +109,7 @@ export const whatsappService = {
 
             const { data: link, error: linkError } = await supabase
                 .from('payment_links')
-                .select('customer_name, customer_phone, amount, products(name)')
+                .select('customer_name, customer_phone, amount, items, products(name)')
                 .eq('organization_id', organizationId)
                 .eq('reference', reference)
                 .maybeSingle();
@@ -126,7 +126,15 @@ export const whatsappService = {
                 .maybeSingle();
 
             const orgName = org?.name || 'MoneyWise';
-            const productName = (link as any).products?.name || 'your order';
+            // Multi-item invoice links snapshot their basket into `items` (product_id is
+            // null, so the `products` join is empty); legacy single-product links still
+            // resolve via the join. Build the label from whichever is present.
+            const linkItems = Array.isArray((link as any).items) && (link as any).items.length > 0
+                ? (link as any).items as { name: string; quantity: number }[]
+                : null;
+            const productName = linkItems
+                ? linkItems.map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''}`).join(', ')
+                : (link as any).products?.name || 'your order';
             const customerName = link.customer_name || 'Customer';
             const amount = `K${Number(link.amount).toLocaleString()}`;
             const when = new Date().toLocaleString();

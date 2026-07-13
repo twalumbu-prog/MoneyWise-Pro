@@ -19,7 +19,8 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 function SummaryCard({ title, section, accent }: { title: string; section: SectionRecon | null; accent: string }) {
-    const clean = section ? isWithinTolerance(section.difference) : false;
+    const known = !!section && section.difference !== null;
+    const clean = known && isWithinTolerance(section!.difference);
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-4">
             <div className={`mb-3 text-sm font-semibold ${accent}`}>{title}</div>
@@ -34,7 +35,7 @@ function SummaryCard({ title, section, accent }: { title: string; section: Secti
                 </div>
                 <div className="flex justify-between border-t border-slate-100 pt-1.5">
                     <dt className="text-slate-500">Difference</dt>
-                    <dd className={`tabular-nums font-semibold ${section ? (clean ? 'text-emerald-600' : 'text-rose-600') : 'text-slate-300'}`}>
+                    <dd className={`tabular-nums font-semibold ${!known ? 'text-slate-300' : clean ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {money(section?.difference)}
                     </dd>
                 </div>

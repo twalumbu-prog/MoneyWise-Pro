@@ -1,9 +1,14 @@
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
+import { LencoService } from '../services/lenco.service';
 
 /**
  * Super-admin management of the pre-created wallet pool (see wallet_pool table).
- * Wallets are provisioned here ahead of time; onboarding only ever LINKS them.
+ * Wallets are provisioned here ahead of time; onboarding only ever LINKS them
+ * (via the claim_pool_wallet RPC) with NO further verification — whatever is
+ * stored here is trusted all the way into a live organization. addPoolWallet
+ * MUST verify provider_account_id against Lenco before insert (see its comment
+ * for the incident this guards against).
  * Secrets are write-only: list responses never include api_secret.
  */
 
@@ -31,6 +36,24 @@ export const addPoolWallet = async (req: any, res: Response): Promise<any> => {
 
         if (!provider_account_id || !api_secret || !public_key) {
             return res.status(400).json({ error: 'provider_account_id, api_secret and public_key are required' });
+        }
+
+        // ── Verify against Lenco BEFORE this can ever reach a real organization ──
+        // Root cause of a 2026-07 incident: two pool wallets were provisioned with
+        // provider_account_id set to an internal display label ("MWC20012") instead
+        // of the actual Lenco account UUID. onboarding's claim_pool_wallet RPC
+        // trusts this table blindly and copies it straight into organizations, so
+        // the orgs went live pointed at a Lenco account that didn't exist — every
+        // payout, balance check, and reconciliation for them failed silently until
+        // caught here. This is the single place that can catch it before intake.
+        try {
+            await LencoService.getAccountBalance(provider_account_id, api_secret);
+        } catch (verifyErr: any) {
+            return res.status(400).json({
+                error: `Could not verify this account with Lenco: ${verifyErr.message}. ` +
+                    'Double-check provider_account_id is the Lenco ACCOUNT ID (a UUID, e.g. from ' +
+                    'the account-creation response or Lenco dashboard) — not an internal label or till number.',
+            });
         }
 
         const { data, error } = await supabase

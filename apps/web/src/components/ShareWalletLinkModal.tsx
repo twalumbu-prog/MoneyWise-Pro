@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, Copy, Link2, ExternalLink, Download } from 'lucide-react';
+import { X, Check, Copy, Link2, ExternalLink, Download, Receipt } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { organizationService } from '../services/organization.service';
 import { useAuth } from '../context/AuthContext';
@@ -9,13 +9,16 @@ interface ShareWalletLinkModalProps {
     onClose: () => void;
     walletName: string;
     shareUrl: string;
+    /** Opens the invoice builder (New Sale in link mode) to generate a one-time link. */
+    onGenerateInvoiceLink?: () => void;
 }
 
 const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
     isOpen,
     onClose,
     walletName,
-    shareUrl
+    shareUrl,
+    onGenerateInvoiceLink
 }) => {
     const { organizationLogoUrl } = useAuth();
     const [copied, setCopied] = useState(false);
@@ -144,7 +147,7 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                         </div>
                     </div>
 
-                    <div className="pt-2">
+                    <div className="pt-2 space-y-2.5">
                         <a
                             href={shareUrl}
                             target="_blank"
@@ -154,6 +157,15 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                             <span>Open payment portal</span>
                             <ExternalLink size={14} />
                         </a>
+                        {onGenerateInvoiceLink && (
+                            <button
+                                onClick={onGenerateInvoiceLink}
+                                className="w-full py-3.5 bg-slate-950 hover:bg-slate-900 rounded-2xl flex items-center justify-center font-black text-xs uppercase tracking-wider text-white transition-all space-x-2 shadow-md shadow-slate-950/10"
+                            >
+                                <Receipt size={14} strokeWidth={2.5} />
+                                <span>OTP Link</span>
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

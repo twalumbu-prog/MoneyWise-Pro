@@ -6,16 +6,18 @@ import {
     Loader2,
     AlertCircle,
     RefreshCw,
-    CheckCircle2,
     ShieldCheck,
     Building2,
-    User,
     Phone,
     Smartphone,
     CreditCard,
     ArrowLeft,
     CheckCircle,
-    XCircle
+    XCircle,
+    BadgeCheck,
+    Check,
+    Wallet,
+    ClipboardList
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
@@ -54,6 +56,16 @@ interface LinkProduct {
     product_type?: string;
 }
 
+interface LinkItem {
+    product_id: string;
+    name: string;
+    image_url?: string | null;
+    quantity: number;
+    unit_price: number;
+    check_in?: string;
+    check_out?: string;
+}
+
 interface LinkContext {
     status: 'ACTIVE' | 'PAID' | 'CANCELLED';
     organization: { id: string; name: string; logo_url: string | null };
@@ -64,6 +76,8 @@ interface LinkContext {
         payment_test_mode: boolean;
     };
     product: LinkProduct;
+    /** Multi-item invoice links carry the basket here; single-product links use `product`. */
+    items?: LinkItem[] | null;
     customer_name: string;
     customer_phone: string;
     amount: number;
@@ -127,8 +141,12 @@ export const PublicPaymentLink: React.FC = () => {
             setStep('ERROR');
             return;
         }
+        const startFetchTime = performance.now();
+        console.log(`[Diagnostic] Starting public payment link context fetch for token ${token} at ${new Date().toISOString()}`);
+
         try {
-            const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`, { timeout: 15000 });
+            const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`, { timeout: 30000 });
+            console.log(`[Diagnostic] Successfully fetched payment link context in ${Math.round(performance.now() - startFetchTime)}ms`);
             setCtx(res.data);
             setPhone(res.data.customer_phone || '');
 
@@ -174,7 +192,8 @@ export const PublicPaymentLink: React.FC = () => {
             // Don't drop a resumed payment back to the ready screen on a second run.
             if (!resumedRef.current) setStep('READY');
         } catch (err: any) {
-            console.error('Error fetching payment-link context:', err);
+            const duration = Math.round(performance.now() - startFetchTime);
+            console.error(`[Diagnostic] Error fetching payment-link context after ${duration}ms:`, err);
             setErrorInfo(diagnoseCheckoutError(err));
             setStep('ERROR');
         }
@@ -188,6 +207,26 @@ export const PublicPaymentLink: React.FC = () => {
     const subtotal = ctx?.amount || 0;
     const processingFee = subtotal > 0 ? calculatePlatformFee(subtotal) : 0;
     const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
+
+    // Once the customer presses Pay, the flow fills the whole screen on mobile —
+    // same full-bleed treatment as the open catalogue portal (PublicPay.tsx) —
+    // instead of staying inside the small floating card used for READY/LOADING/ERROR.
+    const isAppStep = step === 'CHECKOUT' || step === 'VERIFYING' || step === 'SUCCESS';
+
+    // Normalize both link shapes (multi-item invoice vs legacy single product) into
+    // one list, so the display + intent payload + analytics never touch a null product.
+    const linkItems: LinkItem[] = (ctx?.items && ctx.items.length > 0)
+        ? ctx.items
+        : (ctx?.product
+            ? [{ product_id: ctx.product.id, name: ctx.product.name, image_url: ctx.product.image_url, quantity: 1, unit_price: ctx.amount || 0 }]
+            : []);
+    const linkLabel = linkItems.map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''}`).join(', ') || 'Payment';
+    const intentItems = linkItems.map(it => ({
+        id: it.product_id,
+        quantity: it.quantity,
+        price: it.unit_price,
+        ...(it.check_in && it.check_out ? { check_in: it.check_in, check_out: it.check_out } : {}),
+    }));
 
     // Resolve the mobile money account holder's name as the customer types a valid
     // number — the same trust signal shown on the internal disbursement wizard. Also
@@ -250,7 +289,7 @@ export const PublicPaymentLink: React.FC = () => {
             return;
         }
 
-        const purpose = `Sale: ${ctx.product.name} | Cust: ${ctx.customer_phone}`;
+        const purpose = `Sale: ${linkLabel} | Cust: ${ctx.customer_phone}`;
         const ref = `DEP-${Date.now()}-${ctx.wallet.lenco_subaccount_id!.substring(0, 8)}-PL`;
         setCurrentReference(ref);
         setError(null);
@@ -259,7 +298,7 @@ export const PublicPaymentLink: React.FC = () => {
         trackEvent('payment_link_checkout', 'payment', 'started', {
             workflow_id: ref,
             organization_id: ctx.organization.id,
-            product_name: ctx.product.name,
+            product_name: linkLabel,
             subtotal,
             total_payable: totalPayable,
             payment_link_token: token,
@@ -274,7 +313,7 @@ export const PublicPaymentLink: React.FC = () => {
                 customerName: ctx.customer_name,
                 customerPhone: ctx.customer_phone,
                 paymentLinkToken: token,
-                items: [{ id: ctx.product.id, quantity: 1, price: subtotal }]
+                items: intentItems
             });
 
             LencoPay.getPaid({
@@ -313,7 +352,7 @@ export const PublicPaymentLink: React.FC = () => {
                                 trackEvent('payment_link_checkout', 'payment', 'succeeded', {
                                     workflow_id: ref,
                                     organization_id: ctx.organization.id,
-                                    product_name: ctx.product.name,
+                                    product_name: linkLabel,
                                     subtotal,
                                     total_payable: totalPayable,
                                     receipt_number: verifyRes.data.referenceNumber,
@@ -443,7 +482,7 @@ export const PublicPaymentLink: React.FC = () => {
             return;
         }
 
-        const purpose = `Sale: ${ctx.product.name} | Cust: ${ctx.customer_phone}`;
+        const purpose = `Sale: ${linkLabel} | Cust: ${ctx.customer_phone}`;
         const ref = `DEP-${Date.now()}-${ctx.wallet.lenco_subaccount_id!.substring(0, 8)}-PL`;
         setCurrentReference(ref);
         setSubmitting(true);
@@ -459,7 +498,7 @@ export const PublicPaymentLink: React.FC = () => {
         trackEvent('payment_link_checkout', 'payment', 'started', {
             workflow_id: ref,
             organization_id: ctx.organization.id,
-            product_name: ctx.product.name,
+            product_name: linkLabel,
             subtotal,
             total_payable: totalPayable,
             payment_link_token: token,
@@ -476,7 +515,7 @@ export const PublicPaymentLink: React.FC = () => {
                 customerName: ctx.customer_name,
                 customerPhone: ctx.customer_phone,
                 paymentLinkToken: token,
-                items: [{ id: ctx.product.id, quantity: 1, price: subtotal }]
+                items: intentItems
             });
 
             // 2. Initiate the collection server-side (gross = subtotal + platform fee).
@@ -513,7 +552,7 @@ export const PublicPaymentLink: React.FC = () => {
             setSubmitting(false);
 
             startCompletionPoll(ref, ctx.organization.id, checkoutStartedAt, {
-                product_name: ctx.product.name,
+                product_name: linkLabel,
                 subtotal,
                 total_payable: totalPayable,
                 payment_link_token: token,
@@ -671,8 +710,11 @@ export const PublicPaymentLink: React.FC = () => {
     const operator = detectOperator(phone);
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30 flex flex-col justify-between py-10 px-4">
-            <div className="max-w-md w-full mx-auto my-auto bg-white/70 backdrop-blur-xl rounded-[32px] border border-slate-100 shadow-2xl overflow-hidden flex flex-col justify-between transition-all duration-300">
+        <div className={`flex flex-col ${isAppStep
+            ? 'h-[100dvh] bg-white sm:h-auto sm:min-h-screen sm:bg-gradient-to-br sm:from-slate-50 sm:via-slate-100 sm:to-blue-50/30 sm:justify-between sm:py-10 sm:px-4'
+            : 'min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30 justify-between py-10 px-4'}`}
+        >
+            <div className={`w-full bg-white overflow-hidden flex flex-col sm:max-w-md sm:mx-auto sm:my-auto sm:bg-white/70 sm:backdrop-blur-xl sm:rounded-[32px] sm:border sm:border-slate-100 sm:shadow-2xl sm:justify-between transition-all duration-300 ${isAppStep ? 'flex-1 min-h-0' : 'rounded-[32px] border border-slate-100 shadow-2xl'}`}>
 
                 {step === 'LOADING' && (
                     <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
@@ -685,40 +727,52 @@ export const PublicPaymentLink: React.FC = () => {
 
                 {step === 'READY' && ctx && (
                     <div className="p-8">
-                        <div className="flex flex-col items-center text-center mb-6">
+                        <div className="flex flex-col items-center text-center">
                             {renderLogo()}
                             <h2 className="text-lg font-black text-slate-900 mt-4 uppercase tracking-wider">{ctx.organization.name}</h2>
                             <p className="text-xs font-semibold text-slate-400 mt-1">Secure Payment Request</p>
                         </div>
 
-                        {ctx.product.image_url && (
-                            <img
-                                src={ctx.product.image_url}
-                                alt={ctx.product.name}
-                                className="w-full h-40 object-cover rounded-2xl border border-slate-100 mb-5"
-                            />
-                        )}
+                        {/* Customer details, left-aligned like Order Summary below */}
+                        <div className="mt-6 mb-8">
+                            <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Customer Details</h4>
+                            <div className="flex flex-col gap-0.5">
+                                <span className="text-sm font-normal text-black">{ctx.customer_name}</span>
+                                <span className="text-xs font-normal text-black">{ctx.customer_phone}</span>
+                            </div>
+                        </div>
 
-                        <div className="bg-slate-50/70 border border-slate-100/50 rounded-2xl p-5 text-left text-xs space-y-3 mb-5">
-                            <div>
-                                <h4 className="text-sm font-black text-slate-900">{ctx.product.name}</h4>
-                                {ctx.product.description && (
-                                    <p className="text-[11px] font-medium text-slate-400 mt-1">{ctx.product.description}</p>
-                                )}
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-500 font-semibold pt-2 border-t border-slate-100">
-                                <User size={13} /> <span className="text-slate-700 font-bold">{ctx.customer_name}</span>
-                            </div>
-                            <div className="flex items-center gap-2 text-slate-500 font-semibold">
-                                <Smartphone size={13} /> <span className="text-slate-700 font-bold">{ctx.customer_phone}</span>
+                        {/* Order Summary — itemized table, matching the invoice email */}
+                        <div className="mb-5">
+                            <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Order Summary</h4>
+                            <div className="border border-slate-100 rounded-2xl overflow-hidden">
+                                <table className="w-full text-xs border-collapse">
+                                    <tbody>
+                                        {linkItems.map((it, i) => (
+                                            <tr key={i} className={i > 0 ? 'border-t border-slate-100' : ''}>
+                                                <td className="py-3 pl-4 pr-2 align-top">
+                                                    <div className="text-[13px] font-bold text-slate-900">{it.name}</div>
+                                                    <div className="text-[10px] font-semibold text-slate-400 mt-0.5">
+                                                        {it.check_in && it.check_out ? `${it.check_in} → ${it.check_out}` : `x${it.quantity}`}
+                                                    </div>
+                                                </td>
+                                                <td className="py-3 pl-2 pr-4 text-right align-top text-[13px] font-black text-slate-800 whitespace-nowrap">
+                                                    K{(it.unit_price * it.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        <tr className="border-t border-slate-200 bg-slate-50/70">
+                                            <td className="py-3 pl-4 pr-2 text-[13px] font-black text-slate-900">Subtotal</td>
+                                            <td className="py-3 pl-2 pr-4 text-right text-[13px] font-black text-slate-900 whitespace-nowrap">
+                                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
                         <div className="space-y-1.5 text-xs mb-5">
-                            <div className="flex justify-between font-semibold text-slate-500">
-                                <span>Subtotal</span>
-                                <span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            </div>
                             <div className="flex justify-between font-normal text-slate-400 text-[11px]">
                                 <span>Processing fee</span>
                                 <span>K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -757,7 +811,7 @@ export const PublicPaymentLink: React.FC = () => {
                 )}
 
                 {step === 'CHECKOUT' && ctx && (
-                    <div className="flex flex-col min-h-[520px]">
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[520px]">
                         {/* Top bar — back + title, toggle directly beneath */}
                         <div className="px-6 pt-6 pb-4 border-b border-slate-100">
                             <div className="flex items-center gap-3 mb-4">
@@ -792,7 +846,7 @@ export const PublicPaymentLink: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="flex-1 px-6 py-6">
+                        <div className="flex-1 overflow-y-auto px-6 py-6">
                             {checkoutMethod === 'mobile-money' ? (
                                 <>
                                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
@@ -893,7 +947,7 @@ export const PublicPaymentLink: React.FC = () => {
 
                 {/* Waiting for USSD approval — premium live-narration screen */}
                 {step === 'VERIFYING' && displayPaymentPhase && ctx && (
-                    <div className="flex flex-col min-h-[520px]">
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[520px]">
                         <PaymentWaitingScreen
                             phase={displayPaymentPhase}
                             amount={resumedPayment ? resumedPayment.amount : totalPayable}
@@ -919,7 +973,7 @@ export const PublicPaymentLink: React.FC = () => {
                 )}
 
                 {step === 'VERIFYING' && !displayPaymentPhase && (
-                    <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
+                    <div className="flex-1 min-h-0 p-10 flex flex-col items-center justify-center sm:min-h-[450px]">
                         {verificationStep === 'POLLING' ? (
                             <>
                                 <div className="p-4 bg-amber-50 text-amber-600 rounded-2xl animate-spin mb-4">
@@ -951,28 +1005,84 @@ export const PublicPaymentLink: React.FC = () => {
                 )}
 
                 {step === 'SUCCESS' && ctx && (
-                    <div className="p-8 text-center min-h-[450px] flex flex-col justify-center">
-                        <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center mb-5 animate-in zoom-in-75 duration-300" style={{ backgroundColor: '#006AFF1A', color: '#002962' }}>
-                            <CheckCircle2 size={32} strokeWidth={2.5} />
+                    <div className="flex-1 min-h-0 flex flex-col overflow-y-auto px-6 pb-6 sm:min-h-[450px]">
+                        {/* Success seal + headline — matches the open catalogue portal's Congratulations screen */}
+                        <div className="flex flex-col items-center text-center pt-8 pb-1">
+                            <div className="relative w-24 h-24 animate-in zoom-in-75 duration-300">
+                                <BadgeCheck
+                                    className="w-24 h-24 text-[#002962]"
+                                    fill="#006AFF"
+                                    strokeWidth={1.5}
+                                    style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
+                                />
+                                {/* White tick overlaid on top of the seal's own check — no shadow, sits flat above it */}
+                                <Check className="absolute inset-0 m-auto w-9 h-9 text-white" strokeWidth={3} />
+                            </div>
+                            <h2 className="text-2xl font-black text-slate-900 mt-6">Congratulations</h2>
+                            <p className="text-xs font-medium text-slate-500 mt-2 leading-relaxed">
+                                Your payment was successful.<br />Thank you for your business.
+                            </p>
                         </div>
-                        <h3 className="text-lg font-black text-slate-900 uppercase tracking-wider">Payment Confirmed!</h3>
-                        <p className="text-xs text-slate-400 font-semibold mt-1">
-                            Receipt Number: {receiptNumber ? `#${receiptNumber}` : currentReference.replace('-PL', '')}
+
+                        {/* Payment Details */}
+                        <div className="mt-7 bg-gray-50 border border-neutral-200 rounded-2xl px-6 pt-4 pb-5">
+                            <div className="flex items-center gap-2 mb-3">
+                                <Wallet size={15} className="text-slate-900" />
+                                <span className="text-xs font-bold text-zinc-600">Payment Details</span>
+                            </div>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-zinc-600">Payment Method</span>
+                                    <span className="text-xs font-semibold text-zinc-600">{checkoutMethod === 'card' ? 'Card' : 'Mobile Money'}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-zinc-600">Account Number</span>
+                                    <span className="text-xs font-semibold text-zinc-600">{phone || ctx.customer_phone}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs text-zinc-600">Account Name</span>
+                                    <span className="text-xs font-bold text-zinc-600 text-right truncate max-w-[55%]">{ctx.customer_name}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Order Summary */}
+                        <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl px-6 py-4">
+                            <div className="flex items-center gap-2 mb-3">
+                                <ClipboardList size={15} className="text-slate-900" />
+                                <span className="text-xs font-bold text-zinc-600">Order Summary</span>
+                            </div>
+                            <div className="space-y-2">
+                                {linkItems.map((it, i) => (
+                                    <div key={i} className="flex justify-between items-center gap-3">
+                                        <span className="text-xs text-zinc-600 truncate">
+                                            {it.name}
+                                            {it.check_in && it.check_out ? ` · ${it.check_in} → ${it.check_out}` : it.quantity > 1 ? ` (x${it.quantity})` : ''}
+                                        </span>
+                                        <span className="text-xs text-zinc-600 flex-shrink-0">
+                                            K{(it.unit_price * it.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                ))}
+                                <div className="flex justify-between items-center gap-3">
+                                    <span className="text-xs text-zinc-600">Transaction Cost</span>
+                                    <span className="text-xs text-zinc-600 flex-shrink-0">
+                                        K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <div className="border-t border-neutral-200 my-1" />
+                                <div className="flex justify-between items-center gap-3">
+                                    <span className="text-xs font-bold text-slate-900">Payment Total</span>
+                                    <span className="text-xs font-bold text-slate-900 flex-shrink-0">
+                                        K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <p className="text-center text-[10px] font-semibold text-slate-300 mt-4">
+                            Receipt No: {receiptNumber ? `#${receiptNumber}` : currentReference.replace('-PL', '')}
                         </p>
-                        <div className="bg-slate-50/70 border border-slate-100/50 rounded-2xl p-5 text-left text-xs space-y-2.5 max-w-xs mx-auto mt-6">
-                            <div className="flex justify-between font-semibold text-slate-400">
-                                <span>Item:</span>
-                                <span className="font-bold text-slate-700 text-right">{ctx.product.name}</span>
-                            </div>
-                            <div className="flex justify-between font-semibold text-slate-400">
-                                <span>Client:</span>
-                                <span className="font-bold text-slate-700">{ctx.customer_name}</span>
-                            </div>
-                            <div className="flex justify-between font-semibold text-slate-400 pt-2 border-t border-slate-100">
-                                <span>Total Paid:</span>
-                                <span className="font-black text-emerald-600">K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            </div>
-                        </div>
                     </div>
                 )}
 
@@ -1014,9 +1124,10 @@ export const PublicPaymentLink: React.FC = () => {
                 )}
             </div>
 
-            {/* Hidden on the premium processing screen, which has its own header */}
+            {/* Hidden on the premium processing screen (own header) and on mobile during
+                the full-bleed post-pay steps, where it would push past the viewport. */}
             {!(step === 'VERIFYING' && displayPaymentPhase) && (
-                <div className="mt-8 text-center space-y-2">
+                <div className={`mt-8 text-center space-y-2 ${isAppStep ? 'hidden sm:block' : ''}`}>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                         <Building2 size={12} />
                         <span>Secured by MoneyWise Ledger Gateway</span>

@@ -77,6 +77,25 @@ export interface PaymentLink {
     created_at?: string;
     paid_at?: string | null;
     path?: string;
+    email_sent?: boolean;
+}
+
+export interface InvoiceLinkItem {
+    product_id: string;
+    quantity: number;
+    /** Client-set amount for DONATION products only (server prices everything else). */
+    price?: number;
+    check_in?: string;
+    check_out?: string;
+}
+
+export interface InvoiceLinkPayload {
+    items: InvoiceLinkItem[];
+    customer_name: string;
+    customer_phone: string;
+    customer_email?: string;
+    wallet_id?: string | null;
+    send_email: boolean;
 }
 
 export const productService = {
@@ -177,6 +196,17 @@ export const paymentLinkService = {
         if (!session?.access_token) throw new Error('Not authenticated');
 
         const response = await axios.post(`${API_URL}/organizations/payment-links`, payload, {
+            headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        return response.data;
+    },
+
+    /** Multi-item invoice link built from a New Sale cart; optionally emailed. */
+    async createInvoiceLink(payload: InvoiceLinkPayload): Promise<PaymentLink> {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+
+        const response = await axios.post(`${API_URL}/organizations/payment-links/invoice`, payload, {
             headers: { Authorization: `Bearer ${session.access_token}` }
         });
         return response.data;

@@ -281,11 +281,15 @@ export const PublicPay: React.FC = () => {
             return;
         }
 
+        const startFetchTime = performance.now();
+        console.log(`[Diagnostic] Starting public context fetch for wallet ${wallet_id} at ${new Date().toISOString()}`);
+
         try {
             const response = await axios.get<PublicContextResponse>(
                 `${API_URL}/lenco/public-context/${wallet_id}`,
-                { timeout: 15000 }
+                { timeout: 30000 }
             );
+            console.log(`[Diagnostic] Successfully fetched public context in ${Math.round(performance.now() - startFetchTime)}ms`);
             setOrg(response.data.organization);
             setWallet(response.data.wallet);
             setProducts(response.data.products);
@@ -344,7 +348,8 @@ export const PublicPay: React.FC = () => {
             // Don't drop a resumed payment back to the catalogue on a second run.
             if (!resumedRef.current) setStep('SHOP');
         } catch (err: any) {
-            console.error('Error fetching public pay context:', err);
+            const duration = Math.round(performance.now() - startFetchTime);
+            console.error(`[Diagnostic] Error fetching public pay context after ${duration}ms:`, err);
             setErrorInfo(diagnoseCheckoutError(err));
             setStep('ERROR');
         }

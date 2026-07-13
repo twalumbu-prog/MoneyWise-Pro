@@ -40,9 +40,10 @@ export type ReconStatus =
 
 export interface SectionRecon {
     moneywise: number;
-    lenco: number;
-    /** moneywise - lenco */
-    difference: number;
+    /** null when Lenco could not be reached this cycle — distinct from a genuine 0 balance. */
+    lenco: number | null;
+    /** moneywise - lenco; null when lenco is null. */
+    difference: number | null;
 }
 
 export interface FeesBreakdown {
@@ -246,11 +247,19 @@ function lencoTotalsFromTxns(txns: LencoTxn[], availableBalance: number): LencoT
     };
 }
 
-function section(moneywise: number, lenco: number): SectionRecon {
+/** Numeric on both sides — assignable to SectionRecon, but narrower so classify() can require non-null. */
+type NumericSection = { moneywise: number; lenco: number; difference: number };
+
+function section(moneywise: number, lenco: number): NumericSection {
     return { moneywise: round2(moneywise), lenco: round2(lenco), difference: round2(moneywise - lenco) };
 }
 
-function classify(closing: SectionRecon): { status: ReconStatus; pct: number } {
+/** Lenco side unknown this cycle (unreachable/misconfigured account) — NOT the same as a real 0 balance. */
+function sectionMwOnly(moneywise: number): SectionRecon {
+    return { moneywise: round2(moneywise), lenco: null, difference: null };
+}
+
+function classify(closing: NumericSection): { status: ReconStatus; pct: number } {
     const diff = Math.abs(closing.difference);
     if (diff < RECON_TOLERANCE) return { status: 'RECONCILED', pct: 100 };
     const base = Math.max(Math.abs(closing.lenco), Math.abs(closing.moneywise), 1);
@@ -298,28 +307,71 @@ async function buildOrgSummary(org: OrgRow): Promise<OrgReconSummary> {
         return base;
     }
 
+    // MoneyWise totals are independent of Lenco reachability — compute them first so
+    // a Lenco outage or a misconfigured account (see incident note below) never blanks
+    // out data we actually have. Previously any Lenco failure discarded MW figures too.
+    let mw: MoneyWiseTotals;
     try {
-        const secretKey = org.lenco_secret_key || undefined;
-        const [mw, balanceData, txns] = await Promise.all([
-            getMoneyWiseTotals(org.id),
-            LencoService.getAccountBalance(org.lenco_subaccount_id, secretKey),
-            fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey),
-        ]);
+        mw = await getMoneyWiseTotals(org.id);
+    } catch (err: any) {
+        base.status = 'ERROR';
+        base.error = err?.message || 'Failed to read MoneyWise ledger';
+        return base;
+    }
 
-        const availableBalance = n(balanceData?.availableBalance ?? balanceData?.balance);
+    const secretKey = org.lenco_secret_key || undefined;
+
+    // Fetch the balance FIRST, alone (not raced against the transactions call).
+    //
+    // Root cause (2026-07 incident, TAEMJA / Test Company 1): two orgs had
+    // lenco_subaccount_id set to an internal wallet-pool LABEL ("MWC20012")
+    // instead of the real Lenco account UUID — provisioning never validated it.
+    // With both calls racing via Promise.all, whichever rejected first "won",
+    // so the SAME misconfigured account showed different, confusing error text
+    // on different refreshes ("Account was not found..." vs "Invalid accountId"
+    // from the /transactions endpoint) — impossible to diagnose from the UI.
+    // The balance error is Lenco's clearest, so it's now the single source of
+    // truth for what gets shown.
+    let balanceData: any;
+    try {
+        balanceData = await LencoService.getAccountBalance(org.lenco_subaccount_id, secretKey);
+    } catch (err: any) {
+        base.inflows = sectionMwOnly(mw.inflow);
+        base.outflows = sectionMwOnly(mw.outflow);
+        base.closing = sectionMwOnly(mw.closing);
+        base.status = 'ERROR';
+        base.error = err?.message || 'Failed to reach Lenco';
+        return base;
+    }
+
+    const availableBalance = n(balanceData?.availableBalance ?? balanceData?.balance);
+
+    try {
+        const txns = await fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey);
         const lenco = lencoTotalsFromTxns(txns, availableBalance);
 
+        const closingSection = section(mw.closing, lenco.closing);
         base.inflows = section(mw.inflow, lenco.inflow);
         base.outflows = section(mw.outflow, lenco.outflow);
-        base.closing = section(mw.closing, lenco.closing);
+        base.closing = closingSection;
         base.fees = { bankFees: lenco.bankFees, platformFees: lenco.platformFees };
 
-        const { status, pct } = classify(base.closing);
+        const { status, pct } = classify(closingSection);
         base.status = status;
         base.reconciliationPct = pct;
     } catch (err: any) {
-        base.status = 'ERROR';
-        base.error = err?.message || 'Failed to reach Lenco';
+        // Balance succeeded but the transaction list didn't — the closing balance
+        // (the authoritative reconciliation signal) is still known, so classify on
+        // that; inflow/outflow detail is unavailable this cycle.
+        const closingSection = section(mw.closing, availableBalance);
+        base.inflows = sectionMwOnly(mw.inflow);
+        base.outflows = sectionMwOnly(mw.outflow);
+        base.closing = closingSection;
+
+        const { status, pct } = classify(closingSection);
+        base.status = status;
+        base.reconciliationPct = pct;
+        base.error = `Transaction detail unavailable: ${err?.message || 'unknown error'}`;
     }
 
     return base;
@@ -395,6 +447,7 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
     const rows: ReconTxnRow[] = [];
 
     if (org.lenco_subaccount_id && summary.status !== 'ERROR') {
+      try {
         const secretKey = org.lenco_secret_key || undefined;
 
         const { data: entries } = await supabase
@@ -502,6 +555,12 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
         }
 
         rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      } catch (err: any) {
+          // A transient Lenco failure here shouldn't 500 the whole detail page —
+          // summary-level figures (computed above, independently) are still valid.
+          rows.length = 0;
+          summary.error = `Transaction drill-down unavailable: ${err?.message || 'unknown error'}`;
+      }
     }
 
     const counts = {

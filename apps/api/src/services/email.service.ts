@@ -35,6 +35,37 @@ function htmlToPlainText(html: string): string {
         .trim();
 }
 
+interface PaymentLinkItemRow {
+    name: string;
+    quantity: number;
+    unit_price: number;
+    check_in?: string;
+    check_out?: string;
+}
+
+/**
+ * A payment_links row is either a legacy single-product link (product_id set,
+ * items null — joined `products(name)`) or a multi-item invoice link (product_id
+ * null, the basket snapshotted into the `items` JSONB column). Normalize both
+ * shapes into one item list so notification emails/messages always itemize
+ * correctly instead of falling back to a generic "your order" for invoices.
+ */
+function normalizePaymentLinkItems(link: { items?: any; amount: number; products?: { name?: string } | null }): PaymentLinkItemRow[] {
+    if (Array.isArray(link.items) && link.items.length > 0) {
+        return link.items.map((it: any) => ({
+            name: it.name || 'Item',
+            quantity: Number(it.quantity) || 1,
+            unit_price: Number(it.unit_price) || 0,
+            ...(it.check_in && it.check_out ? { check_in: it.check_in, check_out: it.check_out } : {})
+        }));
+    }
+    return [{ name: link.products?.name || 'your order', quantity: 1, unit_price: Number(link.amount) || 0 }];
+}
+
+function paymentLinkItemLabel(items: PaymentLinkItemRow[]): string {
+    return items.map(it => `${it.name}${it.quantity > 1 ? ` x${it.quantity}` : ''}`).join(', ') || 'your order';
+}
+
 export const emailService = {
     /**
      * Send a notification for a requisition event
@@ -152,51 +183,79 @@ export const emailService = {
     },
 
     /**
-     * Email confirmation for a paid one-time payment link, sent to the organization's
-     * admin(s) — organizations.email if set, otherwise every ACTIVE ADMIN member (see
-     * getOrgNotificationRecipients). Mirrors whatsappService.notifyPaymentLinkPaid;
-     * called alongside it, exactly once per ref.
+     * Confirmation for a paid one-time payment link — fires two independent emails:
+     *   1. Admin(s) — organizations.email if set, otherwise every ACTIVE ADMIN member
+     *      (see getOrgNotificationRecipients).
+     *   2. Customer — a receipt, sent only if they gave an email when the link was
+     *      created (payment_links.customer_email). This previously never fired, so
+     *      payers only ever got the admin-facing "you got paid" copy if it somehow
+     *      reached them; now each recipient gets email worded for them.
+     * Mirrors whatsappService.notifyPaymentLinkPaid; called alongside it, exactly
+     * once per ref. Both legs are independently non-fatal — the admin email still
+     * sends if the customer email fails and vice versa.
      */
     async notifyPaymentLinkPaid(organizationId: string, reference: string) {
+        const { data: link, error: linkError } = await supabase
+            .from('payment_links')
+            .select('customer_name, customer_phone, customer_email, amount, items, products(name)')
+            .eq('organization_id', organizationId)
+            .eq('reference', reference)
+            .maybeSingle();
+
+        if (linkError || !link) {
+            console.warn(`[EmailService] No payment link found for ref ${reference}; skipping notification.`);
+            return;
+        }
+
+        const items = normalizePaymentLinkItems(link as any);
+        const productLabel = paymentLinkItemLabel(items);
+        const amount = Number(link.amount);
+
+        // 1. Admin notification.
         try {
             const { emails } = await this.getOrgNotificationRecipients(organizationId);
-
             if (emails.length === 0) {
-                console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping payment-link notification.`);
-                return;
+                console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping admin payment-link notification.`);
+            } else {
+                const html = this.renderPaymentEmail({
+                    amount,
+                    customerName: link.customer_name || 'Customer',
+                    customerPhone: link.customer_phone || undefined,
+                    serviceLabel: productLabel,
+                    reference,
+                    when: new Date(),
+                });
+                await this.sendEmail({
+                    to: emails,
+                    subject: `You just got paid — K${amount.toLocaleString()}`,
+                    html,
+                });
+                console.log(`[EmailService] Payment-link notification sent to ${emails.join(', ')} for ref ${reference}`);
             }
-
-            const { data: link, error: linkError } = await supabase
-                .from('payment_links')
-                .select('customer_name, customer_phone, amount, products(name)')
-                .eq('organization_id', organizationId)
-                .eq('reference', reference)
-                .maybeSingle();
-
-            if (linkError || !link) {
-                console.warn(`[EmailService] No payment link found for ref ${reference}; skipping notification.`);
-                return;
-            }
-
-            const productName = (link as any).products?.name || 'your order';
-            const amount = Number(link.amount);
-            const html = this.renderPaymentEmail({
-                amount,
-                customerName: link.customer_name || 'Customer',
-                customerPhone: link.customer_phone || undefined,
-                serviceLabel: productName,
-                reference,
-                when: new Date(),
-            });
-
-            await this.sendEmail({
-                to: emails,
-                subject: `You just got paid — K${amount.toLocaleString()}`,
-                html,
-            });
-            console.log(`[EmailService] Payment-link notification sent to ${emails.join(', ')} for ref ${reference}`);
         } catch (error) {
-            console.error(`[EmailService] Failed to send payment-link notification for ref ${reference}:`, error);
+            console.error(`[EmailService] Failed to send admin payment-link notification for ref ${reference}:`, error);
+        }
+
+        // 2. Customer receipt.
+        if (link.customer_email) {
+            try {
+                const { data: org } = await supabase
+                    .from('organizations')
+                    .select('name, logo_url')
+                    .eq('id', organizationId)
+                    .maybeSingle();
+                await this.sendPaymentLinkReceipt({
+                    to: link.customer_email,
+                    orgName: org?.name || 'the business',
+                    orgLogoUrl: org?.logo_url || null,
+                    customerName: link.customer_name || 'Customer',
+                    items,
+                    total: amount,
+                    reference,
+                });
+            } catch (error) {
+                console.error(`[EmailService] Failed to send customer receipt for ref ${reference}:`, error);
+            }
         }
     },
 
@@ -396,6 +455,177 @@ export const emailService = {
             </body>
             </html>
         `;
+    },
+
+    /**
+     * Invoice email for a one-time payment link: itemized basket + a "Pay Now"
+     * button linking to /pl/:token. Sent to the customer when an admin generates
+     * an invoice link with "send email notification" on. Non-fatal to the caller.
+     */
+    async sendPaymentLinkInvoice(params: {
+        to: string;
+        orgName: string;
+        orgLogoUrl?: string | null;
+        customerName: string;
+        items: { name: string; quantity: number; unit_price: number; check_in?: string; check_out?: string }[];
+        total: number;
+        token: string;
+    }) {
+        const { to, orgName, orgLogoUrl, customerName, items, total, token } = params;
+        const payUrl = `${FRONTEND_URL}/pl/${token}`;
+        const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
+        const money = (n: number) => `K${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+        const rows = items.map(it => {
+            const isBooking = !!(it.check_in && it.check_out);
+            const qtyLabel = isBooking
+                ? `${it.check_in} → ${it.check_out} · ${it.quantity} day(s)`
+                : `x${it.quantity}`;
+            return `
+                <tr>
+                    <td style="padding:14px 22px; border-bottom:1px solid #F0F2F4; font-size:14px; color:#16181D; font-weight:600;">
+                        ${it.name}
+                        <div style="font-size:12px; color:#7A8189; font-weight:500; margin-top:2px;">${qtyLabel}</div>
+                    </td>
+                    <td style="padding:14px 22px; border-bottom:1px solid #F0F2F4; font-size:14px; font-weight:700; text-align:right; white-space:nowrap;">${money(it.unit_price * it.quantity)}</td>
+                </tr>`;
+        }).join('');
+
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="margin:0; background:#EAECEF; font-family:${FONT_STACK}; color:#16181D;">
+                <div style="max-width:640px; margin:0 auto; padding:32px 16px;">
+                    <div style="background:#fff; border:1px solid #E2E5E9; border-radius:14px; overflow:hidden; box-shadow:0 30px 60px -30px rgba(22,24,29,0.28);">
+                        <div style="padding:30px 44px 8px; text-align:center;">
+                            ${orgLogoUrl ? `<img src="${orgLogoUrl}" alt="${orgName}" style="height:40px; width:auto; max-width:140px; object-fit:contain; margin-bottom:10px;">` : ''}
+                            <div style="font-size:19px; font-weight:800; letter-spacing:-0.02em;">${orgName}</div>
+                        </div>
+
+                        <div style="padding:20px 44px 8px; text-align:center;">
+                            <div style="font-size:15px; font-weight:700; color:#006AFF;">Payment request</div>
+                            <div style="font-size:15px; color:#5C636B; margin-top:8px;">Hi ${customerName}, here's your invoice from <strong style="color:#16181D;">${orgName}</strong>.</div>
+                            <div style="margin:18px auto 4px;">
+                                <div style="font-size:48px; font-weight:900; letter-spacing:-0.03em; line-height:1;">${money(total)}</div>
+                            </div>
+                        </div>
+
+                        <div style="padding:12px 44px 4px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #EAECEF; border-radius:16px; border-collapse:separate; overflow:hidden;">
+                                ${rows}
+                                <tr>
+                                    <td style="padding:16px 22px; font-size:15px; font-weight:800;">Total</td>
+                                    <td style="padding:16px 22px; font-size:15px; font-weight:900; text-align:right;">${money(total)}</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <div style="padding:26px 44px 8px; text-align:center;">
+                            <a href="${payUrl}" style="display:block; background:#006AFF; color:#fff; font-size:16px; font-weight:800; padding:17px 24px; border-radius:12px; text-decoration:none; font-family:${FONT_STACK};">Pay now</a>
+                            <div style="font-size:12px; color:#9AA0A7; margin-top:12px; word-break:break-all;">${payUrl}</div>
+                        </div>
+
+                        <div style="margin-top:22px; padding:20px 44px 30px; border-top:1px solid #F0F2F4; text-align:center;">
+                            <div style="font-size:12px; color:#9AA0A7; line-height:1.6;">This is a secure one-time payment link. Payments are processed via Lenco. Powered by MoneyWise.</div>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        await this.sendEmail({
+            to,
+            subject: `${orgName} sent you an invoice — ${money(total)}`,
+            html,
+        });
+        console.log(`[EmailService] Invoice link email sent to ${to} for token ${token}`);
+    },
+
+    /**
+     * Receipt email for a paid one-time payment link, sent to the customer who
+     * paid (payment_links.customer_email). Same visual language as
+     * sendPaymentLinkInvoice but worded as a confirmation, not a request — no
+     * "Pay now" button since the link is already settled.
+     */
+    async sendPaymentLinkReceipt(params: {
+        to: string;
+        orgName: string;
+        orgLogoUrl?: string | null;
+        customerName: string;
+        items: { name: string; quantity: number; unit_price: number; check_in?: string; check_out?: string }[];
+        total: number;
+        reference: string;
+    }) {
+        const { to, orgName, orgLogoUrl, customerName, items, total, reference } = params;
+        const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
+        const money = (n: number) => `K${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+        const rows = items.map(it => {
+            const isBooking = !!(it.check_in && it.check_out);
+            const qtyLabel = isBooking
+                ? `${it.check_in} → ${it.check_out} · ${it.quantity} day(s)`
+                : `x${it.quantity}`;
+            return `
+                <tr>
+                    <td style="padding:14px 22px; border-bottom:1px solid #F0F2F4; font-size:14px; color:#16181D; font-weight:600;">
+                        ${it.name}
+                        <div style="font-size:12px; color:#7A8189; font-weight:500; margin-top:2px;">${qtyLabel}</div>
+                    </td>
+                    <td style="padding:14px 22px; border-bottom:1px solid #F0F2F4; font-size:14px; font-weight:700; text-align:right; white-space:nowrap;">${money(it.unit_price * it.quantity)}</td>
+                </tr>`;
+        }).join('');
+
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="margin:0; background:#EAECEF; font-family:${FONT_STACK}; color:#16181D;">
+                <div style="max-width:640px; margin:0 auto; padding:32px 16px;">
+                    <div style="background:#fff; border:1px solid #E2E5E9; border-radius:14px; overflow:hidden; box-shadow:0 30px 60px -30px rgba(22,24,29,0.28);">
+                        <div style="padding:30px 44px 8px; text-align:center;">
+                            ${orgLogoUrl ? `<img src="${orgLogoUrl}" alt="${orgName}" style="height:40px; width:auto; max-width:140px; object-fit:contain; margin-bottom:10px;">` : ''}
+                            <div style="font-size:19px; font-weight:800; letter-spacing:-0.02em;">${orgName}</div>
+                        </div>
+
+                        <div style="padding:20px 44px 8px; text-align:center;">
+                            <div style="font-size:15px; font-weight:700; color:#059669;">✅ Payment confirmed</div>
+                            <div style="font-size:15px; color:#5C636B; margin-top:8px;">Hi ${customerName}, thank you for your payment to <strong style="color:#16181D;">${orgName}</strong>.</div>
+                            <div style="margin:18px auto 4px;">
+                                <div style="font-size:48px; font-weight:900; letter-spacing:-0.03em; line-height:1;">${money(total)}</div>
+                            </div>
+                        </div>
+
+                        <div style="padding:12px 44px 4px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #EAECEF; border-radius:16px; border-collapse:separate; overflow:hidden;">
+                                ${rows}
+                                <tr>
+                                    <td style="padding:16px 22px; font-size:15px; font-weight:800;">Total Paid</td>
+                                    <td style="padding:16px 22px; font-size:15px; font-weight:900; text-align:right;">${money(total)}</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <div style="padding:20px 44px 8px; text-align:center;">
+                            <div style="font-size:12px; color:#9AA0A7; font-family:ui-monospace,'SF Mono',Menlo,monospace;">Reference: ${reference}</div>
+                        </div>
+
+                        <div style="margin-top:14px; padding:20px 44px 30px; border-top:1px solid #F0F2F4; text-align:center;">
+                            <div style="font-size:12px; color:#9AA0A7; line-height:1.6;">This is your receipt for a payment processed via Lenco. Powered by MoneyWise.</div>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        await this.sendEmail({
+            to,
+            subject: `Payment received — ${money(total)}`,
+            html,
+        });
+        console.log(`[EmailService] Payment receipt sent to ${to} for ref ${reference}`);
     },
 
     /**

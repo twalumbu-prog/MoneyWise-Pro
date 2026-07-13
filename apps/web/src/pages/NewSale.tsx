@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
 import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
@@ -25,11 +25,15 @@ import {
     Banknote,
     CalendarDays,
     Check,
+    Mail,
+    Copy,
+    Link2,
+    Receipt,
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 import { SegmentedControl } from '../components/AnimatedTabs';
 import BookingCalendar from '../components/BookingCalendar';
-import { productService, Product, BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
+import { productService, paymentLinkService, Product, BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
 import { organizationService, Organization } from '../services/organization.service';
 import { cashbookService } from '../services/cashbook.service';
 import { lencoService } from '../services/lenco.service';
@@ -73,6 +77,12 @@ const parseMethod = (value: string): ParsedMethod => {
 
 export const NewSale: React.FC = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    // "Link mode": instead of charging now, build an invoice and generate a
+    // one-time payment link (optionally emailed). Opened from the wallet Share
+    // modal's "OTP Link" button, which passes the settlement wallet.
+    const isLinkMode = searchParams.get('mode') === 'link';
+    const linkWalletId = searchParams.get('wallet');
 
     type Step = 'LOADING' | 'SHOP' | 'CART' | 'PAYMENT' | 'VERIFYING' | 'SUCCESS' | 'ERROR';
     const [step, setStep] = useState<Step>('LOADING');
@@ -134,6 +144,14 @@ export const NewSale: React.FC = () => {
     // Customer
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
+    const [customerEmail, setCustomerEmail] = useState('');
+
+    // Link mode: invoice-link generation state.
+    const [sendEmail, setSendEmail] = useState(true);
+    const [generatingLink, setGeneratingLink] = useState(false);
+    const [generatedLink, setGeneratedLink] = useState<string | null>(null);
+    const [linkEmailSent, setLinkEmailSent] = useState(false);
+    const [linkCopied, setLinkCopied] = useState(false);
 
     // Payment
     const [paymentTab, setPaymentTab] = useState<'MANUAL' | 'POS'>('MANUAL');
@@ -241,7 +259,8 @@ export const NewSale: React.FC = () => {
             setError(`Enter an amount for: ${pendingDonations.map(li => li.product.name).join(', ')}`);
             return;
         }
-        if (!customerName.trim()) { setError('Enter the customer name to continue.'); return; }
+        // Link mode collects the customer's name on the Payment step itself.
+        if (!isLinkMode && !customerName.trim()) { setError('Enter the customer name to continue.'); return; }
         setManualAmount(subtotal.toFixed(2));
         setStep('PAYMENT');
     };
@@ -312,6 +331,61 @@ export const NewSale: React.FC = () => {
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    // ── Generate invoice link (link mode) ────────────────────────────────────
+    const handleGenerateLink = async () => {
+        setError(null);
+        if (customerPhone.replace(/\D/g, '').length < 9) {
+            setError("Enter the customer's phone number (used to pre-fill their payment).");
+            return;
+        }
+        if (sendEmail && !/^\S+@\S+\.\S+$/.test(customerEmail.trim())) {
+            setError('Enter a valid customer email, or turn off email notification.');
+            return;
+        }
+        try {
+            setGeneratingLink(true);
+            const res = await paymentLinkService.createInvoiceLink({
+                items: lineItems.map(li => ({
+                    product_id: li.product.id,
+                    quantity: li.quantity,
+                    ...(li.isDonation ? { price: li.unitPrice } : {}),
+                    ...(li.isBooking && li.booking
+                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                        : {}),
+                })),
+                customer_name: customerName.trim(),
+                customer_phone: customerPhone.trim(),
+                customer_email: customerEmail.trim() || undefined,
+                wallet_id: linkWalletId || mainWalletId,
+                send_email: sendEmail,
+            });
+            setGeneratedLink(`${window.location.origin}${res.path || `/pl/${(res as any).token}`}`);
+            setLinkEmailSent(!!res.email_sent);
+            trackEvent('payment_link_checkout', 'invoice', 'succeeded', {
+                workflow_id: (res as any).token || res.id || 'invoice',
+                organization_id: org?.id || 'unknown',
+                item_count: lineItems.length,
+                total: subtotal,
+                emailed: !!res.email_sent,
+            });
+            setStep('SUCCESS');
+        } catch (err: any) {
+            console.error('Generate invoice link failed:', err);
+            setError(err?.response?.data?.error || err?.message || 'Failed to generate the payment link. Please try again.');
+        } finally {
+            setGeneratingLink(false);
+        }
+    };
+
+    const copyLink = async () => {
+        if (!generatedLink) return;
+        try {
+            await navigator.clipboard.writeText(generatedLink);
+            setLinkCopied(true);
+            setTimeout(() => setLinkCopied(false), 2000);
+        } catch { /* clipboard blocked — the field is select-all as a fallback */ }
     };
 
     // ── MoneyWise POS (Lenco) ────────────────────────────────────────────────
@@ -569,6 +643,13 @@ export const NewSale: React.FC = () => {
 
     const finishToInbox = () => navigate('/requisitions');
 
+    // Link mode reuses the sale flow's SHOP/CART screens, but its accent stays
+    // blue/black/grey (matching the rest of the app) instead of the sale flow's
+    // green "money received" cue.
+    const accent = isLinkMode
+        ? { iconBg: 'bg-blue-50', iconText: 'text-blue-600', spinner: 'text-blue-500', cardBorder: 'border-blue-300', cardBg: 'bg-blue-50/40', priceText: 'text-blue-600', solidBtn: 'bg-blue-600', qtyBtn: 'bg-blue-500', focusBorder: 'focus:border-blue-400' }
+        : { iconBg: 'bg-emerald-50', iconText: 'text-emerald-600', spinner: 'text-emerald-500', cardBorder: 'border-emerald-300', cardBg: 'bg-emerald-50/40', priceText: 'text-emerald-600', solidBtn: 'bg-emerald-600', qtyBtn: 'bg-emerald-500', focusBorder: 'focus:border-emerald-400' };
+
     // ── Render ───────────────────────────────────────────────────────────────
     const Header = ({ title, onBack }: { title: string; onBack: () => void }) => (
         <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-white sticky top-0 z-10">
@@ -579,8 +660,8 @@ export const NewSale: React.FC = () => {
                 <h1 className="text-base font-black text-slate-900 truncate">{title}</h1>
                 {org && <p className="text-[11px] font-semibold text-slate-400 truncate">{org.name}</p>}
             </div>
-            <div className="h-9 w-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                <ShoppingBag size={18} />
+            <div className={`h-9 w-9 rounded-xl ${accent.iconBg} ${accent.iconText} flex items-center justify-center flex-shrink-0`}>
+                {isLinkMode ? <Receipt size={18} /> : <ShoppingBag size={18} />}
             </div>
         </div>
     );
@@ -591,7 +672,7 @@ export const NewSale: React.FC = () => {
 
                 {step === 'LOADING' && (
                     <div className="flex-1 flex flex-col items-center justify-center p-10 min-h-[60vh]">
-                        <Loader2 className="animate-spin text-emerald-500 mb-4" size={32} />
+                        <Loader2 className={`animate-spin ${accent.spinner} mb-4`} size={32} />
                         <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">Loading catalogue…</p>
                     </div>
                 )}
@@ -637,7 +718,7 @@ export const NewSale: React.FC = () => {
                                         const bookingUnit = getBookingTerminology(p.product_type).unit;
                                         const stay = bookingDates[p.id];
                                         return (
-                                            <div key={p.id} className={`rounded-2xl border p-3 flex flex-col transition-all ${isInCart ? 'border-emerald-300 bg-emerald-50/40' : 'border-slate-100 bg-white'}`}>
+                                            <div key={p.id} className={`rounded-2xl border p-3 flex flex-col transition-all ${isInCart ? `${accent.cardBorder} ${accent.cardBg}` : 'border-slate-100 bg-white'}`}>
                                                 <div className="relative">
                                                     {p.image_url ? (
                                                         <img src={p.image_url} alt={p.name} className="w-full h-24 object-cover rounded-xl mb-2" />
@@ -653,7 +734,7 @@ export const NewSale: React.FC = () => {
                                                     )}
                                                 </div>
                                                 <div className="text-[13px] font-bold text-slate-800 leading-tight line-clamp-2 min-h-[34px]">{p.name}</div>
-                                                <div className="text-[13px] font-black text-emerald-600 mt-1">
+                                                <div className={`text-[13px] font-black ${accent.priceText} mt-1`}>
                                                     {isDonation
                                                         ? 'Open amount'
                                                         : `K${(p.price || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}${isBooking ? ` / ${bookingUnit}` : ''}`}
@@ -667,7 +748,7 @@ export const NewSale: React.FC = () => {
                                                 {isBooking ? (
                                                     <button
                                                         onClick={() => openBookingCalendar(p)}
-                                                        className={`mt-2 w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-colors ${isInCart ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white'}`}
+                                                        className={`mt-2 w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition-colors ${isInCart ? `${accent.solidBtn} text-white` : 'bg-slate-900 text-white'}`}
                                                     >
                                                         {isInCart ? <Check size={14} /> : <CalendarDays size={14} />}
                                                         {isInCart ? 'Reserved · Edit' : 'Reserve'}
@@ -678,7 +759,7 @@ export const NewSale: React.FC = () => {
                                                             setQty(p.id, isInCart ? 0 : 1);
                                                             if (isInCart) setDonationAmounts(prev => ({ ...prev, [p.id]: 0 }));
                                                         }}
-                                                        className={`mt-2 w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-[0.98] ${isInCart ? 'bg-emerald-600 text-white' : 'bg-slate-900 text-white'}`}
+                                                        className={`mt-2 w-full py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1 active:scale-[0.98] ${isInCart ? `${accent.solidBtn} text-white` : 'bg-slate-900 text-white'}`}
                                                     >
                                                         {isInCart ? <><Check size={14} /> Added</> : <><Plus size={14} /> Add</>}
                                                     </button>
@@ -688,7 +769,7 @@ export const NewSale: React.FC = () => {
                                                             <Minus size={14} />
                                                         </button>
                                                         <span className="text-sm font-black text-slate-800">{qty}</span>
-                                                        <button onClick={() => setQty(p.id, qty + 1)} className="h-7 w-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center active:scale-95">
+                                                        <button onClick={() => setQty(p.id, qty + 1)} className={`h-7 w-7 rounded-lg ${accent.qtyBtn} text-white flex items-center justify-center active:scale-95`}>
                                                             <Plus size={14} />
                                                         </button>
                                                     </div>
@@ -709,7 +790,7 @@ export const NewSale: React.FC = () => {
                             <button
                                 onClick={goToCart}
                                 disabled={cartCount === 0}
-                                className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.99] transition-all"
+                                className={`w-full py-4 rounded-2xl ${accent.solidBtn} text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-40 active:scale-[0.99] transition-all`}
                             >
                                 <ShoppingCart size={18} />
                                 Review Cart {cartCount > 0 && `· ${cartCount} item${cartCount > 1 ? 's' : ''} · K${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
@@ -721,7 +802,7 @@ export const NewSale: React.FC = () => {
                 {/* ── CART ── */}
                 {step === 'CART' && (
                     <>
-                        <Header title="Cart & Customer" onBack={() => setStep('SHOP')} />
+                        <Header title="Cart" onBack={() => setStep('SHOP')} />
                         <div className="flex-1 overflow-y-auto px-5 py-4 pb-32 space-y-5">
                             <div className="space-y-2">
                                 {lineItems.map(li => (
@@ -762,7 +843,7 @@ export const NewSale: React.FC = () => {
                                                     <Minus size={14} />
                                                 </button>
                                                 <span className="w-7 text-center text-sm font-black text-slate-800">{li.quantity}</span>
-                                                <button onClick={() => setQty(li.product.id, li.quantity + 1)} className="h-7 w-7 rounded-lg bg-emerald-500 text-white flex items-center justify-center">
+                                                <button onClick={() => setQty(li.product.id, li.quantity + 1)} className={`h-7 w-7 rounded-lg ${accent.qtyBtn} text-white flex items-center justify-center`}>
                                                     <Plus size={14} />
                                                 </button>
                                             </div>
@@ -777,11 +858,7 @@ export const NewSale: React.FC = () => {
                                 ))}
                             </div>
 
-                            <div className="flex justify-between items-center px-1">
-                                <span className="text-sm font-bold text-slate-500">Subtotal</span>
-                                <span className="text-lg font-black text-slate-900">K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            </div>
-
+                            {!isLinkMode && (
                             <div className="space-y-3 pt-2 border-t border-slate-100">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Customer details</label>
                                 <div className="relative">
@@ -803,10 +880,15 @@ export const NewSale: React.FC = () => {
                                     />
                                 </div>
                             </div>
+                            )}
                         </div>
-                        <div className="sticky bottom-0 p-4 bg-white border-t border-slate-100">
-                            {error && <p className="text-xs font-semibold text-rose-600 mb-2 text-center">{error}</p>}
-                            <button onClick={goToPayment} className="w-full py-4 rounded-2xl bg-emerald-600 text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.99]">
+                        <div className="sticky bottom-0 p-4 bg-white border-t border-slate-100 space-y-3">
+                            <div className="flex justify-between items-center px-1">
+                                <span className="text-sm font-bold text-slate-500">Subtotal</span>
+                                <span className="text-lg font-black text-slate-900">K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                            {error && <p className="text-xs font-semibold text-rose-600 text-center">{error}</p>}
+                            <button onClick={goToPayment} className={`w-full py-4 rounded-2xl ${accent.solidBtn} text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.99]`}>
                                 Continue to Payment <ArrowRight size={18} />
                             </button>
                         </div>
@@ -816,8 +898,51 @@ export const NewSale: React.FC = () => {
                 {/* ── PAYMENT ── */}
                 {step === 'PAYMENT' && (
                     <>
-                        <Header title="Payment" onBack={() => setStep('CART')} />
+                        <Header title={isLinkMode ? 'Payment link details' : 'Payment'} onBack={() => setStep('CART')} />
                         <div className="flex-1 overflow-y-auto px-5 py-4 pb-32 space-y-5">
+                            {isLinkMode ? (
+                            <div className="space-y-4">
+                                {/* Invoice summary */}
+                                <div className="flex items-center gap-2">
+                                    <Receipt size={15} className="text-blue-600" />
+                                    <h3 className="text-[13px] font-black text-slate-900 uppercase tracking-wide">New Invoice</h3>
+                                </div>
+                                <div className="bg-slate-50 rounded-2xl p-4 space-y-1.5 text-xs">
+                                    {lineItems.map(li => (
+                                        <div key={li.product.id} className="flex justify-between font-semibold text-slate-500">
+                                            <span className="truncate pr-2">{li.product.name}{li.isBooking ? '' : ` ×${li.quantity}`}</span>
+                                            <span className="flex-shrink-0">K{li.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between font-black text-slate-900 text-sm pt-1.5 border-t border-slate-200"><span>Total</span><span>K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Customer</label>
+                                    <div className="relative">
+                                        <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input value={customerName} onChange={e => setCustomerName(e.target.value)} placeholder="Customer name" className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400" />
+                                    </div>
+                                    <div className="relative">
+                                        <Smartphone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone number" className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400" />
+                                    </div>
+                                    <div className="relative">
+                                        <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                        <input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder={sendEmail ? 'Email address' : 'Email address (optional)'} className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400" />
+                                    </div>
+                                </div>
+
+                                <button type="button" onClick={() => setSendEmail(v => !v)} className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5">
+                                    <span className="text-[13px] font-bold text-slate-700 flex items-center gap-2 text-left"><Mail size={15} className="text-slate-400 flex-shrink-0" /> Send email notification to customer</span>
+                                    <span className={`relative w-10 h-6 rounded-full flex-shrink-0 transition-colors ${sendEmail ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${sendEmail ? 'left-[18px]' : 'left-0.5'}`} />
+                                    </span>
+                                </button>
+                                <p className="text-[11px] text-slate-400 font-medium px-1 leading-relaxed">The customer opens the link, taps Pay with their phone pre-filled, and pays. The link deactivates automatically once paid.</p>
+                            </div>
+                            ) : (
+                            <>
                             <SegmentedControl
                                 variant="pill"
                                 value={paymentTab}
@@ -921,11 +1046,22 @@ export const NewSale: React.FC = () => {
                                     </div>
                                 </div>
                             )}
+                            </>
+                            )}
                         </div>
 
                         <div className="sticky bottom-0 p-4 bg-white border-t border-slate-100">
                             {error && <p className="text-xs font-semibold text-rose-600 mb-2 text-center">{error}</p>}
-                            {paymentTab === 'MANUAL' ? (
+                            {isLinkMode ? (
+                                <button
+                                    onClick={handleGenerateLink}
+                                    disabled={generatingLink}
+                                    className="w-full py-4 rounded-2xl bg-slate-950 text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]"
+                                >
+                                    {generatingLink ? <Loader2 size={18} className="animate-spin" /> : <Link2 size={18} />}
+                                    Generate Link · K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </button>
+                            ) : paymentTab === 'MANUAL' ? (
                                 <button
                                     onClick={handleManualSubmit}
                                     disabled={isSubmitting}
@@ -966,8 +1102,83 @@ export const NewSale: React.FC = () => {
                     </div>
                 )}
 
-                {/* ── SUCCESS ── */}
-                {step === 'SUCCESS' && (
+                {/* ── SUCCESS: generated payment link (link mode) ── */}
+                {step === 'SUCCESS' && isLinkMode && generatedLink && (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[70vh] text-center">
+                        {/* Blue success seal, matching the public portal's success screen */}
+                        <div className="relative w-20 h-20 animate-in zoom-in-75 duration-300">
+                            <BadgeCheck
+                                className="w-20 h-20 text-[#002962]"
+                                fill="#006AFF"
+                                strokeWidth={1.5}
+                                style={{ filter: 'drop-shadow(-5px 5px 0 rgba(0,41,98,1))' }}
+                            />
+                            <Check className="absolute inset-0 m-auto w-8 h-8 text-white" strokeWidth={3} />
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-900 mt-5">Congratulations</h3>
+                        <p className="text-xs text-zinc-500 font-medium mt-2 max-w-xs leading-relaxed">
+                            {linkEmailSent
+                                ? <>Your One Time Payment Link was successfully created and sent to <strong className="font-bold text-slate-900">{customerEmail.trim()}</strong>.<br />You will receive an email confirmation once it is paid.</>
+                                : 'Your One Time Payment Link was successfully created. Share it with your customer to get paid.'}
+                        </p>
+
+                        {/* Order Summary */}
+                        <div className="w-full max-w-sm mt-6 bg-gray-50 border border-gray-200 rounded-2xl px-5 py-4 text-left">
+                            <div>
+                                <div className="flex items-center gap-2 mb-2.5">
+                                    <Receipt size={14} className="text-black" />
+                                    <span className="text-xs font-bold text-zinc-600">Order Summary</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-xs font-bold text-black">Invoice Total</span>
+                                    <span className="text-xs font-bold text-black">K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Copy link */}
+                        <div className="w-full max-w-sm mt-6">
+                            <p className="text-sm font-semibold text-gray-800 mb-2">You can Copy the link and send it to your customer</p>
+                            <div className="relative flex items-center">
+                                <input
+                                    readOnly
+                                    value={generatedLink}
+                                    onFocus={e => e.currentTarget.select()}
+                                    className="w-full pl-4 pr-24 py-3.5 bg-white border border-slate-300 rounded-full text-xs font-medium text-gray-600 outline-none select-all"
+                                />
+                                <button
+                                    onClick={copyLink}
+                                    className={`absolute right-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${linkCopied ? 'bg-blue-600 text-white' : 'bg-white text-black border border-zinc-100 hover:bg-slate-50'}`}
+                                >
+                                    {linkCopied ? <><Check size={14} strokeWidth={3} /> Copied</> : <><Copy size={14} /> Copy</>}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="w-full max-w-sm mt-4 space-y-2.5">
+                            <button
+                                onClick={() => navigate('/cashbook')}
+                                className="w-full py-3.5 rounded-full bg-zinc-100 hover:bg-zinc-200 text-black font-medium text-sm transition-colors"
+                            >
+                                Back to Wallet
+                            </button>
+                            <button
+                                onClick={() => {
+                                    setQuantities({}); setDonationAmounts({}); setBookingDates({});
+                                    setCustomerName(''); setCustomerPhone(''); setCustomerEmail('');
+                                    setGeneratedLink(null); setLinkEmailSent(false); setError(null);
+                                    setStep('SHOP');
+                                }}
+                                className="w-full py-2.5 text-slate-400 font-bold text-xs uppercase tracking-wider"
+                            >
+                                Create another link
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* ── SUCCESS: recorded sale ── */}
+                {step === 'SUCCESS' && !(isLinkMode && generatedLink) && (
                     <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[70vh] text-center">
                         <div className="h-20 w-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-5 animate-in zoom-in-75 duration-300">
                             <CheckCircle2 size={40} strokeWidth={2.5} />
