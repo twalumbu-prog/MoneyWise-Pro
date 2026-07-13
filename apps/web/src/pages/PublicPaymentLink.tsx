@@ -144,13 +144,13 @@ export const PublicPaymentLink: React.FC = () => {
         }
         const startFetchTime = performance.now();
         console.log(`[Diagnostic] Starting public payment link context fetch for token ${token} at ${new Date().toISOString()}`);
-        posthog.capture('payment_link_opened', { token, link_type: 'payment_link' });
+        posthog.capture('payment_link_opened', { link_token: token, link_type: 'payment_link' });
 
         try {
             const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`, { timeout: 30000 });
             const duration = Math.round(performance.now() - startFetchTime);
             console.log(`[Diagnostic] Successfully fetched payment link context in ${duration}ms`);
-            posthog.capture('payment_link_loaded', { token, link_type: 'payment_link', duration_ms: duration });
+            posthog.capture('payment_link_loaded', { link_token: token, link_type: 'payment_link', duration_ms: duration });
             setCtx(res.data);
             setPhone(res.data.customer_phone || '');
 
@@ -199,11 +199,11 @@ export const PublicPaymentLink: React.FC = () => {
             const duration = Math.round(performance.now() - startFetchTime);
             console.error(`[Diagnostic] Error fetching payment-link context after ${duration}ms:`, err);
             const errorDiagnosis = diagnoseCheckoutError(err);
-            posthog.capture('payment_link_failed', { 
-                token, 
-                link_type: 'payment_link', 
-                duration_ms: duration, 
-                error_type: errorDiagnosis.title 
+            posthog.capture('payment_link_failed', {
+                link_token: token,
+                link_type: 'payment_link',
+                duration_ms: duration,
+                error_type: errorDiagnosis.title
             });
             setErrorInfo(errorDiagnosis);
             setStep('ERROR');

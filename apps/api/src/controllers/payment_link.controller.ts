@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
+import { getFrontendUrl } from '../utils/frontendUrl';
 
 /**
  * One-time, single-use payment links. An admin generates a link pre-filled with a
@@ -218,7 +219,12 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
                     customerName: customer_name.trim(),
                     items: snapshot,
                     total: amount,
-                    token
+                    token,
+                    // Detected from the admin's own browser (Origin/Referer) so the
+                    // "Pay now" button always points at whichever host they're actually
+                    // using — localhost while testing, the deployed domain in production —
+                    // instead of trusting the API server's own env config.
+                    frontendUrl: getFrontendUrl(req)
                 });
                 emailSent = true;
             } catch (mailErr: any) {
