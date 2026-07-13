@@ -30,6 +30,7 @@
         "react-router-dom": "^7.10.0",
         "shared": "workspace:*",
         "use-debounce": "^10.1.1",
+        "workbox-window": "^7.4.1",
         "xlsx": "^0.18.5"
     },
     "devDependencies": {

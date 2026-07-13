@@ -28,6 +28,7 @@ const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').t
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
+import { UpdatePrompt } from './components/UpdatePrompt';
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     const { session, loading, userStatus, signOut } = useAuth();
@@ -289,6 +290,7 @@ function App() {
                         />
                     </Routes>
                 </React.Suspense>
+                <UpdatePrompt />
                 <PWAInstallPrompt />
             </Router>
         </AuthProvider>

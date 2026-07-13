@@ -283,13 +283,16 @@ export const PublicPay: React.FC = () => {
 
         const startFetchTime = performance.now();
         console.log(`[Diagnostic] Starting public context fetch for wallet ${wallet_id} at ${new Date().toISOString()}`);
+        posthog.capture('payment_link_opened', { wallet_id, link_type: 'catalog' });
 
         try {
             const response = await axios.get<PublicContextResponse>(
                 `${API_URL}/lenco/public-context/${wallet_id}`,
                 { timeout: 30000 }
             );
-            console.log(`[Diagnostic] Successfully fetched public context in ${Math.round(performance.now() - startFetchTime)}ms`);
+            const duration = Math.round(performance.now() - startFetchTime);
+            console.log(`[Diagnostic] Successfully fetched public context in ${duration}ms`);
+            posthog.capture('payment_link_loaded', { wallet_id, link_type: 'catalog', duration_ms: duration });
             setOrg(response.data.organization);
             setWallet(response.data.wallet);
             setProducts(response.data.products);
@@ -350,7 +353,14 @@ export const PublicPay: React.FC = () => {
         } catch (err: any) {
             const duration = Math.round(performance.now() - startFetchTime);
             console.error(`[Diagnostic] Error fetching public pay context after ${duration}ms:`, err);
-            setErrorInfo(diagnoseCheckoutError(err));
+            const errorDiagnosis = diagnoseCheckoutError(err);
+            posthog.capture('payment_link_failed', { 
+                wallet_id, 
+                link_type: 'catalog', 
+                duration_ms: duration, 
+                error_type: errorDiagnosis.title 
+            });
+            setErrorInfo(errorDiagnosis);
             setStep('ERROR');
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps

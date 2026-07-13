@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import axios from 'axios';
+import posthog from '../lib/posthog';
 import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
 import {
     Loader2,
@@ -143,10 +144,13 @@ export const PublicPaymentLink: React.FC = () => {
         }
         const startFetchTime = performance.now();
         console.log(`[Diagnostic] Starting public payment link context fetch for token ${token} at ${new Date().toISOString()}`);
+        posthog.capture('payment_link_opened', { token, link_type: 'payment_link' });
 
         try {
             const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`, { timeout: 30000 });
-            console.log(`[Diagnostic] Successfully fetched payment link context in ${Math.round(performance.now() - startFetchTime)}ms`);
+            const duration = Math.round(performance.now() - startFetchTime);
+            console.log(`[Diagnostic] Successfully fetched payment link context in ${duration}ms`);
+            posthog.capture('payment_link_loaded', { token, link_type: 'payment_link', duration_ms: duration });
             setCtx(res.data);
             setPhone(res.data.customer_phone || '');
 
@@ -194,7 +198,14 @@ export const PublicPaymentLink: React.FC = () => {
         } catch (err: any) {
             const duration = Math.round(performance.now() - startFetchTime);
             console.error(`[Diagnostic] Error fetching payment-link context after ${duration}ms:`, err);
-            setErrorInfo(diagnoseCheckoutError(err));
+            const errorDiagnosis = diagnoseCheckoutError(err);
+            posthog.capture('payment_link_failed', { 
+                token, 
+                link_type: 'payment_link', 
+                duration_ms: duration, 
+                error_type: errorDiagnosis.title 
+            });
+            setErrorInfo(errorDiagnosis);
             setStep('ERROR');
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
