@@ -265,6 +265,31 @@ export const PublicPay: React.FC = () => {
     const [retrieveError, setRetrieveError] = useState<string | null>(null);
     const [downloadingReference, setDownloadingReference] = useState<string | null>(null);
 
+    const handleTryAgain = async () => {
+        try {
+            await axios.post(`${API_URL}/lenco/public-diagnostics/report`, {
+                walletId: wallet_id,
+                errorType: errorInfo?.title || 'Unknown Error',
+                logs: {
+                    userAgent: navigator.userAgent,
+                    url: window.location.href,
+                    errorInfo,
+                    // Network connection info if available
+                    connection: (navigator as any).connection ? {
+                        effectiveType: (navigator as any).connection.effectiveType,
+                        downlink: (navigator as any).connection.downlink,
+                        rtt: (navigator as any).connection.rtt
+                    } : 'Not supported'
+                }
+            });
+        } catch (e) {
+            console.error('Failed to send diagnostics', e);
+        }
+        
+        // Always try to load context regardless of diagnostic success
+        loadContext();
+    };
+
     // Fetch context on load (also re-runnable from the ERROR screen's Try Again).
     const loadContext = useCallback(async () => {
         setErrorInfo(null);
@@ -2819,7 +2844,7 @@ Status: VERIFIED`;
 
                         {(errorInfo?.retry ?? true) && (
                             <button
-                                onClick={loadContext}
+                                onClick={handleTryAgain}
                                 className="w-full bg-slate-950 hover:bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg flex items-center justify-center gap-2"
                             >
                                 <RefreshCw size={14} /> Try Again

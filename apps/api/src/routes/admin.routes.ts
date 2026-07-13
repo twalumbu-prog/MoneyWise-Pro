@@ -17,6 +17,11 @@ import {
     testCollectionInitiate,
     testCollectionStatusCheck,
 } from '../controllers/admin.testcollection.controller';
+import {
+    getPaymentLinkAnalyticsHandler,
+    getPaymentLinkAttemptsHandler,
+    setPostHogKeyHandler,
+} from '../controllers/admin.analytics.controller';
 
 const router = Router();
 
@@ -37,5 +42,9 @@ router.put('/wallet-pool/settings', updateActivationSettings);
 // TEMPORARY: Collections API migration test harness (live account, own-UX checkout prototype)
 router.post('/test-collection/initiate', testCollectionInitiate);
 router.get('/test-collection/status/:reference', testCollectionStatusCheck);
+
+router.get('/analytics/payment-links', getPaymentLinkAnalyticsHandler);
+router.get('/analytics/payment-links/attempts', getPaymentLinkAttemptsHandler);
+router.put('/analytics/posthog-key', setPostHogKeyHandler);
 
 export default router;

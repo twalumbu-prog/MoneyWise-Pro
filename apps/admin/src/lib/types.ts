@@ -70,3 +70,25 @@ export interface OrgDetailResponse extends OrgReconSummary {
     transactions: ReconTxnRow[];
     counts: { matched: number; moneywiseOnly: number; lencoOnly: number };
 }
+
+export interface PaymentLinkAnalyticsResponse {
+    configured: boolean;
+    loaded: number;
+    failed: number;
+    errorsByReason: { reason: string; count: number }[];
+    queryError?: string;
+}
+
+export interface PaymentLinkAttempt {
+    timestamp: string;
+    status: 'loaded' | 'failed';
+    linkType: string | null;
+    durationMs: number | null;
+    errorReason: string | null;
+}
+
+export interface PaymentLinkAttemptsResponse {
+    configured: boolean;
+    attempts: PaymentLinkAttempt[];
+    queryError?: string;
+}

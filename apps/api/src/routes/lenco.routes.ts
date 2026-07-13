@@ -23,7 +23,8 @@ import {
     getPublicSaleReceiptDetails,
     syncAllLencoTransactions,
     testInitiateCollection,
-    testCollectionStatus
+    testCollectionStatus,
+    reportDiagnosticLogs
 } from '../controllers/lenco.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -33,6 +34,7 @@ const router = Router();
 router.post('/webhook', handleLencoWebhook);
 
 // Public payment portal endpoints
+router.post('/public-diagnostics/report', reportDiagnosticLogs);
 router.get('/public-verify-status/:reference', verifyCollectionStatus);
 router.get('/public-context/:wallet_id', getPublicWalletContext);
 router.get('/public-payment-link/:token', getPaymentLinkContext);

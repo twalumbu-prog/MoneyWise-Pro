@@ -7,6 +7,7 @@ import { apiGet } from '../lib/api';
 import type { OverviewResponse, OrgReconSummary, SectionRecon } from '../lib/types';
 import { money, isWithinTolerance, formatDateTime } from '../lib/format';
 import { StatusBadge } from '../components/StatusBadge';
+import { PaymentLinkAnalyticsCard } from '../components/PaymentLinkAnalyticsCard';
 
 function DiffCell({ value }: { value: number | null | undefined }) {
     if (value === null || value === undefined) {
@@ -150,6 +151,8 @@ export default function Dashboard() {
                     {error}
                 </div>
             )}
+
+            <PaymentLinkAnalyticsCard />
 
             <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
                 <table className="w-full min-w-[1100px] border-collapse text-sm">

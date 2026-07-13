@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import OrgDetail from './pages/OrgDetail';
 import WalletPool from './pages/WalletPool';
 import TestCollections from './pages/TestCollections';
+import PaymentLinkAnalytics from './pages/PaymentLinkAnalytics';
 
 export default function App() {
     return (
@@ -50,6 +51,16 @@ export default function App() {
                             <ProtectedRoute>
                                 <Layout>
                                     <TestCollections />
+                                </Layout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/analytics/payment-links"
+                        element={
+                            <ProtectedRoute>
+                                <Layout>
+                                    <PaymentLinkAnalytics />
                                 </Layout>
                             </ProtectedRoute>
                         }

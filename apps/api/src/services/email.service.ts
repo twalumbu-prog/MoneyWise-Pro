@@ -819,5 +819,37 @@ export const emailService = {
         }
 
         console.log('[EmailService] Email sent successfully:', data?.id);
+    },
+
+    /**
+     * Send a diagnostic report when a public payment link fails to load.
+     */
+    async sendDiagnosticReport(params: { walletId: string; errorType: string; logs: any; to: string }) {
+        const { walletId, errorType, logs, to } = params;
+        
+        const html = `
+            <h2>Payment Link Diagnostic Report</h2>
+            <p>A customer encountered an error while trying to load a payment link.</p>
+            <ul>
+                <li><strong>Wallet ID / Token:</strong> ${walletId}</li>
+                <li><strong>Error Type:</strong> ${errorType}</li>
+                <li><strong>Time:</strong> ${new Date().toISOString()}</li>
+            </ul>
+            
+            <h3>Client Logs & State</h3>
+            <pre style="background: #f1f5f9; padding: 16px; border-radius: 8px; overflow-x: auto; font-size: 13px;">
+${JSON.stringify(logs, null, 2)}
+            </pre>
+            
+            <p style="color: #64748b; font-size: 12px; margin-top: 24px;">
+                This is an automated diagnostic alert from the MoneyWise Pro application.
+            </p>
+        `;
+
+        await this.sendEmail({
+            to,
+            subject: `🚨 Payment Link Error: ${errorType}`,
+            html,
+        });
     }
 };

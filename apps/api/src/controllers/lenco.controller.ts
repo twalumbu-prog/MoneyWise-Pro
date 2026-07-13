@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { LencoService } from '../services/lenco.service';
+import { emailService } from '../services/email.service';
 import { supabase } from '../lib/supabase';
 import pool from '../db';
 import { handleCollectionSuccessful } from './lenco.webhook.controller';
@@ -2345,5 +2346,25 @@ export const testCollectionStatus = async (req: Request, res: Response) => {
         return res.json({ success: true, data: result });
     } catch (error: any) {
         return res.status(500).json({ error: error.message });
+    }
+};
+
+export const reportDiagnosticLogs = async (req: Request, res: Response) => {
+    try {
+        const { walletId, errorType, logs } = req.body;
+        // Hardcoded support email based on user's instruction
+        const to = 'masterfees101@gmail.com';
+
+        await emailService.sendDiagnosticReport({
+            walletId: walletId || 'Unknown',
+            errorType: errorType || 'Unknown Error',
+            logs: logs || {},
+            to
+        });
+
+        return res.json({ success: true });
+    } catch (error: any) {
+        console.error('[DiagnosticReport] Failed to send:', error);
+        return res.status(500).json({ error: 'Failed to send diagnostic report' });
     }
 };
