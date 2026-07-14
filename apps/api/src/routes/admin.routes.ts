@@ -22,6 +22,7 @@ import {
     getPaymentLinkAttemptsHandler,
     setPostHogKeyHandler,
 } from '../controllers/admin.analytics.controller';
+import { getVercelLogs } from '../controllers/admin.logs.controller';
 
 const router = Router();
 
@@ -46,5 +47,7 @@ router.get('/test-collection/status/:reference', testCollectionStatusCheck);
 router.get('/analytics/payment-links', getPaymentLinkAnalyticsHandler);
 router.get('/analytics/payment-links/attempts', getPaymentLinkAttemptsHandler);
 router.put('/analytics/posthog-key', setPostHogKeyHandler);
+
+router.get('/logs', getVercelLogs);
 
 export default router;

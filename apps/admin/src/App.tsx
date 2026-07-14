@@ -8,6 +8,7 @@ import OrgDetail from './pages/OrgDetail';
 import WalletPool from './pages/WalletPool';
 import TestCollections from './pages/TestCollections';
 import PaymentLinkAnalytics from './pages/PaymentLinkAnalytics';
+import Logs from './pages/Logs';
 
 export default function App() {
     return (
@@ -61,6 +62,16 @@ export default function App() {
                             <ProtectedRoute>
                                 <Layout>
                                     <PaymentLinkAnalytics />
+                                </Layout>
+                            </ProtectedRoute>
+                        }
+                    />
+                    <Route
+                        path="/logs"
+                        element={
+                            <ProtectedRoute>
+                                <Layout>
+                                    <Logs />
                                 </Layout>
                             </ProtectedRoute>
                         }

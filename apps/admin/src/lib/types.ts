@@ -92,3 +92,26 @@ export interface PaymentLinkAttemptsResponse {
     attempts: PaymentLinkAttempt[];
     queryError?: string;
 }
+
+export interface VercelLogRow {
+    id: string;
+    vercelLogId: string | null;
+    deploymentId: string | null;
+    source: string | null;
+    level: string | null;
+    message: string | null;
+    path: string | null;
+    statusCode: number | null;
+    requestId: string | null;
+    environment: string | null;
+    executionRegion: string | null;
+    vercelTimestamp: string | null;
+    receivedAt: string;
+}
+
+export interface VercelLogsResponse {
+    logs: VercelLogRow[];
+    total: number;
+    limit: number;
+    offset: number;
+}

@@ -1,12 +1,13 @@
 import { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Scale, LogOut, Wallet, Smartphone } from 'lucide-react';
+import { Scale, LogOut, Wallet, Smartphone, ScrollText } from 'lucide-react';
 import { useAdminAuth } from '../context/AdminAuthContext';
 
 const NAV_ITEMS = [
     { to: '/', label: 'Reconciliation' },
     { to: '/wallet-pool', label: 'Wallet Pool' },
     { to: '/test-collections', label: 'Test Collections' },
+    { to: '/logs', label: 'Logs' },
 ];
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -39,6 +40,7 @@ export function Layout({ children }: { children: ReactNode }) {
                                 >
                                     {item.to === '/wallet-pool' && <Wallet className="h-3.5 w-3.5" />}
                                     {item.to === '/test-collections' && <Smartphone className="h-3.5 w-3.5" />}
+                                    {item.to === '/logs' && <ScrollText className="h-3.5 w-3.5" />}
                                     {item.label}
                                 </Link>
                             );
