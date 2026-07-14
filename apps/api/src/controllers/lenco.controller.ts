@@ -9,7 +9,7 @@ import { ledgerService } from '../services/ledger.service';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 import { QuickBooksService } from '../services/quickbooks.service';
-import { captureEvent } from '../utils/analytics';
+import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
@@ -570,30 +570,42 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Wallet not found' });
         }
 
-        // 2 & 3. Fetch organization details and products concurrently
-        const [orgResult, productsResult] = await Promise.all([
-            supabase
-                .from('organizations')
-                .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
-                .eq('id', wallet.organization_id)
-                .single(),
-            supabase
-                .from('products')
-                .select('id, name, description, price, image_url, category, product_type')
-                .eq('organization_id', wallet.organization_id)
-                .eq('is_active', true)
-                .order('name', { ascending: true })
-        ]);
+        // Server-side timing/outcome, independent of whether the client's own
+        // request ever completes — this is the only place that can tell "the
+        // backend was slow/broken" apart from "the customer's connection died"
+        // when a payer reports a timed-out checkout.
+        const { org, products } = await withTiming(
+            'public_wallet_context_fetch',
+            { feature: 'public_wallet_context', workflow_id: wallet_id, organization_id: wallet.organization_id },
+            async () => {
+                // 2 & 3. Fetch organization details and products concurrently
+                const [orgResult, productsResult] = await Promise.all([
+                    supabase
+                        .from('organizations')
+                        .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+                        .eq('id', wallet.organization_id)
+                        .single(),
+                    supabase
+                        .from('products')
+                        .select('id, name, description, price, image_url, category, product_type')
+                        .eq('organization_id', wallet.organization_id)
+                        .eq('is_active', true)
+                        .order('name', { ascending: true })
+                ]);
 
-        const { data: org, error: orgError } = orgResult;
-        console.log('[Lenco Public Context] Org query result:', { org, orgError });
+                const { data: org, error: orgError } = orgResult;
+                console.log('[Lenco Public Context] Org query result:', { org, orgError });
 
-        if (orgError || !org) {
-            return res.status(404).json({ error: 'Organization not found' });
-        }
+                if (orgError || !org) {
+                    throw Object.assign(new Error('Organization not found'), { code: 'ORG_NOT_FOUND' });
+                }
 
-        const { data: products, error: productsError } = productsResult;
-        if (productsError) throw productsError;
+                const { data: products, error: productsError } = productsResult;
+                if (productsError) throw productsError;
+
+                return { org, products };
+            }
+        );
 
         res.json({
             organization: {
@@ -614,6 +626,9 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('[Lenco Public Context] Error:', error);
+        if (error?.code === 'ORG_NOT_FOUND') {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };
@@ -641,47 +656,59 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Payment link not found' });
         }
 
-        const [orgResult, walletResult] = await Promise.all([
-            supabase
-                .from('organizations')
-                .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
-                .eq('id', link.organization_id)
-                .single(),
-            supabase
-                .from('organization_wallets')
-                .select('id, name')
-                .eq('id', link.wallet_id)
-                .single()
-        ]);
+        // Server-side timing/outcome, independent of whether the client's own
+        // request ever completes — this is the only place that can tell "the
+        // backend was slow/broken" apart from "the customer's connection died"
+        // when a payer reports a timed-out checkout.
+        const { org, wallet, items } = await withTiming(
+            'payment_link_context_fetch',
+            { feature: 'payment_link_context', workflow_id: token, organization_id: link.organization_id },
+            async () => {
+                const [orgResult, walletResult] = await Promise.all([
+                    supabase
+                        .from('organizations')
+                        .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+                        .eq('id', link.organization_id)
+                        .single(),
+                    supabase
+                        .from('organization_wallets')
+                        .select('id, name')
+                        .eq('id', link.wallet_id)
+                        .single()
+                ]);
 
-        const { data: org, error: orgError } = orgResult;
-        if (orgError || !org) {
-            return res.status(404).json({ error: 'Organization not found' });
-        }
+                const { data: org, error: orgError } = orgResult;
+                if (orgError || !org) {
+                    throw Object.assign(new Error('Organization not found'), { code: 'ORG_NOT_FOUND' });
+                }
 
-        const { data: wallet, error: walletError } = walletResult;
-        if (walletError || !wallet) {
-            return res.status(404).json({ error: 'Wallet not found' });
-        }
+                const { data: wallet, error: walletError } = walletResult;
+                if (walletError || !wallet) {
+                    throw Object.assign(new Error('Wallet not found'), { code: 'WALLET_NOT_FOUND' });
+                }
 
-        // Multi-item invoice link: hydrate the snapshotted basket with product images.
-        let items: any[] | null = null;
-        if (Array.isArray(link.items) && link.items.length > 0) {
-            const ids = [...new Set(link.items.map((it: any) => it.product_id).filter(Boolean))];
-            const { data: prods } = ids.length
-                ? await supabase.from('products').select('id, image_url').in('id', ids)
-                : { data: [] as any[] };
-            const imgById: Record<string, string | null> = {};
-            for (const p of (prods || []) as any[]) imgById[p.id] = p.image_url || null;
-            items = link.items.map((it: any) => ({
-                product_id: it.product_id,
-                name: it.name,
-                image_url: imgById[it.product_id] || null,
-                quantity: Number(it.quantity) || 1,
-                unit_price: Number(it.unit_price) || 0,
-                ...(it.check_in && it.check_out ? { check_in: it.check_in, check_out: it.check_out } : {})
-            }));
-        }
+                // Multi-item invoice link: hydrate the snapshotted basket with product images.
+                let items: any[] | null = null;
+                if (Array.isArray(link.items) && link.items.length > 0) {
+                    const ids = [...new Set(link.items.map((it: any) => it.product_id).filter(Boolean))];
+                    const { data: prods } = ids.length
+                        ? await supabase.from('products').select('id, image_url').in('id', ids)
+                        : { data: [] as any[] };
+                    const imgById: Record<string, string | null> = {};
+                    for (const p of (prods || []) as any[]) imgById[p.id] = p.image_url || null;
+                    items = link.items.map((it: any) => ({
+                        product_id: it.product_id,
+                        name: it.name,
+                        image_url: imgById[it.product_id] || null,
+                        quantity: Number(it.quantity) || 1,
+                        unit_price: Number(it.unit_price) || 0,
+                        ...(it.check_in && it.check_out ? { check_in: it.check_in, check_out: it.check_out } : {})
+                    }));
+                }
+
+                return { org, wallet, items };
+            }
+        );
 
         res.json({
             status: link.status,
@@ -708,6 +735,12 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
         });
     } catch (error: any) {
         console.error('[Lenco Payment Link Context] Error:', error);
+        if (error?.code === 'ORG_NOT_FOUND') {
+            return res.status(404).json({ error: 'Organization not found' });
+        }
+        if (error?.code === 'WALLET_NOT_FOUND') {
+            return res.status(404).json({ error: 'Wallet not found' });
+        }
         res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 };

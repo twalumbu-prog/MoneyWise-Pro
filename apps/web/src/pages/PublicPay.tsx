@@ -311,9 +311,14 @@ export const PublicPay: React.FC = () => {
         posthog.capture('payment_link_opened', { wallet_id, link_type: 'catalog' });
 
         try {
+            // 45s, not 30s: the API's Vercel function has a 30s maxDuration (see
+            // apps/api/vercel.json), so a client timeout equal to that races the
+            // server's own hard kill — whichever fires first, the user sees
+            // "Connection timed out" even on requests that would've completed.
+            // Giving the client real margin means the server error (if any) wins.
             const response = await axios.get<PublicContextResponse>(
                 `${API_URL}/lenco/public-context/${wallet_id}`,
-                { timeout: 30000 }
+                { timeout: 45000 }
             );
             const duration = Math.round(performance.now() - startFetchTime);
             console.log(`[Diagnostic] Successfully fetched public context in ${duration}ms`);

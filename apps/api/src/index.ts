@@ -33,6 +33,7 @@ import paymentLinkRoutes from './routes/payment_link.routes';
 import departmentRoutes from './routes/department.routes';
 import adminRoutes from './routes/admin.routes';
 import onboardingRoutes from './routes/onboarding.routes';
+import webhooksRoutes from './routes/webhooks.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
@@ -347,6 +348,14 @@ const port = process.env.PORT || 3000;
 // Security Middleware
 app.use(helmet());
 app.use(cors());
+
+// Mounted BEFORE express.json() so the exact bytes Vercel signed are what we
+// verify — the global JSON parser below would either mangle the raw body for
+// HMAC verification or throw outright on NDJSON payloads (not valid single
+// JSON). This route fully handles+responds itself and never calls next(),
+// so requests here never reach the global parser.
+app.use('/webhooks', express.raw({ type: '*/*', limit: '5mb' }), webhooksRoutes);
+
 app.use(express.json({
     verify: (req: any, res, buf) => {
         req.rawBody = buf;

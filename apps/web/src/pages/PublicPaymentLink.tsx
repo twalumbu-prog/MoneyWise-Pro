@@ -147,7 +147,12 @@ export const PublicPaymentLink: React.FC = () => {
         posthog.capture('payment_link_opened', { link_token: token, link_type: 'payment_link' });
 
         try {
-            const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`, { timeout: 30000 });
+            // 45s, not 30s: the API's Vercel function has a 30s maxDuration (see
+            // apps/api/vercel.json), so a client timeout equal to that races the
+            // server's own hard kill — whichever fires first, the user sees
+            // "Connection timed out" even on requests that would've completed.
+            // Giving the client real margin means the server error (if any) wins.
+            const res = await axios.get<LinkContext>(`${API_URL}/lenco/public-payment-link/${token}`, { timeout: 45000 });
             const duration = Math.round(performance.now() - startFetchTime);
             console.log(`[Diagnostic] Successfully fetched payment link context in ${duration}ms`);
             posthog.capture('payment_link_loaded', { link_token: token, link_type: 'payment_link', duration_ms: duration });
