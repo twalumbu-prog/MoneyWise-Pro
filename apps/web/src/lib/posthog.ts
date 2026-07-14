@@ -13,6 +13,10 @@ const apiHost =
 if (key) {
     posthog.init(key, {
         api_host: apiHost,
+        // Required whenever api_host points at a reverse proxy (not
+        // *.posthog.com directly) so toolbar/share links still resolve to the
+        // real PostHog UI instead of the proxy domain.
+        ui_host: 'https://us.posthog.com',
         person_profiles: 'identified_only',
     });
 } else if (import.meta.env.PROD) {
