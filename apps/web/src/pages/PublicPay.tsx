@@ -256,6 +256,11 @@ export const PublicPay: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     // Structured diagnosis for the full-screen ERROR step (load failures).
     const [errorInfo, setErrorInfo] = useState<CheckoutErrorInfo | null>(null);
+    // Set if the tab goes hidden (screen lock, app switch) while the context
+    // fetch is in flight — the single biggest cause of a false "timed out" on
+    // mobile, since the request keeps running in the background but the payer
+    // sees an interrupted page. See diagnoseCheckoutError's PL-BACKGROUNDED.
+    const wasBackgroundedDuringFetchRef = useRef(false);
 
     // Receipt Retrieval states
     const [showRetrievePortal, setShowRetrievePortal] = useState(false);
@@ -270,6 +275,7 @@ export const PublicPay: React.FC = () => {
             await axios.post(`${API_URL}/lenco/public-diagnostics/report`, {
                 walletId: wallet_id,
                 errorType: errorInfo?.title || 'Unknown Error',
+                errorCode: errorInfo?.code,
                 logs: {
                     userAgent: navigator.userAgent,
                     url: window.location.href,
@@ -297,6 +303,7 @@ export const PublicPay: React.FC = () => {
 
         if (!wallet_id) {
             setErrorInfo({
+                code: 'PL-INCOMPLETE-CAT',
                 title: 'Incomplete link',
                 message: 'This payment link looks incomplete, so the checkout can’t open.',
                 tips: ['Make sure the entire link was copied, then try again.', 'Ask the business to resend the link.'],
@@ -309,6 +316,12 @@ export const PublicPay: React.FC = () => {
         const startFetchTime = performance.now();
         console.log(`[Diagnostic] Starting public context fetch for wallet ${wallet_id} at ${new Date().toISOString()}`);
         posthog.capture('payment_link_opened', { wallet_id, link_type: 'catalog' });
+
+        wasBackgroundedDuringFetchRef.current = false;
+        const onVisibilityChange = () => {
+            if (document.hidden) wasBackgroundedDuringFetchRef.current = true;
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
 
         try {
             // 45s, not 30s: the API's Vercel function has a 30s maxDuration (see
@@ -331,6 +344,7 @@ export const PublicPay: React.FC = () => {
             // Reached the server, but the business hasn't connected a payment provider.
             if (!response.data.wallet.lenco_subaccount_id) {
                 setErrorInfo({
+                    code: 'PL-NO-PROVIDER-CAT',
                     title: 'Payments not set up yet',
                     message: 'This business hasn’t finished connecting their payment provider, so checkout isn’t available yet.',
                     tips: ['Please let the business know so they can finish their payment setup.', 'You can try again once they’ve completed it.'],
@@ -383,15 +397,25 @@ export const PublicPay: React.FC = () => {
         } catch (err: any) {
             const duration = Math.round(performance.now() - startFetchTime);
             console.error(`[Diagnostic] Error fetching public pay context after ${duration}ms:`, err);
-            const errorDiagnosis = diagnoseCheckoutError(err);
-            posthog.capture('payment_link_failed', { 
-                wallet_id, 
-                link_type: 'catalog', 
-                duration_ms: duration, 
-                error_type: errorDiagnosis.title 
+            const conn = (navigator as any).connection;
+            const errorDiagnosis = diagnoseCheckoutError(err, {
+                entryPoint: 'catalog',
+                wasBackgrounded: wasBackgroundedDuringFetchRef.current,
+                isOnline: navigator.onLine,
+                connection: conn ? { effectiveType: conn.effectiveType, downlink: conn.downlink, rtt: conn.rtt } : null,
+                userAgent: navigator.userAgent,
+            });
+            posthog.capture('payment_link_failed', {
+                wallet_id,
+                link_type: 'catalog',
+                duration_ms: duration,
+                error_type: errorDiagnosis.title,
+                error_code: errorDiagnosis.code,
             });
             setErrorInfo(errorDiagnosis);
             setStep('ERROR');
+        } finally {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [wallet_id]);
@@ -2854,6 +2878,9 @@ Status: VERIFIED`;
                             >
                                 <RefreshCw size={14} /> Try Again
                             </button>
+                        )}
+                        {errorInfo?.code && (
+                            <p className="mt-3 text-[9px] font-mono text-slate-300 tracking-wide select-all">{errorInfo.code}</p>
                         )}
                     </div>
                 )}

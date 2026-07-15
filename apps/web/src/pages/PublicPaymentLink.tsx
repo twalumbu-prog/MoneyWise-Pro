@@ -126,6 +126,11 @@ export const PublicPaymentLink: React.FC = () => {
     // Set once we've resumed an in-flight payment on load, so a second loadContext
     // run (StrictMode double-invoke, or an ERROR-screen retry) can't clobber it.
     const resumedRef = useRef(false);
+    // Set if the tab goes hidden (screen lock, app switch) while the context
+    // fetch is in flight — the single biggest cause of a false "timed out" on
+    // mobile, since the request keeps running in the background but the payer
+    // sees an interrupted page. See diagnoseCheckoutError's PL-BACKGROUNDED.
+    const wasBackgroundedDuringFetchRef = useRef(false);
 
     // Re-runnable from the ERROR screen's Try Again.
     const loadContext = useCallback(async () => {
@@ -134,6 +139,7 @@ export const PublicPaymentLink: React.FC = () => {
 
         if (!token) {
             setErrorInfo({
+                code: 'PL-INCOMPLETE-OTL',
                 title: 'Incomplete link',
                 message: 'This payment link looks incomplete, so the checkout can’t open.',
                 tips: ['Make sure the entire link was copied, then try again.', 'Ask the business to resend the link.'],
@@ -145,6 +151,12 @@ export const PublicPaymentLink: React.FC = () => {
         const startFetchTime = performance.now();
         console.log(`[Diagnostic] Starting public payment link context fetch for token ${token} at ${new Date().toISOString()}`);
         posthog.capture('payment_link_opened', { link_token: token, link_type: 'payment_link' });
+
+        wasBackgroundedDuringFetchRef.current = false;
+        const onVisibilityChange = () => {
+            if (document.hidden) wasBackgroundedDuringFetchRef.current = true;
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
 
         try {
             // 45s, not 30s: the API's Vercel function has a 30s maxDuration (see
@@ -165,6 +177,7 @@ export const PublicPaymentLink: React.FC = () => {
             }
             if (!res.data.wallet.lenco_subaccount_id) {
                 setErrorInfo({
+                    code: 'PL-NO-PROVIDER-OTL',
                     title: 'Payments not set up yet',
                     message: 'This business hasn’t finished connecting their payment provider, so checkout isn’t available yet.',
                     tips: ['Please let the business know so they can finish their payment setup.', 'You can try again once they’ve completed it.'],
@@ -203,15 +216,25 @@ export const PublicPaymentLink: React.FC = () => {
         } catch (err: any) {
             const duration = Math.round(performance.now() - startFetchTime);
             console.error(`[Diagnostic] Error fetching payment-link context after ${duration}ms:`, err);
-            const errorDiagnosis = diagnoseCheckoutError(err);
+            const conn = (navigator as any).connection;
+            const errorDiagnosis = diagnoseCheckoutError(err, {
+                entryPoint: 'payment_link',
+                wasBackgrounded: wasBackgroundedDuringFetchRef.current,
+                isOnline: navigator.onLine,
+                connection: conn ? { effectiveType: conn.effectiveType, downlink: conn.downlink, rtt: conn.rtt } : null,
+                userAgent: navigator.userAgent,
+            });
             posthog.capture('payment_link_failed', {
                 link_token: token,
                 link_type: 'payment_link',
                 duration_ms: duration,
-                error_type: errorDiagnosis.title
+                error_type: errorDiagnosis.title,
+                error_code: errorDiagnosis.code,
             });
             setErrorInfo(errorDiagnosis);
             setStep('ERROR');
+        } finally {
+            document.removeEventListener('visibilitychange', onVisibilityChange);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [token]);
@@ -1135,6 +1158,9 @@ export const PublicPaymentLink: React.FC = () => {
                             >
                                 <RefreshCw size={14} /> Try Again
                             </button>
+                        )}
+                        {errorInfo?.code && (
+                            <p className="mt-3 text-[9px] font-mono text-slate-300 tracking-wide select-all">{errorInfo.code}</p>
                         )}
                     </div>
                 )}
