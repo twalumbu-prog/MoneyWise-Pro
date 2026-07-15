@@ -54,10 +54,16 @@ export const ingestVercelLogDrain = async (req: Request, res: Response) => {
     // Supabase hiccup must never surface as a delivery failure to Vercel.
     res.json({ received: entries.length });
 
-    if (entries.length === 0) return;
+    // Break the self-referential loop: the drain POSTs to this very endpoint,
+    // which itself produces logs that get drained right back. Dropping them at
+    // ingest keeps the table (and Vercel's per-volume drain billing) sane. The
+    // Vercel-side path filter is a belt-and-suspenders on top of this.
+    const meaningful = entries.filter((e) => e?.proxy?.path !== '/webhooks/vercel-log-drain');
+
+    if (meaningful.length === 0) return;
 
     try {
-        const rows = entries.map((e) => ({
+        const rows = meaningful.map((e) => ({
             vercel_log_id: e.id ?? null,
             deployment_id: e.deploymentId ?? null,
             project_id: e.projectId ?? null,

@@ -566,7 +566,15 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
 
         console.log('[Lenco Public Context] Wallet query result:', { wallet, walletError });
 
-        if (walletError || !wallet) {
+        // Distinguish a genuine "no such wallet" (PGRST116 = 0 rows) from a DB
+        // failure (timeout/connection). A timed-out query under load must NOT be
+        // reported to the customer as an invalid link — return 503 so the client
+        // shows a retry-able "temporarily busy" state instead of "not found".
+        if (walletError && walletError.code !== 'PGRST116') {
+            console.error('[Lenco Public Context] Wallet lookup DB error:', walletError);
+            return res.status(503).json({ error: 'Payment service is busy, please try again', details: walletError.message });
+        }
+        if (!wallet) {
             return res.status(404).json({ error: 'Wallet not found' });
         }
 
@@ -652,7 +660,15 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             .eq('token', token)
             .single();
 
-        if (linkError || !link) {
+        // Distinguish a genuine "no such link" (PGRST116 = 0 rows) from a DB
+        // failure (timeout/connection). A timed-out query under load must NOT be
+        // reported to the customer as an invalid link — return 503 so the client
+        // shows a retry-able "temporarily busy" state instead of "not found".
+        if (linkError && linkError.code !== 'PGRST116') {
+            console.error('[Lenco Payment Link Context] Link lookup DB error:', linkError);
+            return res.status(503).json({ error: 'Payment service is busy, please try again', details: linkError.message });
+        }
+        if (!link) {
             return res.status(404).json({ error: 'Payment link not found' });
         }
 
@@ -1533,8 +1549,18 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
     // instead of letting Vercel hard-kill mid-write, and always process the
     // least-recently-synced orgs first so a time-budget bailout rotates fairly
     // instead of permanently starving the same orgs.
+    // 15s (was 25s): the between-org check below only stops STARTING new orgs —
+    // it can't interrupt an org already in flight. A single org's settlement-map
+    // build fetches its Lenco collections sequentially (16 pages observed), which
+    // alone can run ~10-15s, so a budget of 25s left too little headroom and the
+    // in-flight org overran Vercel's 30s hard-kill (the recurring "Task timed out
+    // after 30 seconds" we saw in the drain logs). 15s reserves a full ~15s for
+    // the current org to finish cleanly. We deliberately do NOT truncate the
+    // collections pagination to save time — an incomplete settlement map re-logs
+    // duplicate inflows (incident CR-2026-0085/0086), so correctness wins over
+    // squeezing more orgs into one cycle; deferred orgs rotate in next run.
     const SYNC_START_MS = Date.now();
-    const SYNC_TIME_BUDGET_MS = 25_000;
+    const SYNC_TIME_BUDGET_MS = 15_000;
 
     try {
         // 1. Fetch all organizations with a linked Lenco subaccount, oldest-synced first

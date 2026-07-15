@@ -46,6 +46,17 @@ export const diagnoseCheckoutError = (err: any): CheckoutErrorInfo => {
             retry: false,
         };
     }
+    if (status === 503) {
+        return {
+            title: 'Payment service is busy',
+            message: 'We couldn’t reach the payment service just now — it’s under heavy load. Your link is fine.',
+            tips: [
+                'Wait a few seconds, then tap Try Again.',
+                'It usually works on the second try.',
+            ],
+            retry: true,
+        };
+    }
     if (status >= 500) {
         return {
             title: 'The payment server had a hiccup',

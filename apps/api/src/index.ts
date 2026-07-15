@@ -385,22 +385,26 @@ app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
 app.use('/lenco', lencoRoutes);
 
-// Log routes for debugging
-console.log('--- REGISTERED ROUTES ---');
-const routes: any[] = [];
-app._router.stack.forEach((middleware: any) => {
-    if (middleware.route) {
-        routes.push({ path: middleware.route.path, methods: Object.keys(middleware.route.methods) });
-    } else if (middleware.name === 'router') {
-        middleware.handle.stack.forEach((handler: any) => {
-            if (handler.route) {
-                const path = middleware.regexp.toString().replace('/^\\', '').replace('\\/?(?=\\/|$)/i', '') + handler.route.path;
-                routes.push({ path, methods: Object.keys(handler.route.methods) });
-            }
-        });
-    }
-});
-console.log(JSON.stringify(routes, null, 2));
+// Dump the full route table only when explicitly debugging. On Vercel this
+// module reloads on every cold start, and printing all ~200 routes each time
+// flooded the log drain (it was ~95% of captured volume, billed by Vercel).
+if (process.env.DEBUG_ROUTES === 'true') {
+    console.log('--- REGISTERED ROUTES ---');
+    const routes: any[] = [];
+    app._router.stack.forEach((middleware: any) => {
+        if (middleware.route) {
+            routes.push({ path: middleware.route.path, methods: Object.keys(middleware.route.methods) });
+        } else if (middleware.name === 'router') {
+            middleware.handle.stack.forEach((handler: any) => {
+                if (handler.route) {
+                    const path = middleware.regexp.toString().replace('/^\\', '').replace('\\/?(?=\\/|$)/i', '') + handler.route.path;
+                    routes.push({ path, methods: Object.keys(handler.route.methods) });
+                }
+            });
+        }
+    });
+    console.log(JSON.stringify(routes, null, 2));
+}
 
 app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');
