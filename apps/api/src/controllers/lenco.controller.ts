@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { LencoService } from '../services/lenco.service';
+import { LencoService, classifyLencoFailureReason } from '../services/lenco.service';
 import { emailService } from '../services/email.service';
 import { supabase } from '../lib/supabase';
 import pool from '../db';
@@ -306,6 +306,21 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                     console.error('[Lenco Verify] Error triggering processing:', procError);
                     return res.status(500).json({ error: 'Transaction found but failed to record in ledger' });
                 }
+            } else if (lencoStatus.status === 'failed') {
+                // Lenco's reasonForFailure is free text (e.g. "Insufficient funds in
+                // wallet") — classify it into a stable code + friendly message instead
+                // of the generic "declined" copy every failure used to get, so both the
+                // customer and our own diagnostics can tell an insufficient-funds
+                // decline apart from an expired prompt, wrong PIN, etc.
+                const { code, message } = classifyLencoFailureReason(lencoStatus.reasonForFailure);
+                console.log(`[Lenco Verify] Collection failed for ref ${reference}: reason="${lencoStatus.reasonForFailure || 'N/A'}" code=${code}`);
+                return res.json({
+                    verified: false,
+                    status: 'failed',
+                    reasonCode: code,
+                    reason: lencoStatus.reasonForFailure || null,
+                    message
+                });
             } else {
                 return res.json({
                     verified: false,

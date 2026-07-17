@@ -15,6 +15,38 @@ export interface LencoPayoutRequest {
     description: string;
 }
 
+/**
+ * Turn Lenco's free-text `reasonForFailure` (present on a collection/transaction
+ * once status is "failed" — see https://lenco-api.readme.io) into a stable code
+ * plus a customer-facing message. Lenco doesn't document an enumerated set of
+ * reason strings, so this matches on the substrings observed in practice; any
+ * unrecognized reason still surfaces Lenco's own text (better than a generic
+ * "declined") and a missing reason falls back to today's generic copy.
+ */
+export function classifyLencoFailureReason(rawReason: string | null | undefined): { code: string; message: string } {
+    const raw = (rawReason || '').trim();
+    const lower = raw.toLowerCase();
+
+    if (/insufficient/.test(lower)) {
+        return { code: 'insufficient_funds', message: 'Insufficient funds. Please top up your mobile money account and try again.' };
+    }
+    if (/pin/.test(lower)) {
+        return { code: 'invalid_pin', message: 'Incorrect PIN entered on the mobile money prompt. Please try again.' };
+    }
+    if (/timeout|timed out|expir/.test(lower)) {
+        return { code: 'prompt_expired', message: 'The prompt expired before it was approved. Please try again.' };
+    }
+    if (/cancel|declin|reject|not approved/.test(lower)) {
+        return { code: 'declined', message: 'The payment was declined on your phone.' };
+    }
+    if (raw) {
+        // Unrecognized but Lenco gave us something specific — show it verbatim
+        // rather than masking it with a generic message.
+        return { code: 'failed', message: raw };
+    }
+    return { code: 'declined', message: 'The payment was declined or not approved on your phone.' };
+}
+
 export class LencoService {
     private static readonly BASE_URL = 'https://api.lenco.co/access/v2';
     private static readonly SECRET_KEY = process.env.LENCO_SECRET_KEY;

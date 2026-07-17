@@ -832,7 +832,10 @@ export const PublicPay: React.FC = () => {
                 }
                 if (verifyRes.data.status === 'failed') {
                     setVerificationStep('FAILED');
-                    setVerificationReason('The payment was declined or not approved on your phone. You can go back and try again.');
+                    // Server classifies Lenco's reasonForFailure (insufficient funds, wrong
+                    // PIN, expired prompt, ...) into a specific message; falls back to the
+                    // old generic copy if Lenco didn't give a reason.
+                    setVerificationReason(verifyRes.data.message || 'The payment was declined or not approved on your phone. You can go back and try again.');
                     setAwaitingApproval(false);
                     setFailureIsDeclined(true);
                     setPaymentPhase('failed');
@@ -843,8 +846,8 @@ export const PublicPay: React.FC = () => {
                         organization_id: orgId,
                         ...(analytics || {}),
                         payment_method: 'mobile-money',
-                        error_code: 'declined',
-                        error_message: 'Customer declined or did not approve the mobile money prompt',
+                        error_code: verifyRes.data.reasonCode || 'declined',
+                        error_message: verifyRes.data.reason || 'Customer declined or did not approve the mobile money prompt',
                         duration_ms: Date.now() - startedAt,
                     });
                     return;
@@ -1071,7 +1074,7 @@ export const PublicPay: React.FC = () => {
                 clearPendingPayment();
             } else if (verifyRes.data.status === 'failed') {
                 outcome = 'declined';
-                setRecheckNote('This payment was declined — nothing has been charged. You can try again.');
+                setRecheckNote(verifyRes.data.message || 'This payment was declined — nothing has been charged. You can try again.');
                 clearPendingPayment();
             } else {
                 setRecheckNote('Not confirmed yet. If you just approved it, wait a few seconds and check again.');
