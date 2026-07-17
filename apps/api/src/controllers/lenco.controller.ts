@@ -809,7 +809,7 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
     let analyticsBase: { feature: string; workflow_id: string; organization_id: string; user_id: string; [key: string]: any } =
         { feature, workflow_id: 'unknown', organization_id: 'unknown', user_id: (req as any).user?.id || 'anonymous' };
     try {
-        const { reference, purpose, amount, walletId, customerName, customerPhone, items, paymentLinkToken } = req.body;
+        const { reference, purpose, amount, walletId, customerName, customerPhone, customerEmail, items, paymentLinkToken } = req.body;
 
         if (!reference || !purpose || !walletId) {
             return res.status(400).json({ error: 'reference, purpose, and walletId are required' });
@@ -916,6 +916,7 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                     product_id: item.id,
                     customer_name: customerName || 'Anonymous',
                     customer_phone: customerPhone || 'N/A',
+                    customer_email: (customerEmail && String(customerEmail).trim()) || null,
                     quantity: qty,
                     amount_paid: Math.round(unit * qty * 100) / 100,
                     reference: reference,

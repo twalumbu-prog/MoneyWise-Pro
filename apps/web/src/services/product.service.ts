@@ -3,7 +3,16 @@ import axios from 'axios';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
-export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY';
+export type ProductType = 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL';
+
+/** A file sold as a digital product, stored in the private `product-assets`
+ *  bucket and delivered to the buyer by email once they pay. */
+export interface DigitalAsset {
+    name: string;
+    path: string;
+    size?: number;
+    content_type?: string;
+}
 
 /** Single source of truth for the product-type choices shown wherever a
  *  listing is created or edited (Settings' product manager, onboarding). */
@@ -14,6 +23,7 @@ export const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string; hint: st
     { value: 'SERVICE_BOOKING', label: 'Service (Booking – Apartments)', hint: 'Guests pick check-in / check-out on a calendar. Total = nights × nightly rate. Booked dates are blocked so you never double-book.' },
     { value: 'SERVICE_BOOKING_DAILY', label: 'Service (Booking – Daily Rental)', hint: 'Customers pick a pickup and drop-off date on a calendar. Total = days × daily rate. Booked dates are blocked so you never double-book.' },
     { value: 'DONATION', label: 'Donation', hint: 'The payer decides the amount to give.' },
+    { value: 'DIGITAL', label: 'Digital product', hint: 'Upload a file (e-book, template, audio, software). The buyer is emailed the file automatically the moment they pay.' },
 ];
 
 export interface BookingRange {
@@ -59,6 +69,7 @@ export interface Product {
     wallet_id?: string | null;
     income_account_id?: string | null;
     category?: string | null;
+    digital_assets?: DigitalAsset[] | null;
     created_at?: string;
     updated_at?: string;
 }

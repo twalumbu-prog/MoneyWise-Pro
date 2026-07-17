@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType } from '../../services/product.service';
+import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType, DigitalAsset } from '../../services/product.service';
 import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
 import { supabase } from '../../lib/supabase';
@@ -23,7 +23,9 @@ import {
     ImagePlus,
     Wallet,
     BookOpen,
-    Layers
+    Layers,
+    FileUp,
+    FileText
 } from 'lucide-react';
 
 interface WalletOption { id: string; name: string; is_main?: boolean; }
@@ -35,6 +37,7 @@ const typeBadgeClass = (t?: ProductType) => {
         case 'SERVICE_VARIABLE': return 'bg-amber-100 text-amber-800';
         case 'SERVICE_BOOKING': return 'bg-teal-100 text-teal-800';
         case 'SERVICE_BOOKING_DAILY': return 'bg-cyan-100 text-cyan-800';
+        case 'DIGITAL': return 'bg-violet-100 text-violet-800';
         case 'DONATION': return 'bg-pink-100 text-pink-800';
         default: return 'bg-slate-100 text-slate-700';
     }
@@ -49,6 +52,9 @@ export const ProductSettings: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [uploadingImage, setUploadingImage] = useState(false);
+    const [uploadingAsset, setUploadingAsset] = useState(false);
+    // Digital-product files (kept separate from formData since they're an array of objects).
+    const [digitalAssets, setDigitalAssets] = useState<DigitalAsset[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const { userRole, organizationId } = useAuth();
@@ -119,12 +125,14 @@ export const ProductSettings: React.FC = () => {
             category: '',
             is_active: true
         });
+        setDigitalAssets([]);
         setError(null);
         setIsModalOpen(true);
     };
 
     const handleOpenEditModal = (product: Product) => {
         setEditingProduct(product);
+        setDigitalAssets(Array.isArray(product.digital_assets) ? product.digital_assets : []);
         setFormData({
             name: product.name,
             description: product.description || '',
@@ -185,8 +193,58 @@ export const ProductSettings: React.FC = () => {
         }
     };
 
+    // Upload one or more digital-product files to the PRIVATE product-assets bucket.
+    // Unlike images these are not compressed and never get a public URL — only the
+    // object path is stored; the API fetches them server-side for email delivery.
+    const handleUploadAssets = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0 || !isAdmin) return;
+
+        try {
+            setUploadingAsset(true);
+            setError(null);
+            const folder = organizationId || 'shared';
+            const uploaded: DigitalAsset[] = [];
+
+            for (const file of Array.from(files)) {
+                const safeName = file.name.replace(/[^\w.\-]+/g, '_');
+                const filePath = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
+                const { data, error: uploadError } = await supabase.storage
+                    .from('product-assets')
+                    .upload(filePath, file, { upsert: false, contentType: file.type || 'application/octet-stream' });
+                if (uploadError) throw uploadError;
+                uploaded.push({
+                    name: file.name,
+                    path: data.path,
+                    size: file.size,
+                    content_type: file.type || undefined,
+                });
+            }
+            setDigitalAssets(prev => [...prev, ...uploaded]);
+        } catch (err: any) {
+            console.error('Digital asset upload failed:', err);
+            setError(err.message || 'Failed to upload file.');
+        } finally {
+            setUploadingAsset(false);
+            e.target.value = ''; // allow re-selecting the same file
+        }
+    };
+
+    const handleRemoveAsset = (path: string) => {
+        // Only drops it from this product's asset list; the stored object is left
+        // in the bucket (harmless, and other products could theoretically reuse it).
+        setDigitalAssets(prev => prev.filter(a => a.path !== path));
+    };
+
+    const formatBytes = (n?: number): string => {
+        if (!n || n <= 0) return '';
+        if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+        return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
     const isDonation = formData.product_type === 'DONATION';
     const isVariable = formData.product_type === 'SERVICE_VARIABLE';
+    const isDigital = formData.product_type === 'DIGITAL';
     const isBooking = isBookingProductType(formData.product_type);
     const isDailyBooking = formData.product_type === 'SERVICE_BOOKING_DAILY';
     const priceRequired = !isDonation && !isVariable;
@@ -219,6 +277,11 @@ export const ProductSettings: React.FC = () => {
             }
         }
 
+        if (isDigital && digitalAssets.length === 0) {
+            setError('Please upload at least one file for this digital product.');
+            return;
+        }
+
         try {
             setSubmitting(true);
             setError(null);
@@ -233,6 +296,7 @@ export const ProductSettings: React.FC = () => {
                 income_account_id: formData.income_account_id || null,
                 image_url: formData.image_url || null,
                 category: formData.category.trim() || null,
+                digital_assets: isDigital ? digitalAssets : null,
                 is_active: formData.is_active
             };
 
@@ -566,6 +630,47 @@ export const ProductSettings: React.FC = () => {
                                     </div>
                                 </div>
 
+                                {/* Digital assets — files delivered to the buyer on payment */}
+                                {isDigital && (
+                                    <div>
+                                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                                            Digital file(s) <span className="text-red-500">*</span>
+                                        </label>
+                                        <p className="text-xs text-gray-400 mb-2">
+                                            Uploaded privately and emailed to the buyer automatically once they pay. Small files are attached; large files are sent as a secure download link.
+                                        </p>
+
+                                        {digitalAssets.length > 0 && (
+                                            <div className="space-y-2 mb-3">
+                                                {digitalAssets.map(asset => (
+                                                    <div key={asset.path} className="flex items-center gap-3 px-3 py-2.5 bg-violet-50/60 border border-violet-100 rounded-xl">
+                                                        <FileText className="h-4 w-4 text-violet-500 flex-shrink-0" />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="text-sm font-semibold text-gray-800 truncate">{asset.name}</div>
+                                                            {asset.size ? <div className="text-xs text-gray-400">{formatBytes(asset.size)}</div> : null}
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleRemoveAsset(asset.path)}
+                                                            disabled={submitting}
+                                                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                                                            title="Remove file"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+
+                                        <label className="inline-flex items-center px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors w-fit">
+                                            {uploadingAsset ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileUp className="h-4 w-4 mr-1.5" />}
+                                            {uploadingAsset ? 'Uploading...' : (digitalAssets.length > 0 ? 'Add another file' : 'Upload file')}
+                                            <input type="file" multiple className="hidden" onChange={handleUploadAssets} disabled={submitting || uploadingAsset} />
+                                        </label>
+                                    </div>
+                                )}
+
                                 <div>
                                     <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                                         Product/Service Name <span className="text-red-500">*</span>
@@ -724,7 +829,7 @@ export const ProductSettings: React.FC = () => {
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={submitting || uploadingImage || !formData.name.trim()}
+                                    disabled={submitting || uploadingImage || uploadingAsset || !formData.name.trim()}
                                     className="inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-[#238914] rounded-xl focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-colors disabled:opacity-50"
                                 >
                                     {submitting ? (

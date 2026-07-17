@@ -286,7 +286,7 @@ export const emailService = {
     async notifyPaymentLinkPaid(organizationId: string, reference: string) {
         const { data: link, error: linkError } = await supabase
             .from('payment_links')
-            .select('customer_name, customer_phone, customer_email, amount, items, products(name)')
+            .select('product_id, customer_name, customer_phone, customer_email, amount, items, products(name)')
             .eq('organization_id', organizationId)
             .eq('reference', reference)
             .maybeSingle();
@@ -299,6 +299,12 @@ export const emailService = {
         const items = normalizePaymentLinkItems(link as any);
         const productLabel = paymentLinkItemLabel(items);
         const amount = Number(link.amount);
+
+        // Product IDs for digital delivery: from the invoice basket (items JSONB)
+        // or the legacy single product_id. Empty for links with neither.
+        const productIds: string[] = Array.isArray((link as any).items) && (link as any).items.length > 0
+            ? (link as any).items.map((it: any) => it.product_id).filter(Boolean)
+            : ((link as any).product_id ? [(link as any).product_id] : []);
 
         // 1. Admin notification.
         try {
@@ -325,7 +331,7 @@ export const emailService = {
             console.error(`[EmailService] Failed to send admin payment-link notification for ref ${reference}:`, error);
         }
 
-        // 2. Customer receipt.
+        // 2. Customer receipt (+ digital-product delivery when applicable).
         if (link.customer_email) {
             try {
                 const { data: org } = await supabase
@@ -333,6 +339,7 @@ export const emailService = {
                     .select('name, logo_url')
                     .eq('id', organizationId)
                     .maybeSingle();
+                const { attachments, downloadLinks } = await this.buildDigitalDelivery(organizationId, productIds);
                 await this.sendPaymentLinkReceipt({
                     to: link.customer_email,
                     orgName: org?.name || 'the business',
@@ -342,6 +349,8 @@ export const emailService = {
                     items,
                     total: amount,
                     reference,
+                    extraAttachments: attachments,
+                    downloadLinks,
                 });
             } catch (error) {
                 console.error(`[EmailService] Failed to send customer receipt for ref ${reference}:`, error);
@@ -356,13 +365,6 @@ export const emailService = {
      */
     async notifyPublicSalePaid(organizationId: string, reference: string) {
         try {
-            const { emails } = await this.getOrgNotificationRecipients(organizationId);
-
-            if (emails.length === 0) {
-                console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping sale notification.`);
-                return;
-            }
-
             const { data: link } = await supabase
                 .from('payment_links')
                 .select('id')
@@ -373,7 +375,7 @@ export const emailService = {
 
             const { data: sales, error: salesError } = await supabase
                 .from('product_sales')
-                .select('customer_name, customer_phone, quantity, amount_paid, products(name)')
+                .select('product_id, customer_name, customer_phone, customer_email, quantity, amount_paid, products(name)')
                 .eq('organization_id', organizationId)
                 .eq('reference', reference);
 
@@ -381,26 +383,67 @@ export const emailService = {
 
             const customerName = (sales[0] as any).customer_name || 'Customer';
             const customerPhone = (sales[0] as any).customer_phone || '';
+            const customerEmail = (sales[0] as any).customer_email || '';
             const total = sales.reduce((sum: number, s: any) => sum + Number(s.amount_paid || 0), 0);
             const lines = sales
                 .map((s: any) => `${s.quantity || 1}x ${s.products?.name || 'Item'}`)
                 .join(', ');
 
-            const html = this.renderPaymentEmail({
-                amount: total,
-                customerName,
-                customerPhone: customerPhone || undefined,
-                serviceLabel: lines,
-                reference,
-                when: new Date(),
-            });
+            // 1. Admin notification (skipped, not fatal, when no admin recipients).
+            const { emails } = await this.getOrgNotificationRecipients(organizationId);
+            if (emails.length === 0) {
+                console.warn(`[EmailService] No admin email or ACTIVE admins found for org ${organizationId}; skipping admin sale notification.`);
+            } else {
+                const html = this.renderPaymentEmail({
+                    amount: total,
+                    customerName,
+                    customerPhone: customerPhone || undefined,
+                    serviceLabel: lines,
+                    reference,
+                    when: new Date(),
+                });
+                await this.sendEmail({
+                    to: emails,
+                    subject: `You just got paid — K${total.toLocaleString()}`,
+                    html,
+                });
+                console.log(`[EmailService] Sale notification sent to ${emails.join(', ')} for ref ${reference} (${sales.length} item(s))`);
+            }
 
-            await this.sendEmail({
-                to: emails,
-                subject: `You just got paid — K${total.toLocaleString()}`,
-                html,
-            });
-            console.log(`[EmailService] Sale notification sent to ${emails.join(', ')} for ref ${reference} (${sales.length} item(s))`);
+            // 2. Buyer receipt (+ digital-product delivery) when an email was captured.
+            if (customerEmail) {
+                try {
+                    const { data: org } = await supabase
+                        .from('organizations')
+                        .select('name, logo_url')
+                        .eq('id', organizationId)
+                        .maybeSingle();
+                    const productIds = sales.map((s: any) => s.product_id).filter(Boolean);
+                    const { attachments, downloadLinks } = await this.buildDigitalDelivery(organizationId, productIds);
+                    const items = sales.map((s: any) => {
+                        const qty = Number(s.quantity) || 1;
+                        return {
+                            name: s.products?.name || 'Item',
+                            quantity: qty,
+                            unit_price: qty > 0 ? Number(s.amount_paid || 0) / qty : Number(s.amount_paid || 0),
+                        };
+                    });
+                    await this.sendPaymentLinkReceipt({
+                        to: customerEmail,
+                        orgName: org?.name || 'the business',
+                        orgLogoUrl: org?.logo_url || null,
+                        customerName,
+                        customerPhone: customerPhone || null,
+                        items,
+                        total,
+                        reference,
+                        extraAttachments: attachments,
+                        downloadLinks,
+                    });
+                } catch (error) {
+                    console.error(`[EmailService] Failed to send buyer receipt for ref ${reference}:`, error);
+                }
+            }
         } catch (error) {
             console.error(`[EmailService] Failed to send sale notification for ref ${reference}:`, error);
         }
@@ -637,10 +680,133 @@ export const emailService = {
     },
 
     /**
+     * Assemble the digital-product delivery for a paid order: for each DIGITAL
+     * product bought, either attach its file(s) to the email (small) or, once a
+     * running size budget is exceeded, hand back a time-limited signed download
+     * link (large). Files live in the PRIVATE `product-assets` bucket and are
+     * pulled with the service-role client — never exposed at a public URL.
+     *
+     * IMPORTANT: this runs inside the customer's own payment-confirmation request
+     * (verifyCollectionStatus / the Lenco webhook both call it synchronously as
+     * part of finalizing a fresh payment — see handleCollectionSuccessful). A slow
+     * storage download here doesn't just delay an email; it can blow the client's
+     * poll timeout or the API's serverless maxDuration and make an already-successful
+     * payment look "failed" to the customer. Every network call is therefore
+     * wrapped in a hard timeout and falls back to the (fast, metadata-only) signed
+     * link instead of blocking — never to a hang. A whole-call budget caps the
+     * worst case when an order has several assets.
+     *
+     * Returns attachments ready for Resend + a list of { name, url } download
+     * links for the caller to render in the email body. Fully non-fatal: any
+     * asset that can't be fetched/signed is skipped with a log, never thrown.
+     */
+    async buildDigitalDelivery(organizationId: string, productIds: string[]): Promise<{
+        attachments: { filename: string; content: string }[];
+        downloadLinks: { name: string; url: string }[];
+    }> {
+        const attachments: { filename: string; content: string }[] = [];
+        const downloadLinks: { name: string; url: string }[] = [];
+
+        const uniqueIds = Array.from(new Set((productIds || []).filter(Boolean)));
+        if (uniqueIds.length === 0) return { attachments, downloadLinks };
+
+        // Races a promise against a hard deadline instead of letting a stalled
+        // network call block the customer-facing response indefinitely.
+        const withTimeout = <T>(promise: Promise<T>, ms: number, label: string): Promise<T> =>
+            Promise.race([
+                promise,
+                new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)),
+            ]);
+
+        const DOWNLOAD_TIMEOUT_MS = 6000;
+        const SIGN_TIMEOUT_MS = 4000;
+        const OVERALL_BUDGET_MS = 12000;
+        const deadline = Date.now() + OVERALL_BUDGET_MS;
+
+        try {
+            const { data: products, error } = await supabase
+                .from('products')
+                .select('id, product_type, digital_assets')
+                .eq('organization_id', organizationId)
+                .in('id', uniqueIds);
+            if (error || !products) return { attachments, downloadLinks };
+
+            // Attach up to ~15MB total; anything beyond that (or that fails to
+            // download) falls back to a 7-day signed link so delivery never bounces.
+            const ATTACH_BUDGET_BYTES = 15 * 1024 * 1024;
+            const SIGNED_URL_TTL_SECONDS = 7 * 24 * 60 * 60;
+            let usedBytes = 0;
+
+            for (const product of products as any[]) {
+                if (product.product_type !== 'DIGITAL' || !Array.isArray(product.digital_assets)) continue;
+                for (const asset of product.digital_assets) {
+                    if (!asset || typeof asset.path !== 'string') continue;
+                    const filename = String(asset.name || asset.path.split('/').pop() || 'file');
+                    const hintedSize = Number.isFinite(asset.size) ? Number(asset.size) : undefined;
+
+                    // If we already know it's oversized, skip the download and sign straight away.
+                    const clearlyTooBig = hintedSize !== undefined && (usedBytes + hintedSize > ATTACH_BUDGET_BYTES);
+                    // Whole-call time budget exhausted — stop attempting downloads for the
+                    // rest of the order and go straight to (fast) signed links.
+                    const outOfTime = Date.now() >= deadline;
+
+                    if (!clearlyTooBig && !outOfTime) {
+                        try {
+                            const { data: blob, error: dlErr } = await withTimeout(
+                                supabase.storage.from('product-assets').download(asset.path),
+                                DOWNLOAD_TIMEOUT_MS,
+                                `Digital asset download (${asset.path})`
+                            );
+                            if (!dlErr && blob) {
+                                const buffer = Buffer.from(await blob.arrayBuffer());
+                                if (usedBytes + buffer.byteLength <= ATTACH_BUDGET_BYTES) {
+                                    attachments.push({ filename, content: buffer.toString('base64') });
+                                    usedBytes += buffer.byteLength;
+                                    continue;
+                                }
+                            }
+                        } catch (dlErr) {
+                            console.error(`[EmailService] Digital asset download failed/timed out for ${asset.path}, falling back to link:`, dlErr);
+                        }
+                    }
+
+                    // Fallback: signed download link (fast — metadata only, no file transfer).
+                    if (Date.now() >= deadline) {
+                        console.error(`[EmailService] buildDigitalDelivery time budget exhausted — skipping signed link for ${asset.path}`);
+                        continue;
+                    }
+                    try {
+                        const { data: signed, error: signErr } = await withTimeout(
+                            supabase.storage.from('product-assets').createSignedUrl(asset.path, SIGNED_URL_TTL_SECONDS),
+                            SIGN_TIMEOUT_MS,
+                            `Signed URL (${asset.path})`
+                        );
+                        if (!signErr && signed?.signedUrl) {
+                            downloadLinks.push({ name: filename, url: signed.signedUrl });
+                        } else {
+                            console.error(`[EmailService] Could not sign URL for ${asset.path}:`, signErr);
+                        }
+                    } catch (signErr) {
+                        console.error(`[EmailService] Signed-URL error/timeout for ${asset.path}:`, signErr);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error(`[EmailService] buildDigitalDelivery failed for org ${organizationId}:`, err);
+        }
+
+        return { attachments, downloadLinks };
+    },
+
+    /**
      * Receipt email for a paid one-time payment link, sent to the customer who
      * paid (payment_links.customer_email). Same visual language as
      * sendPaymentLinkInvoice but worded as a confirmation, not a request — no
      * "Pay now" button since the link is already settled.
+     *
+     * `extraAttachments` / `downloadLinks` carry digital-product delivery (see
+     * buildDigitalDelivery): attached files ride alongside the PDF receipt, and
+     * download links render as buttons in the body.
      */
     async sendPaymentLinkReceipt(params: {
         to: string;
@@ -651,8 +817,10 @@ export const emailService = {
         items: { name: string; quantity: number; unit_price: number; check_in?: string; check_out?: string }[];
         total: number;
         reference: string;
+        extraAttachments?: { filename: string; content: string }[];
+        downloadLinks?: { name: string; url: string }[];
     }) {
-        const { to, orgName, orgLogoUrl, customerName, customerPhone, items, total, reference } = params;
+        const { to, orgName, orgLogoUrl, customerName, customerPhone, items, total, reference, extraAttachments, downloadLinks } = params;
         const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
         const money = (n: number) => `K${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 
@@ -670,6 +838,19 @@ export const emailService = {
                     <td style="padding:14px 22px; border-bottom:1px solid #F0F2F4; font-size:14px; font-weight:700; text-align:right; white-space:nowrap;">${money(it.unit_price * it.quantity)}</td>
                 </tr>`;
         }).join('');
+
+        // Digital delivery: attached files are noted; large ones get download buttons.
+        const hasAttachments = !!(extraAttachments && extraAttachments.length > 0);
+        const hasLinks = !!(downloadLinks && downloadLinks.length > 0);
+        const downloadsSection = (hasAttachments || hasLinks) ? `
+                        <div style="padding:8px 44px 4px;">
+                            <div style="border:1px solid #DCE7FB; background:#F5F8FF; border-radius:16px; padding:18px 22px;">
+                                <div style="font-size:14px; font-weight:800; color:#16181D; margin-bottom:6px;">Your download${(hasAttachments && extraAttachments!.length + (downloadLinks?.length || 0) > 1) || (downloadLinks && downloadLinks.length > 1) ? 's' : ''}</div>
+                                ${hasAttachments ? `<div style="font-size:13px; color:#5C636B; margin-bottom:${hasLinks ? '10px' : '0'};">Your file${extraAttachments!.length > 1 ? 's are' : ' is'} attached to this email: ${extraAttachments!.map(a => a.filename).join(', ')}.</div>` : ''}
+                                ${hasLinks ? downloadLinks!.map(l => `<a href="${l.url}" style="display:inline-block; margin:4px 6px 4px 0; padding:10px 18px; background-color:#006AFF; color:#ffffff; text-decoration:none; border-radius:10px; font-weight:700; font-size:13px;">Download ${l.name}</a>`).join('') : ''}
+                                ${hasLinks ? `<div style="font-size:11px; color:#9AA0A7; margin-top:8px;">Download links stay valid for 7 days.</div>` : ''}
+                            </div>
+                        </div>` : '';
 
         const html = `
             <!DOCTYPE html>
@@ -700,6 +881,8 @@ export const emailService = {
                                 </tr>
                             </table>
                         </div>
+
+                        ${downloadsSection}
 
                         <div style="padding:20px 44px 8px; text-align:center;">
                             <div style="font-size:12px; color:#9AA0A7; font-family:ui-monospace,'SF Mono',Menlo,monospace;">Reference: ${reference}</div>
@@ -739,19 +922,23 @@ export const emailService = {
             console.warn('[EmailService] RESEND_API_KEY not set. Skipping receipt email send.');
             return;
         }
+        const allAttachments = [
+            ...(pdfAttachment ? [{ filename: pdfAttachment.filename, content: pdfAttachment.content }] : []),
+            ...(extraAttachments || []),
+        ];
         const { error } = await resend.emails.send({
             from: process.env.EMAIL_FROM || 'MoneyWise <notifications@resend.dev>',
             to,
             subject: `Payment received — ${money(total)}`,
             html,
             text: html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(),
-            ...(pdfAttachment ? { attachments: [{ filename: pdfAttachment.filename, content: pdfAttachment.content }] } : {}),
+            ...(allAttachments.length > 0 ? { attachments: allAttachments } : {}),
         });
         if (error) {
             console.error('[EmailService] Resend error sending receipt:', error);
             throw error;
         }
-        console.log(`[EmailService] Payment receipt sent to ${to} for ref ${reference}${pdfAttachment ? ' (with PDF)' : ' (HTML only)'}`);
+        console.log(`[EmailService] Payment receipt sent to ${to} for ref ${reference} (${allAttachments.length} attachment(s), ${downloadLinks?.length || 0} download link(s))`);
     },
 
     /**

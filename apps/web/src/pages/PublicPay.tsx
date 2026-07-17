@@ -9,6 +9,7 @@ import {
     ArrowRight,
     Smartphone,
     Phone,
+    Mail,
     User,
     ShoppingCart,
     ShoppingBag,
@@ -107,7 +108,7 @@ interface Product {
     price: number;
     is_active: boolean;
     image_url?: string | null;
-    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY';
+    product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL';
     category?: string | null;
 }
 
@@ -201,6 +202,9 @@ export const PublicPay: React.FC = () => {
     // Inputs & Forms
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
+    // Only needed when the cart contains a digital product — that's where we email
+    // the file. Can't be derived from the mobile-money account, so we collect it.
+    const [customerEmail, setCustomerEmail] = useState('');
     const [selectedQuantities, setSelectedQuantities] = useState<Record<string, number>>({});
     // Customer-entered amounts for DONATION products (keyed by product id).
     const [donationAmounts, setDonationAmounts] = useState<Record<string, number>>({});
@@ -553,6 +557,10 @@ export const PublicPay: React.FC = () => {
     const subtotal = lineItems.reduce((sum, li) => sum + li.total, 0);
     // Donation items in cart with no amount yet entered (amount = 0)
     const pendingDonations = lineItems.filter(li => li.isDonation && li.unitPrice === 0);
+
+    // Digital products are delivered by email, so the buyer's email becomes required.
+    const cartHasDigital = lineItems.some(li => li.product.product_type === 'DIGITAL');
+    const emailIsValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(customerEmail.trim());
     
     // MoneyWise platform fee (tiered) — additive markup paid by the customer on top
     // of the subtotal. The merchant settles the net subtotal; the fee is swept to
@@ -591,9 +599,11 @@ export const PublicPay: React.FC = () => {
     // Own-UX flow: identity is derived on the Payment page from the mobile money
     // account (resolved holder name + the number that pays), so Pay only needs a
     // valid cart. Widget fallback still collects name/phone on the summary.
-    const canPay = collectionsApiEnabled
+    const canPay = (collectionsApiEnabled
         ? true
-        : customerName.trim().length > 0 && customerPhone.replace(/\D/g, '').length >= 9;
+        : customerName.trim().length > 0 && customerPhone.replace(/\D/g, '').length >= 9)
+        // Digital carts additionally require a valid delivery email in both flows.
+        && (!cartHasDigital || emailIsValid);
 
     // Full-screen "app" steps fill the viewport (fixed height) so inner content
     // scrolls and footers stay pinned; the simple states just center normally.
@@ -640,6 +650,10 @@ export const PublicPay: React.FC = () => {
             setError('Please enter a valid phone number to continue.');
             return;
         }
+        if (cartHasDigital && !emailIsValid) {
+            setError('Please enter a valid email — your digital file will be sent there.');
+            return;
+        }
 
         if (!wallet || !org) return;
 
@@ -678,6 +692,7 @@ export const PublicPay: React.FC = () => {
                 walletId: wallet.id,
                 customerName,
                 customerPhone,
+                customerEmail: cartHasDigital ? customerEmail.trim() : undefined,
                 items: lineItems.map(li => ({
                     id: li.product.id,
                     quantity: li.quantity,
@@ -926,6 +941,7 @@ export const PublicPay: React.FC = () => {
                 walletId: wallet.id,
                 customerName: payerName,
                 customerPhone: payerPhone,
+                customerEmail: cartHasDigital ? customerEmail.trim() : undefined,
                 items: lineItems.map(li => ({
                     id: li.product.id,
                     quantity: li.quantity,
@@ -2457,6 +2473,30 @@ Status: VERIFIED`;
                                                 className="w-full pl-11 pr-4 py-3.5 bg-neutral-100 rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-slate-200 placeholder:text-slate-400 transition-all"
                                             />
                                         </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Email — required only when the cart has a digital product, since
+                                that's how we deliver the file (can't derive it from mobile money). */}
+                            {cartHasDigital && (
+                                <div className="mt-4 rounded-3xl border border-violet-200 bg-violet-50/40 p-5">
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                        <Mail size={16} className="text-violet-600" />
+                                        <h5 className="text-sm font-bold text-slate-900">
+                                            Delivery email <span className="text-rose-500">*</span>
+                                        </h5>
+                                    </div>
+                                    <p className="text-xs text-slate-500 mb-3">Your digital file will be sent here right after payment.</p>
+                                    <div className="relative">
+                                        <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                                        <input
+                                            type="email"
+                                            value={customerEmail}
+                                            onChange={(e) => setCustomerEmail(e.target.value)}
+                                            placeholder="you@example.com"
+                                            className="w-full pl-11 pr-4 py-3.5 bg-white rounded-xl text-sm font-medium text-[#5A5A5A] outline-none focus:ring-2 focus:ring-violet-200 placeholder:text-slate-400 transition-all"
+                                        />
                                     </div>
                                 </div>
                             )}
