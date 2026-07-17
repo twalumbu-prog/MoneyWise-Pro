@@ -72,8 +72,8 @@ router.post('/return', requireRole(['CASHIER', 'ADMIN']), returnExcessCash);
 // Log cash inflow (Cashier, Accountant, Admin)
 router.post('/inflow', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logCashInflow);
 
-// Record a manual (cash / mobile money / bank) product sale (Cashier, Accountant, Admin)
-router.post('/manual-sale', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), recordManualSale);
+// Record a manual (cash / mobile money / bank) product sale (Requestor, Cashier, Accountant, Admin)
+router.post('/manual-sale', requireRole(['REQUESTOR', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), recordManualSale);
 
 // Log wallet deposit intent (Cashier, Accountant, Admin)
 router.post('/wallet-deposit-intent', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logWalletDepositIntent);
