@@ -1031,14 +1031,16 @@ export const emailService = {
     },
 
     /**
-     * Resolve who should receive payment/inflow notifications for an organization.
+     * Resolve who should receive payment/inflow notifications for an organization:
+     * every ACTIVE ADMIN member, plus organizations.email if it's set to something
+     * not already covered by that list.
      *
-     * organizations.email is a manually-entered field that most orgs never fill in —
-     * an audit found 14 of 17 live organizations had it unset, silently swallowing
-     * every payment-received / inflow email for them (confirmed live: a real payment
-     * to TAEMJA General Dealers produced zero email because org.email was null).
-     * Falls back to that org's ACTIVE ADMIN members, which always exist, instead of
-     * silently dropping the notification.
+     * organizations.email must NEVER be treated as an exclusive override — an earlier
+     * version returned early with just that one address whenever it was set, which
+     * silently cut every other admin out the moment org.email was populated (confirmed
+     * live: TAEMJA General Dealers has 4 ACTIVE admins but only the one address in
+     * org.email — itself set from a same-effort backfill for orgs that had NO email at
+     * all — was receiving anything). Always union both sources.
      */
     async getOrgNotificationRecipients(organizationId: string): Promise<{ orgName: string; emails: string[] }> {
         const { data: org } = await supabase
@@ -1048,13 +1050,12 @@ export const emailService = {
             .maybeSingle();
 
         const orgName = org?.name || 'your organization';
-
-        if (org?.email) {
-            return { orgName, emails: [org.email] };
-        }
-
         const adminEmails = await this.getEmailsByRoles(organizationId, ['ADMIN']);
-        return { orgName, emails: adminEmails };
+
+        const emails = new Set(adminEmails);
+        if (org?.email) emails.add(org.email);
+
+        return { orgName, emails: [...emails] };
     },
 
     /**
