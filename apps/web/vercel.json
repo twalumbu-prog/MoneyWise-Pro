@@ -5,6 +5,10 @@
     "framework": "vite",
     "rewrites": [
         {
+            "source": "/api/:path*",
+            "destination": "https://money-wise-pro-api.vercel.app/:path*"
+        },
+        {
             "source": "/(.*)",
             "destination": "/index.html"
         }
