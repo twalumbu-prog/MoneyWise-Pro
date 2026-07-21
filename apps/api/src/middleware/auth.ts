@@ -176,6 +176,62 @@ export const requireAuth = async (req: any, res: any, next: any) => {
     }
 };
 
+/**
+ * Attach req.user when the caller presents a valid Supabase session, but never
+ * reject the request.
+ *
+ * For endpoints that accept EITHER a signed-in user OR a machine caller holding
+ * a shared secret (the weekly-highlights cron, for example). The handler itself
+ * decides what's acceptable — this middleware only makes the user context
+ * available when there is one. A bearer token that isn't a valid session (such
+ * as the cron secret) simply passes through unauthenticated.
+ */
+export const optionalAuth = async (req: any, _res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return (next as any)();
+
+    const token = authHeader.split(' ')[1];
+    if (!token) return (next as any)();
+
+    if (token === process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        req.user = {
+            id: 'service-role-admin',
+            role: 'ADMIN',
+            organization_id: '00000000-0000-0000-0000-000000000000',
+        };
+        return (next as any)();
+    }
+
+    try {
+        let user: any = null;
+
+        if (SUPABASE_JWT_SECRET) {
+            user = verifyTokenLocally(token);
+        } else {
+            const result = await (supabase.auth as any).getUser(token);
+            user = result.data?.user;
+        }
+
+        if (user?.id) {
+            const { data: profile } = await supabase
+                .from('users')
+                .select('role, organization_id')
+                .eq('id', user.id)
+                .single();
+
+            if (profile) {
+                user.role = profile.role;
+                user.organization_id = profile.organization_id;
+            }
+            req.user = user;
+        }
+    } catch {
+        // Not a user session (or an expired one) — carry on unauthenticated.
+    }
+
+    (next as any)();
+};
+
 export const requireRole = (allowedRoles: string[]) => {
     return async (req: any, res: any, next: any) => {
         if (!req.user) {

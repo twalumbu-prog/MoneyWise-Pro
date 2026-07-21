@@ -8,7 +8,7 @@ import { BudgetModal } from '../components/BudgetModal';
 import { ChevronLeft, ChevronRight, BarChart3, ChevronDown, ChevronUp, Loader2, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
-import { FinancialDigest } from '../components/FinancialDigest';
+import { FinancialHighlights } from '../components/FinancialHighlights';
 import budgetBg from '../assets/Frame 24.png';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
@@ -1578,8 +1578,8 @@ export const Reporting: React.FC = () => {
                 </div>
                 )}
 
-                {/* Financial Digest — AI "what changed since last visit" cards */}
-                {!isChartOpen && <FinancialDigest />}
+                {/* Financial Highlights — headline weekly figures, records and AI cards */}
+                {!isChartOpen && <FinancialHighlights />}
 
                 {/* Month Dropdown / Timeframe Buttons & Pill Controls Row */}
                 <div className={`mx-6 ${isChartOpen ? 'mb-3' : 'mb-5'} flex items-center justify-between relative`}>
