@@ -9,6 +9,7 @@ import { accountService, Account } from '../../services/account.service';
 import { integrationService } from '../../services/integration.service';
 import { useAuth } from '../../context/AuthContext';
 import heic2any from 'heic2any';
+import WalletSelect from '../WalletSelect';
 
 interface RequisitionMessageCardProps {
     message: RequisitionMessage;
@@ -1842,20 +1843,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 {wallets.length > 0 && (
                                                                     <div className="flex flex-col space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
                                                                         <label className="text-[9px] font-semibold text-gray-400 uppercase tracking-widest ml-4">Source Subwallet</label>
-                                                                        <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                            <select 
-                                                                                value={selectedWalletId || ''}
-                                                                                onChange={(e) => setSelectedWalletId(e.target.value)}
-                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200 appearance-none cursor-pointer"
-                                                                            >
-                                                                                <option value="" disabled>Select Source Subwallet</option>
-                                                                                {wallets.map((w: any) => (
-                                                                                    <option key={w.id} value={w.id}>{w.name}</option>
-                                                                                ))}
-                                                                            </select>
-                                                                            <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                                                                                <ChevronDown size={18} />
-                                                                            </div>
+                                                                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                            <WalletSelect
+                                                                                wallets={wallets}
+                                                                                value={selectedWalletId}
+                                                                                onChange={setSelectedWalletId}
+                                                                                placeholder="Select Source Subwallet"
+                                                                                triggerClassName="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 shadow-sm hover:border-gray-200"
+                                                                            />
                                                                         </div>
                                                                         {isWalletBalanceInsufficient && (
                                                                             <div className="flex items-start space-x-2 px-4 py-3 bg-amber-50 border border-amber-100 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">

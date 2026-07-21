@@ -8,6 +8,7 @@ import { departmentService } from '../../services/department.service';
 import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
+import WalletSelect from '../WalletSelect';
 
 interface LineItem {
     id: string;
@@ -807,20 +808,13 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                 {autoAuthorize && !useMyAccount && wallets.length > 1 && (
                                     <div className="bg-white border border-gray-100 rounded-[24px] p-6 space-y-3">
                                         <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Send From Wallet</label>
-                                        <div className="relative">
-                                            <select
-                                                value={selectedWalletId || ''}
-                                                onChange={e => setSelectedWalletId(e.target.value)}
-                                                className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy font-bold focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all appearance-none"
-                                            >
-                                                {wallets.map((w: any) => (
-                                                    <option key={w.id} value={w.id}>{w.name}</option>
-                                                ))}
-                                            </select>
-                                            <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                                                <ArrowRight size={16} className="rotate-90" />
-                                            </div>
-                                        </div>
+                                        <WalletSelect
+                                            wallets={wallets}
+                                            value={selectedWalletId}
+                                            onChange={setSelectedWalletId}
+                                            placeholder="Send From Wallet"
+                                            triggerClassName="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy font-bold"
+                                        />
                                         {isWalletBalanceInsufficient && (
                                             <p className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
                                                 This wallet only has K{selectedWalletBalance?.toLocaleString(undefined, { minimumFractionDigits: 2 })} available — this request needs K{getTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}. Choose another wallet or top it up first.
