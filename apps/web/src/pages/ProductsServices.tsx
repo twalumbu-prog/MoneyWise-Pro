@@ -8,7 +8,7 @@ import { ProductSettings } from '../components/settings/ProductSettings';
  */
 export const ProductsServices: React.FC = () => {
     return (
-        <Layout>
+        <Layout noPadding>
             <ProductSettings />
         </Layout>
     );

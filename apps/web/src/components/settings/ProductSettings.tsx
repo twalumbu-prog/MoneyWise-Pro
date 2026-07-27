@@ -512,7 +512,7 @@ export const ProductSettings: React.FC = () => {
 
                             return (
                                 <table className="w-full text-left">
-                                    <thead className="sticky top-0 bg-white z-10">
+                                    <thead className="bg-white">
                                         <tr className="border-b border-[#E8EEF8]">
                                             <th className="py-2.5 px-6 text-xs font-semibold text-[#111827]">Product / Service</th>
                                             <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Price</th>
