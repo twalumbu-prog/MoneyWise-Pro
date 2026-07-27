@@ -44,7 +44,7 @@ const getPercentageChange = (current: number, previous: number) => {
 
 export const Reporting: React.FC = () => {
         // State
-    const [mode, _setMode] = useState<ModeType>('EXPENSE');
+    const [mode] = useState<ModeType>('EXPENSE');
     const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY');
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
     
@@ -68,7 +68,7 @@ export const Reporting: React.FC = () => {
     // Grouping & Multi-select State
     const [groups, setGroups] = useState<ReportGroup[]>([]);
     const [accountGroups, setAccountGroups] = useState<Record<string, string>>({}); // accountId -> groupId
-    const [selectedAccounts, setSelectedAccounts] = useState<Set<string>>(new Set());
+
     const [isGroupingEnabled, setIsGroupingEnabled] = useState(false);
     const [newGroupName, setNewGroupName] = useState('');
     
@@ -359,7 +359,6 @@ export const Reporting: React.FC = () => {
         // changes; here we just reset the view state that shouldn't persist
         // across a period switch.
         setExpandedAccount(null); // Reset expansions on period/mode change
-        setSelectedAccounts(new Set()); // Reset selections on period change
     }, [periodData.start, periodData.end, mode, periodType, orgId]);
 
     useEffect(() => {
@@ -571,31 +570,7 @@ export const Reporting: React.FC = () => {
         }
     };
 
-    const _handleAssignToGroup = (groupId: string | null) => {
-        if (!orgId || selectedAccounts.size === 0) return;
-        
-        const newAssignments = { ...accountGroups };
-        selectedAccounts.forEach(accId => {
-            if (groupId) {
-                newAssignments[accId] = groupId;
-            } else {
-                delete newAssignments[accId]; // Unassign
-            }
-        });
-        
-        setAccountGroups(newAssignments);
-        localStorage.setItem(`accountGroups_${orgId}`, JSON.stringify(newAssignments));
-        setSelectedAccounts(new Set()); // Clear selection after bulk action
-    };
 
-    const _handleBulkHide = () => {
-        setHiddenAccounts(prev => {
-            const newHidden = new Set(prev);
-            selectedAccounts.forEach(accId => newHidden.add(accId));
-            return newHidden;
-        });
-        setSelectedAccounts(new Set()); // Clear selection
-    };
 
     const toggleGrouping = () => {
         const newValue = !isGroupingEnabled;
@@ -605,139 +580,9 @@ export const Reporting: React.FC = () => {
         }
     };
 
-    const toggleRowSelection = (accountId: string) => {
-        setSelectedAccounts(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(accountId)) newSet.delete(accountId);
-            else newSet.add(accountId);
-            return newSet;
-        });
-    };
 
-    // Render helper for an individual account row to avoid deeply nested maps
-    const _renderAccountRow = (row: any) => (
-        <React.Fragment key={row.account_id}>
-                <tr className={`transition-colors hover:bg-gray-50 group`}>
-                    <td className="p-5">
-                        <input 
-                            type="checkbox" 
-                            className="rounded text-brand-green focus:ring-brand-green border-gray-300 w-4 h-4 cursor-pointer"
-                            checked={selectedAccounts.has(row.account_id)}
-                            onChange={() => toggleRowSelection(row.account_id)}
-                        />
-                    </td>
-                    <td className="py-5 pr-5">
-                        <button 
-                            onClick={() => toggleExpand(row.account_id)}
-                            className="flex items-center text-left font-bold text-brand-navy hover:text-brand-green transition-colors"
-                        >
-                            {expandedAccount === row.account_id ? (
-                                <ChevronUp className="h-4 w-4 mr-2 text-gray-400" />
-                            ) : (
-                                <ChevronDown className="h-4 w-4 mr-2 text-gray-400" />
-                            )}
-                            {row.account_name}
-                            <span className="ml-2 px-2 py-0.5 bg-gray-100 text-[10px] text-gray-500 rounded-full">
-                                {row.transaction_count} txs
-                            </span>
-                        </button>
-                    </td>
-                    <td className="p-5 text-right font-black text-gray-900">
-                        K{row.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </td>
-                    <td className="p-5 text-right font-medium">
-                        {row.budgeted_amount > 0 ? (
-                            <span className="text-gray-600">
-                                K{row.budgeted_amount.toLocaleString()}
-                            </span>
-                        ) : (
-                            <span className="text-gray-400 italic text-sm">Not set</span>
-                        )}
-                    </td>
-                    <td className="p-5 text-right">
-                        {row.variance !== null ? (
-                            <div className="flex flex-col items-end">
-                                <span className={`font-bold ${row.variance >= 0 ? 'text-brand-green' : 'text-red-500'}`}>
-                                    {row.variance >= 0 ? '+' : ''}K{row.variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                                <div className="w-24 h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
-                                    <div 
-                                        className={`h-full ${row.variancePercentage! > 100 ? 'bg-red-500' : 'bg-brand-green'}`}
-                                        style={{ width: `${Math.min(row.variancePercentage!, 100)}%` }}
-                                    ></div>
-                                </div>
-                            </div>
-                        ) : (
-                            <span className="text-gray-300">-</span>
-                        )}
-                    </td>
-                    <td className="p-5 text-right">
-                        <button
-                            onClick={() => {
-                                setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
-                                setIsBudgetModalOpen(true);
-                            }}
-                            className="p-2 text-gray-400 hover:text-brand-green hover:bg-brand-green/10 rounded-lg transition-colors inline-block"
-                            title="Set Budget"
-                        >
-                            <Settings2 className="h-4 w-4" />
-                        </button>
-                    </td>
-                </tr>
-                
-                {/* Expanded Sub-table */}
-                {expandedAccount === row.account_id && (
-                    <tr>
-                        <td colSpan={6} className="p-0 border-b border-gray-100">
-                            <div className="bg-gray-50 p-6 shadow-inner">
-                                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Transaction Details</h4>
-                                
-                                {itemsLoading ? (
-                                    <div className="flex items-center text-sm text-gray-500">
-                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                        Loading items...
-                                    </div>
-                                ) : !accountItems[row.account_id]?.length ? (
-                                    <div className="text-sm text-gray-500">No transactions found for this period.</div>
-                                ) : (
-                                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-                                        <table className="w-full text-left text-sm">
-                                            <thead className="bg-gray-50 border-b border-gray-100">
-                                                <tr>
-                                                    <th className="p-3 font-semibold text-gray-600">Date</th>
-                                                    <th className="p-3 font-semibold text-gray-600">Requisition</th>
-                                                    <th className="p-3 font-semibold text-gray-600">Description</th>
-                                                    <th className="p-3 font-semibold text-gray-600 text-right">Amount</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody className="divide-y divide-gray-100">
-                                                {accountItems[row.account_id].map(item => (
-                                                    <tr key={item.id} className="hover:bg-gray-50/50">
-                                                        <td className="p-3 text-gray-500">
-                                                            {new Date(item.date).toLocaleDateString()}
-                                                        </td>
-                                                        <td className="p-3 text-brand-navy font-medium">
-                                                            {item.requisition_ref || 'N/A'}
-                                                        </td>
-                                                        <td className="p-3">
-                                                            <span className="text-gray-900 line-clamp-1">{item.description}</span>
-                                                            <span className="text-xs text-brand-green mt-0.5 block">{item.requestor_name}</span>
-                                                        </td>
-                                                        <td className="p-3 text-right font-bold text-gray-900">
-                                                            K{item.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        </td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
-                                )}
-                            </div>
-                        </td>
-                    </tr>
-                )}
-            </React.Fragment>
-    );
+
+
 
     // Calculate integrated data for display
     const displayData = useMemo(() => {
