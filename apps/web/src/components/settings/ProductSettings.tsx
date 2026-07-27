@@ -78,6 +78,7 @@ export const ProductSettings: React.FC = () => {
 
     // Share-link modal state
     const [shareProduct, setShareProduct] = useState<Product | null>(null);
+    const [activeTab, setActiveTab] = useState('ALL');
     const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -415,282 +416,207 @@ export const ProductSettings: React.FC = () => {
     }
 
     return (
-        <div className="flex flex-col h-[calc(100vh-64px)] bg-[#F8FAFC]">
-            <div className="hidden md:flex flex-col h-full overflow-hidden p-6 gap-4">
-                {/* Header matching UserManagement style, but inside the layout of CashLedger/Inbox */}
-                <div className="flex justify-between items-center shrink-0">
-                    <div>
-                        <h3 className="text-xl font-bold text-brand-navy">Products & Services</h3>
-                        <p className="text-sm text-gray-500 mt-1">Configure products and services that your organization offers.</p>
+        <div className="flex-1 h-[calc(100vh-64px)] p-4 bg-slate-100 flex flex-col justify-start items-start w-full overflow-hidden">
+            <div className="self-stretch flex-1 flex justify-start items-start gap-2.5 w-full overflow-hidden">
+                <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-stretch gap-5 overflow-hidden shadow-sm w-full relative">
+                    
+                    {/* Header matching Settings page */}
+                    <div className="flex justify-between items-center shrink-0 w-full p-2">
+                        <div className="flex justify-start items-center gap-2">
+                            <ShoppingBag className="w-4 h-4 text-gray-900" />
+                            <div className="justify-center text-gray-900 text-base font-semibold font-['DM_Sans'] leading-5">Products & Services</div>
+                        </div>
                     </div>
-                    {isAdmin && (
-                        <button
-                            onClick={handleOpenAddModal}
-                            className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
-                        >
-                            <span className="text-white text-xs font-bold">Add Product</span>
-                            <Plus size={14} className="text-white" />
-                        </button>
-                    )}
-                </div>
 
-                {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-in fade-in slide-in-from-top-2 shrink-0 flex items-center">
-                        <AlertCircle className="h-4 w-4 mr-2" />
-                        {error}
-                    </div>
-                )}
-                {successMessage && (
-                    <div className="bg-green-50 border border-[#34D399] text-green-700 px-4 py-3 rounded-xl text-sm animate-in fade-in slide-in-from-top-2 shrink-0 flex items-center">
-                        <CheckCircle className="h-4 w-4 mr-2" />
-                        {successMessage}
-                    </div>
-                )}
-                {!isAdmin && (
-                    <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 rounded-xl text-sm flex items-start shrink-0">
-                        <Eye className="h-5 w-5 mr-2 mt-0.5" />
-                        <p>You are viewing this information in read-only mode because you are not an Administrator.</p>
-                    </div>
-                )}
-
-                {/* Main Card Component matching Inbox/Wallets layout */}
-                <div className="flex-1 flex flex-col bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-gray-200 rounded-[24px] overflow-hidden relative">
-                    <div className="flex-1 overflow-auto custom-scrollbar">
-                        {products.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                                <div className="h-16 w-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 border border-gray-100">
-                                    <ShoppingBag className="h-8 w-8 text-gray-300" />
-                                </div>
-                                <h4 className="text-gray-900 font-bold mb-1">No products found</h4>
-                                <p className="text-gray-500 text-sm max-w-sm">
-                                    {isAdmin ? "You haven't set up any products or services yet. Add your first offering to start accepting payments." : "There are no products or services configured for this organization."}
-                                </p>
-                                {isAdmin && (
+                    {/* Filters and Actions Row */}
+                    <div className="flex justify-between items-center w-full shrink-0 px-2">
+                        {/* Tabs */}
+                        <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px] overflow-x-auto no-scrollbar">
+                            {[
+                                { value: 'ALL', label: 'All' },
+                                { value: 'PRODUCT', label: 'Physical' },
+                                { value: 'SERVICE', label: 'Services' },
+                                { value: 'DIGITAL', label: 'Digital' },
+                                { value: 'DONATION', label: 'Donations' }
+                            ].map(tab => {
+                                const isActive = activeTab === tab.value;
+                                return (
                                     <button
-                                        onClick={handleOpenAddModal}
-                                        className="mt-6 text-[#0058DB] font-bold text-sm hover:underline"
+                                        key={tab.value}
+                                        onClick={() => setActiveTab(tab.value)}
+                                        className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                                            isActive ? 'font-bold bg-white text-[#111827] shadow-sm' : 'font-normal text-gray-500 hover:text-gray-700'
+                                        }`}
                                     >
-                                        + Add a Product
+                                        {tab.label}
                                     </button>
-                                )}
-                            </div>
-                        ) : (
-                            <table className="w-full text-left">
-                                <thead className="sticky top-0 bg-white z-10">
-                                    <tr className="border-b border-[#E8EEF8]">
-                                        <th className="py-2.5 px-6 text-xs font-semibold text-[#111827]">Product / Service</th>
-                                        <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Price</th>
-                                        <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Type</th>
-                                        <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Status</th>
-                                        <th className="py-2.5 px-6 w-12"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {products.map((product) => (
-                                        <tr key={product.id} className="group transition-colors border-b border-[#E8EEF8]/40 hover:bg-gray-50/70">
-                                            <td className="py-3.5 px-6">
-                                                <div className="flex items-center">
-                                                    <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-[#0058DB]/10 overflow-hidden flex items-center justify-center shadow-inner transition-transform group-hover:scale-110">
-                                                        {product.image_url ? (
-                                                            <img src={product.image_url} alt="" className="h-full w-full object-cover" />
-                                                        ) : (
-                                                            <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
-                                                        )}
-                                                    </div>
-                                                    <div className="ml-4">
-                                                        <div className="text-sm font-bold text-gray-900 leading-tight">{product.name}</div>
-                                                        <div className="text-xs text-gray-500 font-medium max-w-[280px] truncate">{product.description || 'No description'}</div>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td className="py-3.5 px-3 whitespace-nowrap">
-                                                <div className="text-sm font-bold text-gray-900">
-                                                    {product.price != null ? `K${Number(product.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-gray-400 font-medium text-xs">Variable</span>}
-                                                </div>
-                                            </td>
-                                            <td className="py-3.5 px-3 whitespace-nowrap">
-                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${typeBadgeClass(product.product_type)}`}>
-                                                    {typeLabel(product.product_type)}
-                                                </span>
-                                            </td>
-                                            <td className="py-3.5 px-3 whitespace-nowrap">
-                                                <span className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold leading-5 rounded-full border ${
-                                                    product.is_active
-                                                        ? 'bg-green-50 text-green-700 border-green-100'
-                                                        : 'bg-gray-50 text-gray-700 border-gray-100'
-                                                }`}>
-                                                    {product.is_active ? 'ACTIVE' : 'INACTIVE'}
-                                                </span>
-                                            </td>
-                                            <td className="py-3.5 px-6 whitespace-nowrap text-center">
-                                                <div className="relative flex justify-end" ref={openDropdownId === product.id ? dropdownRef : null}>
-                                                    <button
-                                                        onClick={() => setOpenDropdownId(openDropdownId === product.id ? null : product.id)}
-                                                        className="p-1.5 rounded-lg border border-transparent hover:border-[#E8EEF8] hover:bg-[#F3F5FC] text-gray-400 hover:text-gray-600 transition-all"
-                                                    >
-                                                        <MoreHorizontal size={16} />
-                                                    </button>
-                                                    
-                                                    {openDropdownId === product.id && (
-                                                        <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
-                                                            <button
-                                                                onClick={() => { setShareProduct(product); setOpenDropdownId(null); }}
-                                                                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors"
-                                                            >
-                                                                <Share2 size={14} className="text-[#0058DB]" />
-                                                                <span className="text-xs font-medium text-gray-700">Share Payment Link</span>
-                                                            </button>
-                                                            
-                                                            {isAdmin && (
-                                                                <>
-                                                                    <button
-                                                                        onClick={() => { handleOpenEditModal(product); setOpenDropdownId(null); }}
-                                                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors border-t border-[#E8EEF8]/50"
-                                                                    >
-                                                                        <Edit2 size={14} className="text-gray-500" />
-                                                                        <span className="text-xs font-medium text-gray-700">Edit Details</span>
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => { handleDownloadSalesCSV(product.id, product.name); setOpenDropdownId(null); }}
-                                                                        disabled={downloadingId === product.id}
-                                                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50"
-                                                                    >
-                                                                        {downloadingId === product.id ? <Loader2 size={14} className="animate-spin text-gray-500" /> : <Download size={14} className="text-gray-500" />}
-                                                                        <span className="text-xs font-medium text-gray-700">Download Sales CSV</span>
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => { handleDelete(product.id, product.name); setOpenDropdownId(null); }}
-                                                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 transition-colors border-t border-[#E8EEF8]/50 group/delete"
-                                                                    >
-                                                                        <Trash2 size={14} className="text-red-400 group-hover/delete:text-red-600" />
-                                                                        <span className="text-xs font-medium text-red-500 group-hover/delete:text-red-700">Delete Product</span>
-                                                                    </button>
-                                                                </>
-                                                            )}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                );
+                            })}
+                        </div>
+                        
+                        {isAdmin && (
+                            <button
+                                onClick={handleOpenAddModal}
+                                className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity flex-shrink-0"
+                            >
+                                <span className="text-white text-xs font-bold">Add Product</span>
+                                <Plus size={14} className="text-white" />
+                            </button>
                         )}
                     </div>
-                </div>
-            </div>
 
-            {/* Mobile View */}
-            <div className="md:hidden p-4 space-y-4">
-                <div className="flex justify-between items-center mb-6">
-                    <h3 className="text-lg font-bold text-brand-navy">Products & Services</h3>
-                    {isAdmin && (
-                        <button
-                            onClick={handleOpenAddModal}
-                            className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2"
-                        >
-                            <span className="text-white text-xs font-bold">Add</span>
-                            <Plus size={14} className="text-white" />
-                        </button>
-                    )}
-                </div>
-                
-                {error && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center">
-                        <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-                        {error}
-                    </div>
-                )}
-                {successMessage && (
-                    <div className="bg-green-50 border border-[#34D399] text-green-700 px-4 py-3 rounded-xl text-sm flex items-center">
-                        <CheckCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-                        {successMessage}
-                    </div>
-                )}
-
-                <div className="space-y-3 pb-8">
-                    {products.length === 0 ? (
-                        <div className="bg-white p-8 rounded-xl border border-gray-100 shadow-sm text-center">
-                            <ShoppingBag className="h-8 w-8 text-gray-300 mx-auto mb-3" />
-                            <p className="text-gray-500 text-sm mb-4">No products found</p>
-                            {isAdmin && (
-                                <button
-                                    onClick={handleOpenAddModal}
-                                    className="text-[#0058DB] font-bold text-sm"
-                                >
-                                    + Add Product
-                                </button>
-                            )}
+                    {error && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 mx-2 rounded-xl text-sm animate-in fade-in slide-in-from-top-2 shrink-0 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                            {error}
                         </div>
-                    ) : (
-                        products.map(product => (
-                            <div key={product.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] flex items-center justify-between">
-                                <div className="flex items-center flex-1 min-w-0">
-                                    <div className="h-10 w-10 rounded-xl bg-[#0058DB]/10 overflow-hidden flex items-center justify-center shrink-0">
-                                        {product.image_url ? (
-                                            <img src={product.image_url} alt="" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
-                                        )}
-                                    </div>
-                                    <div className="ml-3 min-w-0 pr-4">
-                                        <div className="text-sm font-bold text-gray-900 truncate">{product.name}</div>
-                                        <div className="text-xs font-bold text-gray-500">
-                                            {product.price != null ? `K${Number(product.price).toLocaleString()}` : 'Variable'}
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="relative shrink-0" ref={openDropdownId === product.id ? dropdownRef : null}>
-                                    <button 
-                                        onClick={() => setOpenDropdownId(openDropdownId === product.id ? null : product.id)} 
-                                        className="p-2 text-gray-400 hover:bg-gray-50 rounded-lg"
-                                    >
-                                        <MoreHorizontal size={18} />
-                                    </button>
-                                    
-                                    {openDropdownId === product.id && (
-                                        <div className="absolute right-0 top-full mt-1 z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-gray-200 overflow-hidden">
-                                            <button 
-                                                onClick={() => { setShareProduct(product); setOpenDropdownId(null); }} 
-                                                className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#F3F5FC] text-gray-700"
-                                            >
-                                                <Share2 size={14} className="text-[#0058DB]" />
-                                                <span className="text-sm font-medium">Share Link</span>
-                                            </button>
-                                            {isAdmin && (
-                                                <>
-                                                    <button 
-                                                        onClick={() => { handleOpenEditModal(product); setOpenDropdownId(null); }} 
-                                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#F3F5FC] text-gray-700 border-t border-gray-100"
-                                                    >
-                                                        <Edit2 size={14} className="text-gray-500" />
-                                                        <span className="text-sm font-medium">Edit</span>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => { handleDownloadSalesCSV(product.id, product.name); setOpenDropdownId(null); }}
-                                                        disabled={downloadingId === product.id}
-                                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-[#F3F5FC] text-gray-700 border-t border-gray-100 disabled:opacity-50"
-                                                    >
-                                                        {downloadingId === product.id ? <Loader2 size={14} className="animate-spin text-gray-500" /> : <Download size={14} className="text-gray-500" />}
-                                                        <span className="text-sm font-medium">Download Sales</span>
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => { handleDelete(product.id, product.name); setOpenDropdownId(null); }} 
-                                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left hover:bg-red-50 text-red-600 border-t border-gray-100 group/delete"
-                                                    >
-                                                        <Trash2 size={14} className="text-red-400 group-hover/delete:text-red-600" />
-                                                        <span className="text-sm font-medium group-hover/delete:text-red-700">Delete</span>
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        ))
                     )}
+                    {successMessage && (
+                        <div className="bg-green-50 border border-[#34D399] text-green-700 px-4 py-3 mx-2 rounded-xl text-sm animate-in fade-in slide-in-from-top-2 shrink-0 flex items-center">
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            {successMessage}
+                        </div>
+                    )}
+                    {!isAdmin && (
+                        <div className="bg-blue-50 border border-blue-200 text-blue-700 px-4 py-3 mx-2 rounded-xl text-sm flex items-start shrink-0">
+                            <Eye className="h-5 w-5 mr-2 mt-0.5" />
+                            <p>You are viewing this information in read-only mode because you are not an Administrator.</p>
+                        </div>
+                    )}
+
+                    {/* Table Container */}
+                    <div className="flex-1 overflow-auto rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] custom-scrollbar mx-2 mb-2">
+                        {(() => {
+                            const filteredProducts = products.filter(p => {
+                                if (activeTab === 'ALL') return true;
+                                if (activeTab === 'PRODUCT') return p.product_type === 'PRODUCT';
+                                if (activeTab === 'SERVICE') return p.product_type?.startsWith('SERVICE');
+                                if (activeTab === 'DIGITAL') return p.product_type === 'DIGITAL';
+                                if (activeTab === 'DONATION') return p.product_type === 'DONATION';
+                                return true;
+                            });
+
+                            if (filteredProducts.length === 0) {
+                                return (
+                                    <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+                                        <div className="h-16 w-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 border border-gray-100">
+                                            <ShoppingBag className="h-8 w-8 text-gray-300" />
+                                        </div>
+                                        <h4 className="text-gray-900 font-bold mb-1">No products found</h4>
+                                        <p className="text-gray-500 text-sm max-w-sm">
+                                            {isAdmin ? "You haven't set up any products or services in this category." : "There are no products or services configured for this category."}
+                                        </p>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <table className="w-full text-left">
+                                    <thead className="sticky top-0 bg-white z-10">
+                                        <tr className="border-b border-[#E8EEF8]">
+                                            <th className="py-2.5 px-6 text-xs font-semibold text-[#111827]">Product / Service</th>
+                                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Price</th>
+                                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Type</th>
+                                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Status</th>
+                                            <th className="py-2.5 px-6 w-12"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filteredProducts.map((product) => (
+                                            <tr key={product.id} className="group transition-colors border-b border-[#E8EEF8]/40 hover:bg-gray-50/70">
+                                                <td className="py-3.5 px-6">
+                                                    <div className="flex items-center">
+                                                        <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-[#0058DB]/10 overflow-hidden flex items-center justify-center shadow-inner transition-transform group-hover:scale-110">
+                                                            {product.image_url ? (
+                                                                <img src={product.image_url} alt="" className="h-full w-full object-cover" />
+                                                            ) : (
+                                                                <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                                            )}
+                                                        </div>
+                                                        <div className="ml-4">
+                                                            <div className="text-sm font-bold text-gray-900 leading-tight">{product.name}</div>
+                                                            <div className="text-xs text-gray-500 font-medium max-w-[280px] truncate">{product.description || 'No description'}</div>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-3 whitespace-nowrap">
+                                                    <div className="text-sm font-bold text-gray-900">
+                                                        {product.price != null ? `K${Number(product.price).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-gray-400 font-medium text-xs">Variable</span>}
+                                                    </div>
+                                                </td>
+                                                <td className="py-3.5 px-3 whitespace-nowrap">
+                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${typeBadgeClass(product.product_type)}`}>
+                                                        {typeLabel(product.product_type)}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3.5 px-3 whitespace-nowrap">
+                                                    <span className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold leading-5 rounded-full border ${
+                                                        product.is_active
+                                                            ? 'bg-green-50 text-green-700 border-green-100'
+                                                            : 'bg-gray-50 text-gray-700 border-gray-100'
+                                                    }`}>
+                                                        {product.is_active ? 'ACTIVE' : 'INACTIVE'}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3.5 px-6 whitespace-nowrap text-center">
+                                                    <div className="relative flex justify-end" ref={openDropdownId === product.id ? dropdownRef : null}>
+                                                        <button
+                                                            onClick={() => setOpenDropdownId(openDropdownId === product.id ? null : product.id)}
+                                                            className="p-1.5 rounded-lg border border-transparent hover:border-[#E8EEF8] hover:bg-[#F3F5FC] text-gray-400 hover:text-gray-600 transition-all"
+                                                        >
+                                                            <MoreHorizontal size={16} />
+                                                        </button>
+                                                        
+                                                        {openDropdownId === product.id && (
+                                                            <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                                                <button
+                                                                    onClick={() => { setShareProduct(product); setOpenDropdownId(null); }}
+                                                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors"
+                                                                >
+                                                                    <Share2 size={14} className="text-[#0058DB]" />
+                                                                    <span className="text-xs font-medium text-gray-700">Share Payment Link</span>
+                                                                </button>
+                                                                
+                                                                {isAdmin && (
+                                                                    <>
+                                                                        <button
+                                                                            onClick={() => { handleOpenEditModal(product); setOpenDropdownId(null); }}
+                                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors border-t border-[#E8EEF8]/50"
+                                                                        >
+                                                                            <Edit2 size={14} className="text-gray-500" />
+                                                                            <span className="text-xs font-medium text-gray-700">Edit Details</span>
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { handleDownloadSalesCSV(product.id, product.name); setOpenDropdownId(null); }}
+                                                                            disabled={downloadingId === product.id}
+                                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50"
+                                                                        >
+                                                                            {downloadingId === product.id ? <Loader2 size={14} className="animate-spin text-gray-500" /> : <Download size={14} className="text-gray-500" />}
+                                                                            <span className="text-xs font-medium text-gray-700">Download Sales CSV</span>
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => { handleDelete(product.id, product.name); setOpenDropdownId(null); }}
+                                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 transition-colors border-t border-[#E8EEF8]/50 group/delete"
+                                                                        >
+                                                                            <Trash2 size={14} className="text-red-400 group-hover/delete:text-red-600" />
+                                                                            <span className="text-xs font-medium text-red-500 group-hover/delete:text-red-700">Delete Product</span>
+                                                                        </button>
+                                                                    </>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            );
+                        })()}
+                    </div>
                 </div>
             </div>
+
 
             {isModalOpen && (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
