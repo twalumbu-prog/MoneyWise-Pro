@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { ArrowRight, X, AlertCircle, Loader2, ChevronDown, Upload, FileText, CheckCircle, Download, Edit3 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, AlertCircle, Loader2, ChevronDown, Upload, FileText, CheckCircle, Download, Edit3 } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { useAuth } from '../../context/AuthContext';
 import * as XLSX from 'xlsx';
 
-interface MobilePayrollWizardProps {
-    isOpen: boolean;
+interface DesktopPayrollWorkspaceProps {
     onClose: () => void;
     onSuccess: () => void;
 }
@@ -15,7 +14,7 @@ const DEPARTMENTS = ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportatio
 
 type Stage = 1 | 2 | 3;
 
-export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen, onClose, onSuccess }) => {
+export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = ({ onClose, onSuccess }) => {
     const { user } = useAuth();
     const [stage, setStage] = useState<Stage>(1);
     const [department, setDepartment] = useState('');
@@ -277,19 +276,17 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
     };
 
     React.useEffect(() => {
-        if (isOpen) {
-            reset();
-            const fetchBanks = async () => {
-                try {
-                    const data = await lencoService.getBanks();
-                    setBanks(Array.isArray(data) ? data : (data.data || []));
-                } catch (err) {
-                    console.error('Failed to load banks:', err);
-                }
-            };
-            fetchBanks();
-        }
-    }, [isOpen]);
+        reset();
+        const fetchBanks = async () => {
+            try {
+                const data = await lencoService.getBanks();
+                setBanks(Array.isArray(data) ? data : (data.data || []));
+            } catch (err) {
+                console.error('Failed to load banks:', err);
+            }
+        };
+        fetchBanks();
+    }, []);
 
     const handleClose = () => { reset(); onClose(); };
 
@@ -415,43 +412,26 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
         }
     };
 
-    if (!isOpen) return null;
+    const handleBack = () => {
+        setError(null);
+        if (stage === 3) setStage(2);
+        else if (stage === 2) setStage(1);
+    };
 
     return (
-        <div className="fixed inset-0 z-[80] bg-white flex flex-col">
-            {/* App Top Bar */}
-            <div className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shrink-0">
-                <div className="flex items-center">
-                    <span className="text-xl font-medium text-brand-navy tracking-tight">MoneyWise</span>
-                    <span className="text-xl font-bold text-[#006AFF] ml-1 tracking-tight">Pro</span>
-                </div>
-            </div>
-
-            {/* Header */}
-            <div className="px-6 py-4 flex items-center justify-between shrink-0">
-                <h1 className="text-[18px] font-bold text-brand-navy">New Payroll Requisition</h1>
+        <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4 h-[calc(100vh-140px)] shadow-sm ring-1 ring-gray-100">
+            <div className="flex items-center justify-between shrink-0">
                 <button
                     onClick={handleClose}
-                    className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-brand-navy shadow-[0_4px_12px_rgba(0,106,255,0.4)] active:scale-95 transition-all"
+                    className="h-8 pl-2.5 pr-3.5 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center gap-1.5 hover:bg-[#F3F5FC] transition-colors"
                 >
-                    <X size={16} strokeWidth={3} />
+                    <ArrowLeft size={15} className="text-[#111827]" />
+                    <span className="text-sm font-bold text-[#111827]">New Payroll Requisition</span>
                 </button>
             </div>
 
-            {/* Progress */}
-            <div className="px-6 pt-4 shrink-0">
-                <div className="flex gap-2">
-                    {([1, 2, 3] as Stage[]).map(s => (
-                        <div key={s} className={`h-1 flex-1 rounded-full transition-all ${stage >= s ? 'bg-emerald-500' : 'bg-gray-100'}`} />
-                    ))}
-                </div>
-                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">
-                    Step {stage} of 3 — {stage === 1 ? 'Upload File' : stage === 2 ? 'Verify Employees' : 'Confirm & Submit'}
-                </p>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
+            <div className="flex-1 min-h-0 rounded-2xl outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] bg-white overflow-y-auto">
+                <div className="max-w-2xl mx-auto p-8 animate-in fade-in zoom-in-95 duration-200 pb-20">
                 {error && (
                     <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-start gap-3">
                         <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
@@ -769,57 +749,81 @@ export const MobilePayrollWizard: React.FC<MobilePayrollWizardProps> = ({ isOpen
                             <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-2">Total Requisition Total</p>
                             <p className="text-3xl font-black">K{getEstimatedTotal().toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                         </div>
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={submitting}
-                            className="w-full h-14 bg-emerald-500 rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2 mt-4"
-                        >
-                            {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Payroll Requisition'}
-                        </button>
                     </>
                 )}
             </div>
+        </div>
 
-            {stage < 3 && (
-                <div className="shrink-0 p-6 pb-8 flex items-center justify-between">
-                    {stage === 2 ? (
-                        <div className="flex w-full items-center justify-between gap-4">
-                            <button
-                                type="button"
-                                onClick={handleVerifyAll}
-                                disabled={isVerifying || lineItems.length === 0}
-                                className="flex-1 py-4 px-4 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-white font-bold rounded-2xl text-sm flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
-                            >
-                                {isVerifying ? (
-                                    <>
-                                        <Loader2 size={16} className="animate-spin text-white mr-2" />
-                                        <span>Verifying...</span>
-                                    </>
-                                ) : (
-                                    <span>Verify Accounts</span>
-                                )}
-                            </button>
-                            <button 
-                                onClick={handleProceedToSummary} 
-                                disabled={!lineItems.every(item => verificationResults[item.id]?.status === 'verified') || isVerifying}
-                                className="w-14 h-14 bg-emerald-500 disabled:bg-gray-200 disabled:text-gray-400 rounded-full flex-shrink-0 flex items-center justify-center text-white active:scale-90 transition-all"
-                            >
-                                <ArrowRight size={24} />
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="flex w-full justify-end">
-                            <button 
-                                onClick={handleProceedToPreview} 
-                                className="w-14 h-14 bg-emerald-500 rounded-full flex items-center justify-center text-white active:scale-90 transition-all"
-                            >
-                                <ArrowRight size={24} />
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
+        <div className="flex items-center justify-between gap-4 pt-2 shrink-0">
+                <button
+                    onClick={handleBack}
+                    disabled={stage === 1 || submitting}
+                    className={`h-10 px-5 rounded-xl flex items-center gap-1.5 transition-all text-xs font-bold ${
+                        stage > 1 
+                            ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' 
+                            : 'bg-white border border-gray-100 text-gray-300 cursor-not-allowed'
+                    }`}
+                >
+                    <ArrowLeft size={16} />
+                    Previous
+                </button>
+                
+                {stage === 1 && (
+                    <button
+                        onClick={handleProceedToPreview}
+                        className="h-10 px-6 rounded-xl bg-emerald-500 text-xs font-bold text-white flex items-center gap-1.5 hover:bg-emerald-600 transition-colors"
+                    >
+                        Next
+                        <ArrowRight size={16} />
+                    </button>
+                )}
+                {stage === 2 && (
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={handleVerifyAll}
+                            disabled={isVerifying || lineItems.length === 0}
+                            className="h-10 px-6 bg-emerald-50 text-emerald-600 hover:bg-emerald-100 disabled:opacity-50 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
+                        >
+                            {isVerifying ? (
+                                <>
+                                    <Loader2 size={14} className="animate-spin" />
+                                    <span>Verifying...</span>
+                                </>
+                            ) : (
+                                <span>Verify Accounts</span>
+                            )}
+                        </button>
+                        <button 
+                            onClick={handleProceedToSummary} 
+                            disabled={!lineItems.every(item => verificationResults[item.id]?.status === 'verified') || isVerifying}
+                            className="h-10 px-6 bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition-all"
+                        >
+                            Next
+                            <ArrowRight size={16} />
+                        </button>
+                    </div>
+                )}
+                {stage === 3 && (
+                    <button
+                        onClick={handleSubmit}
+                        disabled={submitting}
+                        className="h-10 px-8 rounded-xl bg-emerald-500 text-xs font-bold text-white flex items-center justify-center gap-2 hover:bg-emerald-600 disabled:opacity-50 transition-colors"
+                    >
+                        {submitting ? (
+                            <>
+                                <Loader2 size={16} className="animate-spin" />
+                                Processing...
+                            </>
+                        ) : (
+                            <>
+                                <CheckCircle size={16} />
+                                Submit Payroll
+                            </>
+                        )}
+                    </button>
+                )}
+            </div>
         </div>
     );
 };

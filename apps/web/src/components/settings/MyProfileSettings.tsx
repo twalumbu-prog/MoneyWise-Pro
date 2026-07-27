@@ -121,32 +121,18 @@ export const MyProfileSettings: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                    <h3 className="text-lg font-bold text-brand-navy flex items-center">
-                        <User className="h-5 w-5 mr-2 text-brand-green" />
+            <div className="overflow-hidden">
+                <div className="pb-6 border-b border-gray-100 mb-8">
+                    <h3 className="justify-center text-gray-900 text-base font-semibold font-['DM_Sans'] leading-5">
                         My Profile
                     </h3>
-                    <p className="text-gray-500 text-sm mt-1">
+                    <p className="text-[10px] text-gray-400 font-bold tracking-wider uppercase mt-1">
                         Personal information and disbursement details.
                     </p>
                 </div>
 
-                <div className="p-6">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Full Name</p>
-                            <p className="text-sm font-bold text-gray-900">{formData.name}</p>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Employee ID</p>
-                            <p className="text-sm font-bold text-gray-900">{formData.employee_id}</p>
-                        </div>
-                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-1">Role</p>
-                            <p className="text-sm font-bold text-gray-900">{formData.role}</p>
-                        </div>
-                    </div>
+                <div className="py-6">
+
 
                     {error && (
                         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center">
@@ -164,14 +150,14 @@ export const MyProfileSettings: React.FC = () => {
 
                     <form onSubmit={handleSubmit} className="space-y-8">
                         {/* Bank Account Section */}
-                        <div>
+                        <div className="border-2 border-gray-200 bg-gray-50/30 rounded-xl p-6">
                             <h4 className="text-sm font-black text-brand-navy uppercase tracking-widest mb-4 flex items-center">
                                 <Building2 className="h-4 w-4 mr-2 text-[#006AFF]" />
                                 Bank Account Details
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Bank Name</label>
+                                    <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">Bank Name</label>
                                     <select
                                         name="bank_name"
                                         value={paymentInfo.bank_name}
@@ -185,7 +171,7 @@ export const MyProfileSettings: React.FC = () => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Account Number</label>
+                                    <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">Account Number</label>
                                     <input
                                         type="text"
                                         name="bank_account_number"
@@ -196,7 +182,7 @@ export const MyProfileSettings: React.FC = () => {
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Account Holder Name</label>
+                                    <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">Account Holder Name</label>
                                     <input
                                         type="text"
                                         name="bank_account_name"
@@ -209,17 +195,15 @@ export const MyProfileSettings: React.FC = () => {
                             </div>
                         </div>
 
-                        <hr className="border-gray-100" />
-
                         {/* Mobile Money Section */}
-                        <div>
+                        <div className="border-2 border-gray-200 bg-gray-50/30 rounded-xl p-6">
                             <h4 className="text-sm font-black text-brand-navy uppercase tracking-widest mb-4 flex items-center">
                                 <Smartphone className="h-4 w-4 mr-2 text-emerald-600" />
                                 Mobile Money Details
                             </h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Network Provider</label>
+                                    <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">Network Provider</label>
                                     <select
                                         name="mobile_money_provider"
                                         value={paymentInfo.mobile_money_provider}
@@ -233,7 +217,7 @@ export const MyProfileSettings: React.FC = () => {
                                     </select>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Phone Number</label>
+                                    <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">Phone Number</label>
                                     <input
                                         type="tel"
                                         name="mobile_money_number"
@@ -244,7 +228,7 @@ export const MyProfileSettings: React.FC = () => {
                                     />
                                 </div>
                                 <div className="md:col-span-2">
-                                    <label className="block text-sm font-semibold text-gray-700 mb-2">Registered Name</label>
+                                    <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">Registered Name</label>
                                     <input
                                         type="text"
                                         name="mobile_money_name"
@@ -257,22 +241,19 @@ export const MyProfileSettings: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="pt-6 border-t border-gray-100 flex justify-end">
+                        <div className="pt-4 flex justify-start border-t border-gray-100 mt-6 max-w-4xl">
                             <button
                                 type="submit"
                                 disabled={saving}
-                                className="inline-flex items-center px-6 py-3 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-brand-green hover:bg-[#238914] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 transition-all active:scale-95"
+                                className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#10A34A] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
                             >
                                 {saving ? (
                                     <>
-                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                        Saving Details...
+                                        <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
+                                        Saving...
                                     </>
                                 ) : (
-                                    <>
-                                        <Save className="h-4 w-4 mr-2" />
-                                        Save Disbursement Details
-                                    </>
+                                    'Save Changes'
                                 )}
                             </button>
                         </div>

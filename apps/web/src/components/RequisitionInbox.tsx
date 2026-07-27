@@ -20,10 +20,9 @@ interface RequisitionInboxProps {
     onDelete?: (id: string) => void;
 }
 
-
-
 export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions, onRowClick, onDelete }) => {
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+    const [selected, setSelected] = useState<Set<string>>(new Set());
     const menuRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -36,143 +35,131 @@ export const RequisitionInbox: React.FC<RequisitionInboxProps> = ({ requisitions
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    const toggleSelected = (id: string) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
     const getStatusIcon = (status: string) => {
         const config = getStatusConfig(status);
         switch (config.iconType) {
-            case 'clock': return <Clock size={16} className="text-blue-500" />;
-            case 'check-circle': return <CheckCircle2 size={16} className="text-[#006AFF]" />;
-            case 'check': return <Check size={16} className="text-emerald-500" />;
-            case 'alert': return <AlertCircle size={16} className="text-red-500" />;
-            case 'rotate': return <RotateCcw size={16} className="text-gray-400" />;
-            default: return <Clock size={16} className="text-gray-400" />;
+            case 'clock': return <Clock size={12} className="text-[#0058DB]" />;
+            case 'check-circle': return <CheckCircle2 size={12} className="text-[#0058DB]" />;
+            case 'check': return <Check size={12} className="text-emerald-500" />;
+            case 'alert': return <AlertCircle size={12} className="text-red-500" />;
+            case 'rotate': return <RotateCcw size={12} className="text-gray-400" />;
+            default: return <Clock size={12} className="text-gray-400" />;
         }
     };
 
-    const getStatusText = (status: string) => {
-        return getStatusConfig(status).label;
-    };
-
-    const displayRequisitions = requisitions;
+    const getStatusText = (status: string) => getStatusConfig(status).label;
 
     return (
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[500px] relative z-0 isolate">
-            {/* List View */}
-
-            {/* List View */}
-            <div className="flex-1 overflow-y-auto">
-                <table className="w-full text-left border-collapse">
-                    <tbody className="divide-y divide-gray-50/50">
-                        {displayRequisitions.map((req) => (
-                            <tr 
-                                key={req.id} 
-                                onClick={() => onRowClick(req.id)}
-                                className={`group cursor-pointer hover:bg-blue-50/30 transition-all
-                                    ${req.has_unread_updates ? 'bg-transparent' : 'bg-gray-50/30'}`}
-                            >
-                                {/* UNREAD INDICATOR */}
-                                <td className="py-6 px-8 w-4">
-                                    {req.has_unread_updates && (
-                                        <div className="h-2 w-2 rounded-full bg-[#006AFF] shadow-sm shadow-blue-200" />
-                                    )}
-                                </td>
-
-                                {/* MAIN CONTENT: DESCRIPTION & METADATA */}
-                                <td className="py-6 px-2 flex-1">
-                                    <div className="flex flex-col space-y-2">
-                                        <div className={`text-[15px] tracking-[ -0.01em ] ${req.has_unread_updates ? 'font-bold text-brand-navy' : 'font-normal text-gray-700'} line-clamp-1`}>
-                                            {req.description}
-                                        </div>
-                                        <div className={`flex items-center space-x-3 text-[11px] uppercase tracking-tight ${req.has_unread_updates ? 'font-bold' : 'font-medium'}`}>
-                                            {/* REQUESTOR LABEL */}
-                                            <span className="text-gray-400">
-                                                By {req.requestor_name || 'System User'}
-                                            </span>
-                                            {/* DOT DIVIDER */}
-                                            <div className="h-1 w-1 rounded-full bg-gray-200" />
-                                            {/* DEPARTMENT LABEL */}
-                                            <span className="text-gray-300">
-                                                {req.department || 'General'} Dept.
-                                            </span>
-                                        </div>
-                                    </div>
-                                </td>
-
-                                {/* STATUS COLUMN (Independent) */}
-                                <td className="py-6 px-6 w-[180px]">
-                                    <div className="flex items-center bg-white px-3.5 py-1.5 rounded-full border border-gray-100 shadow-sm w-fit transition-all hover:border-gray-200 group-hover:shadow-md group-hover:shadow-blue-50/50">
-                                        {getStatusIcon(req.status)}
-                                        <span className="text-[10px] font-black text-brand-navy uppercase tracking-widest ml-2">
-                                            {getStatusText(req.status)}
-                                        </span>
-                                    </div>
-                                </td>
-
-                                {/* AMOUNT & DATE */}
-                                <td className="py-6 px-6 text-right w-[160px]">
-                                    <div className="flex flex-col space-y-1">
-                                        <div className={`text-[17px] tracking-tight ${req.has_unread_updates ? 'font-black text-brand-navy' : 'font-normal text-brand-navy'}`}>
-                                            K{req.estimated_total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </div>
-                                        <div className={`text-[11px] text-gray-400 tracking-widest leading-none ${req.has_unread_updates ? 'font-bold' : 'font-normal'}`}>
-                                            {new Date(req.created_at).toLocaleDateString('en-GB')}
-                                        </div>
-                                    </div>
-                                </td>
-
-                                {/* OPTIONS MENU */}
-                                <td className="py-6 px-6 w-[80px] text-center relative">
-                                    <button 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setOpenMenuId(openMenuId === req.id ? null : req.id);
-                                        }}
-                                        className="p-2 text-gray-200 hover:text-gray-400 transition-colors rounded-lg hover:bg-gray-50 active:scale-95"
-                                    >
-                                        <MoreVertical size={18} />
-                                    </button>
-
-                                    {openMenuId === req.id && (
-                                        <div 
-                                            ref={menuRef}
-                                            className="absolute right-6 mt-1 w-48 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1"
-                                            onClick={(e) => e.stopPropagation()}
-                                        >
-                                            {['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'].includes(req.status) ? (
-                                                <button
-                                                    onClick={() => {
-                                                        setOpenMenuId(null);
-                                                        if (onDelete) onDelete(req.id);
-                                                    }}
-                                                    className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-650 hover:bg-red-50 transition-colors flex items-center"
-                                                >
-                                                    <Trash2 size={14} className="mr-2 text-red-500" />
-                                                    Delete Requisition
-                                                </button>
-                                            ) : (
-                                                <div className="px-4 py-2 text-xs text-gray-400 font-medium text-left">
-                                                    No actions available
-                                                </div>
-                                            )}
-                                        </div>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                
-                {displayRequisitions.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-24 text-center">
-                        <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-gray-100">
-                            <Search size={32} />
+        <div className="bg-white rounded-2xl p-3 flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-[#E8EEF8]">
+                {requisitions.map((req) => (
+                    <div
+                        key={req.id}
+                        onClick={() => onRowClick(req.id)}
+                        className={`group px-3 py-3.5 flex items-center gap-4 cursor-pointer transition-colors ${
+                            selected.has(req.id) ? 'bg-[#F0F7FF]' : 'hover:bg-gray-50/70'
+                        }`}
+                    >
+                        <div className="w-5 h-4 flex-shrink-0 inline-flex justify-center items-center gap-4" onClick={(e) => e.stopPropagation()}>
+                            <input
+                                type="checkbox"
+                                checked={selected.has(req.id)}
+                                onChange={() => toggleSelected(req.id)}
+                                className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0058DB] checked:border-[#0058DB] cursor-pointer"
+                            />
                         </div>
-                        <h3 className="text-xl font-bold text-brand-navy">No messages found</h3>
-                        <p className="text-gray-400 max-w-xs mx-auto text-sm font-medium mt-2">
-                            Select a different filter or check back later for new requests.
-                        </p>
+
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between gap-4">
+                                <span className="text-sm truncate font-medium text-gray-700">
+                                    {req.description}
+                                </span>
+                                <span className="text-sm whitespace-nowrap font-semibold text-[#111827]">
+                                    K{req.estimated_total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                            </div>
+                            <div className="flex items-center justify-between mt-px">
+                                <span className="text-[10px] font-normal capitalize text-[#6B7280]">
+                                    {req.requestor_name || 'System User'} · {req.department || 'General'} Dept.
+                                </span>
+                                <span className="text-[10px] font-normal text-neutral-500">
+                                    {new Date(req.created_at).toLocaleDateString('en-GB')}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-1 mt-1">
+                                {getStatusIcon(req.status)}
+                                <span className="text-[10px] font-normal capitalize text-[#6B7280]">
+                                    {getStatusText(req.status)}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="w-4 flex-shrink-0 flex items-center justify-center">
+                            {req.has_unread_updates && (
+                                <span className="h-1.5 w-1.5 rounded-full bg-[#0058DB] shadow-sm shadow-blue-200" />
+                            )}
+                        </div>
+
+                        <div className="relative flex-shrink-0">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenMenuId(openMenuId === req.id ? null : req.id);
+                                }}
+                                className="p-1.5 text-gray-300 hover:text-gray-500 transition-colors rounded-lg hover:bg-gray-100 active:scale-95 opacity-0 group-hover:opacity-100"
+                            >
+                                <MoreVertical size={16} />
+                            </button>
+
+                            {openMenuId === req.id && (
+                                <div
+                                    ref={menuRef}
+                                    className="absolute right-0 mt-1 w-48 bg-white border border-[#E8EEF8] rounded-xl shadow-lg z-50 py-1"
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    {['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'].includes(req.status) ? (
+                                        <button
+                                            onClick={() => {
+                                                setOpenMenuId(null);
+                                                if (onDelete) onDelete(req.id);
+                                            }}
+                                            className="w-full text-left px-4 py-2.5 text-xs font-bold text-red-650 hover:bg-red-50 transition-colors flex items-center"
+                                        >
+                                            <Trash2 size={14} className="mr-2 text-red-500" />
+                                            Delete Requisition
+                                        </button>
+                                    ) : (
+                                        <div className="px-4 py-2 text-xs text-gray-400 font-medium text-left">
+                                            No actions available
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
-                )}
+                ))}
             </div>
+
+            {requisitions.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
+                        <Search size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-brand-navy">No messages found</h3>
+                    <p className="text-gray-400 max-w-xs mx-auto text-sm font-medium mt-2">
+                        Select a different filter or check back later for new requests.
+                    </p>
+                </div>
+            )}
         </div>
     );
 };

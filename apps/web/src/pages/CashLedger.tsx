@@ -7,18 +7,13 @@ import { Layout } from '../components/Layout';
 import { lencoService } from '../services/lenco.service';
 import {
     Receipt,
-    Calendar,
     Lock,
     PlusCircle,
     Sparkles,
     X,
     Search,
-    Filter,
     ArrowDownUp,
-    Smartphone,
     Coins,
-    Wallet,
-    Building2,
     ChevronRight,
     ChevronDown,
     Loader2,
@@ -50,7 +45,6 @@ import { accountService, Account } from '../services/account.service';
 import RequisitionModal from '../components/requisitions/RequisitionModal';
 import { Requisition } from '../services/requisition.service';
 import ExportLedgerModal from '../components/ExportLedgerModal';
-import budgetBg from '../assets/Frame 24.png';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
@@ -156,6 +150,61 @@ const MoneywiseMark: React.FC<{ className?: string }> = ({ className }) => (
     </svg>
 );
 
+// Desktop wallet/external-account card — new sidebar-nav era Wallets design.
+// Active card gets the premium dark treatment; inactive cards sit muted in the
+// horizontally-scrollable row (no more wrap-to-new-row grid).
+const DesktopWalletCard: React.FC<{
+    label: string;
+    amount: string;
+    orgName: string;
+    isActive: boolean;
+    onClick: () => void;
+}> = ({ label, amount, orgName, isActive, onClick }) => (
+    <button
+        onClick={onClick}
+        className={`w-64 h-28 flex-shrink-0 text-left p-4 rounded-xl flex flex-col justify-between transition-all ${
+            isActive
+                ? 'bg-gradient-to-l from-blue-950 to-slate-900 shadow-[0px_2px_4px_2px_rgba(0,0,0,0.25)]'
+                : 'bg-[#F7F7F8] hover:bg-gray-100'
+        }`}
+    >
+        <div className="flex items-center justify-between gap-2">
+            <span className={`text-[10px] font-normal uppercase tracking-wide truncate ${isActive ? 'text-white' : 'text-gray-400'}`}>
+                {label}
+            </span>
+            <MoneywiseMark className={`w-6 h-4 flex-shrink-0 ${isActive ? 'text-white' : 'text-gray-300'}`} />
+        </div>
+        <div className={`text-2xl font-bold tracking-tight whitespace-nowrap truncate ${isActive ? 'text-white' : 'text-gray-400'}`}>
+            {amount}
+        </div>
+        <div className="flex items-end justify-between gap-2">
+            <span className={`text-[8px] font-extrabold uppercase tracking-wide truncate ${isActive ? 'text-gray-400' : 'text-gray-300'}`}>
+                {orgName}
+            </span>
+            <span className={`font-advercase text-xs font-bold flex-shrink-0 ${isActive ? 'text-gray-400' : 'text-gray-300'}`}>
+                Moneywise
+            </span>
+        </div>
+    </button>
+);
+
+// A single icon+label segment inside the Deposit / Transfer / Pay Link bar.
+const ToolbarAction: React.FC<{
+    icon: React.ComponentType<any>;
+    label: string;
+    onClick: () => void;
+    disabled?: boolean;
+}> = ({ icon: Icon, label, onClick, disabled }) => (
+    <button
+        onClick={onClick}
+        disabled={disabled}
+        className={`flex items-center gap-2 px-3.5 h-full text-xs font-normal whitespace-nowrap transition-opacity ${disabled ? 'opacity-35 cursor-not-allowed' : 'text-[#111827] hover:opacity-70'}`}
+    >
+        <Icon size={13} className="text-[#111827]" strokeWidth={1.75} />
+        {label}
+    </button>
+);
+
 const renderMobileStatusIcon = (status: string) => {
     const config = getStatusConfig(status);
     const colorClass = config.color === 'blue' ? 'text-[#006AFF]' : 
@@ -224,6 +273,9 @@ const CashLedger: React.FC = () => {
     const [verifyingEntryId, setVerifyingEntryId] = useState<string | null>(null);
     const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null);
     const [showPendingIntents, setShowPendingIntents] = useState(false);
+    // Desktop transactions table row selection — visual only for now, no bulk actions wired yet.
+    const [selectedTxnIds, setSelectedTxnIds] = useState<Set<string>>(new Set());
+    const [isDesktopSearchOpen, setIsDesktopSearchOpen] = useState(false);
 
     const { userRole, organizationName, organizationId } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
@@ -1618,10 +1670,6 @@ Status: VERIFIED`;
         }
     };
     const categoryIndex = categoryGroup === 'MONEYWISE' ? 0 : 1;
-    const categoryOptions = [
-        { value: 'MONEYWISE', label: 'MoneyWise Wallets' },
-        { value: 'EXTERNAL', label: 'External Accounts' },
-    ];
 
     // ----- Mobile wallet-card carousel helpers -----
     const externalAccounts = [
@@ -2069,264 +2117,178 @@ Status: VERIFIED`;
             </div>
 
             {/* ============ DESKTOP LAYOUT ============ */}
-            <div className="hidden md:block max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8 overflow-x-hidden">
-            <div className="space-y-8 pb-4">
-                {/* Category Selector Tabs */}
-                <div className="max-w-sm mb-6">
-                    <SegmentedControl
-                        variant="pill"
-                        value={categoryGroup}
-                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
-                        options={categoryOptions}
-                    />
-                </div>
+            {/* Desktop: sidebar-nav era Wallets page */}
+            <div className="hidden md:block px-4 py-4">
+            <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-4">
 
-                {/* Account Selection Cards */}
-                <AnimatedTabContent tabKey={categoryGroup} index={categoryIndex}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {categoryGroup === 'MONEYWISE' ? (
-                        <>
-                            {wallets.map((w) => {
-                                const isActive = selectedWalletId === w.id;
-                                return (
-                                    <button
-                                        key={w.id}
-                                        onClick={() => setSelectedWalletId(w.id)}
-                                        style={isActive ? {
-                                            backgroundImage: `url(${budgetBg})`,
-                                            backgroundSize: 'cover',
-                                            backgroundPosition: 'center',
-                                        } : {}}
-                                        className={`relative p-6 rounded-[24px] border-2 text-left transition-all duration-300 group ${
-                                            isActive 
-                                                ? 'border-transparent shadow-lg text-white' 
-                                                : 'bg-white border-transparent hover:border-gray-100 hover:shadow-xs'
-                                        }`}
-                                    >
-                                        <div className="flex items-start justify-between mb-4">
-                                            <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10 text-white' : 'bg-blue-50 text-blue-600'} transition-colors duration-300`}>
-                                                <Wallet size={20} strokeWidth={2.5} />
-                                            </div>
-                                            <button
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    setShareWalletId(w.id);
-                                                    setIsShareModalOpen(true);
-                                                }}
-                                                className={`p-2 rounded-xl transition-colors ${
-                                                    isActive 
-                                                        ? 'text-white/60 hover:text-white hover:bg-white/10' 
-                                                        : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-                                                }`}
-                                                title="Share payment link"
-                                            >
-                                                <Link2 size={16} strokeWidth={2.5} />
-                                            </button>
-                                        </div>
-                                        <div>
-                                            <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-white/80' : 'text-gray-400'}`}>
-                                                {w.name} {w.is_main && '(Main)'}
-                                            </span>
-                                            <div className="flex items-baseline gap-1">
-                                                <span className={`text-2xl font-black tracking-tight ${isActive ? 'text-white' : 'text-gray-900'}`}>
-                                                    {formatCurrency(w.balance || 0).split('.')[0]}
-                                                </span>
-                                                <span className={`text-sm font-bold opacity-60 ${isActive ? 'text-white' : 'text-gray-400'}`}>
-                                                    .{formatCurrency(w.balance || 0).split('.')[1] || '00'}
-                                                </span>
-                                            </div>
-                                            {w.qb_account_name && (
-                                                <div className={`text-[9px] mt-2 font-bold uppercase tracking-wider ${isActive ? 'text-white/70' : 'text-gray-400'}`}>
-                                                    QBO: {w.qb_account_name}
-                                                </div>
-                                            )}
-                                        </div>
-                                        {!isActive && (
-                                            <div className="absolute inset-0 bg-gray-50/40 opacity-0 group-hover:opacity-100 rounded-[24px] transition-opacity pointer-events-none" />
-                                        )}
-                                    </button>
-                                );
-                            })}
-                            {!isRequestor && (
-                                <button
-                                    onClick={() => setIsCreateWalletModalOpen(true)}
-                                    className="p-6 rounded-[24px] border-2 border-dashed border-gray-200 bg-white hover:border-gray-300 flex flex-col justify-center items-center text-center transition-all duration-300 text-gray-400 hover:text-gray-600 gap-2 cursor-pointer h-full min-h-[140px]"
-                                >
-                                    <PlusCircle size={24} strokeWidth={2.5} />
-                                    <span className="text-[11px] font-bold uppercase tracking-widest block">Add Subwallet</span>
-                                </button>
-                            )}
-                        </>
-                    ) : (
-                        [
-                            { id: 'CASH', name: 'Cash Account', icon: Coins, color: 'text-slate-600', bg: 'bg-slate-50', border: 'border-slate-200' },
-                            { id: 'AIRTEL_MONEY', name: 'Airtel Money', icon: Smartphone, color: 'text-red-500', bg: 'bg-red-50', border: 'border-red-100' },
-                            { id: 'BANK', name: 'Bank Account', icon: Building2, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100' }
-                        ].map((acc) => {
-                            const isActive = selectedAccountType === acc.id;
-                            return (
-                                <button
-                                    key={acc.id}
-                                    onClick={() => setSelectedAccountType(acc.id as any)}
-                                    style={isActive ? {
-                                        backgroundImage: `url(${budgetBg})`,
-                                        backgroundSize: 'cover',
-                                        backgroundPosition: 'center',
-                                    } : {}}
-                                    className={`relative p-6 rounded-[24px] border-2 text-left transition-all duration-300 group ${
-                                        isActive 
-                                            ? 'border-transparent shadow-lg text-white' 
-                                            : 'bg-white border-transparent hover:border-gray-100 hover:shadow-xs'
-                                    }`}
-                                >
-                                    <div className="flex items-start justify-between mb-4">
-                                        <div className={`p-3 rounded-2xl ${isActive ? 'bg-white/10 text-white' : `${acc.bg} ${acc.color}`} transition-colors duration-300`}>
-                                            <acc.icon size={20} strokeWidth={2.5} />
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <span className={`text-[11px] font-bold uppercase tracking-widest block mb-1 ${isActive ? 'text-white/80' : 'text-gray-400'}`}>
-                                            {acc.name}
-                                        </span>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className={`text-2xl font-black tracking-tight ${isActive ? 'text-white' : 'text-gray-900'}`}>
-                                                {formatCurrency(externalBalances[acc.id] || 0).split('.')[0]}
-                                            </span>
-                                            <span className={`text-sm font-bold opacity-60 ${isActive ? 'text-white' : 'text-gray-400'}`}>
-                                                .{formatCurrency(externalBalances[acc.id] || 0).split('.')[1] || '00'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    {!isActive && (
-                                        <div className="absolute inset-0 bg-gray-50/40 opacity-0 group-hover:opacity-100 rounded-[24px] transition-opacity pointer-events-none" />
-                                    )}
-                                </button>
-                            );
-                        })
-                    )}
-                </div>
-                </AnimatedTabContent>
-
-                {/* Minimalist Toolbar */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-50">
-                    <div className="flex items-center space-x-2">
-                        {!isRequestor && (
-                            <button
-                                onClick={() => setIsInflowModalOpen(true)}
-                                className="bg-[#000000] hover:bg-gray-800 text-white px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
-                            >
-                                <PlusCircle size={14} className="mr-2" strokeWidth={3} />
-                                Deposit Funds
-                            </button>
-                        )}
-
-                        {!isRequestor && selectedAccountType === 'MONEYWISE_WALLET' && wallets.length > 1 && (
-                            <button
-                                onClick={() => setIsTransferModalOpen(true)}
-                                className="bg-white hover:bg-gray-50 text-gray-950 border border-gray-200 px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
-                            >
-                                <ArrowDownUp size={14} className="mr-2 text-gray-500" strokeWidth={3} />
-                                Transfer Funds
-                            </button>
-                        )}
-                        
-                        {!isRequestor && selectedAccountType === 'CASH' && wallets.length > 0 && (
-                            <button
-                                onClick={() => setIsCashTransferModalOpen(true)}
-                                className="bg-white hover:bg-gray-50 text-gray-950 border border-gray-200 px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
-                            >
-                                <ArrowDownUp size={14} className="mr-2 text-gray-500" strokeWidth={3} />
-                                Transfer to MoneyWise
-                            </button>
-                        )}
-
-                        {selectedAccountType !== 'MONEYWISE_WALLET' && (
-                            <button
-                                onClick={() => setIsCloseModalOpen(true)}
-                                className="bg-white hover:bg-gray-50 text-gray-900 border border-gray-100 px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
-                            >
-                                <Lock size={14} className="mr-2 text-gray-400" />
-                                Close Balance
-                            </button>
-                        )}
-
+                {/* Row 1: Main Wallets / External Accounts toggle + action bar */}
+                <div className="flex items-center justify-between">
+                    <div className="h-8 p-1 bg-[#F3F5FC] rounded-[10px] flex items-center gap-1">
                         <button
-                            onClick={() => setIsExportModalOpen(true)}
-                            className="bg-white hover:bg-gray-50 text-gray-900 border border-gray-100 px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center"
+                            onClick={() => handleCategoryChange('MONEYWISE')}
+                            className={`px-3.5 h-full rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${
+                                categoryGroup === 'MONEYWISE' ? 'bg-white text-[#111827] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                            }`}
                         >
-                            <Download size={14} className="mr-2 text-gray-400" />
-                            Export Ledger
+                            {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
+                            Main Wallets
                         </button>
-
-                        {unclassifiedCount > 0 && (
-                            <button
-                                onClick={handleBulkClassify}
-                                disabled={isClassifying}
-                                className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white px-6 py-2.5 rounded-[16px] font-bold text-xs uppercase tracking-widest shadow-sm transition-all flex items-center disabled:opacity-50"
-                            >
-                                <Sparkles size={14} className={`mr-2 ${isClassifying ? 'animate-spin' : ''}`} />
-                                {isClassifying ? 'Classifying...' : `Classify AI (${unclassifiedCount})`}
-                            </button>
-                        )}
+                        <button
+                            onClick={() => handleCategoryChange('EXTERNAL')}
+                            className={`px-3.5 h-full rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${
+                                categoryGroup === 'EXTERNAL' ? 'bg-white text-[#111827] shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                            }`}
+                        >
+                            {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
+                            External Accounts
+                        </button>
                     </div>
 
-                    <div className="flex items-center bg-white p-1 rounded-2xl border border-gray-100 shadow-sm">
-                        <div className="flex items-center px-2">
-                            <div className="relative group">
-                                <Search size={18} strokeWidth={2.5} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    {!isRequestor && (
+                        <div className="h-8 px-1 bg-white rounded-lg shadow-[0px_2px_8px_0px_rgba(17,24,39,0.08)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center">
+                            <ToolbarAction icon={ArrowDownToLine} label="Deposit" onClick={() => setIsInflowModalOpen(true)} />
+                            <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                            <ToolbarAction
+                                icon={ArrowLeftRight}
+                                label="Transfer"
+                                disabled={!mobileCanTransfer}
+                                onClick={() => {
+                                    if (!mobileCanTransfer) return;
+                                    if (categoryGroup === 'MONEYWISE') setIsTransferModalOpen(true);
+                                    else setIsCashTransferModalOpen(true);
+                                }}
+                            />
+                            <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                            <ToolbarAction
+                                icon={Link2}
+                                label="Pay Link"
+                                disabled={!mobileCanPayLink}
+                                onClick={() => {
+                                    if (!mobileCanPayLink) return;
+                                    setShareWalletId(selectedWalletId ?? null);
+                                    setIsShareModalOpen(true);
+                                }}
+                            />
+                        </div>
+                    )}
+                </div>
+
+                {/* Wallet cards — horizontally scrollable, no more wrap-to-new-row */}
+                <div className="flex items-center gap-4 overflow-x-auto no-scrollbar p-2 -m-2">
+                    {categoryGroup === 'MONEYWISE' ? (
+                        <>
+                            {wallets.map((w: any) => (
+                                <DesktopWalletCard
+                                    key={w.id}
+                                    label={`${w.name}${w.is_main ? ' (Main)' : ''}`}
+                                    amount={`K ${formatCurrency(w.balance || 0).replace('K', '')}`}
+                                    orgName={organizationName || 'MoneyWise'}
+                                    isActive={selectedWalletId === w.id}
+                                    onClick={() => setSelectedWalletId(w.id)}
+                                />
+                            ))}
+                        </>
+                    ) : (
+                        externalAccounts.map((acc) => (
+                            <DesktopWalletCard
+                                key={acc.id}
+                                label={acc.name}
+                                amount={`K ${formatCurrency(externalBalances[acc.id] || 0).replace('K', '')}`}
+                                orgName={organizationName || 'MoneyWise'}
+                                isActive={selectedAccountType === acc.id}
+                                onClick={() => setSelectedAccountType(acc.id as any)}
+                            />
+                        ))
+                    )}
+                </div>
+
+                {/* Transactions header */}
+                <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
+                    <span className="text-xl font-semibold text-[#111827]">Transactions</span>
+                    <div className="flex items-center gap-3 flex-wrap">
+                        {isDesktopSearchOpen ? (
+                            <div className="relative">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" size={14} />
                                 <input
+                                    autoFocus
                                     type="text"
                                     placeholder="Search..."
                                     value={searchQuery}
                                     onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="bg-transparent pl-9 pr-4 py-2 text-xs font-bold text-gray-600 focus:outline-none w-[120px] transition-all focus:w-[200px]"
+                                    onBlur={() => { if (!searchQuery) setIsDesktopSearchOpen(false); }}
+                                    className="w-48 pl-8 pr-3 py-2 bg-white border border-[#E8EEF8] rounded-lg text-xs font-medium text-brand-navy placeholder:text-gray-300 focus:ring-2 focus:ring-[#0058DB]/10 transition-all"
                                 />
                             </div>
-                            <div className="w-[1px] h-4 bg-gray-200 mx-1" />
-                            <button 
-                                onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                                className={`p-2 transition-colors rounded-xl hover:bg-white hover:shadow-sm ${isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterAccount !== 'ALL' || filterStatus !== 'ALL' ? 'text-[#006AFF]' : 'text-gray-400'}`}
+                        ) : (
+                            <button
+                                onClick={() => setIsDesktopSearchOpen(true)}
+                                className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${searchQuery ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                                title="Search"
                             >
-                                <Filter size={18} strokeWidth={2.5} />
+                                <Search size={14} />
                             </button>
-                            <button 
-                                className="p-2 text-gray-400 hover:text-gray-900 transition-colors rounded-xl hover:bg-white hover:shadow-sm"
-                                onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
+                        )}
+                        <button
+                            onClick={() => setSortBy(sortBy === 'DATE_DESC' ? 'DATE_ASC' : 'DATE_DESC')}
+                            className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${sortBy === 'DATE_ASC' ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                            title="Sort by date"
+                        >
+                            <ArrowDownUp size={14} />
+                        </button>
+                        <button
+                            onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
+                            className={`p-2 rounded-lg border border-[#E8EEF8] transition-all ${isFilterMenuOpen || (useDepartments && filterDepartment !== 'ALL') || filterAccount !== 'ALL' || filterStatus !== 'ALL' || startDate || endDate ? 'text-[#0058DB] bg-[#E8EEF8] border-[#0058DB]/20' : 'text-gray-400 hover:text-gray-600 hover:bg-[#F3F5FC]'}`}
+                            title="Filters"
+                        >
+                            <ListFilter size={14} />
+                        </button>
+                        <button
+                            onClick={() => setIsExportModalOpen(true)}
+                            className="p-2 rounded-lg border border-[#E8EEF8] text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all"
+                            title="Export ledger"
+                        >
+                            <Download size={14} />
+                        </button>
+                        {selectedAccountType !== 'MONEYWISE_WALLET' && (
+                            <button
+                                onClick={() => setIsCloseModalOpen(true)}
+                                className="p-2 rounded-lg border border-[#E8EEF8] text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all"
+                                title="Close balance"
                             >
-                                <ArrowDownUp size={18} strokeWidth={2.5} />
+                                <Lock size={14} />
                             </button>
-                            <div className="w-[1px] h-4 bg-gray-200 mx-1" />
-                            <div className="flex items-center pl-1 pr-2">
-                                <Calendar size={18} className="text-gray-400 mr-2" strokeWidth={2.5} />
-                                <input
-                                    type="date"
-                                    value={startDate}
-                                    onChange={(e) => setStartDate(e.target.value)}
-                                    className="bg-transparent text-[11px] font-bold text-gray-600 focus:outline-none w-[90px] cursor-pointer"
-                                />
-                                <span className="mx-1 text-gray-300 font-bold">-</span>
-                                <input
-                                    type="date"
-                                    value={endDate}
-                                    onChange={(e) => setEndDate(e.target.value)}
-                                    className="bg-transparent text-[11px] font-bold text-gray-600 focus:outline-none w-[90px] cursor-pointer"
-                                />
-                            </div>
-                        </div>
+                        )}
+                        {unclassifiedCount > 0 && (
+                            <button
+                                onClick={handleBulkClassify}
+                                disabled={isClassifying}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-50"
+                            >
+                                <Sparkles size={12} className={isClassifying ? 'animate-spin' : ''} />
+                                {isClassifying ? 'Classifying...' : `Classify AI (${unclassifiedCount})`}
+                            </button>
+                        )}
+                        {categoryGroup === 'MONEYWISE' && !isRequestor && (
+                            <button
+                                onClick={() => setIsCreateWalletModalOpen(true)}
+                                className="h-8 px-4 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
+                            >
+                                <span className="text-white text-xs font-bold">New Wallet</span>
+                            </button>
+                        )}
                     </div>
                 </div>
-            </div>
 
-                {/* Filter Menu (Sub-toolbar) */}
+                {/* Filter panel */}
                 {isFilterMenuOpen && (
-                    <div className="flex flex-wrap items-center gap-4 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm animate-in slide-in-from-top-2 duration-200">
+                    <div className="flex flex-wrap items-end gap-4 p-4 bg-[#F3F5FC] rounded-2xl animate-in slide-in-from-top-2 duration-200">
                         {useDepartments && uniqueDepartments.length > 0 && (
                         <div className="flex flex-col">
                             <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">Department</span>
                             <select
                                 value={filterDepartment}
                                 onChange={(e) => setFilterDepartment(e.target.value)}
-                                className="bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none shadow-sm min-w-[150px]"
+                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none min-w-[150px]"
                             >
                                 <option value="ALL">All Departments</option>
                                 {uniqueDepartments.map(dept => <option key={dept} value={dept}>{dept}</option>)}
@@ -2338,7 +2300,7 @@ Status: VERIFIED`;
                             <select
                                 value={filterAccount}
                                 onChange={(e) => setFilterAccount(e.target.value)}
-                                className="bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none shadow-sm min-w-[150px]"
+                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none min-w-[150px]"
                             >
                                 <option value="ALL">All Accounts</option>
                                 {uniqueAccounts.map(acc => <option key={acc} value={acc}>{acc}</option>)}
@@ -2349,54 +2311,71 @@ Status: VERIFIED`;
                             <select
                                 value={filterStatus}
                                 onChange={(e) => setFilterStatus(e.target.value)}
-                                className="bg-white border border-gray-100 rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none shadow-sm min-w-[150px]"
+                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none min-w-[150px]"
                             >
                                 <option value="ALL">All Statuses</option>
                                 {uniqueStatuses.map(stat => <option key={stat} value={stat}>{stat}</option>)}
                             </select>
                         </div>
-                        <div className="flex items-center mt-4 h-full pl-2">
-                            <label className="flex items-center gap-2 cursor-pointer select-none">
-                                <input
-                                    type="checkbox"
-                                    checked={showPendingIntents}
-                                    onChange={(e) => setShowPendingIntents(e.target.checked)}
-                                    className="rounded border-gray-300 text-[#006AFF] focus:ring-[#006AFF] w-4 h-4 cursor-pointer"
-                                />
-                                <span className="text-xs font-bold text-gray-600">Show Pending Checkout Intents</span>
-                            </label>
+                        <div className="flex flex-col">
+                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">From</span>
+                            <input
+                                type="date"
+                                value={startDate}
+                                onChange={(e) => setStartDate(e.target.value)}
+                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none"
+                            />
                         </div>
-                        <button 
-                            onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); }}
-                            className="mt-auto px-4 py-2 text-[10px] font-black uppercase tracking-widest text-[#006AFF] hover:bg-[#006AFF]/5 rounded-xl transition-colors"
+                        <div className="flex flex-col">
+                            <span className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-1.5 ml-1">To</span>
+                            <input
+                                type="date"
+                                value={endDate}
+                                onChange={(e) => setEndDate(e.target.value)}
+                                className="bg-white border border-[#E8EEF8] rounded-xl px-3 py-2 text-xs font-bold text-gray-700 focus:outline-none"
+                            />
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer select-none pb-2.5">
+                            <input
+                                type="checkbox"
+                                checked={showPendingIntents}
+                                onChange={(e) => setShowPendingIntents(e.target.checked)}
+                                className="rounded border-gray-300 text-[#0058DB] focus:ring-[#0058DB] w-4 h-4 cursor-pointer"
+                            />
+                            <span className="text-xs font-bold text-gray-600">Show Pending Checkout Intents</span>
+                        </label>
+                        <button
+                            onClick={() => { setFilterDepartment('ALL'); setFilterAccount('ALL'); setFilterStatus('ALL'); setSearchQuery(''); setStartDate(''); setEndDate(''); }}
+                            className="pb-2.5 px-2 text-[10px] font-black uppercase tracking-widest text-[#0058DB] hover:opacity-70 transition-opacity"
                         >
                             Reset
                         </button>
                     </div>
                 )}
 
-
-                <div className="shadow-sm border border-gray-100 rounded-[32px] overflow-x-auto bg-white mt-8">
+                {/* Transactions table */}
+                <div className="rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden overflow-x-auto">
                     <table className="w-full text-left">
                         <thead>
-                            <tr className="bg-white">
-                                <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest">Date</th>
-                                <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest max-w-[400px]">Txn Details</th>
-                                <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Inflow</th>
-                                <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Outflow</th>
-                                <th className="p-6 text-[11px] uppercase text-gray-400 font-bold tracking-widest text-right">Balance</th>
-                                <th className="p-6 w-10"></th>
+                            <tr className="border-b border-[#E8EEF8]">
+                                <th className="py-2.5 px-3 w-9"></th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Date</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Description</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827] text-center">Inflows (K)</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827] text-center">Outflows (K)</th>
+                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827] text-center">Balance</th>
+                                <th className="py-2.5 px-3 w-8"></th>
                             </tr>
                         </thead>
-                        <tbody className="">
+                        <tbody>
                             {groupedEntries.length === 0 ? (
                                 <tr>
-                                    <td colSpan={6} className="py-24 text-center">
+                                    <td colSpan={7} className="py-24 text-center">
                                         <div className="flex flex-col items-center justify-center">
-                                            <div className="p-5 bg-gray-50 rounded-full mb-4">
-                                                <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
+                                            <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
+                                                <Receipt size={32} strokeWidth={1.5} />
                                             </div>
-                                            <p className="text-gray-900 font-bold">No transactions found</p>
+                                            <p className="text-[#111827] font-bold">No transactions found</p>
                                             <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or search query.</p>
                                         </div>
                                     </td>
@@ -2404,71 +2383,64 @@ Status: VERIFIED`;
                             ) : (
                                 groupedEntries.map((group) => (
                                     <React.Fragment key={group.month}>
-                                        <tr className="bg-gray-50/50">
-                                            <td colSpan={6} className="px-6 py-3">
-                                                <span className="text-[11px] font-black uppercase tracking-[0.2em] text-gray-400">
-                                                    {group.month}
-                                                </span>
-                                            </td>
-                                        </tr>
                                         {group.entries.map((entry) => (
                                             <React.Fragment key={entry.id}>
                                                 <tr
-                                                    className={`transition-all group cursor-pointer 
-                                                        ${expandedRows[entry.id] ? 'bg-gray-50' : 'hover:bg-gray-50/50'}`}
+                                                    className={`group cursor-pointer transition-colors border-b border-[#E8EEF8]/40 ${expandedRows[entry.id] ? 'bg-[#F3F5FC]' : 'hover:bg-gray-50/70'}`}
                                                     onClick={() => toggleRow(entry.id)}
                                                 >
-                                                    <td className="p-6">
-                                                        <div className="text-sm font-normal text-gray-900">
-                                                            {new Date(entry.date).getDate()}
-                                                        </div>
-                                                        <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wider mt-0.5">
-                                                            {new Date(entry.date).toLocaleString('default', { weekday: 'short' })}
-                                                        </div>
+                                                    <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={selectedTxnIds.has(entry.id)}
+                                                            onChange={() => setSelectedTxnIds(prev => {
+                                                                const next = new Set(prev);
+                                                                if (next.has(entry.id)) next.delete(entry.id); else next.add(entry.id);
+                                                                return next;
+                                                            })}
+                                                            className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0058DB] checked:border-[#0058DB] cursor-pointer"
+                                                        />
                                                     </td>
-                                                    <td className="p-6 max-w-[400px]">
-                                                        <div className="flex flex-col">
-                                                            <div className="text-[14px] font-medium text-gray-900 line-clamp-1 leading-tight">
-                                                                {entry.requisitions?.description || entry.description}
-                                                            </div>
-                                                            <div className="flex items-center gap-3 mt-1">
-                                                                {getEntryStatus(entry)}
-                                                                {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
-                                                                    <div className="text-[11px] font-normal text-gray-400 uppercase tracking-tight">
-                                                                        #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
-                                                                    </div>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </td>
-                                                    <td className="p-6 text-right">
-                                                        {entry.debit > 0 ? (
-                                                            <span className="text-[14px] font-normal text-gray-900">
-                                                                {formatCurrency(entry.debit).replace('K', '')}
-                                                            </span>
-                                                        ) : <span className="text-gray-200">-</span>}
-                                                    </td>
-                                                    <td className="p-6 text-right">
-                                                        {entry.credit > 0 ? (
-                                                            <span className="text-[14px] font-normal text-gray-900">
-                                                                - {formatCurrency(entry.credit).replace('K', '')}
-                                                            </span>
-                                                        ) : <span className="text-gray-200">-</span>}
-                                                    </td>
-                                                    <td className="p-6 text-right">
-                                                        <span className="text-[14px] font-normal text-gray-400">
-                                                            {formatCurrency(entry.balance_after).replace('K', '')}
+                                                    <td className="py-3.5 px-3">
+                                                        <span className="text-xs font-normal text-[#6B7280] whitespace-nowrap">
+                                                            {new Date(entry.date).toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: '2-digit' })}
                                                         </span>
                                                     </td>
-                                                    <td className="p-6 w-12 text-center">
+                                                    <td className="py-3.5 px-3 max-w-[320px]">
+                                                        <div className="text-xs font-medium text-[#111827] truncate">
+                                                            {entry.requisitions?.description || entry.description}
+                                                        </div>
+                                                        <div className="flex items-center gap-3 mt-1">
+                                                            {getEntryStatus(entry)}
+                                                            {(entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id) && (
+                                                                <span className="text-[10px] font-normal text-[#6B7280]">
+                                                                    #{entry.reference_number || entry.requisitions?.reference_number || entry.requisition_id?.slice(0, 8)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3.5 px-3 text-center">
+                                                        {entry.debit > 0 ? (
+                                                            <span className="text-xs font-normal text-[#111827]">{formatCurrency(entry.debit).replace('K', '')}</span>
+                                                        ) : <span className="text-gray-200">-</span>}
+                                                    </td>
+                                                    <td className="py-3.5 px-3 text-center">
+                                                        {entry.credit > 0 ? (
+                                                            <span className="text-xs font-normal text-[#111827]">{formatCurrency(entry.credit).replace('K', '')}</span>
+                                                        ) : <span className="text-gray-200">-</span>}
+                                                    </td>
+                                                    <td className="py-3.5 px-3 text-center">
+                                                        <span className="text-xs font-normal text-[#6B7280]">{formatCurrency(entry.balance_after).replace('K', '')}</span>
+                                                    </td>
+                                                    <td className="py-3.5 px-3 text-center">
                                                         {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
-                                                            <ChevronRight size={16} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${expandedRows[entry.id] ? 'rotate-90' : ''}`} strokeWidth={2.5} />
+                                                            <ChevronRight size={14} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${expandedRows[entry.id] ? 'rotate-90' : ''}`} strokeWidth={2.5} />
                                                         )}
                                                     </td>
                                                 </tr>
-                                                 {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
-                                                    <tr className="bg-gray-50/80">
-                                                        <td colSpan={6} className="p-0">
+                                                {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
+                                                    <tr className="bg-[#F3F5FC]/60">
+                                                        <td colSpan={7} className="p-0">
                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
                                                                 {renderBreakdown(entry)}
                                                             </div>
@@ -2483,7 +2455,8 @@ Status: VERIFIED`;
                         </tbody>
                     </table>
                 </div>
-                </div>
+            </div>
+            </div>
 
             {/* Classification Results Modal */}
             {isResultsModalOpen && (
@@ -2731,6 +2704,7 @@ Status: VERIFIED`;
                 initialInflowType={selectedAccountType === 'MONEYWISE_WALLET' ? 'WALLET' : 'CASH'}
                 isReadOnlyType={selectedAccountType === 'MONEYWISE_WALLET'}
                 walletId={selectedAccountType === 'MONEYWISE_WALLET' ? selectedWalletId : undefined}
+                walletName={selectedAccountType === 'MONEYWISE_WALLET' ? wallets.find((w: any) => w.id === selectedWalletId)?.name : undefined}
             />
 
             <RequisitionModal 

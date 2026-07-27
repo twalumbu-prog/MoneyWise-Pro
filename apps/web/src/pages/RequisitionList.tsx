@@ -2,17 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
-import { FileText, History, XCircle, X } from 'lucide-react';
+import { FileText, History, XCircle, X, Users } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { useAuth } from '../context/AuthContext';
 import { RequisitionInbox } from '../components/RequisitionInbox';
+import { InboxCard, NewMenuItem } from '../components/InboxCard';
 import RequisitionModal from '../components/requisitions/RequisitionModal';
 import { MobileRequisitionWizard } from '../components/requisitions/MobileRequisitionWizard';
 import { MobileStaffLoanWizard } from '../components/requisitions/MobileStaffLoanWizard';
 import { MobileSalaryAdvanceWizard } from '../components/requisitions/MobileSalaryAdvanceWizard';
 import { MobilePayrollWizard } from '../components/requisitions/MobilePayrollWizard';
+import { DesktopRequisitionWorkspace } from '../components/requisitions/DesktopRequisitionWorkspace';
+import { DesktopStaffLoanWorkspace } from '../components/requisitions/DesktopStaffLoanWorkspace';
+import { DesktopSalaryAdvanceWorkspace } from '../components/requisitions/DesktopSalaryAdvanceWorkspace';
+import { DesktopPayrollWorkspace } from '../components/requisitions/DesktopPayrollWorkspace';
 import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
+import { Search, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
@@ -59,6 +64,7 @@ export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
     const { userRole, refreshNotifications, organizationId } = useAuth();
+    const isCashHandler = userRole ? ['CASHIER', 'ACCOUNTANT', 'ADMIN'].includes(userRole) : false;
     const queryClient = useQueryClient();
 
     const requisitionsKey = ['requisitions', organizationId];
@@ -98,6 +104,12 @@ export const RequisitionList: React.FC = () => {
     const [isStaffLoanWizardOpen, setIsStaffLoanWizardOpen] = useState(false);
     const [isSalaryAdvanceWizardOpen, setIsSalaryAdvanceWizardOpen] = useState(false);
     const [isPayrollWizardOpen, setIsPayrollWizardOpen] = useState(false);
+    // Desktop-native "New Requisition" workspace — replaces the Inbox card in place
+    // (sidebar/header stay put) instead of the mobile bottom sheet flow.
+    const [isDesktopRequisitionOpen, setIsDesktopRequisitionOpen] = useState(false);
+    const [isDesktopStaffLoanOpen, setIsDesktopStaffLoanOpen] = useState(false);
+    const [isDesktopSalaryAdvanceOpen, setIsDesktopSalaryAdvanceOpen] = useState(false);
+    const [isDesktopPayrollOpen, setIsDesktopPayrollOpen] = useState(false);
 
     // Org departments config
     const { data: departmentConfig } = useQuery({
@@ -284,6 +296,19 @@ export const RequisitionList: React.FC = () => {
         });
     }, [inflows, searchQuery, sortOrder]);
 
+    const getTabCount = (tabValue: string) => {
+        if (tabValue === 'ALL' || tabValue === 'COMPLETED') return 0;
+        return requisitions.filter(req => {
+            if (tabValue === 'PENDING_APPROVAL') return ['DRAFT', 'PENDING_APPROVAL'].includes(req.status);
+            if (tabValue === 'REVIEWED') return req.status === 'AUTHORISED';
+            const config = getStatusConfig(req.status);
+            return config.tab === tabValue && !config.isCompleted;
+        }).length;
+    };
+
+    const inflowTotalCount = inflows.filter(i => i.status !== 'PENDING').length;
+    const hasActiveDesktopFilters = !activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || !!filterStartDate || !!filterEndDate;
+
     interface DateGroup {
         dateLabel: string;
         dateKey: string;
@@ -346,71 +371,44 @@ export const RequisitionList: React.FC = () => {
         });
     };
 
+    // Desktop "New" dropdown — mirrors the mobile bottom sheet options.
+    const desktopNewMenuItems: NewMenuItem[] = [
+        {
+            label: 'New Requisition',
+            description: 'Office items, services, or equipment',
+            icon: FileText,
+            iconColor: '#0F172A',
+            onSelect: () => setIsDesktopRequisitionOpen(true),
+        },
+        {
+            label: 'New Salary Advance',
+            description: 'Quick funds from your next payroll',
+            icon: History,
+            iconColor: '#059669',
+            onSelect: () => setIsDesktopSalaryAdvanceOpen(true),
+        },
+        {
+            label: 'New Staff Loan',
+            description: 'Long-term loan with fixed 15% interest',
+            icon: Plus,
+            iconColor: '#2563EB',
+            onSelect: () => setIsDesktopStaffLoanOpen(true),
+        },
+        {
+            label: 'New Payroll Requisition',
+            description: 'Batch processing via spreadsheet upload',
+            icon: Users,
+            iconColor: '#4F46E5',
+            onSelect: () => setIsDesktopPayrollOpen(true),
+        },
+    ];
+
     return (
         <>
-            <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white">
-            <div className={`space-y-0 md:space-y-8 ${isRequestor ? 'pb-32' : ''} md:max-w-[1440px] md:mx-auto md:px-12 md:py-8`}>
-                {/* Desktop Action Row (Unified with Navigation Edges) */}
-                <div className="hidden md:block pt-2 mb-4">
-                    <div className="flex items-center justify-between gap-6">
-                        {/* View Switcher: Outflows (requisitions) ⇄ Inflows (money-in) */}
-                        <div className="flex items-center bg-gray-100/50 p-1.5 rounded-2xl w-fit border border-gray-100 shadow-inner">
-                            <button
-                                onClick={() => setInboxMode('outflows')}
-                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${inboxMode === 'outflows' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
-                            >
-                                Outflows
-                            </button>
-                            <button
-                                onClick={() => setInboxMode('inflows')}
-                                className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${inboxMode === 'inflows' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-400 hover:text-gray-500'}`}
-                            >
-                                Inflows
-                            </button>
-                        </div>
-
-                        {/* Search & Actions */}
-                        <div className="flex items-center space-x-4 flex-1 max-w-2xl">
-                            <div className="relative flex-1">
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                                <input 
-                                    type="text"
-                                    placeholder="Find messages, requisitions and more"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 transition-all font-bold text-brand-navy placeholder:text-gray-400 shadow-sm"
-                                />
-                            </div>
-                            <button
-                                onClick={() => inboxMode === 'inflows' ? loadInflows() : loadRequisitions()}
-                                className="p-3.5 bg-white text-gray-400 hover:text-[#006AFF] rounded-2xl border border-gray-100 transition-all shadow-sm hover:shadow"
-                                title="Refresh"
-                            >
-                                <RefreshCw size={20} />
-                            </button>
-                            <button
-                                onClick={() => navigate(inboxMode === 'inflows' ? '/sales/new' : '/requisitions/new')}
-                                className="bg-[#006AFF] text-white px-8 py-3.5 rounded-2xl font-black text-sm hover:bg-blue-600 transition-all flex items-center space-x-2 whitespace-nowrap"
-                            >
-                                <Plus size={20} />
-                                <span>{inboxMode === 'inflows' ? 'New Sale' : 'New Request'}</span>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
+            <Layout noPadding={true} backgroundColor="bg-gray-50">
+            <div className={`space-y-0 ${isRequestor ? 'pb-32' : ''} md:px-4 md:pb-4`}>
                 {/* Helper to get counts */}
                 {(() => {
-                    const getTabCount = (tabValue: string) => {
-                        if (tabValue === 'ALL' || tabValue === 'COMPLETED') return 0;
-                        return requisitions.filter(req => {
-                            if (tabValue === 'PENDING_APPROVAL') return ['DRAFT', 'PENDING_APPROVAL'].includes(req.status);
-                            if (tabValue === 'REVIEWED') return req.status === 'AUTHORISED';
-                            const config = getStatusConfig(req.status);
-                            return config.tab === tabValue && !config.isCompleted;
-                        }).length;
-                    };
-
                     return (
                         <>
                             {/* Mobile Outflows/Inflows toggle — capsule chip on a rounded track */}
@@ -441,34 +439,6 @@ export const RequisitionList: React.FC = () => {
                                     ]}
                                 />
                             </div>
-
-                            {/* Status Tabs Row (Stand-alone, Outflows only) */}
-                            {inboxMode === 'outflows' && (
-                            <div className="hidden md:flex items-center space-x-2 pb-2">
-                                {TABS.map((tab) => {
-                                    const count = getTabCount(tab.value);
-                                    return (
-                                        <button
-                                            key={tab.value}
-                                            onClick={() => setActiveTab([tab.value])}
-                                            className={`px-6 py-2.5 rounded-full text-sm font-bold transition-all whitespace-nowrap border flex items-center
-                                                ${activeTab.length === 1 && activeTab[0] === tab.value
-                                                    ? 'bg-[#F0F7FF] text-[#006AFF] border-[#006AFF]/30 shadow-sm'
-                                                    : 'text-gray-400 hover:text-gray-600 hover:bg-gray-50 border-transparent'}`}
-                                        >
-                                            <span>{tab.label}</span>
-                                            {count > 0 && (
-                                                <span className={`ml-2 px-1.5 py-0.5 rounded-md text-[10px] font-black min-w-[18px] text-center ${
-                                                    activeTab.length === 1 && activeTab[0] === tab.value ? 'bg-[#006AFF] text-white' : 'bg-gray-100 text-gray-500'
-                                                }`}>
-                                                    {count}
-                                                </span>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                            )}
 
                             {/* Mobile Search & Sort/Filter Bar */}
                             <div className="md:hidden px-5 pt-4 pb-3">
@@ -586,17 +556,131 @@ export const RequisitionList: React.FC = () => {
                     );
                 })()}
 
-                <div className="w-full pt-6">
+                <div className="w-full pt-6 md:pt-0">
+                    {/* Desktop: unified Inbox card shell (toggle, tabs, search/sort/filter, New) */}
+                    <div className="hidden md:block">
+                      {isDesktopRequisitionOpen ? (
+                        <DesktopRequisitionWorkspace 
+                            onClose={() => setIsDesktopRequisitionOpen(false)} 
+                            onSuccess={loadRequisitions}
+                        />
+                      ) : isDesktopStaffLoanOpen ? (
+                        <DesktopStaffLoanWorkspace 
+                            onClose={() => setIsDesktopStaffLoanOpen(false)} 
+                            onSuccess={loadRequisitions}
+                        />
+                      ) : isDesktopSalaryAdvanceOpen ? (
+                        <DesktopSalaryAdvanceWorkspace 
+                            onClose={() => setIsDesktopSalaryAdvanceOpen(false)} 
+                            onSuccess={loadRequisitions}
+                        />
+                      ) : isDesktopPayrollOpen ? (
+                        <DesktopPayrollWorkspace 
+                            onClose={() => setIsDesktopPayrollOpen(false)} 
+                            onSuccess={loadRequisitions}
+                        />
+                      ) : (
+                        <InboxCard
+                            mode={inboxMode}
+                            onModeChange={setInboxMode}
+                            outflowCount={requisitions.length}
+                            inflowCount={inflowTotalCount}
+                            showNew={inboxMode === 'outflows' || isCashHandler}
+                            newLabel={inboxMode === 'inflows' ? 'New Sale' : 'New Request'}
+                            onNew={() => navigate(inboxMode === 'inflows' ? '/sales/new' : '/requisitions/new')}
+                            newMenuItems={inboxMode === 'outflows' ? desktopNewMenuItems : undefined}
+                            showTabs={inboxMode === 'outflows'}
+                            tabs={TABS}
+                            activeTab={activeTab}
+                            getTabCount={getTabCount}
+                            onTabChange={(v) => setActiveTab([v])}
+                            searchQuery={searchQuery}
+                            onSearchChange={setSearchQuery}
+                            sortOrder={sortOrder}
+                            onToggleSort={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                            onOpenFilters={() => setIsFilterSheetOpen(true)}
+                            onRefresh={() => inboxMode === 'inflows' ? loadInflows() : loadRequisitions()}
+                            hasActiveFilters={hasActiveDesktopFilters}
+                        >
+                            {inboxMode === 'outflows' ? (
+                                <>
+                                    {loading && (
+                                        <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
+                                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>
+                                            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Syncing your inbox...</p>
+                                        </div>
+                                    )}
+                                    {error && (
+                                        <div className="bg-red-50 border border-red-100 rounded-2xl p-6 flex items-center text-red-700">
+                                            <div className="p-3 bg-red-100 rounded-xl mr-4">
+                                                <XCircle className="h-6 w-6" />
+                                            </div>
+                                            <p className="font-bold">{error}</p>
+                                        </div>
+                                    )}
+                                    {!loading && !error && (
+                                        <RequisitionInbox
+                                            requisitions={sortedRequisitions}
+                                            onRowClick={async (id) => {
+                                                try {
+                                                    const fullReq = await requisitionService.getById(id);
+                                                    setSelectedRequisition(fullReq);
+                                                    const clickedReq = sortedRequisitions.find(r => r.id === id);
+                                                    if (clickedReq?.has_unread_updates) {
+                                                        queryClient.setQueryData<Requisition[]>(requisitionsKey, prev => prev?.map(r => r.id === id ? { ...r, has_unread_updates: false } : r));
+                                                        requisitionService.markRead(id).then(() => refreshNotifications()).catch(console.error);
+                                                    }
+                                                } catch (err) {
+                                                    console.error('Failed to fetch requisition details:', err);
+                                                }
+                                            }}
+                                            onDelete={async (id) => {
+                                                if (window.confirm('Are you sure you want to delete this requisition? This action cannot be undone.')) {
+                                                    try {
+                                                        await requisitionService.delete(id);
+                                                        await loadRequisitions();
+                                                    } catch (err: any) {
+                                                        alert(err.message || 'Failed to delete requisition');
+                                                    }
+                                                }
+                                            }}
+                                        />
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    {inflowsLoading && inflows.length === 0 && (
+                                        <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
+                                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
+                                            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
+                                        </div>
+                                    )}
+                                    {!inflowsLoading && sortedInflows.length === 0 && (
+                                        <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
+                                            <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-white mb-6 border border-gray-100">
+                                                <FileText className="h-10 w-10 text-gray-200" />
+                                            </div>
+                                            <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                                            <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
+                                        </div>
+                                    )}
+                                    {sortedInflows.length > 0 && <InflowInbox inflows={sortedInflows} />}
+                                </>
+                            )}
+                        </InboxCard>
+                      )}
+                    </div>
+
                     {inboxMode === 'outflows' && (<>
                     {loading && (
-                        <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
+                        <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
                             <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#006AFF] mb-6"></div>
                             <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Syncing your inbox...</p>
                         </div>
                     )}
 
                     {error && (
-                        <div className="bg-red-50 border border-red-100 rounded-2xl p-6 flex items-center text-red-700">
+                        <div className="md:hidden bg-red-50 border border-red-100 rounded-2xl p-6 flex items-center text-red-700">
                             <div className="p-3 bg-red-100 rounded-xl mr-4">
                                 <XCircle className="h-6 w-6" />
                             </div>
@@ -605,7 +689,7 @@ export const RequisitionList: React.FC = () => {
                     )}
 
                     {!loading && !error && sortedRequisitions.length === 0 && (
-                        <div className="bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
+                        <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
                             <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
                                 <FileText className="h-10 w-10 text-gray-200" />
                             </div>
@@ -691,49 +775,20 @@ export const RequisitionList: React.FC = () => {
                                 ))}
                             </div>
 
-                            {/* Desktop View (Overhauled Inbox) */}
-                            <div className="hidden md:block">
-                                <RequisitionInbox 
-                                    requisitions={sortedRequisitions} 
-                                    onRowClick={async (id) => {
-                                        try {
-                                            const fullReq = await requisitionService.getById(id);
-                                            setSelectedRequisition(fullReq);
-                                            const clickedReq = sortedRequisitions.find(r => r.id === id);
-                                            if (clickedReq?.has_unread_updates) {
-                                                queryClient.setQueryData<Requisition[]>(requisitionsKey, prev => prev?.map(r => r.id === id ? { ...r, has_unread_updates: false } : r));
-                                                requisitionService.markRead(id).then(() => refreshNotifications()).catch(console.error);
-                                            }
-                                        } catch (err) {
-                                            console.error('Failed to fetch requisition details:', err);
-                                        }
-                                    }}
-                                    onDelete={async (id) => {
-                                        if (window.confirm('Are you sure you want to delete this requisition? This action cannot be undone.')) {
-                                            try {
-                                                await requisitionService.delete(id);
-                                                await loadRequisitions();
-                                            } catch (err: any) {
-                                                alert(err.message || 'Failed to delete requisition');
-                                            }
-                                        }
-                                    }}
-                                />
-                            </div>
                         </>
                     )}
                     </>)}
 
                     {inboxMode === 'inflows' && (<>
                         {inflowsLoading && inflows.length === 0 && (
-                            <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
+                            <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
                                 <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
                                 <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
                             </div>
                         )}
 
                         {!inflowsLoading && sortedInflows.length === 0 && (
-                            <div className="bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
+                            <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
                                 <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
                                     <FileText className="h-10 w-10 text-gray-200" />
                                 </div>
@@ -796,11 +851,6 @@ export const RequisitionList: React.FC = () => {
                                         </div>
                                     ))}
                                 </div>
-
-                                {/* Desktop View */}
-                                <div className="hidden md:block">
-                                    <InflowInbox inflows={sortedInflows} />
-                                </div>
                             </>
                         )}
                     </>)}
@@ -831,6 +881,25 @@ export const RequisitionList: React.FC = () => {
                         }
                     }
                 }}
+            />
+
+            {/* Staff Loan / Salary Advance / Payroll wizards are shared across mobile
+                (bottom sheet trigger) and desktop (New dropdown trigger) — neither has
+                a bespoke desktop redesign yet, so both viewports reuse the same flow. */}
+            <MobileStaffLoanWizard
+                isOpen={isStaffLoanWizardOpen}
+                onClose={() => setIsStaffLoanWizardOpen(false)}
+                onSuccess={loadRequisitions}
+            />
+            <MobileSalaryAdvanceWizard
+                isOpen={isSalaryAdvanceWizardOpen}
+                onClose={() => setIsSalaryAdvanceWizardOpen(false)}
+                onSuccess={loadRequisitions}
+            />
+            <MobilePayrollWizard
+                isOpen={isPayrollWizardOpen}
+                onClose={() => setIsPayrollWizardOpen(false)}
+                onSuccess={loadRequisitions}
             />
 
             {/* Mobile Only UI Elements - Outside Layout for best z-index/fixed behavior */}
@@ -864,21 +933,27 @@ export const RequisitionList: React.FC = () => {
                     {/* Sheet Content */}
                     <div className="p-5 space-y-3 overflow-y-auto pb-10">
                         {inboxMode === 'inflows' ? (
-                        <button
-                            onClick={() => {
-                                setIsNewRequisitionOpen(false);
-                                navigate('/sales/new');
-                            }}
-                            className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
-                        >
-                            <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <ShoppingBag className="h-6 w-6 text-emerald-600" />
-                            </div>
-                            <div>
-                                <div className="font-bold text-gray-900 text-base">New Sale</div>
-                                <div className="text-xs text-emerald-600/70 font-medium">Ring up products & take payment</div>
-                            </div>
-                        </button>
+                            isCashHandler ? (
+                                <button
+                                    onClick={() => {
+                                        setIsNewRequisitionOpen(false);
+                                        navigate('/sales/new');
+                                    }}
+                                    className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
+                                >
+                                    <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
+                                        <ShoppingBag className="h-6 w-6 text-emerald-600" />
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-900 text-base">New Sale</div>
+                                        <div className="text-xs text-emerald-600/70 font-medium">Ring up products & take payment</div>
+                                    </div>
+                                </button>
+                            ) : (
+                                <div className="text-center p-4 text-gray-400 text-sm">
+                                    You don't have permission to record sales.
+                                </div>
+                            )
                         ) : (<>
                         <button
                             onClick={() => {
@@ -1121,29 +1196,14 @@ export const RequisitionList: React.FC = () => {
                     onClose={() => setIsRequisitionWizardOpen(false)}
                     onSuccess={loadRequisitions}
                 />
-                <MobileStaffLoanWizard
-                    isOpen={isStaffLoanWizardOpen}
-                    onClose={() => setIsStaffLoanWizardOpen(false)}
-                    onSuccess={loadRequisitions}
-                />
-                <MobileSalaryAdvanceWizard
-                    isOpen={isSalaryAdvanceWizardOpen}
-                    onClose={() => setIsSalaryAdvanceWizardOpen(false)}
-                    onSuccess={loadRequisitions}
-                />
-                <MobilePayrollWizard
-                    isOpen={isPayrollWizardOpen}
-                    onClose={() => setIsPayrollWizardOpen(false)}
-                    onSuccess={loadRequisitions}
-                />
 
-                <div 
+                <div
                     className={`fixed bottom-24 right-6 z-[140] flex items-center justify-center transition-all duration-300 ${
-                        selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen 
+                        selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen || (inboxMode === 'inflows' && !isCashHandler)
                             ? 'opacity-0 pointer-events-none scale-0' 
                             : 'opacity-100 scale-100'
                     }`}
-                    style={{ display: selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen ? 'none' : 'flex' }}
+                    style={{ display: selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen || (inboxMode === 'inflows' && !isCashHandler) ? 'none' : 'flex' }}
                 >
                     <button
                         onClick={() => setIsNewRequisitionOpen(true)}

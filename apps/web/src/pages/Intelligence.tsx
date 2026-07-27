@@ -15,13 +15,6 @@ interface Message {
     timestamp: Date;
 }
 
-const TEMPLATE_PROMPTS = [
-    "How much did we spend last week on canteen food?",
-    "How much did we spend last week on canteen food?", // Duplicate in screenshot, but I'll add variation
-    "How much did we spend last week on canteen food?",
-    "Are there any opportunities for our business to Save Money?",
-    "How much did we spend last week on canteen food?"
-];
 
 export const Intelligence: React.FC = () => {
     const [activeTab, setActiveTab] = useState<TabType>('assistant');
@@ -99,7 +92,7 @@ export const Intelligence: React.FC = () => {
 
     return (
         <Layout backgroundColor="bg-white" noPadding={true}>
-            <div className="flex-1 flex flex-col bg-white min-h-[calc(100vh-120px)]">
+            <div className="flex-1 flex flex-col bg-white min-h-[calc(100vh-120px)] md:min-h-0 md:h-full md:m-4 md:rounded-[20px] md:overflow-hidden">
                 {/* SUB-NAVIGATION TOGGLES */}
                 <div className="flex justify-center pt-6 md:pt-8 pb-4 px-4">
                     <div className="bg-gray-50/80 p-1 rounded-2xl flex items-center border border-gray-100/50 shadow-sm relative z-20 w-full md:w-auto overflow-x-auto no-scrollbar">
@@ -183,18 +176,7 @@ export const Intelligence: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* TEMPLATE PROMPTS */}
-                                <div className="flex flex-wrap justify-center gap-3 max-w-3xl">
-                                    {TEMPLATE_PROMPTS.map((prompt, idx) => (
-                                        <button
-                                            key={idx}
-                                            onClick={() => handleSend(prompt)}
-                                            className="px-4 md:px-6 py-2.5 md:py-3 bg-gray-50/50 hover:bg-gray-100 rounded-full text-[11px] md:text-[12px] font-bold text-gray-500 transition-all border border-gray-100/50"
-                                        >
-                                            {prompt}
-                                        </button>
-                                    ))}
-                                </div>
+
                             </div>
                         ) : (
                             /* CHAT CONVERSATION STATE */

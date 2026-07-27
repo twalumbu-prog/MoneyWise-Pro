@@ -75,7 +75,7 @@ export const MobileSalaryAdvanceWizard: React.FC<MobileSalaryAdvanceWizardProps>
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[80] bg-white flex flex-col md:hidden">
+        <div className="fixed inset-0 z-[80] bg-white flex flex-col">
             {/* App Top Bar - Logo and User */}
             <div className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center">

@@ -347,7 +347,14 @@ const port = process.env.PORT || 3000;
 
 // Security Middleware
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+    origin: function (origin, callback) {
+        callback(null, true);
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-custom-header']
+}));
 
 // Mounted BEFORE express.json() so the exact bytes Vercel signed are what we
 // verify — the global JSON parser below would either mangle the raw body for

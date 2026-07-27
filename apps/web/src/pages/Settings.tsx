@@ -1,567 +1,173 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { integrationService, IntegrationStatus } from '../services/integration.service';
-import { accountService, Account } from '../services/account.service';
+import { QuickBooksIntegration } from '../components/settings/integrations/QuickBooksIntegration';
+import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
 import {
     Settings as SettingsIcon,
     Users,
     FileText,
     Share2,
-    CheckCircle,
-    AlertCircle,
-    ExternalLink,
-    RefreshCw,
-    ArrowRightLeft,
-    ArrowDownToLine,
     BrainCircuit,
-    Beaker,
-    ShoppingBag
+    User
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
 import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
 import { RuleManagement } from '../components/settings/RuleManagement';
 import { AIMetrics } from '../components/settings/AIMetrics';
-import { DebugSettings } from '../components/settings/DebugSettings';
 import { MyProfileSettings } from '../components/settings/MyProfileSettings';
-import { ProductSettings } from '../components/settings/ProductSettings';
 import { Layout } from '../components/Layout';
 
 export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
 
-    // Integration State
-    const [status, setStatus] = useState<IntegrationStatus | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [actionLoading, setActionLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [qbAccounts, setQbAccounts] = useState<any[]>([]);
-    const [localAccounts, setLocalAccounts] = useState<Account[]>([]);
-    const [saving, setSaving] = useState<string | null>(null);
-    const [mappingSearchQuery, setMappingSearchQuery] = useState('');
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | null>(null);
+    const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (activeTab === 'integrations') {
-            loadIntegrationData();
-        }
-
         // Handle OAuth callback params
         const syncStatus = searchParams.get('status');
         if (syncStatus === 'success' || syncStatus === 'error') {
             setActiveTab('integrations');
+            setActiveIntegration('quickbooks');
             if (syncStatus === 'error') {
-                setError(searchParams.get('message') || 'Failed to connect');
+                setIntegrationError(searchParams.get('message') || 'Failed to connect');
             }
         }
-    }, [activeTab, searchParams]);
+    }, [searchParams]);
 
     const handleTabChange = (tab: string) => {
         setActiveTab(tab);
         setSearchParams({ tab });
-        setError(null);
-    };
-
-    const loadIntegrationData = async () => {
-        try {
-            setLoading(true);
-
-            // Load status and local accounts
-            const [statusData, accountsData] = await Promise.all([
-                integrationService.getStatus(),
-                accountService.getAll()
-            ]);
-
-            setStatus(statusData);
-            setLocalAccounts(accountsData);
-
-            // If connected, load QB accounts
-            if (statusData.connected) {
-                const qbData = await integrationService.getAccounts();
-                setQbAccounts(qbData);
-            }
-        } catch (err: any) {
-            console.error('Failed to load integration data:', err);
-            setError('Failed to load integration status');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleConnect = async () => {
-        try {
-            setActionLoading(true);
-            const url = await integrationService.getConnectUrl();
-            window.location.href = url;
-        } catch (err: any) {
-            setError(err.message);
-            setActionLoading(false);
-        }
-    };
-
-    const handleDisconnect = async () => {
-        if (!window.confirm('Are you sure you want to disconnect QuickBooks?')) return;
-        try {
-            setActionLoading(true);
-            await integrationService.disconnect();
-            await loadIntegrationData();
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const handleImport = async () => {
-        try {
-            setActionLoading(true);
-            const result = await accountService.importFromQuickBooks();
-            alert(result.message);
-            await loadIntegrationData(); // Reload accounts
-        } catch (err: any) {
-            alert('Failed to import accounts: ' + err.message);
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const handleMapAccount = async (localAccountId: string, qbAccountId: string) => {
-        try {
-            setSaving(localAccountId);
-            await accountService.update(localAccountId, { qb_account_id: qbAccountId });
-
-            // Update local state
-            setLocalAccounts(prev => prev.map(acc =>
-                acc.id === localAccountId
-                    ? { ...acc, qb_account_id: qbAccountId } as any
-                    : acc
-            ));
-        } catch (err: any) {
-            alert('Failed to save mapping: ' + err.message);
-        } finally {
-            setSaving(null);
-        }
-    };
-
-    const handleSmartMatch = async () => {
-        const unmapped = localAccounts.filter(a => !a.qb_account_id);
-        if (unmapped.length === 0) {
-            alert('All local accounts are already mapped to QuickBooks!');
-            return;
-        }
-
-        if (qbAccounts.length === 0) {
-            alert('No QuickBooks accounts found to match against. Try syncing first.');
-            return;
-        }
-
-        console.log(`[Smart Match] Attempting to match ${unmapped.length} unmapped accounts against ${qbAccounts.length} QB accounts...`);
-
-        let matchCount = 0;
-        const newLocalAccounts = [...localAccounts];
-
-        for (const account of unmapped) {
-            const localName = account.name.toLowerCase().trim();
-            const localCode = account.code.toLowerCase().trim();
-
-            // Find match in QB accounts
-            const match = qbAccounts.find(qa => {
-                const qbName = qa.Name.toLowerCase().trim();
-                const qbFullName = (qa.FullyQualifiedName || '').toLowerCase().trim();
-                const qbCode = (qa.AcctNum || '').toLowerCase().trim();
-
-                // 1. Exact Name Match
-                if (qbName === localName || qbFullName === localName) return true;
-
-                // 2. Subaccount Match (e.g., "Bank:Main" matches "Main")
-                if (qbFullName.endsWith(':' + localName)) return true;
-
-                // 3. Code Match
-                if (qbCode && qbCode === localCode) return true;
-
-                return false;
-            });
-
-            if (match) {
-                console.log(`[Smart Match] Found match: ${account.name} -> ${match.Name} (${match.Id})`);
-                try {
-                    await accountService.update(account.id, { qb_account_id: match.Id });
-                    const idx = newLocalAccounts.findIndex(a => a.id === account.id);
-                    newLocalAccounts[idx] = { ...newLocalAccounts[idx], qb_account_id: match.Id } as any;
-                    matchCount++;
-                } catch (err) {
-                    console.error(`[Smart Match] Failed to update mapping for ${account.name}:`, err);
-                }
-            }
-        }
-
-        setLocalAccounts(newLocalAccounts);
-        if (matchCount > 0) {
-            alert(`Smart Match Complete! Successfully linked ${matchCount} accounts.`);
-        } else {
-            alert('Smart Match finished, but no new matches were found. You may need to map these manually.');
-        }
+        setIntegrationError(null);
+        setActiveIntegration(null);
     };
 
     return (
-        <Layout>
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div className="mb-8">
-                    <h1 className="text-2xl font-bold text-brand-navy">Settings</h1>
-                    <p className="mt-1 text-sm text-gray-500">
-                        Manage your organization, team members, and integrations.
-                    </p>
-                </div>
-
-                <div className="flex flex-col space-y-6">
-                    {/* Horizontal Navigation */}
-                    <div className="w-full overflow-x-auto pb-2 -mb-2 custom-scrollbar">
-                        <nav className="flex space-x-1 bg-gray-100 p-1 rounded-xl w-max min-w-full md:min-w-0 md:w-fit">
-                            <button
-                                onClick={() => handleTabChange('profile')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'profile'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <SettingsIcon className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>My Profile</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTabChange('general')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'general'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <SettingsIcon className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>General</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTabChange('users')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'users'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <Users className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>Team Members</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTabChange('coa')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'coa'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <FileText className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>Chart of Accounts</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTabChange('integrations')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'integrations'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <Share2 className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>Integrations</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTabChange('automation')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'automation'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <BrainCircuit className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>AI & Automation</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTabChange('products')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'products'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <ShoppingBag className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>Products & Services</span>
-                            </button>
-
-                            <button
-                                onClick={() => handleTabChange('debug')}
-                                className={`flex items-center whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all ${activeTab === 'debug'
-                                    ? 'bg-white text-brand-navy shadow-sm'
-                                    : 'text-gray-500 hover:text-gray-700'
-                                    }`}
-                            >
-                                <Beaker className="flex-shrink-0 -ml-1 mr-2 h-4 w-4" />
-                                <span>Debug</span>
-                            </button>
-                        </nav>
-                    </div>
-
-                    {/* Main Content Area */}
-                    <div className="flex-1 min-w-0 w-full">
-                        {/* Profile Tab */}
-                        {activeTab === 'profile' && <MyProfileSettings />}
-
-                        {/* General Tab */}
-                        {activeTab === 'general' && <GeneralSettings />}
-
-                        {/* Users Tab */}
-                        {activeTab === 'users' && <UserManagement />}
-
-                        {/* Chart of Accounts Tab */}
-                        {activeTab === 'coa' && <ChartOfAccounts />}
-
-                        {/* Integrations Tab */}
-                        {activeTab === 'integrations' && (
-                            <div className="space-y-6">
-                                <div className="flex justify-between items-center">
-                                    <div>
-                                        <h3 className="text-lg font-bold text-brand-navy">Integrations</h3>
-                                        <p className="text-sm text-gray-500">Manage connections to external services.</p>
-                                    </div>
+        <Layout noPadding>
+            <div className="flex-1 h-full p-4 bg-slate-100 flex flex-col justify-start items-start w-full overflow-hidden">
+                <div className="self-stretch flex-1 flex justify-start items-start gap-2.5 w-full overflow-hidden">
+                    <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-center gap-7 overflow-hidden shadow-sm w-full">
+                        <div className="self-stretch h-full flex flex-col justify-start items-center gap-3 w-full">
+                            
+                            {/* Header */}
+                            <div className="self-stretch flex justify-between items-center w-full flex-shrink-0">
+                                <div className="flex justify-start items-center gap-2">
+                                    <SettingsIcon className="w-4 h-4 text-gray-900" />
+                                    <div className="justify-center text-gray-900 text-base font-semibold font-['DM_Sans'] leading-5">Settings</div>
                                 </div>
-
-                                {error && (
-                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center">
-                                        <AlertCircle className="h-4 w-4 mr-2" />
-                                        {error}
-                                    </div>
-                                )}
-
-                                <div className="bg-white shadow-sm rounded-xl border border-gray-200 divide-y divide-gray-200">
-                                    <div className="p-6">
-                                        <div className="flex items-center justify-between">
-                                            <div className="flex items-center space-x-4">
-                                                <div className="h-12 w-12 bg-[#2CA01C] rounded-lg flex items-center justify-center text-white font-bold text-xl">
-                                                    qb
-                                                </div>
-                                                <div>
-                                                    <h4 className="text-base font-bold text-gray-900">QuickBooks Online</h4>
-                                                    <p className="text-sm text-gray-500">Sync expenses and chart of accounts</p>
-                                                </div>
+                            </div>
+                            
+                            {/* Tabs Row */}
+                            <div className="self-stretch flex justify-between items-center w-full overflow-x-auto custom-scrollbar flex-shrink-0">
+                                <div className="flex-1 h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-2.5 min-w-max">
+                                    {[
+                                        { id: 'general', label: 'General Settings', icon: <SettingsIcon className="w-2.5 h-2.5" /> },
+                                        { id: 'profile', label: 'My profile', icon: <User className="w-2.5 h-2.5" /> },
+                                        { id: 'users', label: 'Team Members', icon: <Users className="w-2.5 h-2.5" /> },
+                                        { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
+                                        { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
+                                        { id: 'automation', label: 'AI & Automation', icon: <BrainCircuit className="w-2.5 h-2.5" /> }
+                                    ].map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            onClick={() => handleTabChange(tab.id)}
+                                            className={`h-full px-3.5 rounded-lg flex justify-center items-center gap-2 transition-all ${
+                                                activeTab === tab.id 
+                                                    ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] text-gray-900 font-medium' 
+                                                    : 'text-gray-600 font-normal hover:bg-white/50 hover:text-gray-900'
+                                            }`}
+                                        >
+                                            <div className="flex justify-start items-center gap-1.5">
+                                                {tab.icon}
+                                                <span className="text-center justify-center text-[11px] font-['DM_Sans'] leading-5">
+                                                    {tab.label}
+                                                </span>
                                             </div>
-                                            <div>
-                                                {loading ? (
-                                                    <RefreshCw className="h-5 w-5 animate-spin text-gray-400" />
-                                                ) : status?.connected ? (
-                                                    <div className="flex items-center space-x-4">
-                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                            <CheckCircle className="w-3 h-3 mr-1" />
-                                                            Connected
-                                                        </span>
-                                                        <button
-                                                            onClick={handleDisconnect}
-                                                            disabled={actionLoading}
-                                                            className="text-sm text-red-600 hover:text-red-900 font-medium"
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Main Content Area */}
+                            <div className="self-stretch flex-1 bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-start items-start overflow-y-auto w-full">
+                                <div className="w-full p-4 sm:p-6 flex-1 min-w-0">
+                                    {/* Profile Tab */}
+                                    {activeTab === 'profile' && <MyProfileSettings />}
+
+                                    {/* General Tab */}
+                                    {activeTab === 'general' && <GeneralSettings />}
+
+                                    {/* Users Tab */}
+                                    {activeTab === 'users' && <UserManagement />}
+
+                                    {/* Chart of Accounts Tab */}
+                                    {activeTab === 'coa' && <ChartOfAccounts />}
+
+                                    {/* Integrations Tab */}
+                                    {activeTab === 'integrations' && (
+                                        <div className="space-y-6">
+                                            {!activeIntegration ? (
+                                                <>
+                                                    <div className="flex justify-between items-center">
+                                                        <div>
+                                                            <h3 className="text-lg font-bold text-brand-navy">Integrations</h3>
+                                                            <p className="text-sm text-gray-500">Manage connections to external services.</p>
+                                                        </div>
+                                                    </div>
+                                                    
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        {/* QuickBooks Card */}
+                                                        <button 
+                                                            onClick={() => setActiveIntegration('quickbooks')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
                                                         >
-                                                            Disconnect
+                                                            <div className="h-12 w-12 bg-[#2CA01C] rounded-xl flex items-center justify-center text-white font-bold text-xl mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                qb
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">QuickBooks Online</h4>
+                                                            <p className="text-sm text-gray-500">Sync expenses and chart of accounts</p>
+                                                        </button>
+
+                                                        {/* Lenco Card */}
+                                                        <button 
+                                                            onClick={() => setActiveIntegration('lenco')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-pink/30 transition-all text-left group"
+                                                        >
+                                                            <div className="h-12 w-12 bg-brand-pink rounded-xl flex items-center justify-center text-white font-bold text-xl mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                L
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Lenco Banking</h4>
+                                                            <p className="text-sm text-gray-500">Manage corporate wallets and transfers</p>
                                                         </button>
                                                     </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={handleConnect}
-                                                        disabled={actionLoading}
-                                                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-[#2CA01C] hover:bg-[#238914] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#2CA01C] disabled:opacity-50"
-                                                    >
-                                                        <ExternalLink className="h-4 w-4 mr-2" />
-                                                        Connect
-                                                    </button>
-                                                )}
+                                                </>
+                                            ) : activeIntegration === 'quickbooks' ? (
+                                                <QuickBooksIntegration 
+                                                    onBack={() => setActiveIntegration(null)} 
+                                                    initialError={integrationError} 
+                                                />
+                                            ) : (
+                                                <LencoIntegration 
+                                                    onBack={() => setActiveIntegration(null)} 
+                                                />
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* AI & Automation Tab */}
+                                    {activeTab === 'automation' && (
+                                        <div className="space-y-12">
+                                            <AIMetrics />
+                                            <div className="border-t border-gray-100 pt-12">
+                                                <RuleManagement />
                                             </div>
                                         </div>
-                                        {status?.connected && (
-                                            <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-500">
-                                                <div>
-                                                    <span className="font-medium text-gray-700">Company:</span> {status.companyName}
-                                                </div>
-                                                <div>
-                                                    <span className="font-medium text-gray-700">Last Sync:</span>{' '}
-                                                    {status.lastSync ? new Date(status.lastSync).toLocaleString() : 'Never'}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div>
-                                        <div className="px-6 py-4 flex items-center justify-between">
-                                            <div>
-                                                <h4 className="text-sm font-bold text-gray-900">Automatic Syncing</h4>
-                                                <p className="text-xs text-gray-500">Completed transactions will be automatically posted as expenses in QuickBooks.</p>
-                                            </div>
-                                            <div className="flex items-center text-xs font-bold text-brand-green">
-                                                Enabled
-                                                <div className="ml-3 h-5 w-10 bg-brand-green rounded-full relative">
-                                                    <div className="absolute right-0.5 top-0.5 h-4 w-4 bg-white rounded-full shadow-sm"></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="px-6 py-4 bg-gray-50">
-                                        <button
-                                            onClick={handleImport}
-                                            disabled={actionLoading}
-                                            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 transition-all border"
-                                        >
-                                            <ArrowDownToLine className="h-4 w-4 mr-2 text-brand-green" />
-                                            {actionLoading ? 'Syncing...' : 'Sync Chart of Accounts'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Chart of Accounts Mapping */}
-                                {status?.connected && (
-                                    <div className="pt-8 border-t border-gray-100">
-                                        <div className="flex items-center justify-between mb-6">
-                                            <div>
-                                                <h3 className="text-lg font-bold text-brand-navy flex items-center">
-                                                    <ArrowRightLeft className="h-5 w-5 mr-2 text-brand-green" />
-                                                    Chart of Accounts Mapping
-                                                </h3>
-                                                <p className="text-sm text-gray-500 mt-1">
-                                                    Map your local expense categories to QuickBooks accounts to ensure correct accounting.
-                                                </p>
-                                            </div>
-                                            <div className="flex items-center space-x-3">
-                                                <button
-                                                    onClick={handleSmartMatch}
-                                                    className="inline-flex items-center px-3 py-2 border border-brand-green/30 text-xs font-bold rounded-xl text-brand-green bg-brand-green/5 hover:bg-brand-green/10 transition-all"
-                                                >
-                                                    <RefreshCw className="h-3 w-3 mr-1.5" />
-                                                    Smart Match by Name
-                                                </button>
-                                                <div className="relative w-full sm:w-64">
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Search local accounts..."
-                                                        value={mappingSearchQuery}
-                                                        onChange={(e) => setMappingSearchQuery(e.target.value)}
-                                                        className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:ring-brand-green focus:border-brand-green text-sm transition-all shadow-sm"
-                                                    />
-                                                    <div className="absolute left-3 top-2.5 text-gray-400">
-                                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                                        </svg>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto custom-scrollbar shadow-sm">
-                                            <table className="min-w-[800px] w-full divide-y divide-gray-200">
-                                                <thead className="bg-gray-50">
-                                                    <tr>
-                                                        <th scope="col" className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">
-                                                            Local Account
-                                                        </th>
-                                                        <th scope="col" className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">
-                                                            Status
-                                                        </th>
-                                                        <th scope="col" className="px-6 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">
-                                                            QuickBooks Account (Expense/Liability)
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="bg-white divide-y divide-gray-200">
-                                                    {localAccounts
-                                                        .filter(a => (a.type === 'EXPENSE' || a.type === 'ASSET' || a.type === 'LIABILITY') && (
-                                                            a.name.toLowerCase().includes(mappingSearchQuery.toLowerCase()) ||
-                                                            a.code.toLowerCase().includes(mappingSearchQuery.toLowerCase())
-                                                        ))
-                                                        .map((account: any) => (
-                                                        <tr key={account.id} className="hover:bg-gray-50 transition-colors">
-                                                            <td className="px-6 py-4 whitespace-nowrap min-w-[250px]">
-                                                                <div className="flex items-center">
-                                                                    <div className="flex-shrink-0 h-8 px-2.5 min-w-[2rem] bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center font-bold text-xs border border-blue-100">
-                                                                        {account.code}
-                                                                    </div>
-                                                                    <div className="ml-4 truncate">
-                                                                        <div className="text-sm font-bold text-gray-900 truncate">{account.name}</div>
-                                                                        <div className="text-xs text-gray-500">{account.type}</div>
-                                                                    </div>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                                {account.qb_account_id ? (
-                                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                                                        Mapped
-                                                                    </span>
-                                                                ) : (
-                                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
-                                                                        Unmapped
-                                                                    </span>
-                                                                )}
-                                                            </td>
-                                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                                <div className="flex items-center space-x-2">
-                                                                    <select
-                                                                        value={account.qb_account_id || ''}
-                                                                        onChange={(e) => handleMapAccount(account.id, e.target.value)}
-                                                                        disabled={saving === account.id}
-                                                                        className="block w-full min-w-[240px] pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-brand-green focus:border-brand-green sm:text-sm rounded-xl border transition-colors hover:border-brand-green/50"
-                                                                    >
-                                                                        <option value="">-- Select QuickBooks Account --</option>
-                                                                        {qbAccounts
-                                                                            .sort((a: any, b: any) => {
-                                                                                // 1. Prioritize by type relevance
-                                                                                const isARel = (account.type === 'ASSET' && (['Bank', 'Other Current Asset', 'Fixed Asset', 'Accounts Receivable'].includes(a.AccountType) || a.Classification === 'Asset')) ||
-                                                                                              (account.type === 'LIABILITY' && (['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability'].includes(a.AccountType) || a.Classification === 'Liability')) ||
-                                                                                              (account.type === 'EXPENSE' && (['Expense', 'Other Expense', 'Cost of Goods Sold'].includes(a.AccountType) || a.Classification === 'Expense'));
-                                                                                
-                                                                                const isBRel = (account.type === 'ASSET' && (['Bank', 'Other Current Asset', 'Fixed Asset', 'Accounts Receivable'].includes(b.AccountType) || b.Classification === 'Asset')) ||
-                                                                                              (account.type === 'LIABILITY' && (['Credit Card', 'Accounts Payable', 'Other Current Liability', 'Long Term Liability'].includes(b.AccountType) || b.Classification === 'Liability')) ||
-                                                                                              (account.type === 'EXPENSE' && (['Expense', 'Other Expense', 'Cost of Goods Sold'].includes(b.AccountType) || b.Classification === 'Expense'));
-
-                                                                                if (isARel && !isBRel) return -1;
-                                                                                if (!isARel && isBRel) return 1;
-
-                                                                                // 2. Alphabetical sort within relevance groups
-                                                                                return a.Name.localeCompare(b.Name);
-                                                                            })
-                                                                            .map((qa: any) => (
-                                                                                <option key={qa.Id} value={qa.Id}>
-                                                                                    {qa.Name} ({qa.AccountType})
-                                                                                </option>
-                                                                            ))}
-                                                                    </select>
-                                                                    {saving === account.id && (
-                                                                        <RefreshCw className="h-4 w-4 animate-spin text-brand-green" />
-                                                                    )}
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    ))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-
-                        {/* AI & Automation Tab */}
-                        {activeTab === 'automation' && (
-                            <div className="space-y-12">
-                                <AIMetrics />
-                                <div className="border-t border-gray-100 pt-12">
-                                    <RuleManagement />
+                                    )}
                                 </div>
                             </div>
-                        )}
-
-                        {/* Products & Services Tab */}
-                        {activeTab === 'products' && <ProductSettings />}
-
-                        {/* Debug Tab */}
-                        {activeTab === 'debug' && <DebugSettings />}
+                        </div>
                     </div>
                 </div>
             </div>

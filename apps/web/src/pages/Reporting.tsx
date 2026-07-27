@@ -5,11 +5,12 @@ import { reportService, ExpenditureAggregation, ExpenditureItem } from '../servi
 import { budgetService, Budget } from '../services/budget.service';
 import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
-import { ChevronLeft, ChevronRight, BarChart3, ChevronDown, ChevronUp, Loader2, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BarChart3, ChevronDown, ChevronUp, Loader2, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Search, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { FinancialHighlights } from '../components/FinancialHighlights';
 import budgetBg from '../assets/Frame 24.png';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
 type ModeType = 'EXPENSE' | 'CASH_OUTFLOW';
@@ -1022,452 +1023,424 @@ export const Reporting: React.FC = () => {
     return (
         <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white" title="Reports">
             {/* Desktop View */}
-            <div className="hidden md:block max-w-6xl mx-auto space-y-6 px-4 md:px-12 py-4 md:py-8">
-                {/* Header & Controls */}
-                <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 mb-8">
-                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-                        
-                        <div>
-                            <div className="flex items-center gap-3">
-                                <div className="h-10 w-10 flex items-center justify-center rounded-xl bg-brand-green/10 text-brand-green">
-                                    <BarChart3 className="h-5 w-5" />
-                                </div>
-                                <div>
-                                    <h1 className="text-2xl font-bold text-brand-navy leading-tight">Financial Reports</h1>
-                                    <p className="text-sm text-gray-500">Track and analyze business financials and net worth</p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Top Controls: Mode & Period */}
-                        <div className="flex flex-wrap items-center gap-4">
-                            {/* Mode Toggle (P&L only) */}
-                            {reportView === 'PROFIT_LOSS' && (
-                                <div className="flex bg-gray-100 p-1 rounded-xl">
-                                    <button
-                                        onClick={() => setMode('EXPENSE')}
-                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                                            mode === 'EXPENSE' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+            <div className="hidden md:flex flex-1 h-[calc(100vh-64px)] p-4 bg-slate-100 flex-col justify-start items-start w-full overflow-hidden">
+                <div className="self-stretch flex-1 flex justify-start items-start gap-2.5 w-full overflow-hidden">
+                    <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-center gap-7 overflow-hidden shadow-sm w-full">
+                        <div className="self-stretch h-full flex flex-col justify-start items-center gap-3 w-full">
+                            
+                            {/* Header Tabs */}
+                            <div className="self-stretch inline-flex justify-between items-center flex-shrink-0">
+                                <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-2.5">
+                                    <button 
+                                        onClick={() => setReportView('NET_WORTH')}
+                                        className={`px-3.5 h-full rounded-lg flex justify-center items-center gap-3 transition-all ${
+                                            reportView === 'NET_WORTH' ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]' : 'hover:bg-white/50'
                                         }`}
                                     >
-                                        Expense Mode
+                                        <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${
+                                            reportView === 'NET_WORTH' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'
+                                        }`}>Net Worth</span>
                                     </button>
-                                    <button
-                                        onClick={() => setMode('CASH_OUTFLOW')}
-                                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
-                                            mode === 'CASH_OUTFLOW' ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+                                    <button 
+                                        onClick={() => setReportView('PROFIT_LOSS')}
+                                        className={`px-3.5 h-full rounded-lg flex justify-center items-center gap-3 transition-all ${
+                                            reportView === 'PROFIT_LOSS' ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]' : 'hover:bg-white/50'
                                         }`}
                                     >
-                                        Outflow Mode
+                                        <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${
+                                            reportView === 'PROFIT_LOSS' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'
+                                        }`}>Profit/Loss</span>
                                     </button>
+                                    {reportView === 'PROFIT_LOSS' && (
+                                        <>
+                                            <div className="w-[1px] h-3 bg-gray-300"></div>
+                                        </>
+                                    )}
                                 </div>
-                            )}
 
-                            <div className="h-8 w-px bg-gray-200 hidden md:block"></div>
-
-                            {/* Period Navigation */}
-                            <div className="flex items-center gap-2">
-                                <select 
-                                    value={periodType}
-                                    onChange={(e) => setPeriodType(e.target.value as PeriodType)}
-                                    className="bg-gray-50 border border-gray-200 text-gray-700 text-sm rounded-lg focus:ring-brand-green focus:border-brand-green block p-2 outline-none font-bold"
-                                >
-                                    <option value="WEEKLY">Weekly</option>
-                                    <option value="MONTHLY">Monthly</option>
-                                    <option value="QUARTERLY">Quarterly</option>
-                                </select>
-
-                                <div className="flex items-center bg-gray-50 rounded-lg border border-gray-200">
-                                    <button onClick={handlePrevPeriod} className="p-2 text-gray-500 hover:text-brand-navy transition-colors">
-                                        <ChevronLeft className="h-5 w-5" />
+                                <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-2.5">
+                                    <button onClick={handlePrevPeriod} className="px-2 h-full rounded flex items-center hover:bg-white/50 transition-colors">
+                                        <ChevronLeft size={14} className="text-gray-600" />
                                     </button>
-                                    <span className="text-sm font-bold text-brand-navy min-w-[120px] text-center px-2">
+                                    <div className="px-2 text-center text-gray-900 text-[10px] font-bold font-['DM_Sans'] uppercase min-w-[80px]">
                                         {periodData.label}
-                                    </span>
-                                    <button onClick={handleNextPeriod} className="p-2 text-gray-500 hover:text-brand-navy transition-colors">
-                                        <ChevronRight className="h-5 w-5" />
+                                    </div>
+                                    <button onClick={handleNextPeriod} className="px-2 h-full rounded flex items-center hover:bg-white/50 transition-colors">
+                                        <ChevronRight size={14} className="text-gray-600" />
                                     </button>
                                 </div>
                             </div>
 
-                            <div className="h-8 w-px bg-gray-200 hidden md:block"></div>
-
-                            {/* View Settings */}
-                            <div className="relative">
-                                <button
-                                    onClick={() => setIsSettingsOpen(!isSettingsOpen)}
-                                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold border transition-colors ${
-                                        isSettingsOpen 
-                                        ? 'bg-brand-navy text-white shadow-sm border-brand-navy' 
-                                        : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                                    }`}
-                                >
-                                    <SlidersHorizontal className="h-4 w-4" />
-                                    View
-                                </button>
-
-                                {isSettingsOpen && (
-                                    <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-2xl shadow-xl border border-gray-100 z-50 p-4 animate-in fade-in slide-in-from-top-2">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h3 className="font-bold text-gray-900">View Settings</h3>
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            {/* Quick Filters */}
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Preset Filters</p>
-                                                <button
-                                                    onClick={() => setExcludeZeroSpend(!excludeZeroSpend)}
-                                                    className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors group text-left"
-                                                >
-                                                    <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
-                                                        <Filter className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
-                                                        Exclude Zero Spend
-                                                    </div>
-                                                    <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${excludeZeroSpend ? 'bg-brand-green' : 'bg-gray-200'}`}>
-                                                        <div className={`w-3 h-3 bg-white rounded-full absolute transition-transform ${excludeZeroSpend ? 'translate-x-4' : 'translate-x-1'}`} />
-                                                    </div>
-                                                </button>
-                                            </div>
-
-                                            <div className="h-px bg-gray-100"></div>
-
-                                            {/* Account Grouping settings */}
-                                            <div>
-                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">Account Grouping</p>
-                                                
-                                                <label className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors cursor-pointer group mb-2">
-                                                    <div className="flex items-center gap-2 text-sm text-gray-700 font-medium">
-                                                        <FolderOutput className="h-4 w-4 text-gray-400 group-hover:text-brand-navy" />
-                                                        Group by Custom Groups
-                                                    </div>
-                                                    <div className={`w-8 h-4 rounded-full transition-colors relative flex items-center ${isGroupingEnabled ? 'bg-brand-green' : 'bg-gray-200'}`}>
-                                                        <div className={`w-3 h-3 bg-white rounded-full absolute transition-transform ${isGroupingEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
-                                                    </div>
-                                                    <input type="checkbox" className="hidden" checked={isGroupingEnabled} onChange={toggleGrouping} />
-                                                </label>
-
-                                                <div className="flex items-center gap-2 mb-2 px-2">
-                                                    <input 
-                                                        type="text" 
-                                                        value={newGroupName}
-                                                        onChange={(e) => setNewGroupName(e.target.value)}
-                                                        placeholder="New Group Name"
-                                                        className="flex-1 text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-brand-green focus:ring-1 focus:ring-brand-green"
-                                                        onKeyDown={(e) => { if(e.key === 'Enter') handleCreateGroup() }}
-                                                    />
-                                                    <button 
-                                                        onClick={handleCreateGroup}
-                                                        disabled={!newGroupName.trim()}
-                                                        className="p-1.5 bg-brand-green text-white rounded-lg hover:bg-brand-navy transition-colors disabled:opacity-50"
-                                                    >
-                                                        <Plus className="h-4 w-4" />
-                                                    </button>
+                            {/* Main Chart/Reporting Area */}
+                            <div className="w-full flex-1 flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1 min-h-0">
+                                {isChartOpen ? (
+                                    <div className="w-full flex-1 min-h-0 flex flex-col bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 overflow-visible mb-4 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)]">
+                                        <div className="w-full py-4 px-6 flex justify-between items-center border-b border-gray-100">
+                                            <div className="flex flex-col">
+                                                <div className="text-gray-500 text-xs font-normal uppercase tracking-wider mb-1">
+                                                    {reportView === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}
                                                 </div>
-
-                                                {groups.length > 0 && (
-                                                    <div className="max-h-32 overflow-y-auto pr-1 space-y-1 custom-scrollbar px-2 mt-2 border-t border-gray-100 pt-2">
-                                                        {groups.map(group => (
-                                                            <div key={group.id} className="flex items-center justify-between text-sm py-1 group/item">
-                                                                <span className="text-gray-600 truncate mr-2">{group.name}</span>
-                                                                <button 
-                                                                    onClick={() => handleDeleteGroup(group.id)}
-                                                                    className="text-red-400 hover:text-red-600 opacity-0 group-hover/item:opacity-100 transition-opacity"
-                                                                >
-                                                                    <Trash2 className="h-3 w-3" />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                )}
+                                                <div className="text-black text-3xl font-bold font-['DM_Sans'] leading-none">
+                                                    K{(reportView === 'PROFIT_LOSS' ? totals.totalProfit : totals.netWorth).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </div>
                                             </div>
-
-                                            <div className="h-px bg-gray-100"></div>
-
-                                            {/* Account Visibility */}
-                                            <div>
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Account Visibility</p>
-                                                    {hiddenAccounts.size > 0 && (
-                                                        <button 
-                                                            onClick={() => setHiddenAccounts(new Set())}
-                                                            className="text-xs font-bold text-brand-green hover:text-brand-navy transition-colors"
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex bg-slate-100 p-1 rounded-lg">
+                                                    {(['1D', '1W', '1M', '3M', 'YTD'] as const).map(tf => (
+                                                        <button
+                                                            key={tf}
+                                                            onClick={() => setChartTimeframe(tf)}
+                                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-colors ${chartTimeframe === tf ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-900'}`}
                                                         >
-                                                            Show All
+                                                            {tf}
                                                         </button>
-                                                    )}
-                                                </div>
-                                                <div className="max-h-60 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
-                                                    {allAccounts
-                                                        .filter(acc => (reportView === 'PROFIT_LOSS' ? ['INCOME', 'EXPENSE'] : ['ASSET', 'LIABILITY', 'EQUITY']).includes(acc.type))
-                                                        .map(account => (
-                                                            <button
-                                                                key={account.id}
-                                                                onClick={() => toggleAccountVisibility(account.id)}
-                                                                className="w-full flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors group text-left"
-                                                            >
-                                                                <span className={`text-sm font-medium truncate pr-2 ${hiddenAccounts.has(account.id) ? 'text-gray-400' : 'text-gray-700'}`}>
-                                                                    {account.name}
-                                                                </span>
-                                                                {hiddenAccounts.has(account.id) ? (
-                                                                    <EyeOff className="h-4 w-4 text-gray-300 flex-shrink-0" />
-                                                                ) : (
-                                                                    <Eye className="h-4 w-4 text-brand-navy flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                                                                )}
-                                                            </button>
                                                     ))}
                                                 </div>
+                                                <button onClick={() => setIsChartOpen(false)} className="text-gray-400 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-50">
+                                                    <EyeOff size={18} />
+                                                </button>
                                             </div>
                                         </div>
+
+                                        {/* Chart area */}
+                                        {chartLoading ? (
+                                            <div className="flex items-center justify-center h-[360px]">
+                                                <Loader2 className="h-8 w-8 animate-spin text-[#2563EB]" />
+                                            </div>
+                                        ) : chartData.length > 0 ? (() => {
+                                            const CHART_H = 360;
+                                            const MARGIN = { top: 16, right: 40, bottom: 40, left: 0 };
+                                            const yTickFormatter = (val: number) =>
+                                                val >= 1000000 ? `K${(val / 1000000).toFixed(1)}M` : val >= 1000 ? `K${(val / 1000).toFixed(0)}k` : `K${val}`;
+                                            const minVal = Math.min(...chartData.map(d => d.value));
+                                            const maxVal = Math.max(...chartData.map(d => d.value));
+                                            const pad = (maxVal - minVal) * 0.1 || 1;
+                                            const domain: [number, number] = [Math.max(0, minVal - pad), maxVal + pad];
+                                            const tooltipContent = (props: Record<string, unknown>) => {
+                                                const { active, payload, label } = props as { active?: boolean; payload?: { value: number }[]; label?: string | number };
+                                                if (active && payload && payload.length) {
+                                                    const val = Number(payload[0].value ?? 0);
+                                                    return (
+                                                        <div className="bg-gray-900 text-white p-3 rounded-lg shadow-xl outline outline-1 outline-white/10">
+                                                            <div className="text-[10px] text-gray-400 font-bold uppercase mb-1">
+                                                                {new Date(label as string | number).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                                                            </div>
+                                                            <div className="text-sm font-black font-['DM_Sans']">
+                                                                K{val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
+                                            };
+                                            const scrollChartWidth = Math.max(chartData.length * 80, 800);
+                                            return (
+                                                <div className="flex w-full rounded-b-xl overflow-hidden" style={{ height: CHART_H }}>
+                                                    {/* Pinned Y-axis — same height and margins as the scrollable chart */}
+                                                    <div className="flex-shrink-0" style={{ width: 72 }}>
+                                                        <AreaChart
+                                                            width={72}
+                                                            height={CHART_H}
+                                                            data={chartData}
+                                                            margin={{ top: MARGIN.top, right: 0, bottom: MARGIN.bottom, left: 0 }}
+                                                        >
+                                                            <YAxis
+                                                                axisLine={false}
+                                                                tickLine={false}
+                                                                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+                                                                tickFormatter={yTickFormatter}
+                                                                domain={domain}
+                                                                width={72}
+                                                            />
+                                                            <Area type="monotone" dataKey="value" stroke="none" fill="none" />
+                                                        </AreaChart>
+                                                    </div>
+                                                    {/* Scrollable chart body — fixed px width defeats ResponsiveContainer shrink behaviour */}
+                                                    <div className="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar">
+                                                        <AreaChart
+                                                            width={scrollChartWidth}
+                                                            height={CHART_H}
+                                                            data={chartData}
+                                                            margin={MARGIN}
+                                                        >
+                                                            <defs>
+                                                                <linearGradient id="colorValueDesktop" x1="0" y1="0" x2="0" y2="1">
+                                                                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
+                                                                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                                                                </linearGradient>
+                                                            </defs>
+                                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                                            <XAxis
+                                                                dataKey="startDate"
+                                                                axisLine={false}
+                                                                tickLine={false}
+                                                                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+                                                                tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                                dy={10}
+                                                                minTickGap={40}
+                                                            />
+                                                            <YAxis hide domain={domain} />
+                                                            <Tooltip content={tooltipContent} cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                                                            <Area
+                                                                type="monotone"
+                                                                dataKey="value"
+                                                                stroke="#3B82F6"
+                                                                strokeWidth={3}
+                                                                fillOpacity={1}
+                                                                fill="url(#colorValueDesktop)"
+                                                                activeDot={{ r: 6, fill: '#3B82F6', stroke: 'white', strokeWidth: 2 }}
+                                                            />
+                                                        </AreaChart>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })() : (
+                                            <div className="flex items-center justify-center h-[360px] text-gray-400">No chart data available for this period.</div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <div className="w-full flex flex-col gap-4">
+                                        {/* Desktop Summary Banner */}
+                                        <div className="w-full h-24 p-5 bg-[#00296b] rounded-2xl flex justify-between items-center overflow-hidden mb-2">
+                                            <div className="flex flex-col justify-start items-start gap-2">
+                                                <div className="text-white text-[10px] font-normal font-['Figtree'] uppercase tracking-wider text-white/70">
+                                                    {reportView === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}
+                                                </div>
+                                                <div className="text-white text-3xl font-bold font-['DM_Sans'] leading-none">
+                                                    K {(reportView === 'PROFIT_LOSS' ? totals.totalProfit : totals.netWorth).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                </div>
+                                            </div>
+                                            <div className="flex flex-col justify-center items-end">
+                                                <button
+                                                    onClick={() => setIsChartOpen(true)}
+                                                    className="px-4 py-2 bg-white rounded-lg text-gray-900 text-xs font-bold font-['DM_Sans'] hover:bg-gray-100 transition-colors"
+                                                >
+                                                    Go to Chart
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Financial Highlights */}
+                                        <FinancialHighlights />
+
+                                        {/* Transactions Header */}
+                                        <div className="w-full h-8 py-0.5 inline-flex justify-between items-center flex-shrink-0 mt-2 mb-1">
+                                            <div className="flex justify-start items-center gap-2.5">
+                                                <div className="text-black text-xl font-semibold font-['DM_Sans'] leading-6">Transactions</div>
+                                            </div>
+                                            <div className="flex justify-end items-center gap-6">
+                                                <div className="flex justify-start items-center gap-4">
+                                                    <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                                                        <Search size={16} className="text-gray-900" />
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
+                                                        className="p-1 hover:bg-gray-100 rounded-lg transition-colors"
+                                                    >
+                                                        <ArrowUpDown size={16} className="text-gray-900" />
+                                                    </button>
+                                                    <button className="p-1 hover:bg-gray-100 rounded-lg transition-colors">
+                                                        <Filter size={16} className="text-gray-900" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                                            <div className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-center items-center p-8 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)]">
+                                                <Loader2 className="h-7 w-7 animate-spin text-[#2563EB]" />
+                                            </div>
+                                        ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
+                                            <div className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-center items-center p-8 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] text-center text-gray-500 font-bold">
+                                                No financial records found for this period.
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
+                                                    if (groupData.items.length === 0) return null;
+                                                    const progressPercent = groupData.totals.budgeted_amount > 0 ? (groupData.totals.total_amount / groupData.totals.budgeted_amount) * 100 : 0;
+                                                    const change = getPercentageChange(groupData.totals.total_amount, groupData.totals.prev_total_amount);
+                                                    const isExpanded = expandedGroups.has(groupId);
+
+                                                    return (
+                                                        <div key={`desk-group-${groupId}`} className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-start items-start px-5 pt-4 pb-6 transition-all gap-3">
+                                                            {/* Category Header */}
+                                                            <div 
+                                                                onClick={() => toggleGroupExpand(groupId)}
+                                                                className="w-full flex justify-between items-center cursor-pointer mb-2"
+                                                            >
+                                                                <div className="flex justify-start items-center gap-2">
+                                                                    <h3 className="text-gray-900 text-sm font-semibold font-['DM_Sans'] leading-5">{groupData.groupName}</h3>
+                                                                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{groupData.items.length}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    <span className="text-sm font-black font-['DM_Sans'] text-gray-900">
+                                                                        K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                    </span>
+                                                                    {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                                                                </div>
+                                                            </div>
+
+                                                            {isExpanded && (
+                                                                <div className="w-full flex flex-col gap-4 mt-3">
+                                                                    {groupData.totals.budgeted_amount > 0 && (
+                                                                        <div className="w-full space-y-2 pb-1">
+                                                                            <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
+                                                                                <div 
+                                                                                    className={`h-full rounded-full transition-all duration-500 ${progressPercent > 100 ? 'bg-red-500' : 'bg-[#006AFF]'}`}
+                                                                                    style={{ width: `${Math.min(progressPercent, 100)}%` }}
+                                                                                />
+                                                                            </div>
+                                                                            <div className="flex justify-between items-center text-[10px] font-bold text-gray-400">
+                                                                                <span>Budget: K{groupData.totals.budgeted_amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                                <span className={`flex items-center text-[11px] font-bold ${
+                                                                                    groupId === 'EXPENSE' || groupId === 'LIABILITY'
+                                                                                        ? (change.isIncrease ? 'text-red-500' : 'text-emerald-500')
+                                                                                        : (change.isIncrease ? 'text-emerald-500' : 'text-red-500')
+                                                                                }`}>
+                                                                                    {change.isIncrease ? <ArrowUpRight size={11} className="mr-0.5" /> : <ArrowDownRight size={11} className="mr-0.5" />}
+                                                                                    {change.value}%
+                                                                                </span>
+                                                                            </div>
+                                                                        </div>
+                                                                    )}
+
+                                                                    {/* Subaccounts list */}
+                                                                    <div className="w-full space-y-5 mt-1">
+                                                                        {groupData.items.map((row: any, idx: number) => {
+                                                                            const isRowExpanded = expandedAccount === row.account_id;
+                                                                            const prev = Number(row.prev_total_amount) || 0;
+                                                                            const curr = Number(row.total_amount) || 0;
+                                                                            const maxAmt = Math.max(prev, curr, 1);
+                                                                            const changed = Math.abs(curr - prev) > 0.005;
+                                                                            const isIncrease = curr > prev;
+                                                                            const basePct = (Math.min(prev, curr) / maxAmt) * 100;
+                                                                            const deltaPct = (Math.abs(curr - prev) / maxAmt) * 100;
+                                                                            const deltaAmt = curr - prev;
+                                                                            const rowChange = getPercentageChange(curr, prev);
+                                                                            const items = accountItems[row.account_id] || [];
+                                                                            const hasNew = items.some(it => isNewTxn(it.date));
+
+                                                                            return (
+                                                                                <div key={`desk-subacc-${row.account_id}`} className="w-full flex flex-col gap-2">
+                                                                                    <div 
+                                                                                        onClick={() => toggleExpand(row.account_id)}
+                                                                                        className="cursor-pointer w-full flex flex-col gap-2"
+                                                                                    >
+                                                                                        <div className="w-full flex justify-between items-center">
+                                                                                            <div className="flex justify-start items-center gap-2 min-w-0">
+                                                                                                {isRowExpanded ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
+                                                                                                <span className="text-gray-900 text-sm font-medium font-['DM_Sans'] truncate">{row.account_name}</span>
+                                                                                                {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
+                                                                                            </div>
+                                                                                            <span className="text-gray-900 text-sm font-medium font-['DM_Sans'] whitespace-nowrap">
+                                                                                                K{curr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                                            </span>
+                                                                                        </div>
+
+                                                                                        <div className="w-full h-1.5 rounded-full bg-zinc-100 overflow-hidden flex">
+                                                                                            {changed ? (
+                                                                                                <>
+                                                                                                    <div className="h-full bg-gray-300" style={{ width: `${basePct}%` }} />
+                                                                                                    <div
+                                                                                                        className="h-full"
+                                                                                                        style={{
+                                                                                                            width: `${deltaPct}%`,
+                                                                                                            backgroundColor: isIncrease ? '#3B82F6' : '#E88E8E',
+                                                                                                        }}
+                                                                                                    />
+                                                                                                </>
+                                                                                            ) : (
+                                                                                                <div className="h-full bg-gray-300" style={{ width: '100%' }} />
+                                                                                            )}
+                                                                                        </div>
+
+                                                                                        <div className="w-full flex justify-between items-center text-[10px] font-normal font-['DM_Sans']">
+                                                                                            <div className="flex items-center gap-1.5 text-neutral-500 opacity-50">
+                                                                                                <span>{prev.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                                                <ChevronRight size={10} className="text-slate-400" />
+                                                                                                <span>{curr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                                            </div>
+                                                                                            <div className="flex items-center gap-1 text-neutral-500">
+                                                                                                {changed ? (
+                                                                                                    <>
+                                                                                                        {isIncrease ? <ArrowUpRight size={10} className="text-blue-500" /> : <ArrowDownRight size={10} className="text-red-400" />}
+                                                                                                        <span className={isIncrease ? 'text-blue-500' : 'text-red-400'}>
+                                                                                                            {isIncrease ? '+' : '-'}K{Math.abs(deltaAmt).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
+                                                                                                            (<span className="font-bold">{isIncrease ? '+' : '-'}{rowChange.value}%</span>)
+                                                                                                        </span>
+                                                                                                    </>
+                                                                                                ) : (
+                                                                                                    <span>– (<span className="font-bold">-%</span>)</span>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+
+                                                                                    {/* Transaction details cascade */}
+                                                                                    {isRowExpanded && (
+                                                                                        <div className="mt-2 bg-gray-50 rounded-xl p-3 border border-gray-100 space-y-3 shadow-inner">
+                                                                                            <div className="flex justify-between items-center pb-2 border-b border-gray-200/50">
+                                                                                                <h5 className="text-[10px] font-black text-gray-400 uppercase tracking-wider">Transaction History</h5>
+                                                                                                <button
+                                                                                                    onClick={(e) => {
+                                                                                                        e.stopPropagation();
+                                                                                                        setSelectedAccountForBudget({ id: row.account_id, name: row.account_name });
+                                                                                                        setIsBudgetModalOpen(true);
+                                                                                                    }}
+                                                                                                    className="text-[10px] font-bold text-[#006AFF] hover:underline"
+                                                                                                >
+                                                                                                    Set Budget
+                                                                                                </button>
+                                                                                            </div>
+
+                                                                                            {itemsLoading ? (
+                                                                                                <div className="flex items-center text-xs text-gray-500 py-2">
+                                                                                                    <Loader2 className="h-3 w-3 animate-spin mr-1.5 text-[#006AFF]" />
+                                                                                                    Loading items...
+                                                                                                </div>
+                                                                                            ) : !items.length ? (
+                                                                                                <div className="text-xs text-gray-400 py-1 italic">No transactions found for this period.</div>
+                                                                                            ) : (
+                                                                                                <div className="space-y-2">
+                                                                                                    {items.map(item => {
+                                                                                                        const fresh = isNewTxn(item.date);
+                                                                                                        return (
+                                                                                                            <div key={item.id} className="text-xs flex justify-between items-start py-1 border-b border-gray-100 last:border-0 last:pb-0">
+                                                                                                                <div className="flex flex-col pr-4 min-w-0">
+                                                                                                                    <span className="font-medium text-gray-700 truncate">{item.description}</span>
+                                                                                                                    <span className="text-[10px] text-gray-400 flex items-center gap-1">
+                                                                                                                        {new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                                                                                                                        {fresh && <span className="bg-[#006AFF] text-white text-[8px] font-bold px-1 py-0.5 rounded uppercase leading-none">New</span>}
+                                                                                                                    </span>
+                                                                                                                </div>
+                                                                                                                <span className="font-black whitespace-nowrap text-gray-900 mt-0.5">
+                                                                                                                    K{Number(item.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                                                                </span>
+                                                                                                            </div>
+                                                                                                        );
+                                                                                                    })}
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </>
+                                        )}
                                     </div>
                                 )}
                             </div>
                         </div>
                     </div>
                 </div>
-
-                {/* Report Type Toggle Pill Selector */}
-                <div className="flex bg-gray-100/80 p-1 rounded-2xl max-w-sm mx-auto mb-8 border border-gray-200/50">
-                    <button
-                        onClick={() => setReportView('NET_WORTH')}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all text-center ${
-                            reportView === 'NET_WORTH' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                    >
-                        Net Worth
-                    </button>
-                    <button
-                        onClick={() => setReportView('PROFIT_LOSS')}
-                        className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all text-center ${
-                            reportView === 'PROFIT_LOSS' ? 'bg-white text-brand-navy shadow-sm font-extrabold' : 'text-gray-500 hover:text-gray-900'
-                        }`}
-                    >
-                        Profit/Loss
-                    </button>
-                </div>
-
-                {/* Desktop Summary Card */}
-                <div
-                    className="rounded-[28px] p-8 text-white shadow-lg relative overflow-hidden mb-8"
-                    style={{
-                        backgroundImage: `url(${budgetBg})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                    }}
-                >
-                    {reportView === 'PROFIT_LOSS' ? (
-                        <>
-                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
-                                Total Profit
-                            </p>
-                            <div className="flex items-baseline justify-between">
-                                <h2 className="text-[42px] font-black leading-none tracking-tight">
-                                    K{totals.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </h2>
-                                <span className="text-[32px] font-black leading-none font-bold">
-                                    <span className="text-[#4D9FFF]">{totals.profitChange.isIncrease ? '+' : '-'}</span>
-                                    <span className="text-white">{totals.profitChange.value}%</span>
-                                </span>
-                            </div>
-                            
-                            <div className="bg-white/10 rounded-2xl px-6 py-4 mt-6 flex justify-between items-center text-xs font-bold text-white/90 max-w-2xl">
-                                <div className="flex items-center gap-2">
-                                    <Link2 size={14} className="text-white/60" />
-                                    <span>Total Revenue <strong className="font-extrabold text-white">K{totals.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                                <div className="h-4 w-px bg-white/20"></div>
-                                <div className="flex items-center gap-2">
-                                    <ArrowUpRight size={15} className="text-[#34D399]" />
-                                    <span>Total Expenses <strong className="font-extrabold text-white">K{totals.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <p className="text-white/60 text-xs font-bold uppercase tracking-wider mb-1">
-                                Net Worth
-                            </p>
-                            <div className="flex items-baseline justify-between">
-                                <h2 className="text-[42px] font-black leading-none tracking-tight">
-                                    K{totals.netWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </h2>
-                                <span className="text-[32px] font-black leading-none font-bold">
-                                    <span className="text-[#4D9FFF]">{totals.netWorthChange.isIncrease ? '+' : '-'}</span>
-                                    <span className="text-white">{totals.netWorthChange.value}%</span>
-                                </span>
-                            </div>
-                            
-                            <div className="bg-white/10 rounded-2xl px-6 py-4 mt-6 flex justify-between items-center text-xs font-bold text-white/90 max-w-2xl">
-                                <div className="flex items-center gap-2">
-                                    <Link2 size={14} className="text-white/60" />
-                                    <span>Total Assets <strong className="font-extrabold text-white">K{totals.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                                <div className="h-4 w-px bg-white/20"></div>
-                                <div className="flex items-center gap-2">
-                                    <ArrowUpRight size={15} className="text-[#34D399]" />
-                                    <span>Total Liabilities <strong className="font-extrabold text-white">K{totals.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
-
-                {/* Category Group Cards - Separate cards for each group */}
-                {loading && (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center text-gray-500 mt-8">
-                        <Loader2 className="h-8 w-8 animate-spin text-[#006AFF] mx-auto mb-4" />
-                        Loading reports...
-                    </div>
-                ) : (!displayData.isGrouped ? displayData.data?.length === 0 : displayData.flatData?.length === 0) ? (
-                    <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-8 text-center text-gray-500 font-medium mt-8">
-                        No financial records found for this period.
-                    </div>
-                ) : (
-                    <div className="space-y-6 mt-8">
-                        {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
-                            if (groupData.items.length === 0) return null;
-                            
-                            const isExpanded = expandedGroups.has(groupId);
-                            
-                            return (
-                                <div key={groupId} className="bg-white rounded-3xl shadow-md border border-gray-100 overflow-hidden">
-                                    {/* Category Header */}
-                                    <div 
-                                        onClick={() => toggleGroupExpand(groupId)}
-                                        className="bg-gray-50/50 px-6 py-4 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-50 transition-colors"
-                                    >
-                                        <div className="flex items-center gap-2">
-                                            {isExpanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
-                                            <FolderOutput className="h-4 w-4 text-brand-green" />
-                                            <h2 className="text-md font-bold text-brand-navy">{groupData.groupName}</h2>
-                                            <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200">
-                                                {groupData.items.length} accounts
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-6 text-sm font-bold text-gray-700">
-                                            <div>
-                                                <span className="text-gray-400 text-xs font-medium mr-2">TOTAL</span>
-                                                <span className="text-brand-navy">K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                                            </div>
-                                            {groupData.totals.budgeted_amount > 0 && (
-                                                <>
-                                                    <div className="h-4 w-px bg-gray-200"></div>
-                                                    <div>
-                                                        <span className="text-gray-400 text-xs font-medium mr-2">BUDGET</span>
-                                                        <span>K{groupData.totals.budgeted_amount.toLocaleString()}</span>
-                                                    </div>
-                                                    <div className="h-4 w-px bg-gray-200"></div>
-                                                    <div>
-                                                        <span className="text-gray-400 text-xs font-medium mr-2">VARIANCE</span>
-                                                        <span className={groupData.totals.variance >= 0 ? 'text-brand-green' : 'text-red-500'}>
-                                                            {groupData.totals.variance >= 0 ? '+' : ''}K{groupData.totals.variance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                        </span>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {isExpanded && (
-                                        <div className="overflow-x-auto">
-                                            <table className="w-full text-left border-collapse">
-                                                <thead>
-                                                    <tr className="border-b border-gray-100 bg-gray-50/10">
-                                                        <th className="p-4 w-12">
-                                                            <input 
-                                                                type="checkbox" 
-                                                                className="rounded text-brand-green focus:ring-brand-green border-gray-300 w-4 h-4 cursor-pointer"
-                                                                checked={groupData.items.every((item: any) => selectedAccounts.has(item.account_id))}
-                                                                onChange={(e) => {
-                                                                    e.stopPropagation();
-                                                                    const allInGroup = groupData.items.every((item: any) => selectedAccounts.has(item.account_id));
-                                                                    setSelectedAccounts(prev => {
-                                                                        const next = new Set(prev);
-                                                                        groupData.items.forEach((item: any) => {
-                                                                            if (allInGroup) next.delete(item.account_id);
-                                                                            else next.add(item.account_id);
-                                                                        });
-                                                                        return next;
-                                                                    });
-                                                                }}
-                                                            />
-                                                        </th>
-                                                        <th className="py-4 pr-4 font-bold text-xs uppercase tracking-widest text-gray-500">
-                                                            Account Name
-                                                        </th>
-                                                        <th className="p-4 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
-                                                            {reportView === 'PROFIT_LOSS' ? 'Actual Amount' : 'Balance'}
-                                                        </th>
-                                                        <th className="p-4 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
-                                                            {reportView === 'PROFIT_LOSS' ? 'Budget Limit' : 'Target'}
-                                                        </th>
-                                                        <th className="p-4 font-bold text-xs uppercase tracking-widest text-gray-500 text-right">
-                                                            Variance
-                                                        </th>
-                                                        <th className="p-4 text-right font-bold text-xs uppercase tracking-widest text-gray-500">
-                                                            Actions
-                                                        </th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody className="divide-y divide-gray-100">
-                                                    {groupData.items.map((row: any) => renderAccountRow(row))}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
-                )}
-
-                {/* Bulk Actions Floating Toolbar */}
-                {selectedAccounts.size > 0 && (
-                    <div className="sticky bottom-6 z-40 mt-6 animate-in fade-in slide-in-from-bottom-8 duration-300">
-                        <div className="bg-brand-navy text-white px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_8px_30px_rgba(0,0,0,0.2)] rounded-2xl border border-white/10 backdrop-blur-xl bg-blend-overlay">
-                            <div className="flex items-center gap-4">
-                                <span className="font-bold text-white text-sm flex items-center gap-2">
-                                    <FolderOutput className="h-4 w-4" />
-                                    {selectedAccounts.size} account{selectedAccounts.size > 1 ? 's' : ''} selected
-                                </span>
-                                <span className="text-sm font-medium text-gray-300 hidden sm:inline ml-4 border-l border-white/20 pl-4">Choose action:</span>
-                            </div>
-                            <div className="flex items-center gap-3 w-full sm:w-auto">
-                                <button
-                                    onClick={handleBulkHide}
-                                    className="bg-white/10 border border-white/20 text-white font-bold text-sm rounded-lg px-4 py-2.5 hover:bg-white/20 transition-colors flex items-center gap-2 flex-1 sm:flex-none"
-                                >
-                                    <EyeOff className="w-4 h-4" />
-                                    Hide Selected
-                                </button>
-                                <select
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val !== 'none-selected') {
-                                            handleAssignToGroup(val === 'remove' ? null : val);
-                                            e.target.value = 'none-selected'; // reset drop-down immediately
-                                        }
-                                    }}
-                                    className="flex-1 sm:flex-none bg-white/10 border border-white/20 text-white font-bold text-sm rounded-lg px-4 py-2.5 focus:ring-2 focus:ring-brand-green appearance-none cursor-pointer outline-none hover:bg-white/20 transition-colors [&>option]:text-gray-900 [&>option]:bg-white"
-                                    defaultValue="none-selected"
-                                >
-                                    <option value="none-selected" disabled>Assign to group...</option>
-                                    <option value="remove" className="!text-red-500 font-bold">✖ Remove from Group</option>
-                                    <option disabled>──────────</option>
-                                    {groups.map(g => (
-                                        <option key={g.id} value={g.id}>{g.name}</option>
-                                    ))}
-                                </select>
-                                <button 
-                                    onClick={() => setSelectedAccounts(new Set())}
-                                    className="text-sm font-bold text-gray-400 hover:text-white transition-colors px-4 py-2.5 rounded-lg hover:bg-white/10 whitespace-nowrap"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
 
             {/* Mobile Responsive View */}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { userService, UserProfile } from '../../services/user.service';
-import { Loader2, UserPlus, Shield, Trash2, Eye, Mail } from 'lucide-react';
+import { Loader2, UserPlus, Shield, Trash2, Eye, Mail, Plus, MoreHorizontal } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../Modal';
 
@@ -13,6 +13,18 @@ export const UserManagement: React.FC = () => {
     const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
     const [viewingUser, setViewingUser] = useState<UserProfile | null>(null);
     const [actionLoading, setActionLoading] = useState(false);
+    const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+    const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setOpenDropdownId(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     // New User Form State
     const [newUser, setNewUser] = useState({
@@ -130,7 +142,7 @@ export const UserManagement: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
+            <div className="flex justify-between items-center">
                 <div>
                     <h3 className="text-xl font-bold text-brand-navy">Team Members</h3>
                     <p className="text-sm text-gray-500 mt-1">Manage users and their roles within your organization.</p>
@@ -138,10 +150,10 @@ export const UserManagement: React.FC = () => {
                 {isAdmin && (
                     <button
                         onClick={() => setIsAddModalOpen(true)}
-                        className="inline-flex items-center px-5 py-2.5 border border-transparent rounded-xl shadow-lg shadow-brand-green/20 text-sm font-bold text-white bg-brand-green hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-all transform active:scale-95"
+                        className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                     >
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Add Member
+                        <span className="text-white text-xs font-bold">Add Member</span>
+                        <Plus size={14} className="text-white" />
                     </button>
                 )}
             </div>
@@ -152,24 +164,23 @@ export const UserManagement: React.FC = () => {
                 </div>
             )}
 
-            <div className="bg-white shadow-sm rounded-2xl border border-gray-100 overflow-hidden">
-                <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-100">
-                        <thead className="bg-gray-50/50">
-                            <tr>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">User</th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Role</th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Status</th>
-                                <th scope="col" className="px-6 py-4 text-left text-xs font-bold text-gray-500 uppercase tracking-widest">Joined</th>
-                                <th scope="col" className="px-6 py-4 text-center text-xs font-bold text-gray-500 uppercase tracking-widest">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="bg-white divide-y divide-gray-50">
-                            {users.map((user) => (
-                                <tr key={user.id} className="hover:bg-gray-50/80 transition-colors group">
-                                    <td className="px-6 py-4 whitespace-nowrap">
+            <div className="rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden overflow-x-auto">
+                <table className="w-full text-left">
+                    <thead>
+                        <tr className="border-b border-[#E8EEF8]">
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">User</th>
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Role</th>
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Status</th>
+                            <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Joined</th>
+                            <th className="py-2.5 px-3 w-12"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {users.map((user) => (
+                            <tr key={user.id} className="group transition-colors border-b border-[#E8EEF8]/40 hover:bg-gray-50/70">
+                                <td className="py-3.5 px-3 whitespace-nowrap">
                                         <div className="flex items-center">
-                                            <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-brand-green/10 flex items-center justify-center text-brand-green font-bold text-sm shadow-inner transition-transform group-hover:scale-110">
+                                            <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center text-[#0058DB] font-bold text-sm shadow-inner transition-transform group-hover:scale-110">
                                                 {user.name.charAt(0).toUpperCase()}
                                             </div>
                                             <div className="ml-4">
@@ -178,8 +189,8 @@ export const UserManagement: React.FC = () => {
                                                 <div className="text-[10px] text-gray-400 font-bold mt-0.5 tracking-wider uppercase">ID: {user.employee_id || user.id.slice(0, 8)}</div>
                                             </div>
                                         </div>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                                </td>
+                                <td className="py-3.5 px-3 whitespace-nowrap">
                                         <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold tracking-wider uppercase ${user.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border border-purple-100' :
                                             user.role === 'CASHIER' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
                                                 user.role === 'ACCOUNTANT' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' :
@@ -188,8 +199,8 @@ export const UserManagement: React.FC = () => {
                                             <Shield className="w-3 h-3 mr-1.5" />
                                             {user.role}
                                         </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                                </td>
+                                <td className="py-3.5 px-3 whitespace-nowrap">
                                         <span className={`px-2.5 py-0.5 inline-flex text-[10px] font-bold leading-5 rounded-full border ${user.status === 'ACTIVE'
                                             ? 'bg-green-50 text-green-700 border-green-100'
                                             : user.status === 'PENDING_APPROVAL'
@@ -198,66 +209,76 @@ export const UserManagement: React.FC = () => {
                                             }`}>
                                             {user.status === 'PENDING_APPROVAL' ? 'PENDING' : user.status}
                                         </span>
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-medium font-mono">
+                                </td>
+                                <td className="py-3.5 px-3 whitespace-nowrap text-sm text-gray-500 font-medium font-mono">
                                         {new Date(user.created_at).toLocaleDateString()}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                                        <div className="flex justify-center items-center space-x-1">
-                                            <button
-                                                onClick={() => setViewingUser(user)}
-                                                className="p-2 text-gray-400 hover:text-brand-navy hover:bg-gray-100 rounded-xl transition-all"
-                                                title="View Details"
-                                            >
-                                                <Eye className="h-4 w-4" />
-                                            </button>
+                                </td>
+                                <td className="py-3.5 px-3 whitespace-nowrap text-center">
+                                    <div className="relative flex justify-end" ref={openDropdownId === user.id ? dropdownRef : null}>
+                                        <button
+                                            onClick={() => setOpenDropdownId(openDropdownId === user.id ? null : user.id)}
+                                            className="p-1.5 rounded-lg border border-transparent hover:border-[#E8EEF8] hover:bg-[#F3F5FC] text-gray-400 hover:text-gray-600 transition-all"
+                                        >
+                                            <MoreHorizontal size={16} />
+                                        </button>
+                                        
+                                        {openDropdownId === user.id && (
+                                            <div className="absolute right-0 top-[calc(100%+4px)] z-50 w-48 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+                                                <button
+                                                    onClick={() => { setViewingUser(user); setOpenDropdownId(null); }}
+                                                    className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors"
+                                                >
+                                                    <Eye size={14} className="text-gray-400" />
+                                                    <span className="text-xs font-medium text-gray-700">View Details</span>
+                                                </button>
 
-                                            {isAdmin && (
-                                                <>
-                                                    {user.status === 'INVITED' && (
+                                                {isAdmin && (
+                                                    <>
+                                                        {user.status === 'INVITED' && (
+                                                            <button
+                                                                onClick={() => { handleResendInvite(user.id); setOpenDropdownId(null); }}
+                                                                disabled={actionLoading}
+                                                                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50"
+                                                            >
+                                                                <Mail size={14} className="text-blue-500" />
+                                                                <span className="text-xs font-medium text-gray-700">Resend Invitation</span>
+                                                            </button>
+                                                        )}
+                                                        {user.status === 'PENDING_APPROVAL' && (
+                                                            <button
+                                                                onClick={() => { handleApproveUser(user.id); setOpenDropdownId(null); }}
+                                                                disabled={actionLoading}
+                                                                className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors disabled:opacity-50"
+                                                            >
+                                                                <Shield size={14} className="text-green-500" />
+                                                                <span className="text-xs font-medium text-gray-700">Approve User</span>
+                                                            </button>
+                                                        )}
                                                         <button
-                                                            onClick={() => handleResendInvite(user.id)}
-                                                            className="p-2 text-blue-500 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-all"
-                                                            title="Resend Invitation"
-                                                            disabled={actionLoading}
+                                                            onClick={() => { setEditingUser(user); setOpenDropdownId(null); }}
+                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-[#F3F5FC] transition-colors"
                                                         >
-                                                            <Mail className="h-4 w-4" />
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil text-brand-green"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
+                                                            <span className="text-xs font-medium text-gray-700">Edit Role</span>
                                                         </button>
-                                                    )}
-                                                    {user.status === 'PENDING_APPROVAL' && (
                                                         <button
-                                                            onClick={() => handleApproveUser(user.id)}
-                                                            className="p-2 text-brand-green hover:text-green-700 hover:bg-green-50 rounded-xl transition-all font-bold text-xs"
-                                                            title="Approve User"
+                                                            onClick={() => { handleDeleteUser(user.id); setOpenDropdownId(null); }}
                                                             disabled={actionLoading}
+                                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-red-50 transition-colors disabled:opacity-50 group"
                                                         >
-                                                            Approve
+                                                            <Trash2 size={14} className="text-red-500" />
+                                                            <span className="text-xs font-medium text-red-600">Remove User</span>
                                                         </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => setEditingUser(user)}
-                                                        className="p-2 text-brand-green hover:text-green-700 hover:bg-green-50 rounded-xl transition-all"
-                                                        title="Edit Role"
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-pencil"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" /><path d="m15 5 4 4" /></svg>
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteUser(user.id)}
-                                                        className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-xl transition-all"
-                                                        title="Remove User"
-                                                        disabled={actionLoading}
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
-                                                </>
-                                            )}
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
             </div>
 
             {/* View User Modal */}
@@ -269,7 +290,7 @@ export const UserManagement: React.FC = () => {
                 {viewingUser && (
                     <div className="space-y-6">
                         <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
-                            <div className="h-16 w-16 rounded-2xl bg-brand-green text-white flex items-center justify-center text-2xl font-bold">
+                            <div className="h-16 w-16 rounded-2xl bg-[#0058DB] text-white flex items-center justify-center text-2xl font-bold">
                                 {viewingUser.name.charAt(0).toUpperCase()}
                             </div>
                             <div>

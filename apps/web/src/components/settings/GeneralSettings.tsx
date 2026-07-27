@@ -3,27 +3,22 @@ import { organizationService } from '../../services/organization.service';
 import { departmentService, Department } from '../../services/department.service';
 import {
     Building2,
-    Mail,
-    Phone,
-    MapPin,
-    Globe,
     Loader2,
-    CheckCircle,
     AlertCircle,
-    FileText,
     Trash2,
     AlertTriangle,
     X,
-    Wallet,
     Layers,
     Plus,
     Pencil,
     Check,
+    CheckCircle,
     ToggleLeft,
-    ToggleRight
+    ToggleRight,
+    Upload
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { lencoService } from '../../services/lenco.service';
+
 import { supabase } from '../../lib/supabase';
 
 export const GeneralSettings: React.FC = () => {
@@ -51,10 +46,6 @@ export const GeneralSettings: React.FC = () => {
     const [savingDept, setSavingDept] = useState(false);
     const newDeptInputRef = useRef<HTMLInputElement>(null);
 
-    // Lenco state
-    const [lencoAccounts, setLencoAccounts] = useState<any[]>([]);
-    const [fetchingLenco, setFetchingLenco] = useState(false);
-
     // Form state
     const [formData, setFormData] = useState({
         name: '',
@@ -62,19 +53,11 @@ export const GeneralSettings: React.FC = () => {
         phone: '',
         address: '',
         tax_id: '',
-        website: '',
-        lenco_public_key: '',
-        lenco_secret_key: ''
+        website: ''
     });
 
     const [logoUrl, setLogoUrl] = useState<string | null>(null);
     const [uploadingLogo, setUploadingLogo] = useState(false);
-    const [lencoSubaccountId, setLencoSubaccountId] = useState<string | null>(null);
-    const [provisioning, setProvisioning] = useState(false);
-    const [availableAccounts, setAvailableAccounts] = useState<any[]>([]);
-    const [showLinkSelector, setShowLinkSelector] = useState(false);
-    const [linking, setLinking] = useState(false);
-    const [selectedLencoId, setSelectedLencoId] = useState('');
 
     useEffect(() => {
         loadOrganization();
@@ -91,20 +74,13 @@ export const GeneralSettings: React.FC = () => {
                 phone: data.phone || '',
                 address: data.address || '',
                 tax_id: data.tax_id || '',
-                website: data.website || '',
-                lenco_public_key: data.lenco_public_key || '',
-                lenco_secret_key: data.lenco_secret_key || ''
+                website: data.website || ''
             });
-            setLencoSubaccountId(data.lenco_subaccount_id || null);
             setLogoUrl(data.logo_url || null);
             setUseDepartments(data.use_departments ?? false);
 
             if (data.use_departments) {
                 loadDepartments();
-            }
-
-            if (isAdmin) {
-                fetchLencoAccounts();
             }
         } catch (err: any) {
             console.error('Failed to load organization:', err);
@@ -114,17 +90,7 @@ export const GeneralSettings: React.FC = () => {
         }
     };
 
-    const fetchLencoAccounts = async () => {
-        try {
-            setFetchingLenco(true);
-            const accounts = await lencoService.getAccounts();
-            setLencoAccounts(accounts);
-        } catch (err) {
-            console.error('Failed to fetch Lenco accounts:', err);
-        } finally {
-            setFetchingLenco(false);
-        }
-    };
+
 
     const loadDepartments = async () => {
         try {
@@ -192,64 +158,7 @@ export const GeneralSettings: React.FC = () => {
         }
     };
 
-    const handleProvisionWallet = async () => {
-        if (!isAdmin) return;
-        
-        try {
-            setProvisioning(true);
-            setError(null);
-            const orgData = await organizationService.getOrganization();
-            const result = await lencoService.provisionOrganizationSubaccount(orgData.id);
-            
-            if (result.success) {
-                setLencoSubaccountId(result.lenco_subaccount_id);
-                setSuccessMessage('Lenco wallet successfully provisioned and locked to your organization.');
-                setTimeout(() => setSuccessMessage(null), 5000);
-                fetchLencoAccounts();
-            }
-        } catch (err: any) {
-            console.error('Provisioning failed:', err);
-            setError(err.message || 'Failed to provision Lenco wallet');
-        } finally {
-            setProvisioning(false);
-        }
-    };
 
-    const fetchAvailableAccounts = async () => {
-        try {
-            setLoading(true);
-            const accounts = await lencoService.getAvailableAccounts();
-            setAvailableAccounts(accounts);
-            setShowLinkSelector(true);
-        } catch (err: any) {
-            console.error('Failed to fetch available accounts:', err);
-            setError('Failed to fetch available Lenco accounts.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleLinkAccount = async () => {
-        if (!selectedLencoId || !isAdmin) return;
-
-        try {
-            setLinking(true);
-            setError(null);
-            const orgData = await organizationService.getOrganization();
-            await lencoService.linkOrganizationSubaccount(orgData.id, selectedLencoId);
-            
-            setLencoSubaccountId(selectedLencoId);
-            setShowLinkSelector(false);
-            setSuccessMessage('Lenco wallet successfully linked and locked to your organization.');
-            setTimeout(() => setSuccessMessage(null), 5000);
-            fetchLencoAccounts();
-        } catch (err: any) {
-            console.error('Linking failed:', err);
-            setError(err.message || 'Failed to link Lenco wallet');
-        } finally {
-            setLinking(false);
-        }
-    };
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -368,18 +277,17 @@ export const GeneralSettings: React.FC = () => {
 
     return (
         <div className="space-y-6">
-            <div className="bg-white shadow-sm rounded-xl border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-100 bg-gray-50/50">
-                    <h3 className="text-lg font-bold text-brand-navy flex items-center">
-                        <Building2 className="h-5 w-5 mr-2 text-brand-green" />
-                        Organization Profile
+            <div className="overflow-hidden">
+                <div className="pb-6 border-b border-gray-100 mb-8">
+                    <h3 className="justify-center text-gray-900 text-base font-semibold font-['DM_Sans'] leading-5">
+                        General Settings
                     </h3>
-                    <p className="text-gray-500 text-sm mt-1">
-                        Manage your company's general information and contact details.
+                    <p className="text-[10px] text-gray-400 font-bold tracking-wider uppercase mt-1">
+                        Manage your organization's basic information and preferences.
                     </p>
                 </div>
 
-                <div className="p-6">
+                <div className="py-6">
                     {error && (
                         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center">
                             <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
@@ -401,31 +309,31 @@ export const GeneralSettings: React.FC = () => {
                         </div>
                     )}
 
-                    <form onSubmit={handleSubmit} className="space-y-6">
-                        {/* Basic Info */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Logo Upload Section */}
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Organization Logo
-                                </label>
-                                <div className="flex items-center gap-6">
-                                    <div className="relative h-20 w-20 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden shadow-2xs shrink-0">
-                                        {logoUrl ? (
-                                            <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
-                                        ) : (
-                                            <Building2 className="h-8 w-8 text-gray-300" />
-                                        )}
-                                        {uploadingLogo && (
-                                            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                                                <Loader2 className="h-5 w-5 animate-spin text-white" />
-                                            </div>
-                                        )}
+                    <form onSubmit={handleSubmit} className="space-y-6 max-w-4xl">
+                        {/* Logo Upload Section */}
+                        <div className="flex items-start gap-6 mb-8">
+                            <div className="h-[72px] w-[72px] rounded-xl bg-gray-50 flex items-center justify-center overflow-hidden shrink-0 border border-gray-100">
+                                {logoUrl ? (
+                                    <img src={logoUrl} alt="Logo" className="h-full w-full object-cover" />
+                                ) : (
+                                    <Building2 className="h-6 w-6 text-gray-400" />
+                                )}
+                                {uploadingLogo && (
+                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center rounded-xl">
+                                        <Loader2 className="h-5 w-5 animate-spin text-white" />
                                     </div>
-                                    {isAdmin && (
-                                        <div className="flex flex-wrap gap-3">
-                                            <label className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest shadow-2xs cursor-pointer transition-all active:scale-95 flex items-center justify-center h-fit">
-                                                Upload Logo
+                                )}
+                            </div>
+                            <div className="pt-1">
+                                <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-2">
+                                    Business Logo
+                                </label>
+                                {isAdmin && (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center gap-3">
+                                            <label className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition-colors flex items-center justify-center">
+                                                <Upload className="w-3.5 h-3.5 mr-1.5" />
+                                                Upload Image
                                                 <input 
                                                     type="file" 
                                                     accept="image/png, image/jpeg, image/gif, image/webp" 
@@ -439,140 +347,111 @@ export const GeneralSettings: React.FC = () => {
                                                     type="button"
                                                     onClick={handleRemoveLogo}
                                                     disabled={uploadingLogo}
-                                                    className="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center justify-center"
+                                                    className="bg-white hover:bg-red-50 text-red-600 border border-gray-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center"
                                                 >
                                                     Remove Logo
                                                 </button>
                                             )}
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Organization Name <span className="text-red-500">*</span>
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Building2 className="h-4 w-4 text-gray-400" />
+                                        <p className="text-[10px] text-gray-400 font-medium">PNG or JPG, square image recommended.</p>
                                     </div>
-                                    <input
-                                        type="text"
-                                        name="name"
-                                        value={formData.name}
-                                        onChange={handleChange}
-                                        disabled={!isAdmin || saving}
-                                        required
-                                        className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                                        placeholder="Enter organization name"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Tax ID / Registration Number
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <FileText className="h-4 w-4 text-gray-400" />
-                                    </div>
-                                    <input
-                                        type="text"
-                                        name="tax_id"
-                                        value={formData.tax_id}
-                                        onChange={handleChange}
-                                        disabled={!isAdmin || saving}
-                                        className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                                        placeholder="e.g. VAT-12345678"
-                                    />
-                                </div>
+                                )}
                             </div>
                         </div>
 
-                        <hr className="border-gray-100" />
-
-                        {/* Contact Info */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Grid Form Fields */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Official Email Address
+                                <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">
+                                    Business Name
                                 </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Mail className="h-4 w-4 text-gray-400" />
-                                    </div>
-                                    <input
-                                        type="email"
-                                        name="email"
-                                        value={formData.email}
-                                        onChange={handleChange}
-                                        disabled={!isAdmin || saving}
-                                        className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                                        placeholder="contact@company.com"
-                                    />
-                                </div>
+                                <input
+                                    type="text"
+                                    name="name"
+                                    value={formData.name}
+                                    onChange={handleChange}
+                                    disabled={!isAdmin || saving}
+                                    required
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    placeholder="Twalumbu Education Centre"
+                                />
                             </div>
 
                             <div>
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Contact Phone Number
+                                <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">
+                                    Contact Email
                                 </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Phone className="h-4 w-4 text-gray-400" />
-                                    </div>
-                                    <input
-                                        type="tel"
-                                        name="phone"
-                                        value={formData.phone}
-                                        onChange={handleChange}
-                                        disabled={!isAdmin || saving}
-                                        className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                                        placeholder="+1 (555) 000-0000"
-                                    />
-                                </div>
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value={formData.email}
+                                    onChange={handleChange}
+                                    disabled={!isAdmin || saving}
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    placeholder="business@example.com"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">
+                                    Contact Phone
+                                </label>
+                                <input
+                                    type="tel"
+                                    name="phone"
+                                    value={formData.phone}
+                                    onChange={handleChange}
+                                    disabled={!isAdmin || saving}
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    placeholder="e.g. +260 977 000 000"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">
+                                    Tax ID / Reg No.
+                                </label>
+                                <input
+                                    type="text"
+                                    name="tax_id"
+                                    value={formData.tax_id}
+                                    onChange={handleChange}
+                                    disabled={!isAdmin || saving}
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    placeholder="e.g. VAT-12345678"
+                                />
                             </div>
 
                             <div className="md:col-span-2">
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
+                                <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">
+                                    Business Address
+                                </label>
+                                <textarea
+                                    name="address"
+                                    value={formData.address}
+                                    onChange={handleChange}
+                                    disabled={!isAdmin || saving}
+                                    rows={3}
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 resize-none"
+                                    placeholder="Street, town, province"
+                                />
+                            </div>
+
+                            <div className="md:col-span-2">
+                                <label className="block text-[10px] text-gray-400 font-bold tracking-wider uppercase mb-1.5">
                                     Website URL
                                 </label>
-                                <div className="relative">
-                                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <Globe className="h-4 w-4 text-gray-400" />
-                                    </div>
-                                    <input
-                                        type="url"
-                                        name="website"
-                                        value={formData.website}
-                                        onChange={handleChange}
-                                        disabled={!isAdmin || saving}
-                                        className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                                        placeholder="https://www.example.com"
-                                    />
-                                </div>
+                                <input
+                                    type="url"
+                                    name="website"
+                                    value={formData.website}
+                                    onChange={handleChange}
+                                    disabled={!isAdmin || saving}
+                                    className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-[#10A34A]/20 focus:border-[#10A34A] outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
+                                    placeholder="https://www.example.com"
+                                />
                             </div>
-
-                            <div className="md:col-span-2">
-                                <label className="block text-sm font-semibold text-gray-700 mb-2">
-                                    Physical Address
-                                </label>
-                                <div className="relative">
-                                    <div className="absolute top-3 left-3 pointer-events-none">
-                                        <MapPin className="h-4 w-4 text-gray-400" />
-                                    </div>
-                                    <textarea
-                                        name="address"
-                                        value={formData.address}
-                                        onChange={handleChange}
-                                        disabled={!isAdmin || saving}
-                                        rows={3}
-                                        className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500 resize-none"
-                                        placeholder="123 Business Rd, Suite 100&#10;City, State, ZIP&#10;Country"
-                                    />
-                                </div>
-                            </div>
+                        </div>
 
                             {/* Departments Section */}
                             <div className="md:col-span-2 pt-6 border-t border-gray-100">
@@ -709,197 +588,16 @@ export const GeneralSettings: React.FC = () => {
                                 </div>
                             </div>
 
-                            {/* Lenco Integration Setting */}
-                            <div className="md:col-span-2 pt-6 border-t border-gray-100">
-                                <div className="bg-brand-pink/5 rounded-2xl p-6 border-2 border-brand-pink/10">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <label className="text-sm font-bold text-brand-pink flex items-center">
-                                            <div className="w-5 h-5 bg-brand-pink text-white rounded flex items-center justify-center text-[10px] mr-2">L</div>
-                                            Integrated Lenco Wallet
-                                        </label>
-                                        {lencoSubaccountId && (
-                                            <div className="flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full text-[10px] font-black uppercase tracking-wider">
-                                                <CheckCircle className="w-3 h-3 mr-1" />
-                                                Active & Locked
-                                            </div>
-                                        )}
-                                    </div>
-                                    
-                                    <p className="text-xs text-brand-navy/60 mb-6 font-brand-family">
-                                        For security, each organization's wallet is automatically provisioned and locked. This prevents unauthorized fund transfers between organization wallets.
-                                    </p>
-
-                                    {/* Lenco API Credentials Inputs */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 pt-4 border-t border-brand-pink/10">
-                                        <div>
-                                            <label className="block text-[10px] font-black text-brand-pink uppercase tracking-widest mb-1.5">
-                                                Lenco Public Key
-                                            </label>
-                                            <input
-                                                type="text"
-                                                name="lenco_public_key"
-                                                value={formData.lenco_public_key}
-                                                onChange={handleChange}
-                                                disabled={!isAdmin || saving}
-                                                className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-pink/20 focus:border-brand-pink outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                                                placeholder="e.g. pub-..."
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-[10px] font-black text-brand-pink uppercase tracking-widest mb-1.5">
-                                                Lenco Secret Key
-                                            </label>
-                                            <input
-                                                type="password"
-                                                name="lenco_secret_key"
-                                                value={formData.lenco_secret_key}
-                                                onChange={handleChange}
-                                                disabled={!isAdmin || saving}
-                                                className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-xs focus:ring-2 focus:ring-brand-pink/20 focus:border-brand-pink outline-none transition-all disabled:bg-gray-50 disabled:text-gray-500"
-                                                placeholder="e.g. 64636..."
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {lencoSubaccountId ? (
-                                        <div className="bg-white/80 rounded-xl p-4 border border-brand-pink/20 flex items-center justify-between">
-                                            <div className="flex items-center">
-                                                <div className="p-2 bg-brand-pink/10 rounded-lg mr-4">
-                                                    <Wallet className="h-5 w-5 text-brand-pink" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Linked Subaccount ID</p>
-                                                    <p className="text-sm font-black text-brand-navy mt-0.5">{lencoSubaccountId}</p>
-                                                    {fetchingLenco ? (
-                                                        <div className="flex items-center mt-1 text-[10px] text-gray-400">
-                                                            <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                                                            Fetching account details...
-                                                        </div>
-                                                    ) : (() => {
-                                                        const acc = lencoAccounts.find(a => a.id === lencoSubaccountId);
-                                                        if (acc) {
-                                                            const name = acc.accountName || acc.name || acc.details?.accountName || 'Unknown Name';
-                                                            const number = acc.accountNumber || acc.details?.accountNumber || (acc.details?.tillNumber ? `Till: ${acc.details.tillNumber}` : '');
-                                                            return (
-                                                                <p className="text-xs font-bold text-brand-pink mt-1">
-                                                                    {name} {number ? `(${number})` : ''}
-                                                                </p>
-                                                            );
-                                                        }
-                                                        return (
-                                                            <button 
-                                                                onClick={fetchLencoAccounts}
-                                                                className="text-[10px] font-bold text-brand-pink/60 hover:text-brand-pink mt-1 underline"
-                                                            >
-                                                                Refresh account details
-                                                            </button>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            </div>
-                                            <div className="p-2 bg-gray-50 rounded-lg" title="Wallet is locked to this organization">
-                                                <X className="h-4 w-4 text-gray-300" />
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-brand-pink/20 rounded-2xl bg-white/50 space-y-4">
-                                            {showLinkSelector ? (
-                                                <div className="w-full max-w-md px-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                                                    <label className="block text-[10px] font-black text-brand-pink uppercase tracking-widest mb-2">Select Available Wallet</label>
-                                                    <div className="flex flex-col sm:flex-row gap-3">
-                                                        <select
-                                                            value={selectedLencoId}
-                                                            onChange={(e) => setSelectedLencoId(e.target.value)}
-                                                            className="flex-1 bg-white border-2 border-brand-pink/10 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-brand-pink/20 transition-all font-brand-family"
-                                                        >
-                                                            <option value="">Select an account...</option>
-                                                            {availableAccounts.map(acc => {
-                                                                const name = acc.accountName || acc.details?.accountName || 'Unknown Name';
-                                                                const number = acc.accountNumber || (acc.details?.tillNumber ? `Till: ${acc.details.tillNumber}` : '');
-                                                                return (
-                                                                    <option key={acc.id} value={acc.id}>
-                                                                        {name} {number ? `(${number})` : ''}
-                                                                    </option>
-                                                                );
-                                                            })}
-                                                        </select>
-                                                        <div className="flex gap-2 w-full sm:w-auto">
-                                                            <button
-                                                                type="button"
-                                                                onClick={handleLinkAccount}
-                                                                disabled={!selectedLencoId || linking}
-                                                                className="flex-1 sm:flex-none px-6 py-3 bg-brand-pink text-white text-xs font-black rounded-xl hover:bg-pink-600 disabled:opacity-50 shadow-md shadow-pink-100 transition-all active:scale-95 font-brand-family flex items-center justify-center whitespace-nowrap"
-                                                            >
-                                                                {linking ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Link Wallet'}
-                                                            </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => setShowLinkSelector(false)}
-                                                                className="flex-1 sm:flex-none px-6 py-3 bg-gray-100 text-gray-500 text-xs font-black rounded-xl hover:bg-gray-200 transition-all outline-none font-brand-family flex items-center justify-center"
-                                                            >
-                                                                Cancel
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <>
-                                                    <p className="text-sm text-gray-500 font-brand-family">No Lenco wallet is currently provisioned for this organization.</p>
-                                                    <div className="flex flex-wrap justify-center gap-3">
-                                                        <button
-                                                            type="button"
-                                                            onClick={handleProvisionWallet}
-                                                            disabled={provisioning || saving}
-                                                            className="inline-flex items-center px-6 py-3 bg-brand-pink text-white text-sm font-black rounded-xl shadow-lg shadow-pink-100 hover:bg-pink-600 focus:outline-none transition-all active:scale-95 disabled:opacity-50"
-                                                        >
-                                                            {provisioning ? (
-                                                                <>
-                                                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                                                    Provisioning...
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <CheckCircle className="h-4 w-4 mr-2" />
-                                                                    Provision New Wallet
-                                                                </>
-                                                            )}
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={fetchAvailableAccounts}
-                                                            disabled={provisioning || saving}
-                                                            className="inline-flex items-center px-6 py-3 bg-white border-2 border-brand-pink/20 text-brand-pink text-sm font-black rounded-xl hover:bg-brand-pink/5 focus:outline-none transition-all active:scale-95 disabled:opacity-50"
-                                                        >
-                                                            <Wallet className="h-4 w-4 mr-2" />
-                                                            Link Existing Wallet
-                                                        </button>
-                                                    </div>
-                                                </>
-                                            )}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-
                         {isAdmin && (
-                            <div className="pt-4 flex justify-end gap-3 border-t border-gray-100">
-                                <button
-                                    type="button"
-                                    onClick={loadOrganization}
-                                    disabled={saving}
-                                    className="px-5 py-2.5 border border-gray-300 shadow-sm text-sm font-bold rounded-xl text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 transition-colors"
-                                >
-                                    Cancel
-                                </button>
+                            <div className="pt-4 flex justify-start border-t border-gray-100 mt-6 max-w-4xl">
                                 <button
                                     type="submit"
                                     disabled={saving || !formData.name.trim()}
-                                    className="inline-flex items-center px-6 py-2.5 border border-transparent shadow-sm text-sm font-bold rounded-xl text-white bg-brand-green hover:bg-[#238914] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green disabled:opacity-50 transition-colors"
+                                    className="inline-flex items-center px-5 py-2 border border-transparent shadow-sm text-sm font-semibold rounded-lg text-white bg-[#10A34A] hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:opacity-50 transition-colors"
                                 >
                                     {saving ? (
                                         <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                            <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
                                             Saving...
                                         </>
                                     ) : (

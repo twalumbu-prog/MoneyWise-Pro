@@ -2,44 +2,9 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Settings, LogOut, Menu, TrendingUp, Navigation, User } from 'lucide-react';
-import { TopNavbar } from './TopNavbar';
-import { SubNavbar } from './SubNavbar';
-
-const WalletCardsIcon: React.FC<{ size?: number; className?: string }> = ({ size = 22, className }) => (
-    <svg 
-        xmlns="http://www.w3.org/2000/svg" 
-        width={size} 
-        height={size} 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="currentColor" 
-        strokeWidth="2" 
-        strokeLinecap="round" 
-        strokeLinejoin="round" 
-        className={className}
-    >
-        <rect width="18" height="18" x="3" y="3" rx="2"/>
-        <path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2"/>
-        <path d="M3 11h3c.8 0 1.6.3 2.1.9l1.1.9c1.6 1.6 4.1 1.6 5.7 0l1.1-.9c.5-.5 1.3-.9 2.1-.9H21"/>
-    </svg>
-);
-
-const AstroidIcon: React.FC<{ size?: number; className?: string }> = ({ size = 22, className }) => (
-    <svg 
-        xmlns="http://www.w3.org/2000/svg" 
-        width={size} 
-        height={size} 
-        viewBox="0 0 24 24" 
-        fill="none" 
-        stroke="currentColor" 
-        strokeWidth="2" 
-        strokeLinecap="round" 
-        strokeLinejoin="round" 
-        className={className}
-    >
-        <path d="M12.983 21.186a1 1 0 0 1-1.966 0 10 10 0 0 0-8.203-8.203 1 1 0 0 1 0-1.966 10 10 0 0 0 8.203-8.203 1 1 0 0 1 1.966 0 10 10 0 0 0 8.203 8.203 1 1 0 0 1 0 1.966 10 10 0 0 0-8.203 8.203"/>
-    </svg>
-);
+import { Sidebar } from './Sidebar';
+import { DesktopHeader } from './DesktopHeader';
+import { WalletCardsIcon, AstroidIcon } from './icons/BrandIcons';
 
 interface LayoutProps {
     children: React.ReactNode;
@@ -70,6 +35,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
         if (path === '/reporting') return 'Reports';
         if (path === '/intelligence') return 'Business Intelligence';
         if (path === '/audit') return 'Audit';
+        if (path === '/products') return 'Products & Services';
         if (path === '/settings') return 'Settings';
         if (path === '/menu') return 'Menu';
         if (path === '/requisitions/new') return 'New Request';
@@ -80,12 +46,16 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
     };
 
     return (
-        <div className={`min-h-screen ${backgroundColor} flex flex-col font-sans`}>
-            {/* Desktop Navigation */}
-            <div className="hidden md:block sticky top-0 z-30">
-                <TopNavbar />
-                <SubNavbar />
-            </div>
+        <div className="min-h-screen md:h-screen md:flex md:overflow-hidden font-sans">
+            {/* Desktop Sidebar */}
+            <Sidebar />
+
+            {/* Right column: desktop header + content, or the full mobile stack.
+                Desktop background is forced to #F3F5FC (the workspace canvas) with `!`
+                so per-page backgroundColor props only steer the mobile view. The
+                sidebar + header share this color so they sit seamlessly against it. */}
+            <div className={`flex-1 flex flex-col min-h-screen md:h-screen md:overflow-hidden ${backgroundColor} md:!bg-[#F3F5FC]`}>
+            <DesktopHeader title={getPageTitle()} />
 
             {/* Mobile Header */}
             <div className="md:hidden sticky top-0 z-20">
@@ -189,7 +159,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             </div>
 
             {/* Main Content Area */}
-            <main className={`flex-1 overflow-x-hidden overflow-y-auto pb-28 md:pb-0 ${isRequestor ? 'h-screen' : 'h-[calc(100vh-60px)] md:h-screen'}`}>
+            <main className={`flex-1 overflow-x-hidden overflow-y-auto pb-28 md:pb-0 md:min-h-0 ${isRequestor ? 'h-screen md:h-auto' : 'h-[calc(100vh-60px)] md:h-auto'}`}>
                 <div className={noPadding ? 'w-full h-full' : 'max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8'}>
                     {children}
                 </div>
@@ -211,8 +181,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                             key={idx}
                             to={tab.path}
                             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
-                                active 
-                                    ? 'bg-[#F0F7FF] text-[#006AFF]' 
+                                active
+                                    ? 'bg-[#F0F7FF] text-[#006AFF]'
                                     : 'text-gray-400 hover:text-gray-500 active:scale-95'
                             }`}
                             aria-label={tab.label}
@@ -221,6 +191,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                         </Link>
                     );
                 })}
+            </div>
             </div>
         </div>
     );

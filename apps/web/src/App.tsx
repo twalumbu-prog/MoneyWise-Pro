@@ -15,6 +15,7 @@ const VoucherDetail = React.lazy(() => import('./pages/VoucherDetail').then(m =>
 const CashLedger = React.lazy(() => import('./pages/CashLedger'));
 const Reporting = React.lazy(() => import('./pages/Reporting').then(m => ({ default: m.Reporting })));
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const ProductsServices = React.lazy(() => import('./pages/ProductsServices').then(m => ({ default: m.ProductsServices })));
 const Intelligence = React.lazy(() => import('./pages/Intelligence').then(m => ({ default: m.Intelligence })));
 const PrivacyPolicy = React.lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
 const TermsOfService = React.lazy(() => import('./pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
@@ -261,6 +262,14 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <Settings />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/products"
+                            element={
+                                <ProtectedRoute>
+                                    <ProductsServices />
                                 </ProtectedRoute>
                             }
                         />

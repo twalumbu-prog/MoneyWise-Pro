@@ -28,6 +28,7 @@
         "react-dom": "^18.2.0",
         "react-markdown": "^10.1.0",
         "react-router-dom": "^7.10.0",
+        "recharts": "^3.10.1",
         "shared": "workspace:*",
         "use-debounce": "^10.1.1",
         "workbox-window": "^7.4.1",

@@ -24,7 +24,7 @@ const money = (n: number) =>
 
 const isAchievementCard = (card: HighlightCard) => card.id.startsWith('achievement-');
 
-export const FinancialHighlights: React.FC = () => {
+export const FinancialHighlights: React.FC<{ className?: string }> = ({ className }) => {
     const [cards, setCards] = useState<HighlightCard[]>([]);
     const [achievements, setAchievements] = useState<Achievement[]>([]);
     const [showConfetti, setShowConfetti] = useState(false);
@@ -94,7 +94,7 @@ export const FinancialHighlights: React.FC = () => {
 
     if (loading) {
         return (
-            <div className="mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4">
+            <div className={className || "mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4"}>
                 <div className="flex items-center gap-2 mb-3">
                     <Megaphone size={18} className="text-gray-300" />
                     <div className="h-3.5 w-36 rounded bg-gray-100 animate-pulse" />
@@ -123,7 +123,7 @@ export const FinancialHighlights: React.FC = () => {
                 />
             )}
 
-            <div ref={containerRef} className="mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4">
+            <div ref={containerRef} className={className || "mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4"}>
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-3">
                     <Megaphone size={18} className="text-black" strokeWidth={1.75} />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Phone, FileText, Wallet, CheckCircle, AlertCircle, Calendar, Loader2 } from 'lucide-react';
+import { X, User, Phone, FileText, Wallet, ArrowDownToLine, CheckCircle, AlertCircle, Calendar, Loader2 } from 'lucide-react';
 import { cashbookService } from '../services/cashbook.service';
 import { organizationService } from '../services/organization.service';
 import { lencoService } from '../services/lenco.service';
@@ -13,15 +13,17 @@ interface CashInflowModalProps {
     initialInflowType?: 'CASH' | 'WALLET';
     isReadOnlyType?: boolean;
     walletId?: string;
+    walletName?: string;
 }
 
-const CashInflowModal: React.FC<CashInflowModalProps> = ({ 
-    isOpen, 
-    onClose, 
+const CashInflowModal: React.FC<CashInflowModalProps> = ({
+    isOpen,
+    onClose,
     onSuccess,
     initialInflowType = 'CASH',
     isReadOnlyType = false,
-    walletId
+    walletId,
+    walletName
 }) => {
     const [personName, setPersonName] = useState('');
     const [purpose, setPurpose] = useState('');
@@ -276,47 +278,51 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm transition-opacity animate-in fade-in duration-200">
             {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300"
+                className="absolute inset-0"
                 onClick={onClose}
             />
 
             {/* Modal Container */}
-            <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 slide-in-from-bottom-10 duration-500 flex flex-col max-h-[90vh]">
+            <div className={`relative w-full ${inflowType === 'WALLET' ? 'max-w-md' : 'max-w-2xl'} bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]`}>
                 {/* Header - Fixed */}
-                <div className="bg-emerald-600 px-8 py-6 text-white flex justify-between items-center shrink-0">
-                    <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-white/20 rounded-xl">
-                            <Wallet className="h-6 w-6" />
+                <div className="p-6 border-b border-slate-50 flex justify-between items-center shrink-0 bg-slate-50/50">
+                    <div className="flex items-center space-x-2.5">
+                        <div className={`p-2.5 rounded-xl ${inflowType === 'WALLET' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                            <ArrowDownToLine size={20} strokeWidth={2.5} />
                         </div>
                         <div>
-                            <h2 className="text-xl font-bold leading-tight">Log Cash Inflow</h2>
-                            <p className="text-emerald-100 text-xs">Record funds coming into the ledger</p>
+                            <h2 className="text-base font-black text-slate-950 uppercase tracking-wider">
+                                {inflowType === 'WALLET' ? 'Deposit to Wallet' : 'Log Cash Inflow'}
+                            </h2>
+                            <p className="text-xs font-semibold text-slate-400 mt-0.5">
+                                {inflowType === 'WALLET' ? (walletName || 'Add funds via card or mobile money') : 'Record funds coming into the ledger'}
+                            </p>
                         </div>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
                     >
-                        <X className="h-6 w-6" />
+                        <X size={20} />
                     </button>
                 </div>
 
                 {!isReadOnlyType && (
-                    <div className="flex bg-gray-50 p-2 m-4 rounded-2xl shrink-0">
+                    <div className="flex bg-slate-50 p-1.5 m-4 rounded-2xl shrink-0">
                         <button
                             type="button"
                             onClick={() => setInflowType('CASH')}
-                            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${inflowType === 'CASH' ? 'bg-white text-emerald-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all ${inflowType === 'CASH' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                         >
                             Cash Inflow
                         </button>
                         <button
                             type="button"
                             onClick={() => setInflowType('WALLET')}
-                            className={`flex-1 py-3 text-sm font-bold rounded-xl transition-all ${inflowType === 'WALLET' ? 'bg-white text-brand-pink shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                            className={`flex-1 py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition-all ${inflowType === 'WALLET' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
                         >
                             Deposit to Wallet
                         </button>
@@ -325,10 +331,10 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
 
                 <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
                     {/* Scrollable Content */}
-                    <div className="p-8 overflow-y-auto custom-scrollbar">
+                    <div className={inflowType === 'WALLET' ? "p-6 overflow-y-auto custom-scrollbar" : "p-8 overflow-y-auto custom-scrollbar"}>
                         {loadingOrg ? (
                             <div className="py-20 flex flex-col items-center justify-center space-y-4">
-                                <Loader2 className="h-10 w-10 animate-spin text-emerald-500" />
+                                <Loader2 className={`h-10 w-10 animate-spin ${inflowType === 'WALLET' ? 'text-blue-500' : 'text-emerald-500'}`} />
                                 <p className="text-gray-500 font-bold">Synchronizing with Lenco Wallet...</p>
                             </div>
                         ) : isVerifying ? (
@@ -336,8 +342,8 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                 {verificationStep === 'POLLING' ? (
                                     <>
                                         <div className="relative">
-                                            <div className="h-20 w-20 border-4 border-brand-pink/20 border-t-brand-pink rounded-full animate-spin" />
-                                            <Wallet className="h-8 w-8 text-brand-pink absolute inset-0 m-auto animate-pulse" />
+                                            <div className="h-20 w-20 border-4 border-blue-100 border-t-blue-600 rounded-full animate-spin" />
+                                            <Wallet className="h-8 w-8 text-blue-600 absolute inset-0 m-auto animate-pulse" />
                                         </div>
                                         <div>
                                             <h3 className="text-xl font-bold text-gray-900">Verifying Transaction...</h3>
@@ -435,6 +441,72 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                     </div>
                                 )}
 
+                                {inflowType === 'WALLET' ? (
+                                    <div className="space-y-5">
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 px-1">
+                                                Depositor Name
+                                            </label>
+                                            <div className="relative group">
+                                                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors">
+                                                    <User size={18} />
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    required
+                                                    value={personName}
+                                                    onChange={(e) => setPersonName(e.target.value)}
+                                                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50/70 border border-slate-100 rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all placeholder:text-slate-400 font-semibold text-slate-900"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-2 px-1">
+                                                Purpose
+                                            </label>
+                                            <div className="relative group overflow-hidden">
+                                                <div className="absolute top-4 left-0 pl-4 flex items-start pointer-events-none text-slate-400 group-focus-within:text-blue-600 transition-colors">
+                                                    <FileText size={18} />
+                                                </div>
+                                                <textarea
+                                                    required
+                                                    value={purpose}
+                                                    onChange={(e) => setPurpose(e.target.value)}
+                                                    rows={2}
+                                                    className="w-full pl-11 pr-4 py-3.5 bg-slate-50/70 border border-slate-100 rounded-2xl focus:border-blue-500 focus:bg-white outline-none transition-all placeholder:text-slate-400 resize-none font-semibold text-slate-900"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-2xl p-5 border border-slate-100">
+                                            <label className="block text-xs font-black text-slate-400 uppercase tracking-wider mb-3">
+                                                Amount to Deposit (K)
+                                            </label>
+                                            <div className="relative group">
+                                                <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none text-blue-600 font-black text-xl">
+                                                    K
+                                                </div>
+                                                <input
+                                                    type="number"
+                                                    value={walletAmount}
+                                                    onChange={(e) => setWalletAmount(e.target.value)}
+                                                    placeholder="0.00"
+                                                    className="w-full pl-11 pr-5 py-4 bg-white border border-slate-100 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 outline-none transition-all text-2xl font-black text-slate-950 placeholder:text-slate-300"
+                                                />
+                                            </div>
+                                            <div className="mt-3 space-y-2">
+                                                <div className="flex justify-between items-center bg-slate-50/70 p-3.5 rounded-xl text-sm">
+                                                    <span className="text-slate-500 font-semibold">Transaction Fee (1%)</span>
+                                                    <span className="text-blue-600 font-bold">+ K {((Number(walletAmount) / 0.99 - Number(walletAmount)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                </div>
+                                                <p className="text-[10px] text-slate-400 italic px-1">
+                                                    You'll be redirected to the secure Lenco payment gateway to pay the total of <strong>K {((Number(walletAmount) / 0.99) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> via Card or Mobile Money.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (
                                 <div className="space-y-6 mb-2">
                                     {/* Source Details & Purpose */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -503,80 +575,50 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                         </div>
                                     </div>
 
-                                    {inflowType === 'CASH' ? (
-                                        <div className="bg-gray-50/50 rounded-3xl p-6 border-2 border-gray-100">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
-                                                Cash Denominations
-                                            </label>
-                                            <DenominationInput
-                                                denominations={denominations}
-                                                onChange={setDenominations}
-                                            />
-                                        </div>
-                                    ) : (
-                                        <div className="bg-brand-pink/5 rounded-3xl p-8 border-2 border-brand-pink/10">
-                                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
-                                                Amount to Deposit (K)
-                                            </label>
-                                            <div className="relative group">
-                                                <div className="absolute inset-y-0 left-0 pl-6 flex items-center pointer-events-none text-brand-pink font-black text-xl">
-                                                    K
-                                                </div>
-                                                <input
-                                                    type="number"
-                                                    value={walletAmount}
-                                                    onChange={(e) => setWalletAmount(e.target.value)}
-                                                    placeholder="0.00"
-                                                    className="w-full pl-12 pr-6 py-5 bg-white border-2 border-pink-100 rounded-2xl focus:border-brand-pink focus:ring-4 focus:ring-brand-pink/10 outline-none transition-all text-2xl font-black text-brand-navy placeholder:text-gray-300"
-                                                />
-                                            </div>
-                                            <div className="mt-4 space-y-2">
-                                                <div className="flex justify-between items-center bg-white/50 p-4 rounded-xl text-sm">
-                                                    <span className="text-gray-500 font-medium">Target Deposit</span>
-                                                    <span className="text-gray-900 font-bold">K {(Number(walletAmount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                                </div>
-                                                <div className="flex justify-between items-center bg-white/50 p-4 rounded-xl text-sm">
-                                                    <span className="text-gray-500 font-medium">Transaction Fee (1%)</span>
-                                                    <span className="text-brand-pink font-bold">+ K {((Number(walletAmount) / 0.99 - Number(walletAmount)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                                </div>
-                                                <p className="text-[10px] text-gray-400 italic px-2">
-                                                    You will be redirected to the secure Lenco payment gateway to pay the total amount of <strong>K {((Number(walletAmount) / 0.99) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> via Card or Mobile Money.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
+                                    <div className="bg-gray-50/50 rounded-3xl p-6 border-2 border-gray-100">
+                                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">
+                                            Cash Denominations
+                                        </label>
+                                        <DenominationInput
+                                            denominations={denominations}
+                                            onChange={setDenominations}
+                                        />
+                                    </div>
                                 </div>
+                                )}
                             </>
                         )}
                     </div>
 
                     {/* Footer Actions - Fixed (Hidden on Success) */}
                     {verificationStep !== 'SUCCESS' && (
-                        <div className="px-8 py-6 border-t border-gray-100 flex items-center justify-between shrink-0 bg-white">
+                        <div className={`${inflowType === 'WALLET' ? 'px-6 py-5' : 'px-8 py-6'} border-t border-slate-50 flex items-center justify-between shrink-0 bg-white`}>
                             <div className="flex flex-col">
-                                <span className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Total {inflowType === 'CASH' ? 'Inflow' : 'Deposit'} Amount</span>
-                                <span className={`text-2xl font-black ${inflowType === 'CASH' ? 'text-emerald-600' : 'text-brand-pink'}`}>
+                                <span className="text-slate-400 text-[10px] font-black uppercase tracking-wider">Total {inflowType === 'CASH' ? 'Inflow' : 'Deposit'} Amount</span>
+                                <span className="text-2xl font-black text-slate-950">
                                     K {(inflowType === 'CASH' ? totalAmount : (Number(walletAmount) / 0.99) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                 </span>
                             </div>
-                            <div className="flex space-x-3">
-                                <button
-                                    type="button"
-                                    onClick={onClose}
-                                    className="px-6 py-3 text-gray-500 font-bold hover:bg-gray-100 rounded-2xl transition-colors"
-                                >
-                                    Cancel
-                                </button>
+                            <div className="flex space-x-2">
+                                {inflowType === 'CASH' && (
+                                    <button
+                                        type="button"
+                                        onClick={onClose}
+                                        className="px-5 py-3 text-slate-500 text-xs font-black uppercase tracking-wider hover:bg-slate-100 rounded-2xl transition-colors"
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
                                 {inflowType === 'CASH' ? (
                                     <button
                                         type="submit"
                                         disabled={isSubmitting || totalAmount <= 0 || loadingOrg}
-                                        className="flex items-center px-8 py-3 bg-emerald-600 text-white rounded-2xl font-black shadow-lg shadow-emerald-200 hover:bg-emerald-700 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+                                        className="flex items-center px-7 py-3 bg-slate-950 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md shadow-slate-950/10 hover:bg-slate-900 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                                     >
                                         {isSubmitting ? (
-                                            <div className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
+                                            <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
                                         ) : (
-                                            <CheckCircle className="h-5 w-5 mr-2" />
+                                            <CheckCircle size={16} className="mr-2" />
                                         )}
                                         Submit Inflow
                                     </button>
@@ -585,10 +627,10 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
                                         type="button"
                                         onClick={handleWalletDeposit}
                                         disabled={Number(walletAmount) <= 0 || loadingOrg}
-                                        className="flex items-center px-8 py-3 bg-brand-pink text-white rounded-2xl font-black shadow-lg shadow-pink-200 hover:bg-pink-600 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
+                                        className="flex items-center px-7 py-3 bg-slate-950 text-white text-xs font-black uppercase tracking-wider rounded-2xl shadow-md shadow-slate-950/10 hover:bg-slate-900 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                                     >
-                                        <CheckCircle className="h-5 w-5 mr-2" />
-                                        Pay with Lenco
+                                        <ArrowDownToLine size={16} className="mr-2" />
+                                        Deposit
                                     </button>
                                 )}
                             </div>
