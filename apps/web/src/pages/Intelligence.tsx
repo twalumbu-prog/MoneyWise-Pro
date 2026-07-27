@@ -141,7 +141,7 @@ export const Intelligence: React.FC = () => {
 
                         {!isChatActive ? (
                             /* INITIAL HERO STATE */
-                            <div className="flex-1 flex flex-col items-center justify-center py-10 md:py-20 px-4 text-center">
+                            <div className="flex-1 flex flex-col items-center justify-start pt-16 md:pt-28 pb-10 px-4 text-center">
                                 <div className="flex flex-col items-center justify-center mb-8 md:mb-12 space-y-4">
                                     <span className="inline-block px-3 py-1 bg-[#006AFF]/10 text-[#006AFF] text-[10px] md:text-[12px] font-black rounded-full border border-[#006AFF]/20 tracking-widest w-fit">
                                         BETA
