@@ -5,11 +5,11 @@ import { reportService, ExpenditureAggregation, ExpenditureItem } from '../servi
 import { budgetService, Budget } from '../services/budget.service';
 import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
-import { ChevronLeft, ChevronRight, BarChart3, ChevronDown, ChevronUp, Loader2, Settings2, SlidersHorizontal, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Search, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Settings2, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Search, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { FinancialHighlights } from '../components/FinancialHighlights';
-import budgetBg from '../assets/Frame 24.png';
+
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
@@ -44,7 +44,7 @@ const getPercentageChange = (current: number, previous: number) => {
 
 export const Reporting: React.FC = () => {
         // State
-    const [mode, setMode] = useState<ModeType>('EXPENSE');
+    const [mode, _setMode] = useState<ModeType>('EXPENSE');
     const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY');
     const [currentDate, setCurrentDate] = useState<Date>(new Date());
     
@@ -571,7 +571,7 @@ export const Reporting: React.FC = () => {
         }
     };
 
-    const handleAssignToGroup = (groupId: string | null) => {
+    const _handleAssignToGroup = (groupId: string | null) => {
         if (!orgId || selectedAccounts.size === 0) return;
         
         const newAssignments = { ...accountGroups };
@@ -588,7 +588,7 @@ export const Reporting: React.FC = () => {
         setSelectedAccounts(new Set()); // Clear selection after bulk action
     };
 
-    const handleBulkHide = () => {
+    const _handleBulkHide = () => {
         setHiddenAccounts(prev => {
             const newHidden = new Set(prev);
             selectedAccounts.forEach(accId => newHidden.add(accId));
@@ -615,7 +615,7 @@ export const Reporting: React.FC = () => {
     };
 
     // Render helper for an individual account row to avoid deeply nested maps
-    const renderAccountRow = (row: any) => (
+    const _renderAccountRow = (row: any) => (
         <React.Fragment key={row.account_id}>
                 <tr className={`transition-colors hover:bg-gray-50 group`}>
                     <td className="p-5">
@@ -1307,7 +1307,7 @@ export const Reporting: React.FC = () => {
 
                                                                     {/* Subaccounts list */}
                                                                     <div className="w-full space-y-5 mt-1">
-                                                                        {groupData.items.map((row: any, idx: number) => {
+                                                                        {groupData.items.map((row: any) => {
                                                                             const isRowExpanded = expandedAccount === row.account_id;
                                                                             const prev = Number(row.prev_total_amount) || 0;
                                                                             const curr = Number(row.total_amount) || 0;

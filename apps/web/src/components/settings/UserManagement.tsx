@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { userService, UserProfile } from '../../services/user.service';
-import { Loader2, UserPlus, Shield, Trash2, Eye, Mail, Plus, MoreHorizontal } from 'lucide-react';
+import { Loader2, Shield, Trash2, Eye, Mail, Plus, MoreHorizontal } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { Modal } from '../Modal';
 

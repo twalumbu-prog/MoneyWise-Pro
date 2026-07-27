@@ -1,12 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
-    User, 
     Building2, 
     Smartphone, 
     CheckCircle, 
     AlertCircle, 
-    Loader2, 
-    Save
+    Loader2
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
 
@@ -28,7 +26,7 @@ export const MyProfileSettings: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     
-    const [formData, setFormData] = useState({
+    const [_formData, setFormData] = useState({
         name: '',
         employee_id: '',
         role: ''

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, ArrowRight, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Zap } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { cashbookService } from '../../services/cashbook.service';
@@ -561,7 +561,7 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                 </div>
                                 
                                 <div className="space-y-4">
-                                    {lineItems.map((item, idx) => (
+                                    {lineItems.map((item) => (
                                         <div key={item.id} className="flex gap-4 items-start p-4 bg-gray-50 rounded-xl border border-gray-100">
                                             <div className="flex-1 space-y-3">
                                                 <input type="text" value={item.description} onChange={e => updateLineItem(item.id, 'description', e.target.value)} placeholder="Item Description" className="w-full text-sm font-semibold text-gray-900 bg-transparent border-b border-gray-200 focus:border-[#006AFF] pb-1 placeholder:font-normal focus:outline-none transition-colors" />
