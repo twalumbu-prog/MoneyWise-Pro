@@ -24,7 +24,10 @@ import {
     syncAllLencoTransactions,
     testInitiateCollection,
     testCollectionStatus,
-    reportDiagnosticLogs
+    reportDiagnosticLogs,
+    getQuickLinkContext,
+    getQuickLinkPurposes,
+    initiateQuickLinkIntent
 } from '../controllers/lenco.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -45,6 +48,11 @@ router.post('/public-collection/resolve-momo', resolvePublicMobileMoneyName);
 router.post('/public-collection/cancel', cancelPublicCollectionIntent);
 router.get('/public-sales/by-phone/:phone', getPublicSalesByPhone);
 router.get('/public-sale-receipt/:reference', getPublicSaleReceiptDetails);
+
+// Quick Link — friendly, amount-first payment link (/pay/:username)
+router.get('/public-quicklink-context/:username', getQuickLinkContext);
+router.get('/public-quicklink-purposes/:username', getQuickLinkPurposes);
+router.post('/public-quicklink-intent', initiateQuickLinkIntent);
 
 // Cron sync endpoint (secured inside the handler via LENCO_SYNC_SECRET)
 router.post('/sync', syncAllLencoTransactions);

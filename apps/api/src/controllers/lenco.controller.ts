@@ -1159,6 +1159,198 @@ export const cancelPublicCollectionIntent = async (req: Request, res: Response) 
 };
 
 /**
+ * ===========================================================================
+ * Quick Link — a lightweight, amount-first payment link keyed by a friendly
+ * per-org username (e.g. /pay/blueopus) rather than a wallet UUID. Always
+ * resolves to the organization's Main wallet (every org has exactly one,
+ * created at signup — see onboarding.controller.ts). No product catalogue.
+ * See supabase/migrations/20260728160000_quick_link.sql.
+ * ===========================================================================
+ */
+
+/** Public context for a Quick Link: org branding + Main wallet's Lenco config. */
+export const getQuickLinkContext = async (req: Request, res: Response) => {
+    const { username } = req.params;
+    if (!username) {
+        return res.status(400).json({ error: 'username is required' });
+    }
+
+    try {
+        const { data: org, error: orgError } = await supabase
+            .from('organizations')
+            .select('id, name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+            .eq('public_username', username)
+            .maybeSingle();
+
+        if (orgError) {
+            console.error('[Lenco Quick Link] Org lookup error:', orgError);
+            return res.status(503).json({ error: 'Payment service is busy, please try again' });
+        }
+        if (!org) {
+            return res.status(404).json({ error: 'This payment link could not be found' });
+        }
+
+        const { data: wallet, error: walletError } = await supabase
+            .from('organization_wallets')
+            .select('id, name')
+            .eq('organization_id', org.id)
+            .eq('is_main', true)
+            .maybeSingle();
+
+        if (walletError || !wallet) {
+            return res.status(404).json({ error: 'This business has no payment wallet set up yet' });
+        }
+
+        res.json({
+            organization: { id: org.id, name: org.name, logo_url: org.logo_url || null },
+            wallet: {
+                id: wallet.id,
+                name: wallet.name,
+                lenco_subaccount_id: org.lenco_subaccount_id || null,
+                lenco_public_key: org.lenco_public_key || null,
+                payment_test_mode: org.payment_test_mode || false
+            },
+            collections_api_enabled: process.env.LENCO_COLLECTIONS_API_ENABLED === 'true'
+        });
+    } catch (error: any) {
+        console.error('[Lenco Quick Link] Context error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+// Seeded once per org, the first time its purpose list is empty. Ranking after
+// that is driven entirely by increment_quick_link_purpose_usage (usage_count).
+const DEFAULT_QUICK_LINK_PURPOSES: Array<{ label: string; bucket: 'REVENUE' | 'ASSET' | 'LIABILITY' | 'OTHER' }> = [
+    { label: 'Buying Products/Services', bucket: 'REVENUE' },
+    { label: 'Paying Back Debt', bucket: 'ASSET' },
+    { label: 'Advance / Deposit Payment', bucket: 'LIABILITY' },
+    { label: 'Donation / Gift', bucket: 'REVENUE' },
+];
+
+/** Public: the org's purpose tags, ranked by usage (seeds sensible defaults on first use). */
+export const getQuickLinkPurposes = async (req: Request, res: Response) => {
+    const { username } = req.params;
+    if (!username) {
+        return res.status(400).json({ error: 'username is required' });
+    }
+
+    try {
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('id')
+            .eq('public_username', username)
+            .maybeSingle();
+
+        if (!org) {
+            return res.status(404).json({ error: 'This payment link could not be found' });
+        }
+
+        let { data: purposes } = await supabase
+            .from('quick_link_purposes')
+            .select('id, label')
+            .eq('organization_id', org.id)
+            .order('usage_count', { ascending: false })
+            .order('is_default', { ascending: false })
+            .order('created_at', { ascending: true });
+
+        if (!purposes || purposes.length === 0) {
+            const { data: seeded, error: seedError } = await supabase
+                .from('quick_link_purposes')
+                .insert(DEFAULT_QUICK_LINK_PURPOSES.map(p => ({
+                    organization_id: org.id,
+                    label: p.label,
+                    bucket: p.bucket,
+                    is_default: true
+                })))
+                .select('id, label');
+
+            if (seedError) {
+                console.error('[Lenco Quick Link] Seed purposes error:', seedError);
+            } else {
+                purposes = seeded;
+            }
+        }
+
+        res.json({ purposes: purposes || [] });
+    } catch (error: any) {
+        console.error('[Lenco Quick Link] Purposes error:', error);
+        res.status(500).json({ error: 'Internal server error', details: error.message });
+    }
+};
+
+/**
+ * Public: log a Quick Link payment intent. Same PENDING cashbook-entry shape
+ * as logWalletDepositIntentCore, minus any product/booking handling (Quick
+ * Link never has products), plus a quick_link_payments tracking row so the
+ * webhook can learn the chosen purpose and classify the inflow *after* the
+ * payment is confirmed — never on the payer's critical path.
+ */
+export const initiateQuickLinkIntent = async (req: Request, res: Response) => {
+    try {
+        const { reference, amount, walletId, purpose, isCustomPurpose } = req.body;
+        if (!reference || !amount || !walletId || !purpose) {
+            return res.status(400).json({ error: 'reference, amount, walletId, and purpose are required' });
+        }
+
+        const { data: wallet, error: walletError } = await supabase
+            .from('organization_wallets')
+            .select('organization_id')
+            .eq('id', walletId)
+            .single();
+
+        if (walletError || !wallet) {
+            return res.status(404).json({ error: 'Wallet not found' });
+        }
+
+        const { error: entryError } = await supabase.from('cashbook_entries').insert({
+            organization_id: wallet.organization_id,
+            entry_type: 'INFLOW',
+            account_type: 'MONEYWISE_WALLET',
+            description: `PENDING_INTENT: ${purpose} | Ref: ${reference}`,
+            debit: amount,
+            credit: 0,
+            balance_after: 0,
+            date: new Date().toISOString().split('T')[0],
+            status: 'PENDING',
+            wallet_id: walletId,
+            external_reference: reference
+        });
+
+        if (entryError) {
+            // Unique index uniq_cashbook_inflow_per_reference: a retried initiation
+            // with the same reference means the intent is already logged — idempotent.
+            if (entryError.message?.includes('uniq_cashbook_inflow_per_reference')) {
+                return res.json({ message: 'Intent already logged' });
+            }
+            throw entryError;
+        }
+
+        const { error: trackingError } = await supabase.from('quick_link_payments').insert({
+            reference,
+            organization_id: wallet.organization_id,
+            wallet_id: walletId,
+            purpose_label: purpose,
+            is_custom: !!isCustomPurpose
+        });
+        if (trackingError) {
+            // Non-fatal — the payment intent itself is already logged; worst case
+            // is this one transaction doesn't get learned/auto-classified.
+            console.error('[Lenco Quick Link] Failed to log purpose tracking row:', trackingError);
+        }
+
+        captureEvent('quick_link_intent_logged', {
+            feature: 'quick_link_checkout', workflow_id: reference, organization_id: wallet.organization_id,
+            user_id: 'anonymous', status: 'succeeded', amount: Number(amount),
+        });
+
+        res.json({ message: 'Intent logged successfully' });
+    } catch (error: any) {
+        console.error('[Lenco Quick Link] Intent error:', error);
+        res.status(500).json({ error: 'Failed to log quick link intent', details: error.message });
+    }
+};
+
+/**
  * Fetch details of a completed product sale to regenerate a receipt
  */
 export const getSaleReceiptDetails = async (req: Request, res: Response) => {

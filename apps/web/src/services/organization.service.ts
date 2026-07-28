@@ -65,5 +65,22 @@ export const organizationService = {
                 Authorization: `Bearer ${session.access_token}`
             }
         });
+    },
+
+    // Fetches (generating on first call) the org's clean Quick Link username.
+    async getOrCreateQuickLinkUsername(): Promise<string> {
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (!session?.access_token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await axios.get(`${API_URL}/organizations/quick-link-username`, {
+            headers: {
+                Authorization: `Bearer ${session.access_token}`
+            }
+        });
+
+        return response.data.username;
     }
 };

@@ -24,7 +24,7 @@ const Join = React.lazy(() => import('./pages/Join').then(m => ({ default: m.Joi
 const ResetPassword = React.lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
 const Audit = React.lazy(() => import('./pages/Audit').then(m => ({ default: m.Audit })));
 const Menu = React.lazy(() => import('./pages/Menu').then(m => ({ default: m.Menu })));
-const PublicPay = React.lazy(() => import('./pages/PublicPay').then(m => ({ default: m.PublicPay })));
+const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
@@ -167,7 +167,7 @@ function App() {
                         <Route path="/privacy" element={<PrivacyPolicy />} />
                         <Route path="/terms" element={<TermsOfService />} />
                         <Route path="/disconnect" element={<Disconnect />} />
-                        <Route path="/pay/:wallet_id" element={<PublicPay />} />
+                        <Route path="/pay/:wallet_id" element={<PayEntry />} />
                         <Route path="/pl/:token" element={<PublicPaymentLink />} />
                         <Route
                             path="/onboarding"

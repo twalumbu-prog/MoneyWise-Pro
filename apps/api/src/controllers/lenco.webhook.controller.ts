@@ -5,6 +5,7 @@ import { LencoService } from '../services/lenco.service';
 import { cashbookService } from '../services/cashbook.service';
 import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
+import { decisionRouter } from '../services/ai/decision.router';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
 import { whatsappService } from '../services/whatsapp.service';
 import { emailService } from '../services/email.service';
@@ -68,6 +69,135 @@ async function sweepPlatformCommission(
             status,
             amount: commission,
         });
+    }
+}
+
+// Quick Link purpose bucket -> the org account `type` it should map to when
+// looking for a best-fit account (accounts.type is 'ASSET'|'LIABILITY'|
+// 'EXPENSE'|'INCOME'|'EQUITY' — see apps/api/src/db/schema.sql).
+const QUICK_LINK_BUCKET_ACCOUNT_TYPE: Record<string, string> = {
+    REVENUE: 'INCOME',
+    ASSET: 'ASSET',
+    LIABILITY: 'LIABILITY',
+};
+
+/**
+ * Best-effort: find an existing org account of the given type whose name
+ * hints at the bucket (e.g. "revenue"/"sales" for INCOME, "receivable"/"loan"
+ * for ASSET, "deposit"/"unearned" for LIABILITY), falling back to any active
+ * account of that type. Returns null if the org has none — callers leave the
+ * entry UNACCOUNTED in that case, same as any other unmatched inflow.
+ */
+async function findBestFitAccount(organizationId: string, accountType: string, bucket: string): Promise<string | null> {
+    const { data: accounts } = await supabase
+        .from('accounts')
+        .select('id, name')
+        .eq('organization_id', organizationId)
+        .eq('type', accountType)
+        .eq('is_active', true);
+
+    if (!accounts || accounts.length === 0) return null;
+
+    const nameHints: Record<string, string[]> = {
+        REVENUE: ['revenue', 'sales', 'income'],
+        ASSET: ['receivable', 'loan'],
+        LIABILITY: ['deposit', 'unearned', 'advance'],
+    };
+    const hints = nameHints[bucket] || [];
+    const hinted = accounts.find(a => hints.some(h => (a.name || '').toLowerCase().includes(h)));
+    return (hinted || accounts[0]).id;
+}
+
+/**
+ * Quick Link post-payment learning + classification. Runs strictly AFTER the
+ * payment has already been confirmed and the payer's poll/webhook response
+ * has gone out — this function is invoked fire-and-forget (no `await` at the
+ * call site) so it never adds latency to the checkout itself.
+ *
+ * Preset purposes classify deterministically via their stored bucket; a
+ * custom typed purpose is routed through the same decisionRouter used for
+ * expense categorization, just handed the org's non-expense accounts instead.
+ */
+async function postProcessQuickLinkPayment(reference: string): Promise<void> {
+    try {
+        const { data: ql } = await supabase
+            .from('quick_link_payments')
+            .select('*')
+            .eq('reference', reference)
+            .eq('processed', false)
+            .maybeSingle();
+        if (!ql) return;
+
+        const { data: entry } = await supabase
+            .from('cashbook_entries')
+            .select('id, status')
+            .eq('external_reference', reference)
+            .maybeSingle();
+
+        // Only attempt classification if the generic rule-engine pass (which
+        // already ran against this same purpose text as the narration) didn't
+        // already account for it.
+        if (entry && entry.status === 'UNACCOUNTED') {
+            let accountId: string | null = null;
+
+            if (!ql.is_custom) {
+                const { data: purposeRow } = await supabase
+                    .from('quick_link_purposes')
+                    .select('bucket')
+                    .eq('organization_id', ql.organization_id)
+                    .eq('label', ql.purpose_label)
+                    .maybeSingle();
+                const bucket = purposeRow?.bucket || 'OTHER';
+                const accountType = QUICK_LINK_BUCKET_ACCOUNT_TYPE[bucket];
+                if (accountType) {
+                    accountId = await findBestFitAccount(ql.organization_id, accountType, bucket);
+                }
+            } else {
+                const { data: accounts } = await supabase
+                    .from('accounts')
+                    .select('*')
+                    .eq('organization_id', ql.organization_id)
+                    .eq('is_active', true)
+                    .in('type', ['ASSET', 'LIABILITY', 'INCOME', 'EQUITY']);
+
+                if (accounts && accounts.length > 0) {
+                    const { data: entryAmount } = await supabase
+                        .from('cashbook_entries')
+                        .select('debit')
+                        .eq('id', entry.id)
+                        .single();
+
+                    const decision = await decisionRouter.classify(
+                        accounts,
+                        { description: ql.purpose_label, amount: Number(entryAmount?.debit) || 0 },
+                        ql.organization_id
+                    );
+                    if (decision.account_code && decision.confidence >= 0.70) {
+                        const matched = accounts.find((a: any) => String(a.code) === String(decision.account_code));
+                        accountId = matched?.id || null;
+                    }
+                }
+            }
+
+            if (accountId) {
+                await supabase
+                    .from('cashbook_entries')
+                    .update({ account_id: accountId, status: 'ACCOUNTED' })
+                    .eq('id', entry.id);
+                console.log(`[Quick Link] Auto-classified "${ql.purpose_label}" (ref ${reference}) -> account ${accountId}`);
+            }
+        }
+
+        await supabase.rpc('increment_quick_link_purpose_usage', {
+            p_org_id: ql.organization_id,
+            p_label: ql.purpose_label,
+            p_bucket: null,
+        });
+        await supabase.from('quick_link_payments').update({ processed: true }).eq('reference', reference);
+    } catch (err: any) {
+        // Never fatal — the payment itself already succeeded and was already
+        // reported to the payer well before this runs.
+        console.error(`[Quick Link] Post-payment processing failed for ${reference}:`, err?.message || err);
     }
 }
 
@@ -495,6 +625,15 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                     user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPublicSalePaid', status: 'attempted',
                 });
             }
+        }
+
+        // Quick Link: learn the chosen purpose + classify the inflow. Deliberately
+        // NOT awaited — this must never add latency to the payer's confirmation,
+        // which has already happened by the time this runs.
+        if (reference) {
+            postProcessQuickLinkPayment(reference).catch(err =>
+                console.error(`[Quick Link] Unhandled post-processing error for ${reference}:`, err)
+            );
         }
 
         console.log(`[Lenco Webhook] SUCCESS: Processed collection for org ${organizationId}`);

@@ -92,6 +92,69 @@ export const OrganizationController = {
         }
     },
 
+    // Returns the org's clean public username for the Quick Link (e.g.
+    // "blueopus"), generating and persisting one from the org name on first
+    // request if it isn't set yet. Idempotent — safe to call every time the
+    // share modal opens.
+    async getOrCreateQuickLinkUsername(req: Request, res: Response<any>) {
+        try {
+            const organization_id = (req as any).user?.organization_id;
+            if (!organization_id) {
+                return res.status(400).json({ error: 'User does not belong to an organization' });
+            }
+
+            const { data: org, error: orgError } = await supabase
+                .from('organizations')
+                .select('id, name, public_username')
+                .eq('id', organization_id)
+                .single();
+
+            if (orgError || !org) {
+                return res.status(404).json({ error: 'Organization not found' });
+            }
+
+            if (org.public_username) {
+                return res.json({ username: org.public_username });
+            }
+
+            const base = (org.name || 'business').toLowerCase().replace(/[^a-z0-9]/g, '') || 'business';
+
+            let candidate = base;
+            let suffix = 1;
+            // Loop through numeric suffixes until we find one that isn't taken.
+            // Bounded at 50 attempts purely as a sanity guard against an
+            // infinite loop; a collision streak that long is not realistic.
+            for (let attempt = 0; attempt < 50; attempt++) {
+                const { data: existing } = await supabase
+                    .from('organizations')
+                    .select('id')
+                    .eq('public_username', candidate)
+                    .maybeSingle();
+
+                if (!existing) break;
+                suffix += 1;
+                candidate = `${base}${suffix}`;
+            }
+
+            const { data: updated, error: updateError } = await supabase
+                .from('organizations')
+                .update({ public_username: candidate })
+                .eq('id', organization_id)
+                .select('public_username')
+                .single();
+
+            if (updateError || !updated) {
+                console.error('[Organization] Failed to persist quick link username:', updateError);
+                return res.status(500).json({ error: 'Failed to generate quick link username' });
+            }
+
+            return res.json({ username: updated.public_username });
+        } catch (error: any) {
+            console.error('[Organization] Quick link username error:', error);
+            res.status(500).json({ error: 'Internal server error' });
+        }
+    },
+
     async deleteOrganization(req: Request, res: Response<any>) {
         try {
             const organization_id = (req as any).user?.organization_id;
