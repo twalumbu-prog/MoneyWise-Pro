@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Megaphone, ArrowRight, Trophy } from 'lucide-react';
+import { ArrowRight, Trophy } from 'lucide-react';
 import {
     highlightsService,
     HighlightCard,
