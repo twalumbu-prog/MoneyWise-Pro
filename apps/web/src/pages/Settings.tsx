@@ -2,13 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { QuickBooksIntegration } from '../components/settings/integrations/QuickBooksIntegration';
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
+import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
 import {
     Settings as SettingsIcon,
     Users,
     FileText,
     Share2,
     BrainCircuit,
-    User
+    User,
+    GraduationCap
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -22,7 +24,7 @@ export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
 
-    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | null>(null);
+    const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | null>(null);
     const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
@@ -131,7 +133,7 @@ export const Settings: React.FC = () => {
                                                         </button>
 
                                                         {/* Lenco Card */}
-                                                        <button 
+                                                        <button
                                                             onClick={() => setActiveIntegration('lenco')}
                                                             className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-pink/30 transition-all text-left group"
                                                         >
@@ -141,16 +143,32 @@ export const Settings: React.FC = () => {
                                                             <h4 className="text-base font-bold text-gray-900 mb-1">Lenco Banking</h4>
                                                             <p className="text-sm text-gray-500">Manage corporate wallets and transfers</p>
                                                         </button>
+
+                                                        {/* Master Fees Card */}
+                                                        <button
+                                                            onClick={() => setActiveIntegration('masterfees')}
+                                                            className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-navy/30 transition-all text-left group"
+                                                        >
+                                                            <div className="h-12 w-12 bg-brand-navy rounded-xl flex items-center justify-center text-white mb-4 group-hover:scale-105 transition-transform shadow-sm">
+                                                                <GraduationCap className="h-6 w-6" />
+                                                            </div>
+                                                            <h4 className="text-base font-bold text-gray-900 mb-1">Master Fees</h4>
+                                                            <p className="text-sm text-gray-500">Sync school invoices, fee revenue &amp; receivables</p>
+                                                        </button>
                                                     </div>
                                                 </>
                                             ) : activeIntegration === 'quickbooks' ? (
-                                                <QuickBooksIntegration 
-                                                    onBack={() => setActiveIntegration(null)} 
-                                                    initialError={integrationError} 
+                                                <QuickBooksIntegration
+                                                    onBack={() => setActiveIntegration(null)}
+                                                    initialError={integrationError}
+                                                />
+                                            ) : activeIntegration === 'masterfees' ? (
+                                                <MasterfeesIntegration
+                                                    onBack={() => setActiveIntegration(null)}
                                                 />
                                             ) : (
-                                                <LencoIntegration 
-                                                    onBack={() => setActiveIntegration(null)} 
+                                                <LencoIntegration
+                                                    onBack={() => setActiveIntegration(null)}
                                                 />
                                             )}
                                         </div>

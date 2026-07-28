@@ -72,3 +72,86 @@ export const integrationService = {
         if (!response.ok) throw new Error('Failed to initiate sync retry');
     }
 };
+
+// ── Master Fees ──────────────────────────────────────────────────────────────
+export interface MasterFeesStatus {
+    connected: boolean;
+    schoolId?: string;
+    schoolName?: string;
+    lencoMode?: 'shared' | 'separate';
+    lencoModeOverridden?: boolean;
+    categoryMap?: Record<string, { accountId: string; name: string }>;
+    lastSyncedAt?: string;
+    lastSyncError?: string | null;
+}
+
+export interface MasterFeesCategory {
+    id: string;
+    name: string;
+    amount: number | null;
+    accountId: string | null;
+}
+
+async function authHeaders() {
+    const { data: { session } } = await supabase.auth.getSession();
+    return { 'Authorization': `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' };
+}
+
+async function parseError(response: Response, fallback: string): Promise<never> {
+    let msg = fallback;
+    try { msg = (await response.json())?.error || fallback; } catch { /* ignore */ }
+    throw new Error(msg);
+}
+
+export const masterFeesService = {
+    async getStatus(): Promise<MasterFeesStatus> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/status`, { headers: await authHeaders() });
+        if (!response.ok) await parseError(response, 'Failed to fetch Master Fees status');
+        return response.json();
+    },
+
+    async connect(payload: { schoolId: string; publicKey: string; baseUrl?: string }): Promise<any> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/connect`, {
+            method: 'POST', headers: await authHeaders(), body: JSON.stringify(payload),
+        });
+        if (!response.ok) await parseError(response, 'Failed to connect Master Fees');
+        return response.json();
+    },
+
+    async disconnect(): Promise<void> {
+        const response = await fetch(`${API_URL}/integrations/masterfees`, { method: 'DELETE', headers: await authHeaders() });
+        if (!response.ok) await parseError(response, 'Failed to disconnect Master Fees');
+    },
+
+    async getFeeCategories(): Promise<MasterFeesCategory[]> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/fee-categories`, { headers: await authHeaders() });
+        if (!response.ok) await parseError(response, 'Failed to fetch fee categories');
+        return response.json();
+    },
+
+    async mapCategory(categoryId: string, accountId: string, name?: string): Promise<void> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/fee-categories`, {
+            method: 'PUT', headers: await authHeaders(), body: JSON.stringify({ categoryId, accountId, name }),
+        });
+        if (!response.ok) await parseError(response, 'Failed to save category mapping');
+    },
+
+    async setLencoMode(lencoMode: 'shared' | 'separate'): Promise<void> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/lenco-mode`, {
+            method: 'PUT', headers: await authHeaders(), body: JSON.stringify({ lencoMode }),
+        });
+        if (!response.ok) await parseError(response, 'Failed to update Lenco mode');
+    },
+
+    async sync(): Promise<any> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/sync`, { method: 'POST', headers: await authHeaders() });
+        if (!response.ok) await parseError(response, 'Failed to sync Master Fees');
+        return response.json();
+    },
+
+    async reconcile(): Promise<{ moneywiseReceivable: number; masterfeesOutstanding: number; difference: number; studentsWithBalance: number }> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/reconcile`, { headers: await authHeaders() });
+        if (!response.ok) await parseError(response, 'Failed to reconcile Master Fees');
+        return response.json();
+    },
+};

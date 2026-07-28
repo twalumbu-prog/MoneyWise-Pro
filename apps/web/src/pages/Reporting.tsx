@@ -122,6 +122,27 @@ export const Reporting: React.FC = () => {
     const chartScrollRef = useRef<HTMLDivElement>(null);
     const [chartViewHeight, setChartViewHeight] = useState(200);
     const [chartAreaW, setChartAreaW] = useState(320); // visible viewport width; 4 periods fit, rest scroll
+    // Desktop Recharts view: measures the actual space left inside the card (below
+    // the header row) so the plot + x-axis fill it exactly instead of a hardcoded
+    // px height, which left dead white space and stranded the date axis mid-card.
+    const desktopChartBodyRef = useRef<HTMLDivElement>(null);
+    const [desktopChartHeight, setDesktopChartHeight] = useState(360);
+    // Lets the header's left/right buttons drive the chart's horizontal scroll
+    // directly — trackpad-free navigation, without touching the current period/tab.
+    const desktopChartScrollRef = useRef<HTMLDivElement>(null);
+    const scrollDesktopChart = (dir: 'left' | 'right') => {
+        desktopChartScrollRef.current?.scrollBy({ left: dir === 'left' ? -240 : 240, behavior: 'smooth' });
+    };
+    useEffect(() => {
+        const el = desktopChartBodyRef.current;
+        if (!el) return;
+        const observer = new ResizeObserver(entries => {
+            const h = entries[0]?.contentRect.height;
+            if (h) setDesktopChartHeight(Math.max(200, Math.round(h)));
+        });
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [isChartOpen]);
     const [chartTimeframe, setChartTimeframe] = useState<'1D' | '1W' | '1M' | '3M' | 'YTD'>('1M');
     // Pinch-to-zoom: number of periods visible in the chart viewport at once. Fewer =
     // zoomed in (wider columns, more detail); more = zoomed out (see more of the trend).
@@ -250,8 +271,15 @@ export const Reporting: React.FC = () => {
         // dropping today's transactions from the cumulative net-worth balance.
         const iso = (d: Date) =>
             `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        // Daily/weekly used to cap at a fixed trailing window (14 days / 12 weeks),
+        // silently clipping everything before that even though the chart is now
+        // properly scrollable — so instead they walk all the way back to Jan 1 of
+        // the current year, same start line as YTD.
+        const startOfYear = new Date(today.getFullYear(), 0, 1);
         if (tf === '1D') {
-            for (let i = 13; i >= 0; i--) {
+            const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            const totalDays = Math.round((todayMidnight.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000));
+            for (let i = totalDays; i >= 0; i--) {
                 const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
                 periods.push({
                     startDate: iso(d), endDate: iso(d),
@@ -260,10 +288,11 @@ export const Reporting: React.FC = () => {
                 });
             }
         } else if (tf === '1W') {
-            for (let i = 11; i >= 0; i--) {
-                const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i * 7);
+            // Walk back in 7-day windows anchored to today until we pass Jan 1.
+            let end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+            while (end >= startOfYear) {
                 const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
-                periods.push({
+                periods.unshift({
                     startDate: iso(start), endDate: iso(end),
                     label: `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
                     // Label by the week's END (the as-of date of the plotted running
@@ -271,6 +300,7 @@ export const Reporting: React.FC = () => {
                     // latest point reads as today rather than the week's start.
                     shortLabel: end.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
                 });
+                end = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 7);
             }
         } else if (tf === '3M') {
             for (let i = 7; i >= 0; i--) {
@@ -402,6 +432,9 @@ export const Reporting: React.FC = () => {
         const raf = requestAnimationFrame(() => {
             if (chartScrollRef.current) {
                 chartScrollRef.current.scrollLeft = chartScrollRef.current.scrollWidth;
+            }
+            if (desktopChartScrollRef.current) {
+                desktopChartScrollRef.current.scrollLeft = desktopChartScrollRef.current.scrollWidth;
             }
         });
         return () => cancelAnimationFrame(raf);
@@ -941,26 +974,48 @@ export const Reporting: React.FC = () => {
                                                         </button>
                                                     ))}
                                                 </div>
+                                                {/* Scroll the chart body without touching the period/timeframe — a
+                                                    trackpad-free way to page through history. */}
+                                                <div className="flex items-center gap-1">
+                                                    <button onClick={() => scrollDesktopChart('left')} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors" title="Scroll left">
+                                                        <ChevronLeft size={16} />
+                                                    </button>
+                                                    <button onClick={() => scrollDesktopChart('right')} className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:text-gray-900 hover:bg-gray-50 transition-colors" title="Scroll right">
+                                                        <ChevronRight size={16} />
+                                                    </button>
+                                                </div>
                                                 <button onClick={() => setIsChartOpen(false)} className="text-gray-400 hover:text-gray-900 transition-colors p-2 rounded-lg hover:bg-gray-50">
                                                     <EyeOff size={18} />
                                                 </button>
                                             </div>
                                         </div>
 
-                                        {/* Chart area */}
+                                        {/* Chart area — flex-1 so it fills whatever height the card actually has;
+                                            ResizeObserver (desktopChartHeight) mirrors that pixel height into the
+                                            Recharts SVGs below, so the date axis lands flush at the bottom instead
+                                            of stranded mid-card with dead space underneath. */}
+                                        <div ref={desktopChartBodyRef} className="flex-1 min-h-0 flex flex-col">
                                         {chartLoading ? (
-                                            <div className="flex items-center justify-center h-[360px]">
+                                            <div className="flex-1 flex items-center justify-center">
                                                 <Loader2 className="h-8 w-8 animate-spin text-[#2563EB]" />
                                             </div>
                                         ) : chartData.length > 0 ? (() => {
-                                            const CHART_H = 360;
+                                            const CHART_H = desktopChartHeight;
                                             const MARGIN = { top: 16, right: 40, bottom: 40, left: 0 };
                                             const yTickFormatter = (val: number) =>
-                                                val >= 1000000 ? `K${(val / 1000000).toFixed(1)}M` : val >= 1000 ? `K${(val / 1000).toFixed(0)}k` : `K${val}`;
-                                            const minVal = Math.min(...chartData.map(d => d.value));
-                                            const maxVal = Math.max(...chartData.map(d => d.value));
-                                            const pad = (maxVal - minVal) * 0.1 || 1;
-                                            const domain: [number, number] = [Math.max(0, minVal - pad), maxVal + pad];
+                                                val >= 1000000 ? `K${(val / 1000000).toFixed(1)}M` : val >= 1000 ? `K${(val / 1000).toFixed(0)}k` : `K${Math.round(val)}`;
+                                            // 'auto' lets Recharts/d3 pick a "nice" rounded domain (e.g. K0/K10k/K20k)
+                                            // instead of ticking off the exact padded min/max, which produced
+                                            // odd-looking figures like K12,340 instead of K12,000.
+                                            const domain: [string, string] = ['auto', 'auto'];
+                                            const renderYAxisTick = (props: any) => {
+                                                const { y, payload } = props;
+                                                return (
+                                                    <text x={4} y={y} dy={4} textAnchor="start" fontSize={11} fontWeight={500} fill="#94a3b8">
+                                                        {yTickFormatter(payload.value)}
+                                                    </text>
+                                                );
+                                            };
                                             const tooltipContent = (props: Record<string, unknown>) => {
                                                 const { active, payload, label } = props as { active?: boolean; payload?: { value: number }[]; label?: string | number };
                                                 if (active && payload && payload.length) {
@@ -981,8 +1036,11 @@ export const Reporting: React.FC = () => {
                                             const scrollChartWidth = Math.max(chartData.length * 80, 800);
                                             return (
                                                 <div className="flex w-full rounded-b-xl overflow-hidden" style={{ height: CHART_H }}>
-                                                    {/* Pinned Y-axis — same height and margins as the scrollable chart */}
-                                                    <div className="flex-shrink-0" style={{ width: 72 }}>
+                                                    {/* Pinned Y-axis — sticky gutter. Own opaque bg + z-index so the
+                                                        scrolling chart body can never show through it, and its own
+                                                        AreaChart shares the same height/margins/domain as the
+                                                        scrollable one so the tick rows line up pixel-for-pixel. */}
+                                                    <div className="flex-shrink-0 relative z-10 bg-white" style={{ width: 72 }}>
                                                         <AreaChart
                                                             width={72}
                                                             height={CHART_H}
@@ -992,7 +1050,7 @@ export const Reporting: React.FC = () => {
                                                             <YAxis
                                                                 axisLine={false}
                                                                 tickLine={false}
-                                                                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+                                                                tick={renderYAxisTick}
                                                                 tickFormatter={yTickFormatter}
                                                                 domain={domain}
                                                                 width={72}
@@ -1001,7 +1059,11 @@ export const Reporting: React.FC = () => {
                                                         </AreaChart>
                                                     </div>
                                                     {/* Scrollable chart body — fixed px width defeats ResponsiveContainer shrink behaviour */}
-                                                    <div className="flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar">
+                                                    {/* min-w-0 overrides the flex item's default min-width:auto — without it
+                                                        the item just grows to fit the wide SVG instead of clamping to the
+                                                        available track width, so there's nothing to actually overflow and
+                                                        no scrollbar ever appears. */}
+                                                    <div ref={desktopChartScrollRef} className="flex-1 min-w-0 overflow-x-auto overflow-y-hidden custom-scrollbar">
                                                         <AreaChart
                                                             width={scrollChartWidth}
                                                             height={CHART_H}
@@ -1040,8 +1102,9 @@ export const Reporting: React.FC = () => {
                                                 </div>
                                             );
                                         })() : (
-                                            <div className="flex items-center justify-center h-[360px] text-gray-400">No chart data available for this period.</div>
+                                            <div className="flex-1 flex items-center justify-center text-gray-400">No chart data available for this period.</div>
                                         )}
+                                        </div>
                                     </div>
                                 ) : (
                                     <div className="w-full flex flex-col gap-4">

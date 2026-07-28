@@ -125,7 +125,7 @@ importers:
         specifier: ^9.0.10
         version: 9.0.10
       '@types/node':
-        specifier: ^20.12.7
+        specifier: ^20.19.25
         version: 20.19.25
       '@types/pdfkit':
         specifier: ^0.17.6
@@ -137,7 +137,7 @@ importers:
         specifier: ^2.0.0
         version: 2.0.0(@types/node@20.19.25)(typescript@5.9.3)
       typescript:
-        specifier: ^5.4.5
+        specifier: ^5.9.3
         version: 5.9.3
 
   apps/web:
