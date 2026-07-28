@@ -300,7 +300,11 @@ export const ledgerService = {
 
         if (lineErr) {
             console.error(`[Ledger] Failed to insert journal lines for ${entryId}:`, lineErr.message);
-            await supabase.from('journal_entries').delete().eq('id', je.id);
+            try {
+                await supabase.from('journal_entries').delete().eq('id', je.id);
+            } catch (err: any) {
+                console.error(`[Ledger] FATAL: Failed to rollback orphaned journal header ${je.id} for entry ${entryId}:`, err.message);
+            }
         }
     },
 
