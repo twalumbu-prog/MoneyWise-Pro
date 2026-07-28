@@ -1046,7 +1046,7 @@ export const Reporting: React.FC = () => {
                                 ) : (
                                     <div className="w-full flex flex-col gap-4">
                                         {/* Desktop Summary Banner */}
-                                        <div className="w-full h-24 p-5 bg-[#00296b] rounded-2xl flex justify-between items-center overflow-hidden mb-2">
+                                        <div className="w-full h-24 p-5 bg-gradient-to-l from-blue-950 to-slate-900 shadow-[0px_2px_4px_2px_rgba(0,0,0,0.25)] rounded-2xl flex justify-between items-center overflow-hidden mb-2">
                                             <div className="flex flex-col justify-start items-start gap-2">
                                                 <div className="text-white text-[10px] font-normal font-['Figtree'] uppercase tracking-wider text-white/70">
                                                     {reportView === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}
@@ -1397,7 +1397,7 @@ export const Reporting: React.FC = () => {
                 )}
 
                 {/* Financial Highlights — headline weekly figures, records and AI cards */}
-                {!isChartOpen && <FinancialHighlights />}
+                {!isChartOpen && <FinancialHighlights className="mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4" />}
 
                 {/* Month Dropdown / Timeframe Buttons & Pill Controls Row */}
                 <div className={`mx-6 ${isChartOpen ? 'mb-3' : 'mb-5'} flex items-center justify-between relative`}>

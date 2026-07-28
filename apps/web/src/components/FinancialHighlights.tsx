@@ -96,8 +96,7 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
         return (
             <div className={className || "mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4"}>
                 <div className="flex items-center gap-2 mb-3">
-                    <Megaphone size={18} className="text-gray-300" />
-                    <div className="h-3.5 w-36 rounded bg-gray-100 animate-pulse" />
+                    <span className="flex-1 text-[11px] font-medium uppercase text-gray-400 tracking-wide">Financial Highlights</span>
                 </div>
                 <div className="h-3 w-full rounded bg-gray-100 animate-pulse mb-2" />
                 <div className="h-3 w-2/3 rounded bg-gray-100 animate-pulse" />
@@ -123,11 +122,10 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
                 />
             )}
 
-            <div ref={containerRef} className={className || "mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4"}>
+            <div ref={containerRef} className={className || "mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4 w-full"}>
                 {/* Header */}
                 <div className="flex items-center gap-2 mb-3">
-                    <Megaphone size={18} className="text-black" strokeWidth={1.75} />
-                    <span className="flex-1 text-base font-bold text-black">Financial Highlights</span>
+                    <span className="flex-1 text-[11px] font-medium uppercase text-black tracking-wide">Financial Highlights</span>
                     {unread > 0 && (
                         <span className="min-w-5 h-5 px-2 bg-red-600 rounded-full flex items-center justify-center">
                             <span className="text-white text-[10px] font-bold font-figtree leading-3">{unread}</span>
