@@ -137,7 +137,12 @@ interface PublicContextResponse {
 // Mirrors LencoService.resolveMobileOperator on the API.
 function detectOperator(phone: string): 'airtel' | 'mtn' | 'zamtel' | null {
     const clean = (phone || '').replace(/[^0-9]/g, '');
-    const normalized = clean.startsWith('260') ? '0' + clean.slice(3) : clean;
+    let normalized = clean.startsWith('260') ? '0' + clean.slice(3) : clean;
+    // Accept the 9-digit local number without its leading 0 (matches the +260
+    // prefix already shown in the UI, so the customer doesn't need to type it twice).
+    if (normalized.length === 9 && /^[975]/.test(normalized)) {
+        normalized = '0' + normalized;
+    }
     if (normalized.startsWith('097') || normalized.startsWith('077')) return 'airtel';
     if (normalized.startsWith('096') || normalized.startsWith('076')) return 'mtn';
     if (normalized.startsWith('095') || normalized.startsWith('075')) return 'zamtel';
@@ -2558,67 +2563,82 @@ Status: VERIFIED`;
                 {/* 3b. Dedicated checkout page — payment method toggle at the top,
                     mobile money phone entry + account-holder confirmation below */}
                 {step === 'CHECKOUT' && org && (
-                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]">
-                        {/* Top bar — back + title, toggle directly beneath */}
-                        <div className="px-6 pt-7 pb-4 border-b border-slate-100">
-                            <div className="flex items-center gap-3 mb-4">
-                                <button
-                                    onClick={() => { setStep('SUMMARY'); setError(null); }}
-                                    className="p-2 -ml-2 rounded-xl hover:bg-slate-100 transition-colors"
-                                >
-                                    <ArrowLeft size={18} className="text-slate-500" />
-                                </button>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Payment</h3>
-                                    <p className="text-[10px] font-semibold text-slate-400">{org.name} · K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                </div>
+                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)] bg-neutral-50">
+                        {/* Top bar — back + title */}
+                        <div className="px-7 py-3 flex items-start gap-6">
+                            <button
+                                onClick={() => { setStep('SUMMARY'); setError(null); }}
+                                className="p-1 -ml-1 mt-1 rounded-lg hover:bg-slate-100 transition-colors"
+                            >
+                                <ArrowLeft size={20} className="text-black" />
+                            </button>
+                            <div className="flex-1">
+                                <h3 className="text-base font-semibold text-black">Payment</h3>
+                                <p className="text-xs" style={{ color: '#585858' }}>
+                                    You are making a payment to {org.name} –{' '}
+                                    <span className="font-bold">
+                                        K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                </p>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
+                        </div>
+
+                        {/* Method toggle */}
+                        <div className="px-4 pt-4">
+                            <div className="p-0.5 bg-neutral-100 rounded-full flex items-center">
                                 <button
                                     onClick={() => { setCheckoutMethod('mobile-money'); setError(null); }}
-                                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
-                                        checkoutMethod === 'mobile-money' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs leading-4 transition-all ${
+                                        checkoutMethod === 'mobile-money'
+                                            ? 'bg-white text-gray-800 font-normal shadow-sm'
+                                            : 'text-gray-800 font-normal'
                                     }`}
                                 >
-                                    <Smartphone size={13} /> Mobile Money
+                                    <Smartphone size={16} /> Mobile Money
                                 </button>
                                 <button
                                     onClick={() => { setCheckoutMethod('card'); setError(null); }}
-                                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
-                                        checkoutMethod === 'card' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'
+                                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs leading-4 transition-all ${
+                                        checkoutMethod === 'card'
+                                            ? 'bg-white text-gray-800 font-normal shadow-sm'
+                                            : 'text-gray-800 font-normal'
                                     }`}
                                 >
-                                    <CreditCard size={13} /> Card
+                                    <CreditCard size={16} /> Debit Card
                                 </button>
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto px-6 py-6">
+                        <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
                             {checkoutMethod === 'mobile-money' ? (
                                 <>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
-                                        Mobile Money Number
+                                    <label className="block text-sm font-semibold text-gray-800 mb-2">
+                                        Enter your mobile money number
                                     </label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                        <input
-                                            type="tel"
-                                            value={checkoutPhone}
-                                            onChange={(e) => setCheckoutPhone(e.target.value)}
-                                            placeholder="e.g. 0971234567"
-                                            className="w-full bg-neutral-100 rounded-xl pl-11 pr-20 py-3.5 text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-slate-200"
-                                        />
-                                        {detectOperator(checkoutPhone) && (
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                                <span className={`text-[10px] font-black px-2 py-1 rounded bg-white border border-slate-100 uppercase tracking-tighter ${OPERATOR_COLORS[detectOperator(checkoutPhone)!]}`}>
+                                    <div className="min-h-12 bg-white rounded-full border border-slate-300 flex items-center overflow-hidden">
+                                        <div className="self-stretch p-3 bg-neutral-100 border-r border-slate-300 flex items-center gap-1.5">
+                                            <span className="text-base leading-none" role="img" aria-label="Zambia">🇿🇲</span>
+                                            <ChevronDown size={14} className="text-slate-400" />
+                                        </div>
+                                        <div className="flex-1 px-5 py-3 flex items-center gap-1.5 min-w-0">
+                                            <span className="text-base font-semibold text-gray-600 flex-shrink-0">+260</span>
+                                            <input
+                                                type="tel"
+                                                value={checkoutPhone}
+                                                onChange={(e) => setCheckoutPhone(e.target.value)}
+                                                placeholder="(971) 234 - 567"
+                                                className="flex-1 min-w-0 text-base text-gray-600 outline-none bg-transparent placeholder:text-gray-400"
+                                            />
+                                            {detectOperator(checkoutPhone) && (
+                                                <span className={`text-xs font-semibold uppercase tracking-tighter flex-shrink-0 ${OPERATOR_COLORS[detectOperator(checkoutPhone)!]}`}>
                                                     {detectOperator(checkoutPhone)}
                                                 </span>
-                                            </div>
-                                        )}
+                                            )}
+                                        </div>
                                     </div>
 
                                     {checkoutPhone.length >= 9 && (
-                                        <div className="mt-3 p-4 rounded-2xl bg-blue-50/70 border border-blue-100 flex items-center gap-3">
+                                        <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                             {resolvingAccountName ? (
                                                 <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
                                             ) : resolvedAccountName ? (
@@ -2627,8 +2647,8 @@ Status: VERIFIED`;
                                                 <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
                                             )}
                                             <div className="flex-1 min-w-0">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-600">Account Holder</p>
-                                                <p className="text-sm font-bold text-slate-800 truncate">
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Account Holder</p>
+                                                <p className="text-sm font-semibold text-gray-800 truncate">
                                                     {resolvingAccountName
                                                         ? 'Verifying number…'
                                                         : resolvedAccountName || (resolveFailed ? 'Could not verify — check the number' : 'Waiting for a valid number…')}
@@ -2645,7 +2665,7 @@ Status: VERIFIED`;
                                     )}
                                 </>
                             ) : (
-                                <div className="text-center py-10 px-4 bg-slate-50/70 border border-slate-100 rounded-2xl">
+                                <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
                                     <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
                                         <CreditCard size={22} />
                                     </div>
@@ -2657,22 +2677,26 @@ Status: VERIFIED`;
                             )}
                         </div>
 
-                        <div className="sticky bottom-0 mt-auto bg-white border-t border-slate-100 px-6 pt-4 pb-6">
+                        <div className="sticky bottom-0 mt-auto bg-white border-t border-gray-100 px-7 py-6 flex flex-col items-center gap-3">
+                            <div className="flex items-center justify-center gap-2.5">
+                                <ShieldCheck size={16} className="text-zinc-600" />
+                                <span className="text-xs text-zinc-600">Secure payments powered by Lenco</span>
+                            </div>
                             {checkoutMethod === 'mobile-money' ? (
                                 <button
                                     onClick={handlePayMobileMoney}
                                     disabled={submitting || !detectOperator(checkoutPhone) || resolvingAccountName}
-                                    className={`w-full py-4 rounded-xl font-bold text-sm transition-all flex items-center justify-center gap-2 ${
+                                    className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
                                         !submitting && detectOperator(checkoutPhone) && !resolvingAccountName
                                             ? 'bg-black hover:bg-slate-800 text-white'
                                             : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
                                     }`}
                                 >
-                                    {submitting ? <Loader2 size={16} className="animate-spin" /> : <Smartphone size={16} />}
+                                    {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
                                     <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
                                 </button>
                             ) : (
-                                <button disabled className="w-full py-4 rounded-xl font-bold text-sm bg-neutral-100 text-zinc-400 cursor-not-allowed">
+                                <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">
                                     Coming Soon
                                 </button>
                             )}
@@ -3026,8 +3050,9 @@ Status: VERIFIED`;
                 </div>
             )}
 
-            {/* Footer Brand Info — hidden on the premium processing screen, which has its own header */}
-            {step !== 'SHOP' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && !(step === 'VERIFYING' && displayPaymentPhase) && (
+            {/* Footer Brand Info — hidden on the premium processing screen, which has its own header,
+                and on the dedicated checkout page, which has its own "Secure payments" footer */}
+            {step !== 'SHOP' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && step !== 'CHECKOUT' && !(step === 'VERIFYING' && displayPaymentPhase) && (
             <div className="mt-auto pt-8 pb-6 text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                     <Building2 size={12} />
