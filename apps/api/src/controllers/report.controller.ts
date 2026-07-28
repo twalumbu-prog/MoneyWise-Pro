@@ -133,14 +133,30 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
 
         if (accError) throw accError;
 
+        // Pagination helper to fetch all rows beyond the 1000-row limit
+        const fetchAll = async (queryFn: (from: number, to: number) => any) => {
+            let allData: any[] = [];
+            let from = 0;
+            const limit = 1000;
+            while (true) {
+                const { data, error } = await queryFn(from, from + limit - 1);
+                if (error) throw error;
+                if (!data || data.length === 0) break;
+                allData = allData.concat(data);
+                if (data.length < limit) break;
+                from += limit;
+            }
+            return allData;
+        };
+
         // 2. Fetch all cashbook entries up to endDate
-        const { data: cbEntries, error: cbError } = await supabase
+        const cbEntries = await fetchAll((from, to) => supabase
             .from('cashbook_entries')
             .select('*')
             .eq('organization_id', organization_id)
-            .lte('date', endDate);
-
-        if (cbError) throw cbError;
+            .lte('date', endDate)
+            .range(from, to)
+        );
 
         // 3. Fetch all organization wallets
         const { data: wallets, error: wError } = await supabase
@@ -152,7 +168,7 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
 
         // 4. Fetch all line items of requisitions in allowed statuses
         const allowedStatuses = ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'CATEGORIZED', 'COMPLETED', 'ACCOUNTED'];
-        const { data: lineItems, error: liError } = await supabase
+        const lineItems = await fetchAll((from, to) => supabase
             .from('line_items')
             .select(`
                 *,
@@ -166,9 +182,9 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                 )
             `)
             .eq('requisition.organization_id', organization_id)
-            .in('requisition.status', allowedStatuses);
-
-        if (liError) throw liError;
+            .in('requisition.status', allowedStatuses)
+            .range(from, to)
+        );
 
         // Date helper for line items
         const getLineItemDate = (item: any) => {
