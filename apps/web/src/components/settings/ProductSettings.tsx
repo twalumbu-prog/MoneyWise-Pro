@@ -94,6 +94,9 @@ export const ProductSettings: React.FC = () => {
     const [mfSyncing, setMfSyncing] = useState(false);
     const [mfLoaded, setMfLoaded] = useState(false);
     const [mfLogoFailed, setMfLogoFailed] = useState(false);
+    // Whether this org has an active Master Fees integration — controls tab visibility.
+    // null = still checking (hide tab until confirmed), true/false = resolved.
+    const [mfConnected, setMfConnected] = useState<boolean | null>(null);
 
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -108,6 +111,10 @@ export const ProductSettings: React.FC = () => {
     useEffect(() => {
         loadProducts();
         loadMappingOptions();
+        // Check MF connection status eagerly so we know whether to show the tab at all.
+        masterFeesService.getStatus()
+            .then(s => setMfConnected(s.connected))
+            .catch(() => setMfConnected(false));
     }, []);
 
     useEffect(() => {
@@ -491,7 +498,7 @@ export const ProductSettings: React.FC = () => {
                                 { value: 'SERVICE', label: 'Services' },
                                 { value: 'DIGITAL', label: 'Digital' },
                                 { value: 'DONATION', label: 'Donations' },
-                                { value: 'MASTERFEES', label: 'Master Fees' }
+                                ...(mfConnected ? [{ value: 'MASTERFEES', label: 'Master Fees' }] : [])
                             ].map(tab => {
                                 const isActive = activeTab === tab.value;
                                 return (
