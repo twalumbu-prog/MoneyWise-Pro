@@ -98,6 +98,7 @@ export const cashbookService = {
         entries: any[];
         balance: number;
         externalBalances: Record<string, number>;
+        additionalExternalAccounts?: { id: string; name: string }[];
         wallets: any[];
         recent: { moneywise: any[]; external: any[] };
     }> {

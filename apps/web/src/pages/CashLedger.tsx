@@ -239,7 +239,9 @@ const CashLedger: React.FC = () => {
     } | null>(null);
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [selectedAccountType, setSelectedAccountType] = useState<'CASH' | 'AIRTEL_MONEY' | 'BANK' | 'MONEYWISE_WALLET'>('MONEYWISE_WALLET');
+    // Widened beyond the built-in Cash/Airtel/Bank/Wallet set to also allow the
+    // dynamic Master Fees external accounts (see `externalAccounts` below).
+    const [selectedAccountType, setSelectedAccountType] = useState<string>('MONEYWISE_WALLET');
     const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
     const [isInflowModalOpen, setIsInflowModalOpen] = useState(false);
     const [isClassifying, setIsClassifying] = useState(false);
@@ -298,7 +300,9 @@ const CashLedger: React.FC = () => {
     const walletSeen = useNewnessTracker(
         organizationId
             ? (categoryGroup === 'MONEYWISE'
-                ? (selectedWalletId ? newnessKey(`w_${selectedWalletId}`) : null)
+                ? (selectedAccountType === 'MASTERFEES'
+                    ? newnessKey('a_MASTERFEES')
+                    : (selectedWalletId ? newnessKey(`w_${selectedWalletId}`) : null))
                 : newnessKey(`a_${selectedAccountType}`))
             : null
     );
@@ -1672,13 +1676,29 @@ Status: VERIFIED`;
     const categoryIndex = categoryGroup === 'MONEYWISE' ? 0 : 1;
 
     // ----- Mobile wallet-card carousel helpers -----
-    const externalAccounts = [
+    // additionalExternalAccounts is server-decided (only present for orgs with
+    // Master Fees connected — see getCashbookOverview). MASTERFEES (the
+    // separate-Lenco-account collections bucket) belongs with the real wallets,
+    // not the external accounts — it's still Lenco-managed money, just routed
+    // through a different account than the org's main wallet. MASTERFEES_MANUAL
+    // (staff-entered payments, no processor involved) stays an external account,
+    // same footing as Cash/Bank/Airtel Money.
+    const masterFeesLencoTile = (overview?.additionalExternalAccounts ?? []).find(a => a.id === 'MASTERFEES');
+    type MoneywiseCard =
+        | { kind: 'wallet'; id: string; name: string; balance: number; is_main?: boolean }
+        | { kind: 'masterfees'; name: string; balance: number };
+    const moneywiseCards: MoneywiseCard[] = [
+        ...wallets.map((w: any): MoneywiseCard => ({ kind: 'wallet', id: w.id, name: w.name, balance: w.balance || 0, is_main: w.is_main })),
+        ...(masterFeesLencoTile ? [{ kind: 'masterfees' as const, name: masterFeesLencoTile.name, balance: externalBalances['MASTERFEES'] || 0 }] : []),
+    ];
+    const externalAccounts: { id: string; name: string }[] = [
         { id: 'CASH', name: 'Cash Account' },
         { id: 'AIRTEL_MONEY', name: 'Airtel Money' },
         { id: 'BANK', name: 'Bank Account' },
-    ] as const;
+        ...(overview?.additionalExternalAccounts ?? []).filter(a => a.id !== 'MASTERFEES'),
+    ];
     const slideCount = categoryGroup === 'MONEYWISE'
-        ? Math.max(wallets.length, 1) + (!isRequestor && wallets.length > 0 ? 1 : 0)
+        ? Math.max(moneywiseCards.length, 1) + (!isRequestor && moneywiseCards.length > 0 ? 1 : 0)
         : externalAccounts.length;
 
     const walletStride = () => {
@@ -1698,8 +1718,16 @@ Status: VERIFIED`;
         if (walletScrollTimer.current) clearTimeout(walletScrollTimer.current);
         walletScrollTimer.current = setTimeout(() => {
             if (categoryGroup === 'MONEYWISE') {
-                const w = wallets[idx];
-                if (w && w.id !== selectedWalletId) setSelectedWalletId(w.id);
+                const card = moneywiseCards[idx];
+                if (!card) return;
+                if (card.kind === 'wallet') {
+                    if (card.id !== selectedWalletId || selectedAccountType !== 'MONEYWISE_WALLET') {
+                        setSelectedAccountType('MONEYWISE_WALLET');
+                        setSelectedWalletId(card.id);
+                    }
+                } else if (selectedAccountType !== 'MASTERFEES') {
+                    setSelectedAccountType('MASTERFEES');
+                }
             } else {
                 const acc = externalAccounts[idx];
                 if (acc && acc.id !== selectedAccountType) setSelectedAccountType(acc.id as any);
@@ -1804,10 +1832,12 @@ Status: VERIFIED`;
                         >
                             {categoryGroup === 'MONEYWISE' ? (
                                 <>
-                                    {wallets.map((w) =>
-                                        renderWalletCard(w.id, w.name, w.balance || 0)
+                                    {moneywiseCards.map((card) =>
+                                        card.kind === 'wallet'
+                                            ? renderWalletCard(card.id, card.name, card.balance)
+                                            : renderWalletCard('MASTERFEES', card.name, card.balance)
                                     )}
-                                    {wallets.length === 0 && isRequestor && renderWalletCard('empty', 'Main Wallet', 0)}
+                                    {moneywiseCards.length === 0 && isRequestor && renderWalletCard('empty', 'Main Wallet', 0)}
                                     {!isRequestor && (
                                         <div
                                             onClick={() => setIsCreateWalletModalOpen(true)}
@@ -2177,14 +2207,23 @@ Status: VERIFIED`;
                 <div className="flex items-center gap-4 overflow-x-auto no-scrollbar p-2 -m-2">
                     {categoryGroup === 'MONEYWISE' ? (
                         <>
-                            {wallets.map((w: any) => (
+                            {moneywiseCards.map((card) => card.kind === 'wallet' ? (
                                 <DesktopWalletCard
-                                    key={w.id}
-                                    label={`${w.name}${w.is_main ? ' (Main)' : ''}`}
-                                    amount={`K ${formatCurrency(w.balance || 0).replace('K', '')}`}
+                                    key={card.id}
+                                    label={`${card.name}${card.is_main ? ' (Main)' : ''}`}
+                                    amount={`K ${formatCurrency(card.balance).replace('K', '')}`}
                                     orgName={organizationName || 'MoneyWise'}
-                                    isActive={selectedWalletId === w.id}
-                                    onClick={() => setSelectedWalletId(w.id)}
+                                    isActive={selectedAccountType === 'MONEYWISE_WALLET' && selectedWalletId === card.id}
+                                    onClick={() => { setSelectedAccountType('MONEYWISE_WALLET'); setSelectedWalletId(card.id); }}
+                                />
+                            ) : (
+                                <DesktopWalletCard
+                                    key="MASTERFEES"
+                                    label={card.name}
+                                    amount={`K ${formatCurrency(card.balance).replace('K', '')}`}
+                                    orgName={organizationName || 'MoneyWise'}
+                                    isActive={selectedAccountType === 'MASTERFEES'}
+                                    onClick={() => setSelectedAccountType('MASTERFEES')}
                                 />
                             ))}
                         </>

@@ -93,7 +93,12 @@ export const RequisitionList: React.FC = () => {
         refetch: refetchInflows,
     } = useQuery<InflowRow[]>({
         queryKey: ['inflows', organizationId],
-        queryFn: async () => (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 200 })) || [],
+        // Ordered by transaction date (not sync/created_at), so a backfilled batch of
+        // historically-dated inflows (e.g. Master Fees payments synced today but dated
+        // months ago) can rank below a low cap and never appear even though they're
+        // real, current data. 1000 covers this org's full inflow history today with
+        // room to grow; revisit with real pagination if it's ever not enough.
+        queryFn: async () => (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 1000 })) || [],
         enabled: !!organizationId,
     });
     const inflowsLoading = inflowsFetching || !organizationId;

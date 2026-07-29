@@ -35,6 +35,9 @@ const CODE_UNCATEGORISED_ASSET = 'QB-1';
 // Master Fees payments collected into a Lenco account separate from the
 // MoneyWise wallet (see services/masterfees.service.ts) land here.
 const CODE_MASTERFEES_COLLECTIONS = 'QB-MF-CASH';
+// Master Fees payments entered manually (staff-recorded, no Lenco/processor
+// involved — cash, bank or Airtel Money typed in by hand) land here instead.
+const CODE_MASTERFEES_MANUAL_COLLECTIONS = 'QB-MF-MANUAL';
 const CODE_OPENING_BALANCE_EQUITY = 'QB-76';
 const CODE_SUSPENSE = 'QB-SUSPENSE';
 
@@ -139,6 +142,11 @@ async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
 
     if (ce.account_type === 'MASTERFEES') {
         return (await getAccountIdByCode(orgId, CODE_MASTERFEES_COLLECTIONS))
+            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+    }
+
+    if (ce.account_type === 'MASTERFEES_MANUAL') {
+        return (await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_COLLECTIONS))
             ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 

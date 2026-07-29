@@ -26,6 +26,7 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
     BANK: 'Bank',
     MONEYWISE_WALLET: 'MoneyWise Wallet',
     MASTERFEES: 'Master Fees',
+    MASTERFEES_MANUAL: 'Master Fees (Manual)',
 };
 
 // Strip the internal "PENDING_INTENT:" prefix and the "| Cust: … | Method" tail

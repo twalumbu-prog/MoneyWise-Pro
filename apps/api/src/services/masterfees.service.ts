@@ -40,6 +40,7 @@ const TOLERANCE = 0.005;
 // with imported QuickBooks / onboarding accounts).
 const CODE_RECEIVABLE = 'QB-MF-AR';
 const CODE_COLLECTIONS = 'QB-MF-CASH';
+const CODE_MANUAL_COLLECTIONS = 'QB-MF-MANUAL';
 const CODE_GENERIC_INCOME = 'QB-MF-INC-GENERAL';
 const codeForCategory = (categoryId: string) =>
     `QB-MF-INC-${String(categoryId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24).toUpperCase()}`;
@@ -240,6 +241,16 @@ async function getCollectionsAccount(organizationId: string): Promise<string> {
         type: 'ASSET',
         subtype: 'Bank',
         description: 'Fee collections received in a Lenco account separate from the MoneyWise wallet.',
+    });
+}
+
+async function getManualCollectionsAccount(organizationId: string): Promise<string> {
+    return getOrCreateAccount(organizationId, {
+        code: CODE_MANUAL_COLLECTIONS,
+        name: 'Master Fees Manual Collections',
+        type: 'ASSET',
+        subtype: 'Bank',
+        description: 'School fee payments recorded manually in Master Fees (not processed through Lenco) — e.g. cash, bank or Airtel Money entered by staff.',
     });
 }
 
@@ -479,6 +490,21 @@ async function findExistingInflow(organizationId: string, reference?: string): P
     return data || null;
 }
 
+// `payment_method` is NOT a reliable Lenco-vs-manual signal — verified against real
+// data: transactions with an obviously staff-typed reference report payment_method
+// as 'bank'/'mobile_money' just as often as 'manual' (it only describes which
+// channel the parent supposedly used, not who recorded the payment). The reliable
+// signal is the reference format itself. A genuine Lenco-processed collection gets
+// an auto-generated "REF-<epoch-timestamp>-<n>" reference — pure numbers, nothing
+// human-readable. Every other format seen is staff-constructed: "MAN-<timestamp>-
+// <n>" and "SPLIT-<...>" from the manual "record payment" form, and "BNK-<name>-
+// <n>" where <name> is literally the first 3 letters of the student's first name
+// (e.g. "BNK-CHR-265252" for Chris Tembo) — a human typed that, a webhook wouldn't.
+// Whitelist rather than blacklist: only the unambiguous REF- format counts as Lenco.
+function isLencoProcessed(txn: MFTransaction): boolean {
+    return String(txn.reference || '').toUpperCase().startsWith('REF-');
+}
+
 async function postPayment(
     organizationId: string,
     integrationId: string,
@@ -499,8 +525,59 @@ async function postPayment(
         .eq('mf_id', txn.transaction_id)
         .maybeSingle();
     const unchanged = prior && Math.abs(num(prior.amount) - amount) < TOLERANCE;
+
+    // Manual payment amount was edited in Master Fees — update the existing cashbook
+    // row in place and re-derive its journal. Lenco payments cannot be edited at
+    // source (they are gateway-authoritative), so we only handle this for manual ones.
+    if (!unchanged && prior?.cashbook_entry_id && !isLencoProcessed(txn)) {
+        await supabase
+            .from('cashbook_entries')
+            .update({ debit: amount })
+            .eq('id', prior.cashbook_entry_id);
+        await ledgerService.repostForCashbookEntry(prior.cashbook_entry_id);
+        const { data: ce } = await supabase
+            .from('cashbook_entries')
+            .select('date, created_at, account_type')
+            .eq('id', prior.cashbook_entry_id)
+            .maybeSingle();
+        if (ce) {
+            await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, ce.account_type);
+        }
+        await upsertRecord(organizationId, integrationId, {
+            record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+            student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+            journal_entry_id: null, cashbook_entry_id: prior.cashbook_entry_id, external_reference: txn.reference, raw: txn,
+        });
+        return 'posted';
+    }
+
     // Already visible as a cashbook inflow (current posting path) and unchanged.
     if (unchanged && prior!.cashbook_entry_id) {
+        // A payment synced before payment_method-based routing existed may be
+        // parked in the wrong bucket (a 'manual' Master Fees payment posted to the
+        // Lenco-separate MASTERFEES account instead of MASTERFEES_MANUAL). Fix the
+        // account_type in place and let ledgerService re-derive the journal — never
+        // touches a shared-mode reclassified real wallet row (account_type stays
+        // whatever the wallet's own sync gave it, e.g. MONEYWISE_WALLET).
+        const desiredType = isLencoProcessed(txn) ? 'MASTERFEES' : 'MASTERFEES_MANUAL';
+        const { data: ce } = await supabase
+            .from('cashbook_entries')
+            .select('account_type, date, created_at')
+            .eq('id', prior!.cashbook_entry_id)
+            .maybeSingle();
+        if (ce && (ce.account_type === 'MASTERFEES' || ce.account_type === 'MASTERFEES_MANUAL') && ce.account_type !== desiredType) {
+            const oldType = ce.account_type;
+            if (desiredType === 'MASTERFEES_MANUAL') await getManualCollectionsAccount(organizationId);
+            else await getCollectionsAccount(organizationId);
+            await supabase.from('cashbook_entries').update({ account_type: desiredType }).eq('id', prior!.cashbook_entry_id);
+            await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
+            // Moving an entry between buckets leaves BOTH running-balance chains
+            // stale from that point forward (the old one has a gap, the new one has
+            // an unaccounted-for jump) — repostForCashbookEntry only fixes the GL
+            // journal, not cashbook_entries.balance_after. Recompute both in full.
+            await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, oldType);
+            await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, desiredType);
+        }
         return 'skipped';
     }
     // A payment posted by an EARLIER version of this integration that wrote a journal
@@ -514,9 +591,38 @@ async function postPayment(
     }
 
     const receivableId = config.receivableAccountId || await getReceivableAccount(organizationId);
+    const label = `Master Fees Payment ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
+
+    // ── Not processed through Lenco (staff entered it manually in Master Fees) ──
+    // There is no chance MoneyWise's own Lenco sync ever saw this cash, so it
+    // always needs posting ourselves, regardless of the org's Lenco mode —
+    // "shared vs separate" is a Lenco-account concept and doesn't apply here.
+    if (!isLencoProcessed(txn)) {
+        await getManualCollectionsAccount(organizationId); // ensure the contra-resolvable account exists
+        const manualLabel = `Master Fees Manual Payment ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
+        const entry = await cashbookService.createEntry(organizationId, {
+            date: dateOnly(txn.completed_at),
+            description: manualLabel,
+            debit: amount,
+            credit: 0,
+            entry_type: 'INFLOW',
+            status: 'COMPLETED',
+            account_type: 'MASTERFEES_MANUAL',
+            account_id: receivableId,
+            external_reference: txn.reference || txn.transaction_id,
+            skip_inflow_notification: needsBackfill,
+        } as any);
+        await upsertRecord(organizationId, integrationId, {
+            record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+            student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+            journal_entry_id: null, cashbook_entry_id: entry.id, external_reference: txn.reference, raw: txn,
+        });
+        return 'posted';
+    }
+
+    // ── Lenco-processed (bank / mobile money) — the shared-vs-separate account question applies ──
     const existingInflow = await findExistingInflow(organizationId, txn.reference);
     const shared = config.lencoMode === 'shared' || !!existingInflow;
-    const label = `Master Fees Payment ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
 
     if (shared) {
         if (!existingInflow) {

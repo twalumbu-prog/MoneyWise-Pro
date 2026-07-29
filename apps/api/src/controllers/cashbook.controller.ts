@@ -859,6 +859,7 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
         const [
             entries, balance, cashBal, airtelBal, bankBal, wallets,
             recentMoneywise, recentCash, recentAirtel, recentBank,
+            mfIntegration,
         ] = await Promise.all([
             cashbookService.getEntries(organizationId, {
                 startDate: startDate as string,
@@ -876,16 +877,46 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             cashbookService.getEntries(organizationId, { accountType: 'CASH', limit: 10 }),
             cashbookService.getEntries(organizationId, { accountType: 'AIRTEL_MONEY', limit: 10 }),
             cashbookService.getEntries(organizationId, { accountType: 'BANK', limit: 10 }),
+            supabase.from('integrations').select('config').eq('provider', 'MASTERFEES').eq('organization_id', organizationId).maybeSingle(),
         ]);
+
+        // Master Fees external accounts are only relevant to orgs that actually use
+        // the integration, so they're fetched conditionally rather than joining the
+        // fixed Cash/Airtel/Bank set every org gets. "Separate Lenco" collections
+        // gets its own tile only in that mode; the manual bucket applies whenever
+        // Master Fees is connected, since manual entries never touch a real wallet.
+        const additionalExternalAccounts: { id: string; name: string }[] = [];
+        let masterFeesBal = 0, masterFeesManualBal = 0;
+        let recentMasterFees: any[] = [], recentMasterFeesManual: any[] = [];
+        const mfConfig = mfIntegration?.data?.config as { lencoMode?: string } | undefined;
+        if (mfConfig) {
+            const separate = mfConfig.lencoMode === 'separate';
+            const [mfBal, mfManualBal, mfRecent, mfManualRecent] = await Promise.all([
+                separate ? cashbookService.getCurrentBalance(organizationId, 'MASTERFEES') : Promise.resolve(0),
+                cashbookService.getCurrentBalance(organizationId, 'MASTERFEES_MANUAL'),
+                separate ? cashbookService.getEntries(organizationId, { accountType: 'MASTERFEES', limit: 10 }) : Promise.resolve([]),
+                cashbookService.getEntries(organizationId, { accountType: 'MASTERFEES_MANUAL', limit: 10 }),
+            ]);
+            masterFeesBal = mfBal;
+            masterFeesManualBal = mfManualBal;
+            recentMasterFees = mfRecent;
+            recentMasterFeesManual = mfManualRecent;
+            if (separate) additionalExternalAccounts.push({ id: 'MASTERFEES', name: 'Master Fees Collections (Lenco)' });
+            additionalExternalAccounts.push({ id: 'MASTERFEES_MANUAL', name: 'Master Fees Manual' });
+        }
 
         res.json({
             entries: entries.map(sanitizeEntry),
             balance,
-            externalBalances: { CASH: cashBal, AIRTEL_MONEY: airtelBal, BANK: bankBal },
+            externalBalances: {
+                CASH: cashBal, AIRTEL_MONEY: airtelBal, BANK: bankBal,
+                MASTERFEES: masterFeesBal, MASTERFEES_MANUAL: masterFeesManualBal,
+            },
+            additionalExternalAccounts,
             wallets,
             recent: {
                 moneywise: recentMoneywise.map(sanitizeEntry),
-                external: [...recentCash, ...recentAirtel, ...recentBank].map(sanitizeEntry),
+                external: [...recentCash, ...recentAirtel, ...recentBank, ...recentMasterFees, ...recentMasterFeesManual].map(sanitizeEntry),
             },
         });
     } catch (error: any) {
