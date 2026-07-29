@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { supabase } from '../lib/supabase';
 import { ledgerService } from './ledger.service';
+import { cashbookService } from './cashbook.service';
 import { broadcastInvalidate } from '../lib/realtimeBroadcast';
 
 /**
@@ -132,7 +133,12 @@ export class MasterFeesClient {
     }
 
     private list<T = any>(resp: any): T[] {
-        return (resp?.data || resp?.transactions || resp?.students || resp?.categories || (Array.isArray(resp) ? resp : [])) as T[];
+        const candidate = resp?.data ?? resp?.transactions ?? resp?.students ?? resp?.categories ?? resp;
+        // A single-result response can arrive as a bare object rather than a one-item
+        // array (observed on invoices' `items`); normalize the same way here.
+        if (Array.isArray(candidate)) return candidate as T[];
+        if (candidate && typeof candidate === 'object') return [candidate] as T[];
+        return [];
     }
 
     async getSchoolMeta(): Promise<{ school_name?: string }> {
@@ -402,9 +408,16 @@ async function postInvoice(
 
     // Credit income, split per fee category. Match each line item to a category by
     // explicit id, else by a case-insensitive substring of its description.
+    // The API returns `items` as an array when an invoice has multiple line items,
+    // but as a bare object (not array-wrapped) when it has exactly one — normalize
+    // both shapes so a single-item invoice doesn't throw "not iterable".
+    const rawItems = invoice.items;
+    const items: MFInvoiceItem[] = Array.isArray(rawItems)
+        ? rawItems
+        : (rawItems && typeof rawItems === 'object' ? [rawItems as MFInvoiceItem] : []);
     const incomeByAccount = new Map<string, number>();
     let allocated = 0;
-    for (const item of invoice.items || []) {
+    for (const item of items) {
         const amt = num(item.amount);
         if (amt <= 0) continue;
         let category: MFFeeCategory | null = null;
@@ -485,14 +498,25 @@ async function postPayment(
         .eq('record_type', 'PAYMENT')
         .eq('mf_id', txn.transaction_id)
         .maybeSingle();
-    // Already fully applied (has a journal or a reclassified inflow) and unchanged.
-    if (prior && Math.abs(num(prior.amount) - amount) < TOLERANCE && (prior.journal_entry_id || prior.cashbook_entry_id)) {
+    const unchanged = prior && Math.abs(num(prior.amount) - amount) < TOLERANCE;
+    // Already visible as a cashbook inflow (current posting path) and unchanged.
+    if (unchanged && prior!.cashbook_entry_id) {
         return 'skipped';
+    }
+    // A payment posted by an EARLIER version of this integration that wrote a journal
+    // directly (source_type='MASTERFEES') without a cashbook_entries row — invisible
+    // in Inbox → Inflows. Clean up the orphaned journal so the code below can
+    // re-post it the current way (as a real cashbook inflow); ledgerService will
+    // derive an equivalent replacement journal from that new row.
+    const needsBackfill = unchanged && prior!.journal_entry_id && !prior!.cashbook_entry_id;
+    if (needsBackfill) {
+        await removeJournal(organizationId, txn.transaction_id);
     }
 
     const receivableId = config.receivableAccountId || await getReceivableAccount(organizationId);
     const existingInflow = await findExistingInflow(organizationId, txn.reference);
     const shared = config.lencoMode === 'shared' || !!existingInflow;
+    const label = `Master Fees Payment ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
 
     if (shared) {
         if (!existingInflow) {
@@ -507,13 +531,15 @@ async function postPayment(
             });
             return 'deferred';
         }
-        // Reclassify the existing inflow's contra from Suspense → Receivable. Setting
-        // account_id + re-posting makes the derived journal Dr Wallet / Cr Receivable,
-        // recording the cash once and clearing the receivable.
-        if (existingInflow.account_id !== receivableId) {
+        // Reclassify the existing inflow's contra from Suspense → Receivable, and
+        // relabel its description so it's identifiable as Master Fees revenue in
+        // Inbox → Inflows (the account_type/wallet stays as-is — it's genuinely the
+        // same MoneyWise wallet, not a separate cash bucket). Re-posting makes the
+        // derived journal Dr Wallet / Cr Receivable, recording the cash once.
+        if (existingInflow.account_id !== receivableId || existingInflow.description !== label) {
             await supabase
                 .from('cashbook_entries')
-                .update({ account_id: receivableId, status: 'ACCOUNTED' })
+                .update({ account_id: receivableId, status: 'ACCOUNTED', description: label })
                 .eq('id', existingInflow.id);
             await ledgerService.repostForCashbookEntry(existingInflow.id);
         }
@@ -525,22 +551,32 @@ async function postPayment(
         return 'reclassified';
     }
 
-    // Separate Lenco account — MoneyWise doesn't see this cash. Post it ourselves.
-    const collectionsId = config.collectionsAccountId || await getCollectionsAccount(organizationId);
-    const journalId = await postJournal(organizationId, {
-        sourceId: txn.transaction_id,
+    // Separate Lenco account — MoneyWise's own Lenco sync never sees this cash, so
+    // record it ourselves as a normal cashbook INFLOW (account_type='MASTERFEES',
+    // labelled "Master Fees" in Inbox → Inflows) with the receivable as its contra
+    // account. cashbookService.createEntry drives the existing ledgerService engine,
+    // which derives the balanced journal (Dr Master Fees Collections / Cr
+    // Receivable) automatically — same mechanism every other real cash movement uses.
+    await getCollectionsAccount(organizationId); // ensure the contra-resolvable account exists
+    const entry = await cashbookService.createEntry(organizationId, {
         date: dateOnly(txn.completed_at),
-        description: `Master Fees Payment ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`,
-        reference: txn.reference,
-        lines: [
-            { account_id: collectionsId, debit: amount, credit: 0 },
-            { account_id: receivableId, debit: 0, credit: amount },
-        ],
-    });
+        description: label,
+        debit: amount,
+        credit: 0,
+        entry_type: 'INFLOW',
+        status: 'COMPLETED',
+        account_type: 'MASTERFEES',
+        account_id: receivableId,
+        external_reference: txn.reference || txn.transaction_id,
+        // Backfilling a payment an earlier version already posted (directly to the
+        // GL, invisibly) is not new money arriving — don't re-notify admins about
+        // history. Genuinely new payments still get the normal "New Inflow" email.
+        skip_inflow_notification: needsBackfill,
+    } as any);
     await upsertRecord(organizationId, integrationId, {
         record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
         student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
-        journal_entry_id: journalId, cashbook_entry_id: null, external_reference: txn.reference, raw: txn,
+        journal_entry_id: null, cashbook_entry_id: entry.id, external_reference: txn.reference, raw: txn,
     });
     return 'posted';
 }
@@ -675,7 +711,7 @@ export async function reconcileMasterfees(organizationId: string): Promise<{
     let masterfeesOutstanding = 0;
     let studentsWithBalance = 0;
     for (const b of balances) {
-        const bal = num((b as any).balance_due ?? (b as any).net_balance ?? (b as any).balance);
+        const bal = num((b as any).net_outstanding ?? (b as any).balance_due ?? (b as any).net_balance ?? (b as any).balance);
         masterfeesOutstanding += bal;
         if (Math.abs(bal) > TOLERANCE) studentsWithBalance++;
     }

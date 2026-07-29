@@ -25,6 +25,7 @@ const ACCOUNT_TYPE_LABEL: Record<string, string> = {
     AIRTEL_MONEY: 'Mobile Money',
     BANK: 'Bank',
     MONEYWISE_WALLET: 'MoneyWise Wallet',
+    MASTERFEES: 'Master Fees',
 };
 
 // Strip the internal "PENDING_INTENT:" prefix and the "| Cust: … | Method" tail

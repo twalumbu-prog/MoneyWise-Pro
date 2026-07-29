@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { productService, Product, ProductType, PRODUCT_TYPE_OPTIONS, isBookingProductType, DigitalAsset } from '../../services/product.service';
 import { accountService } from '../../services/account.service';
 import { cashbookService } from '../../services/cashbook.service';
+import { masterFeesService, MasterFeesStatus, MasterFeesCategory } from '../../services/integration.service';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { compressImage } from '../../utils/file_utils';
@@ -26,7 +27,10 @@ import {
     Layers,
     FileUp,
     FileText,
-    MoreHorizontal
+    MoreHorizontal,
+    GraduationCap,
+    RefreshCw,
+    ArrowUpRight
 } from 'lucide-react';
 
 interface WalletOption { id: string; name: string; is_main?: boolean; }
@@ -82,6 +86,15 @@ export const ProductSettings: React.FC = () => {
     const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
+    // Master Fees tab state — a separate synced product/service source, not part
+    // of the local `products` catalog.
+    const [mfStatus, setMfStatus] = useState<MasterFeesStatus | null>(null);
+    const [mfCategories, setMfCategories] = useState<MasterFeesCategory[]>([]);
+    const [mfLoading, setMfLoading] = useState(false);
+    const [mfSyncing, setMfSyncing] = useState(false);
+    const [mfLoaded, setMfLoaded] = useState(false);
+    const [mfLogoFailed, setMfLogoFailed] = useState(false);
+
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -96,6 +109,46 @@ export const ProductSettings: React.FC = () => {
         loadProducts();
         loadMappingOptions();
     }, []);
+
+    useEffect(() => {
+        if (activeTab === 'MASTERFEES' && !mfLoaded) {
+            loadMasterFeesTab();
+        }
+    }, [activeTab]);
+
+    const loadMasterFeesTab = async () => {
+        try {
+            setMfLoading(true);
+            const status = await masterFeesService.getStatus();
+            setMfStatus(status);
+            if (status.connected) {
+                setMfCategories(await masterFeesService.getFeeCategories().catch(() => []));
+            }
+        } catch (err) {
+            console.error('Failed to load Master Fees data:', err);
+        } finally {
+            setMfLoading(false);
+            setMfLoaded(true);
+        }
+    };
+
+    const handleMasterFeesSync = async () => {
+        try {
+            setMfSyncing(true);
+            setError(null);
+            await masterFeesService.sync();
+            const [status, cats] = await Promise.all([
+                masterFeesService.getStatus(),
+                masterFeesService.getFeeCategories().catch(() => []),
+            ]);
+            setMfStatus(status);
+            setMfCategories(cats);
+        } catch (err: any) {
+            setError(err.message || 'Failed to sync Master Fees');
+        } finally {
+            setMfSyncing(false);
+        }
+    };
 
     const loadProducts = async () => {
         try {
@@ -437,7 +490,8 @@ export const ProductSettings: React.FC = () => {
                                 { value: 'PRODUCT', label: 'Physical' },
                                 { value: 'SERVICE', label: 'Services' },
                                 { value: 'DIGITAL', label: 'Digital' },
-                                { value: 'DONATION', label: 'Donations' }
+                                { value: 'DONATION', label: 'Donations' },
+                                { value: 'MASTERFEES', label: 'Master Fees' }
                             ].map(tab => {
                                 const isActive = activeTab === tab.value;
                                 return (
@@ -448,13 +502,45 @@ export const ProductSettings: React.FC = () => {
                                             isActive ? 'font-bold bg-white text-[#111827] shadow-sm' : 'font-normal text-gray-500 hover:text-gray-700'
                                         }`}
                                     >
+                                        {tab.value === 'MASTERFEES' && (
+                                            mfLogoFailed ? (
+                                                <GraduationCap size={12} className="text-brand-navy flex-shrink-0" />
+                                            ) : (
+                                                <img
+                                                    src="/masterfees-logo.png"
+                                                    alt=""
+                                                    className="w-3 h-3 object-contain rounded-sm flex-shrink-0"
+                                                    onError={() => setMfLogoFailed(true)}
+                                                />
+                                            )
+                                        )}
                                         {tab.label}
                                     </button>
                                 );
                             })}
                         </div>
-                        
-                        {isAdmin && (
+
+                        {activeTab === 'MASTERFEES' ? (
+                            <div className="flex items-center gap-3 flex-shrink-0">
+                                <a
+                                    href="/settings?tab=integrations"
+                                    className="text-xs font-bold text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                                >
+                                    Manage in Settings
+                                    <ArrowUpRight size={12} />
+                                </a>
+                                {mfStatus?.connected && (
+                                    <button
+                                        onClick={handleMasterFeesSync}
+                                        disabled={mfSyncing}
+                                        className="h-8 pl-4 pr-3 bg-brand-navy rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-50"
+                                    >
+                                        <span className="text-white text-xs font-bold">{mfSyncing ? 'Syncing…' : 'Sync Now'}</span>
+                                        <RefreshCw size={14} className={`text-white ${mfSyncing ? 'animate-spin' : ''}`} />
+                                    </button>
+                                )}
+                            </div>
+                        ) : isAdmin && (
                             <button
                                 onClick={handleOpenAddModal}
                                 className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity flex-shrink-0"
@@ -486,7 +572,104 @@ export const ProductSettings: React.FC = () => {
 
                     {/* Table Container */}
                     <div className="flex-1 overflow-auto rounded-xl outline outline-1 outline-offset-[-1px] outline-[#E8EEF8] custom-scrollbar mx-2 mb-2">
-                        {(() => {
+                        {activeTab === 'MASTERFEES' ? (
+                            (() => {
+                                if (mfLoading) {
+                                    return (
+                                        <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+                                            <Loader2 className="h-8 w-8 text-gray-300 animate-spin mb-4" />
+                                            <p className="text-gray-500 text-sm">Loading Master Fees…</p>
+                                        </div>
+                                    );
+                                }
+
+                                if (!mfStatus?.connected) {
+                                    return (
+                                        <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+                                            <div className="h-16 w-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 border border-gray-100">
+                                                <GraduationCap className="h-8 w-8 text-gray-300" />
+                                            </div>
+                                            <h4 className="text-gray-900 font-bold mb-1">Master Fees isn't connected</h4>
+                                            <p className="text-gray-500 text-sm max-w-sm mb-4">
+                                                Connect Master Fees from Settings → Integrations to sync school fee categories, invoices and receivables here.
+                                            </p>
+                                            <a
+                                                href="/settings?tab=integrations"
+                                                className="inline-flex items-center gap-1.5 px-4 py-2 bg-brand-navy text-white text-xs font-bold rounded-xl hover:opacity-90 transition-opacity"
+                                            >
+                                                Go to Integrations <ArrowUpRight size={14} />
+                                            </a>
+                                        </div>
+                                    );
+                                }
+
+                                if (mfCategories.length === 0) {
+                                    return (
+                                        <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+                                            <div className="h-16 w-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 border border-gray-100">
+                                                <GraduationCap className="h-8 w-8 text-gray-300" />
+                                            </div>
+                                            <h4 className="text-gray-900 font-bold mb-1">No fee categories synced yet</h4>
+                                            <p className="text-gray-500 text-sm max-w-sm">
+                                                Run "Sync Now" to pull fee categories from Master Fees.
+                                            </p>
+                                        </div>
+                                    );
+                                }
+
+                                const accountName = (id: string | null) =>
+                                    id ? (incomeAccounts.find(a => a.id === id)?.name || 'Unmapped account') : null;
+
+                                return (
+                                    <table className="w-full text-left">
+                                        <thead className="bg-white">
+                                            <tr className="border-b border-[#E8EEF8]">
+                                                <th className="py-2.5 px-6 text-xs font-semibold text-[#111827]">Fee Category</th>
+                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Price</th>
+                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Type</th>
+                                                <th className="py-2.5 px-3 text-xs font-semibold text-[#111827]">Income Account</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {mfCategories.map((cat) => (
+                                                <tr key={cat.id} className="group transition-colors border-b border-[#E8EEF8]/40 hover:bg-gray-50/70">
+                                                    <td className="py-3.5 px-6">
+                                                        <div className="flex items-center">
+                                                            <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-brand-navy/10 overflow-hidden flex items-center justify-center shadow-inner">
+                                                                <GraduationCap className="h-5 w-5 text-brand-navy" />
+                                                            </div>
+                                                            <div className="ml-4">
+                                                                <div className="text-sm font-bold text-gray-900 leading-tight">{cat.name}</div>
+                                                                <div className="text-xs text-gray-500 font-medium">Synced from Master Fees</div>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3.5 px-3 whitespace-nowrap">
+                                                        <div className="text-sm font-bold text-gray-900">
+                                                            {cat.amount != null ? `K${Number(cat.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span className="text-gray-400 font-medium text-xs">Variable</span>}
+                                                        </div>
+                                                    </td>
+                                                    <td className="py-3.5 px-3 whitespace-nowrap">
+                                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-blue-50 text-blue-700">
+                                                            School Fee
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-3.5 px-3 whitespace-nowrap">
+                                                        {accountName(cat.accountId) ? (
+                                                            <span className="text-xs font-medium text-gray-700">{accountName(cat.accountId)}</span>
+                                                        ) : (
+                                                            <span className="px-2.5 py-0.5 inline-flex text-[10px] font-bold leading-5 rounded-full border bg-gray-50 text-gray-700 border-gray-100">
+                                                                AUTO ON SYNC
+                                                            </span>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                );
+                            })()
+                        ) : (() => {
                             const filteredProducts = products.filter(p => {
                                 if (activeTab === 'ALL') return true;
                                 if (activeTab === 'PRODUCT') return p.product_type === 'PRODUCT';

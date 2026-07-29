@@ -32,6 +32,9 @@ const suspenseCache = new Map<string, string>(); // org → suspense account id
 // System account codes used for contra routing.
 const CODE_MAIN_WALLET = 'QB-1150040000';
 const CODE_UNCATEGORISED_ASSET = 'QB-1';
+// Master Fees payments collected into a Lenco account separate from the
+// MoneyWise wallet (see services/masterfees.service.ts) land here.
+const CODE_MASTERFEES_COLLECTIONS = 'QB-MF-CASH';
 const CODE_OPENING_BALANCE_EQUITY = 'QB-76';
 const CODE_SUSPENSE = 'QB-SUSPENSE';
 
@@ -131,6 +134,11 @@ async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
         }
         // Main wallet (or unmatched sub-wallet) → the Main Wallet asset account.
         return (await getAccountIdByCode(orgId, CODE_MAIN_WALLET))
+            ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
+    }
+
+    if (ce.account_type === 'MASTERFEES') {
+        return (await getAccountIdByCode(orgId, CODE_MASTERFEES_COLLECTIONS))
             ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
