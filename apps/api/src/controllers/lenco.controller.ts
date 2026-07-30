@@ -1691,6 +1691,55 @@ async function categorizeSplitPaymentRevenue(orgId: string, entryId: string) {
 }
 
 /**
+ * Auto-categorize a PG-SUB-... inflow in the Blue Opus settlement account as
+ * "Subscription Revenue". Mirrors categorizeSplitPaymentRevenue exactly: look up
+ * the account by name, stamp it, re-post the GL journal, and auto-QB if mapped.
+ */
+async function categorizeSubscriptionRevenue(orgId: string, entryId: string, reference: string) {
+    if (orgId !== BLUE_OPUS_ORG_ID) return;
+
+    const { data: account } = await supabase
+        .from('accounts')
+        .select('id, qb_account_id')
+        .eq('organization_id', orgId)
+        .ilike('name', 'Subscription Revenue')
+        .maybeSingle();
+
+    if (!account) {
+        console.warn(`[Lenco Sync] "Subscription Revenue" account not found for Blue Opus — entry ${entryId} (${reference}) left as UNACCOUNTED`);
+        return;
+    }
+
+    await supabase
+        .from('cashbook_entries')
+        .update({
+            account_id: account.id,
+            status: 'ACCOUNTED',
+            description: `Subscription Payment | Ref: ${reference}`,
+        })
+        .eq('id', entryId);
+
+    try {
+        await ledgerService.repostForCashbookEntry(entryId);
+    } catch (glErr: any) {
+        console.warn(`[Lenco Sync] GL re-post failed for subscription entry ${entryId}:`, glErr.message);
+    }
+
+    if (account.qb_account_id) {
+        try {
+            const result = await QuickBooksService.createDeposit(orgId, entryId, account.qb_account_id, 'system-lenco-sync');
+            if (!result.success) {
+                console.warn(`[Lenco Sync] Auto QB post failed for subscription entry ${entryId}:`, result.error);
+            }
+        } catch (qbErr: any) {
+            console.warn(`[Lenco Sync] Auto QB post threw for subscription entry ${entryId}:`, qbErr.message);
+        }
+    }
+
+    console.log(`[Lenco Sync] Subscription inflow ${entryId} (${reference}) auto-categorized as Subscription Revenue`);
+}
+
+/**
  * Syncs Lenco transactions for all organizations that have a linked Lenco subaccount.
  */
 /**
@@ -2058,6 +2107,11 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                     resolvedRef.toUpperCase().startsWith('SPLIT-')
                 );
 
+                // Subscription revenue: paywall payments from the Blue Opus product
+                // gateway arrive with reference PG-SUB-{timestamp}-{id}.
+                const isSubscriptionPayment = txnType === 'credit' &&
+                    (resolvedRef.toUpperCase().startsWith('PG-SUB-') || txnRefRaw.toUpperCase().startsWith('PG-SUB-'));
+
                 // ─── Check if cashbook entry already exists for this transaction ───
                 // Multi-row-safe: .maybeSingle() errors out (data=null) when more than
                 // one row matches — e.g. a finalized entry plus a stale PENDING twin —
@@ -2158,6 +2212,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             if (isSplitPaymentSweep && finalizedEntry?.id) {
                                 await categorizeSplitPaymentRevenue(orgId, finalizedEntry.id);
                             }
+                            if (isSubscriptionPayment && finalizedEntry?.id) {
+                                await categorizeSubscriptionRevenue(orgId, finalizedEntry.id, resolvedRef || txnRefRaw);
+                            }
 
                             finalizedCount++;
                             console.log(`[Lenco Sync] Finalized pending inflow intent ${pendingIntent.id} for ref ${resolvedRef || txnId}`);
@@ -2242,6 +2299,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                         }
                         if (isSplitPaymentSweep && newEntry?.id) {
                             await categorizeSplitPaymentRevenue(orgId, newEntry.id);
+                        }
+                        if (isSubscriptionPayment && newEntry?.id) {
+                            await categorizeSubscriptionRevenue(orgId, newEntry.id, resolvedRef || txnRefRaw);
                         }
 
                         newEntriesCount++;
