@@ -34,6 +34,7 @@ import departmentRoutes from './routes/department.routes';
 import adminRoutes from './routes/admin.routes';
 import onboardingRoutes from './routes/onboarding.routes';
 import webhooksRoutes from './routes/webhooks.routes';
+import payrollRoutes from './routes/payroll.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
@@ -353,7 +354,7 @@ app.use(cors({
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-custom-header']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-custom-header', 'x-organization-id']
 }));
 
 // Mounted BEFORE express.json() so the exact bytes Vercel signed are what we
@@ -391,6 +392,7 @@ app.use('/onboarding', onboardingRoutes);
 app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
 app.use('/lenco', lencoRoutes);
+app.use('/payroll', payrollRoutes);
 
 // Dump the full route table only when explicitly debugging. On Vercel this
 // module reloads on every cold start, and printing all ~200 routes each time

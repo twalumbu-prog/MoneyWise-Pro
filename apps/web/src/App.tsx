@@ -24,6 +24,9 @@ const Join = React.lazy(() => import('./pages/Join').then(m => ({ default: m.Joi
 const ResetPassword = React.lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
 const Audit = React.lazy(() => import('./pages/Audit').then(m => ({ default: m.Audit })));
 const Menu = React.lazy(() => import('./pages/Menu').then(m => ({ default: m.Menu })));
+const Apps = React.lazy(() => import('./pages/Apps').then(m => ({ default: m.Apps })));
+const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default: m.Payroll })));
+const RunPayrollPage = React.lazy(() => import('./pages/RunPayrollPage').then(m => ({ default: m.RunPayrollPage })));
 const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
 import { Loader2 } from 'lucide-react';
@@ -294,6 +297,30 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <Menu />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/apps"
+                            element={
+                                <ProtectedRoute>
+                                    <Apps />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/apps/payroll"
+                            element={
+                                <ProtectedRoute>
+                                    <Payroll />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/apps/payroll/run"
+                            element={
+                                <ProtectedRoute>
+                                    <RunPayrollPage />
                                 </ProtectedRoute>
                             }
                         />

@@ -35,7 +35,7 @@ const GENERAL_ITEMS: NavItem[] = [
 ];
 
 const SUPPORT_ITEMS: NavItem[] = [
-    { label: 'Apps', path: '#', icon: Grid3x3, isActive: () => false, disabled: true },
+    { label: 'Apps', path: '/apps', icon: Grid3x3, isActive: (p) => p.startsWith('/apps') },
     { label: 'Integrations', path: '/settings?tab=integrations', icon: Share2, isActive: (p, s) => p === '/settings' && s.includes('tab=integrations') },
     { label: 'Customer Care & Help', path: '#', icon: HelpCircle, isActive: () => false, disabled: true },
     { label: 'Settings', path: '/settings', icon: SettingsIcon, isActive: (p, s) => p === '/settings' && !s.includes('tab=integrations') },
