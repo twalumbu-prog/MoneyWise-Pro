@@ -4,7 +4,8 @@ import axios from 'axios';
 import posthog from '../lib/posthog';
 import { trackEvent, trackVerificationTimeout } from '../lib/analytics';
 import { Loader2, ArrowLeft, Delete, Check, AlertCircle, ChevronDown, BadgeCheck, ShieldCheck, Smartphone, CreditCard } from 'lucide-react';
-import { calculatePlatformFee } from 'shared';
+// QuickPay carries no MoneyWise platform fee; we surface Lenco's own 1%
+// network fee so the displayed total matches the USSD deduction exactly.
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 
@@ -161,8 +162,14 @@ export const QuickPay: React.FC = () => {
     const pollCancelledRef = useRef(false);
     const resumedRef = useRef(false);
 
-    const processingFee = calculatePlatformFee(amount);
-    const totalPayable = amount > 0 ? amount + processingFee : 0;
+    // Lenco charges payers a 1% network fee on top of whatever amount is
+    // initiated — their USSD prompt reflects this. We show the same total so
+    // there is no surprise at the point of approval.  MoneyWise takes 0% on
+    // QuickPay deposits to keep transfers as cheap as possible.
+    const LENCO_FEE_RATE = 0.01;
+    const lencoFee = amount > 0 ? Math.round(amount * LENCO_FEE_RATE * 100) / 100 : 0;
+    const totalPayable = amount > 0 ? amount : 0;          // amount Lenco initiates
+    const totalDisplayed = amount > 0 ? amount + lencoFee : 0; // payer's actual cost
     const isSlowNetwork = networkLatencyMs !== null && networkLatencyMs > SLOW_LATENCY_MS;
     const displayPaymentPhase: PaymentPhase | null =
         paymentPhase === 'confirm' && elapsedSeconds >= 6 ? 'polling' : paymentPhase;
@@ -354,7 +361,7 @@ export const QuickPay: React.FC = () => {
                         (pipelineMs !== null ? ` Pipeline latency: ${pipelineMs}ms.` : '')
                     );
                     trackEvent('quick_link_checkout', 'payment', 'succeeded', {
-                        workflow_id: ref, organization_id: orgId, amount, total_payable: totalPayable,
+                        workflow_id: ref, organization_id: orgId, amount, total_payable: totalDisplayed,
                         duration_ms: elapsedMs, carrier_latency_ms: carrierMs, pipeline_latency_ms: pipelineMs,
                     });
 
@@ -443,7 +450,7 @@ export const QuickPay: React.FC = () => {
 
         const checkoutStartedAt = Date.now();
         trackEvent('quick_link_checkout', 'payment', 'started', {
-            workflow_id: ref, organization_id: org.id, wallet_id: wallet.id, amount, total_payable: totalPayable,
+            workflow_id: ref, organization_id: org.id, wallet_id: wallet.id, amount, total_payable: totalDisplayed,
         });
 
         try {
@@ -470,7 +477,7 @@ export const QuickPay: React.FC = () => {
 
             savePendingPayment({
                 reference: ref, contextId: username, orgId: org.id, phone: payerPhone,
-                amount: totalPayable, businessName: org.name, startedAt: checkoutStartedAt,
+                amount: totalDisplayed, businessName: org.name, startedAt: checkoutStartedAt,
             });
             setResumedPayment(null);
             setRecheckNote(null);
@@ -597,7 +604,7 @@ export const QuickPay: React.FC = () => {
             <PageFrame>
                 <PaymentWaitingScreen
                     phase={displayPaymentPhase}
-                    amount={resumedPayment ? resumedPayment.amount : totalPayable}
+                    amount={resumedPayment ? resumedPayment.amount : totalDisplayed}
                     businessName={org.name}
                     payerPhone={resumedPayment ? resumedPayment.phone : checkoutPhone}
                     operator={detectOperator(resumedPayment ? resumedPayment.phone : checkoutPhone)}
@@ -914,8 +921,8 @@ export const QuickPay: React.FC = () => {
                             <span className="text-xs font-bold text-zinc-600">K{amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                         </div>
                         <div className="flex justify-between items-center">
-                            <span className="text-[10px] text-zinc-600">Platform Fee</span>
-                            <span className="text-[10px] text-zinc-600">K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            <span className="text-[10px] text-zinc-600">Network Fee (Lenco 1%)</span>
+                            <span className="text-[10px] text-zinc-600">K{lencoFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                         </div>
                     </div>
                     {checkoutMethod === 'mobile-money' ? (
@@ -927,7 +934,7 @@ export const QuickPay: React.FC = () => {
                             }`}
                         >
                             {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
-                            <span>{submitting ? 'Starting…' : `Send K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                            <span>{submitting ? 'Starting…' : `Send K${totalDisplayed.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
                         </button>
                     ) : (
                         <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">
