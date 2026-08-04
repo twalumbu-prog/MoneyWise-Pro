@@ -89,8 +89,13 @@ const StepProgress: React.FC<{ step: number }> = ({ step }) => (
 // corners, a subtle border and its own background (distinct from the page
 // behind it) on wider screens, with room to breathe either side.
 const PageFrame: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="min-h-screen bg-slate-200 flex items-center justify-center sm:py-10 sm:px-4">
-        <div className="w-full h-screen sm:h-[min(720px,85vh)] sm:max-w-md bg-neutral-50 flex flex-col sm:rounded-3xl sm:border sm:border-slate-300 sm:shadow-xl overflow-hidden">
+    // h-dvh (not h-screen/100vh) so mobile browser chrome that shows/hides on
+    // scroll (Safari/Chrome address bar) never clips the footer — the dynamic
+    // viewport unit already accounts for it. min-h-0 on the flex column lets
+    // its scrollable middle section actually shrink instead of overflowing the
+    // fixed-height frame and pushing the footer off-screen.
+    <div className="h-dvh bg-slate-200 flex items-center justify-center sm:py-10 sm:px-4">
+        <div className="w-full h-dvh min-h-0 sm:h-[min(720px,85vh)] sm:max-w-md bg-neutral-50 flex flex-col sm:rounded-3xl sm:border sm:border-slate-300 sm:shadow-xl overflow-hidden">
             {children}
         </div>
     </div>
@@ -549,65 +554,63 @@ export const QuickPay: React.FC = () => {
                 </div>
                 <StepProgress step={STEP_INDEX.AMOUNT} />
 
-                <div className="flex-1 flex flex-col px-6 overflow-y-auto">
-                    <div className="flex-1 flex flex-col items-center justify-end pb-12">
-                        <div className="flex flex-col items-center gap-1">
-                            <span className="text-xs text-black">You are sending money to</span>
-                            <div className="flex items-center gap-2">
-                                <span className="text-base font-bold text-black uppercase">{org.name}</span>
-                                <BadgeCheck size={18} className="text-blue-600 fill-blue-600" style={{ color: 'white' }} />
-                            </div>
+                <div className="flex-1 min-h-0 flex flex-col px-6 py-2 sm:py-4 overflow-y-auto">
+                    <div className="flex flex-col items-center">
+                        <span className="text-xs text-black">You are sending money to</span>
+                        <div className="flex items-center gap-2 mt-1">
+                            <span className="text-base font-bold text-black uppercase">{org.name}</span>
+                            <BadgeCheck size={18} className="text-blue-600 fill-blue-600" style={{ color: 'white' }} />
                         </div>
-
-                        <div className="w-full max-w-xs mt-4">
-                            <div className="flex items-center justify-between gap-1.5">
-                                <span className="text-5xl font-bold text-black">K</span>
-                                <div className="flex items-center gap-1.5">
-                                    <span className="text-5xl font-bold text-black">{amountStr}</span>
-                                    <span className="mw-blink-cursor inline-block w-1 h-11 bg-black" />
-                                </div>
-                            </div>
-                            <div className="border-b-2 border-neutral-300 mt-2 w-full" />
-                        </div>
-
-                        <p className="text-xs font-medium text-neutral-500 text-center mt-3">
-                            You can send money using any mobile money network
-                        </p>
                     </div>
 
-                    <div className="w-full flex gap-4">
+                    <div className="w-full max-w-xs mx-auto mt-3 sm:mt-4">
+                        <div className="flex items-center justify-between gap-1.5">
+                            <span className="text-4xl sm:text-5xl font-bold text-black">K</span>
+                            <div className="flex items-center gap-1.5">
+                                <span className="text-4xl sm:text-5xl font-bold text-black">{amountStr}</span>
+                                <span className="mw-blink-cursor inline-block w-1 h-9 sm:h-11 bg-black" />
+                            </div>
+                        </div>
+                        <div className="border-b-2 border-neutral-300 mt-2 w-full" />
+                    </div>
+
+                    <p className="text-xs font-medium text-neutral-500 text-center mt-2 sm:mt-3">
+                        You can send money using any mobile money network
+                    </p>
+
+                    <div className="w-full flex gap-3 sm:gap-4 mt-4 sm:mt-8">
                         {QUICK_AMOUNTS.map(a => (
                             <button
                                 key={a}
                                 onClick={() => setAmountStr(String(a))}
-                                className="flex-1 h-12 bg-zinc-100 hover:bg-zinc-200 rounded-xl flex items-center justify-center transition-colors"
+                                className="flex-1 h-10 sm:h-12 bg-zinc-100 hover:bg-zinc-200 rounded-xl flex items-center justify-center transition-colors"
                             >
                                 <span className="text-xs font-bold text-black">K{a.toLocaleString()}</span>
                             </button>
                         ))}
                     </div>
 
-                    <div className="w-full flex flex-col gap-7 mt-9 pb-6">
+                    <div className="w-full flex flex-col gap-2 sm:gap-5 mt-4 sm:mt-8">
                         {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']].map((row, i) => (
                             <div key={i} className="flex items-center gap-10">
                                 {row.map(d => (
-                                    <button key={d} onClick={() => pressDigit(d)} className="flex-1 py-2.5 text-center text-3xl font-bold text-black">
+                                    <button key={d} onClick={() => pressDigit(d)} className="flex-1 py-1 sm:py-2 text-center text-2xl sm:text-3xl font-bold text-black">
                                         {d}
                                     </button>
                                 ))}
                             </div>
                         ))}
                         <div className="flex items-center gap-10">
-                            <button onClick={() => pressDigit('.')} className="flex-1 py-2.5 text-center text-3xl font-bold text-black">.</button>
-                            <button onClick={() => pressDigit('0')} className="flex-1 py-2.5 text-center text-3xl font-bold text-black">0</button>
-                            <button onClick={pressBackspace} className="flex-1 py-2.5 flex items-center justify-center">
-                                <Delete size={26} className="text-black" />
+                            <button onClick={() => pressDigit('.')} className="flex-1 py-1 sm:py-2 text-center text-2xl sm:text-3xl font-bold text-black">.</button>
+                            <button onClick={() => pressDigit('0')} className="flex-1 py-1 sm:py-2 text-center text-2xl sm:text-3xl font-bold text-black">0</button>
+                            <button onClick={pressBackspace} className="flex-1 py-1 sm:py-2 flex items-center justify-center">
+                                <Delete size={24} className="text-black" />
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <div className="px-7 py-8 bg-white border-t border-gray-100 flex flex-col items-center gap-3">
+                <div className="px-7 py-4 sm:py-8 bg-white border-t border-gray-100 flex flex-col items-center gap-3">
                     <div className="flex items-center gap-1.5">
                         <ShieldCheck size={14} style={{ color: '#585858' }} />
                         <span style={{ color: '#585858', fontSize: '12px' }}>Secure payments powered by Lenco</span>
@@ -637,7 +640,7 @@ export const QuickPay: React.FC = () => {
                 </div>
                 <StepProgress step={STEP_INDEX.PURPOSE} />
 
-                <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
+                <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 pb-2">
                     <p className="text-sm font-medium text-gray-800 mb-3">Please tap to indicate the purpose of this deposit</p>
                     <div className="grid grid-cols-2 gap-3">
                         {purposes.filter(p => p.label.trim().toLowerCase() !== 'other').map(p => {
@@ -731,7 +734,7 @@ export const QuickPay: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 pt-6 pb-2">
+                <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 pb-2">
                     {checkoutMethod === 'mobile-money' ? (
                         <>
                             <label className="block text-sm font-semibold text-gray-800 mb-2">Enter your mobile money number</label>
