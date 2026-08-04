@@ -572,7 +572,7 @@ export const QuickPay: React.FC = () => {
                     so digit size and row gaps scale with the viewport's actual
                     height, landing its bottom just above the sticky footer. */}
                 <div className="flex-1 min-h-0 flex flex-col px-6 py-2 overflow-y-auto">
-                    <div className="flex-1 min-h-2" style={{ flexGrow: 0.6 }} />
+                    <div className="flex-1 min-h-2" style={{ flexGrow: 0.35 }} />
 
                     <div className="flex flex-col items-center">
                         <span className="text-xs text-black">You are sending money to</span>
@@ -597,7 +597,7 @@ export const QuickPay: React.FC = () => {
                         You can send money using any mobile money network
                     </p>
 
-                    <div className="flex-1 min-h-4" />
+                    <div className="flex-1 min-h-4" style={{ flexGrow: 1.6 }} />
 
                     {/* Quick-amount presets + keypad, grouped as one unit with a
                         modest fixed gap between them (not a flexible spacer) so
