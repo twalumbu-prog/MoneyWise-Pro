@@ -311,19 +311,38 @@ export const QuickPay: React.FC = () => {
         pollCancelledRef.current = false;
         let attempts = 0;
         const maxAttempts = 90; // ~3 min at 2s
+        console.log(`[Diagnostic] Starting payment confirmation poll for ref ${ref} at ${new Date(startedAt).toISOString()}`);
         const pollStatus = async () => {
             if (pollCancelledRef.current) return;
             attempts++;
+            const attemptStart = performance.now();
             try {
                 const verifyRes = await axios.get(`${API_URL}/lenco/public-verify-status/${ref}?organizationId=${orgId}`);
+                const attemptMs = Math.round(performance.now() - attemptStart);
+                const elapsedMs = Date.now() - startedAt;
+                console.log(`[Diagnostic] Poll attempt ${attempts} (ref ${ref}): verify-status responded in ${attemptMs}ms — status=${verifyRes.data.status || (verifyRes.data.verified ? 'verified' : 'pending')}, elapsed=${elapsedMs}ms`);
                 if (pollCancelledRef.current) return;
                 if (verifyRes.data.verified) {
                     setAwaitingApproval(false);
                     setPaymentPhase('success');
                     clearPendingPayment();
+                    // Split the wait into carrier latency (Lenco's own initiatedAt→completedAt,
+                    // outside our control) vs pipeline latency (completedAt→now, ours to fix) —
+                    // omitted when Lenco didn't return timestamps (e.g. resumed-from-DB stage).
+                    const completedAt = verifyRes.data.completedAt ? new Date(verifyRes.data.completedAt).getTime() : null;
+                    const initiatedAt = verifyRes.data.initiatedAt ? new Date(verifyRes.data.initiatedAt).getTime() : null;
+                    const carrierMs = completedAt && initiatedAt ? completedAt - initiatedAt : null;
+                    const pipelineMs = completedAt ? Date.now() - completedAt : null;
+                    console.log(
+                        `[Diagnostic] Payment CONFIRMED for ref ${ref} after ${elapsedMs}ms total (${attempts} poll attempts).` +
+                        (carrierMs !== null ? ` Carrier latency (Lenco initiatedAt→completedAt, outside our control): ${carrierMs}ms.` : '') +
+                        (pipelineMs !== null ? ` Pipeline latency (Lenco completedAt→confirmed on screen): ${pipelineMs}ms.` : '')
+                    );
                     trackEvent('quick_link_checkout', 'payment', 'succeeded', {
                         workflow_id: ref, organization_id: orgId, amount, total_payable: totalPayable,
-                        duration_ms: Date.now() - startedAt,
+                        duration_ms: elapsedMs,
+                        carrier_latency_ms: carrierMs,
+                        pipeline_latency_ms: pipelineMs,
                     });
                     return;
                 }
@@ -333,24 +352,27 @@ export const QuickPay: React.FC = () => {
                     setFailureIsDeclined(true);
                     setPaymentPhase('failed');
                     clearPendingPayment();
+                    console.log(`[Diagnostic] Payment FAILED for ref ${ref} after ${elapsedMs}ms total (${attempts} poll attempts). Reason: ${verifyRes.data.reason || 'declined'}`);
                     trackEvent('quick_link_checkout', 'payment', 'failed', {
                         workflow_id: ref, organization_id: orgId, error_code: verifyRes.data.reasonCode || 'declined',
-                        duration_ms: Date.now() - startedAt,
+                        duration_ms: elapsedMs,
                     });
                     return;
                 }
             } catch (err) {
-                console.error('[Quick Link] Verification attempt failed:', err);
+                console.error(`[Diagnostic] Poll attempt ${attempts} (ref ${ref}) failed after ${Math.round(performance.now() - attemptStart)}ms:`, err);
             }
             if (pollCancelledRef.current) return;
             if (attempts < maxAttempts) {
                 setTimeout(pollStatus, 2000);
             } else {
+                const elapsedMs = Date.now() - startedAt;
                 setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
                 setAwaitingApproval(false);
                 setFailureIsDeclined(false);
                 setPaymentPhase('failed');
-                trackVerificationTimeout('quick_link_checkout', { workflow_id: ref, organization_id: orgId, attempts, duration_ms: Date.now() - startedAt });
+                console.log(`[Diagnostic] Payment poll TIMED OUT for ref ${ref} after ${elapsedMs}ms (${attempts} attempts). Payment may still complete server-side.`);
+                trackVerificationTimeout('quick_link_checkout', { workflow_id: ref, organization_id: orgId, attempts, duration_ms: elapsedMs });
             }
         };
         pollStatus();

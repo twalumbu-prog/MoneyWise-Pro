@@ -11,6 +11,7 @@ import { calculatePlatformFee } from '../utils/platformFee';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
+import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
 
 // MoneyWise's own Lenco settlement merchant (receives the commission-sweep
 // credit leg of every external payment link). See categorizeSplitPaymentRevenue.
@@ -184,20 +185,13 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
 
     console.log(`[Lenco Verify] Request: ref=${reference}, txId=${transactionId}, orgId=${organizationId}`);
     
-    // Fetch organization specific secret key if available
+    // Fetch organization specific secret key if available. Cached — this endpoint
+    // is polled up to ~90 times over a single payment's wait, so a per-request DB
+    // round trip here adds up across the whole waiting period, not just once.
     let secretKey: string | undefined = undefined;
     if (organizationId) {
         try {
-            const { data: orgData, error: orgError } = await supabase
-                .from('organizations')
-                .select('lenco_secret_key')
-                .eq('id', organizationId)
-                .single();
-                
-            if (!orgError && orgData?.lenco_secret_key) {
-                secretKey = orgData.lenco_secret_key;
-                console.log(`[Lenco Verify] Using organization-specific secret key for ${organizationId}`);
-            }
+            secretKey = await getCachedOrgSecretKey(organizationId);
         } catch (err) {
             console.error('[Lenco Verify] Error fetching org secret key:', err);
         }
@@ -294,12 +288,17 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
                             .like('description', `%${reference}%`)
                             .maybeSingle();
 
-                        return res.json({ 
-                            verified: true, 
+                        return res.json({
+                            verified: true,
                             source: 'lenco_collection_api',
                             status: 'COMPLETED',
                             stage: 'PROCESSED_VIA_COLLECTION_REF',
-                            referenceNumber: createdEntry?.reference_number || null
+                            referenceNumber: createdEntry?.reference_number || null,
+                            // Lenco's own timestamps for this collection — lets the client split
+                            // total wait into carrier latency (completedAt - initiatedAt, outside
+                            // our control) vs our pipeline latency (client success - completedAt).
+                            initiatedAt: lencoStatus.initiatedAt || null,
+                            completedAt: lencoStatus.completedAt || null
                         });
                     }
                 } catch (procError: any) {

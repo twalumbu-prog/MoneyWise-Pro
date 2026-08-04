@@ -28,7 +28,7 @@ export const createRule = async (req: AuthRequest, res: Response<any>) => {
         if (error) throw error;
 
         // Reload rule engine cache
-        await ruleEngine.loadRules();
+        await ruleEngine.loadRules(true);
 
         res.status(201).json(data);
     } catch (error: any) {
@@ -49,7 +49,7 @@ export const updateRule = async (req: AuthRequest, res: Response<any>) => {
         if (error) throw error;
 
         // Reload rule engine cache
-        await ruleEngine.loadRules();
+        await ruleEngine.loadRules(true);
 
         res.json(data);
     } catch (error: any) {
@@ -68,7 +68,7 @@ export const deleteRule = async (req: AuthRequest, res: Response<any>) => {
         if (error) throw error;
 
         // Reload rule engine cache
-        await ruleEngine.loadRules();
+        await ruleEngine.loadRules(true);
 
         res.status(204).send();
     } catch (error: any) {

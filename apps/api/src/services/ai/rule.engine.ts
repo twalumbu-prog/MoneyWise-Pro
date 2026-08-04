@@ -25,10 +25,25 @@ export interface AccountingRule {
     };
 }
 
+const RULES_TTL_MS = 30_000;
+
 export class RuleEngine {
     private rules: AccountingRule[] = [];
+    private rulesLoadedAt = 0;
 
-    async loadRules() {
+    /**
+     * Re-fetches all active rules unless a load happened within the last
+     * RULES_TTL_MS — this runs on every successful payment collection
+     * (handleCollectionSuccessful), so an unconditional full-table query here
+     * adds latency to the payer-visible confirmation on every single payment.
+     * Pass force:true after a rule create/update/delete so edits take effect
+     * immediately instead of waiting out the TTL.
+     */
+    async loadRules(force = false) {
+        if (!force && this.rulesLoadedAt && Date.now() - this.rulesLoadedAt < RULES_TTL_MS) {
+            return;
+        }
+
         const { data, error } = await supabase
             .from('accounting_rules')
             .select('*')
@@ -41,6 +56,7 @@ export class RuleEngine {
         }
 
         this.rules = data || [];
+        this.rulesLoadedAt = Date.now();
         console.log(`[RuleEngine] Loaded ${this.rules.length} active rules.`);
     }
 

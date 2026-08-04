@@ -600,26 +600,37 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
             // Split revenue to each product's mapped wallet + income account, confirm any
             // booking reservations, and flip any one-time payment link tied to this
-            // reference to PAID (all idempotent).
-            await applyProductRevenueRouting(organizationId, reference);
-            await confirmBookingsForReference(organizationId, reference);
-            const linkPaid = await markPaymentLinkPaid(organizationId, reference);
+            // reference to PAID (all idempotent). Independent of each other — only
+            // linkPaid's result is needed below — so run them concurrently instead of
+            // paying for 3 sequential round trips on the payer's confirmation path.
+            const [, , linkPaid] = await Promise.all([
+                applyProductRevenueRouting(organizationId, reference),
+                confirmBookingsForReference(organizationId, reference),
+                markPaymentLinkPaid(organizationId, reference),
+            ]);
 
             // Confirm the payment over WhatsApp to both the admin (money in) and the
-            // customer (receipt). Non-fatal. Exactly once: a one-time link fires on its
-            // real ACTIVE→PAID transition; a public catalogue checkout fires from this
-            // owning finalization (the dedup guard means this tail runs once per ref).
+            // customer (receipt). Deliberately NOT awaited — the payer's confirmation
+            // has already happened by the time this runs, and these are best-effort
+            // side channels (same pattern as postProcessQuickLinkPayment below).
+            // Non-fatal. Exactly once: a one-time link fires on its real ACTIVE→PAID
+            // transition; a public catalogue checkout fires from this owning
+            // finalization (the dedup guard means this tail runs once per ref).
             if (linkPaid) {
-                await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
-                await emailService.notifyPaymentLinkPaid(organizationId, reference);
+                Promise.all([
+                    whatsappService.notifyPaymentLinkPaid(organizationId, reference),
+                    emailService.notifyPaymentLinkPaid(organizationId, reference),
+                ]).catch(err => console.error(`[Lenco Webhook] notifyPaymentLinkPaid failed for ${reference}:`, err?.message));
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
                     user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPaymentLinkPaid', status: 'attempted',
                 });
             } else {
                 // Self-guards: skips link refs and no-ops when there are no product sales.
-                await whatsappService.notifyPublicSalePaid(organizationId, reference);
-                await emailService.notifyPublicSalePaid(organizationId, reference);
+                Promise.all([
+                    whatsappService.notifyPublicSalePaid(organizationId, reference),
+                    emailService.notifyPublicSalePaid(organizationId, reference),
+                ]).catch(err => console.error(`[Lenco Webhook] notifyPublicSalePaid failed for ${reference}:`, err?.message));
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
                     user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPublicSalePaid', status: 'attempted',
