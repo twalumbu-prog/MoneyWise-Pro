@@ -65,6 +65,14 @@ const OPERATOR_COLORS: Record<string, string> = {
 };
 
 const QUICK_AMOUNTS = [500, 1000, 2500];
+
+// Keypad sizing scales continuously with viewport height rather than at fixed
+// width breakpoints, so the amounts+keypad group grows on tall phones and
+// compresses on short ones. The vh coefficients are tuned so the whole group
+// still fits a 667px-tall iPhone SE without scrolling.
+const KEY_FONT_SIZE = 'clamp(22px, 3.4vh, 36px)';
+const KEY_PAD_Y = 'clamp(0px, 0.5vh, 10px)';
+const keyStyle = { paddingTop: KEY_PAD_Y, paddingBottom: KEY_PAD_Y, fontSize: KEY_FONT_SIZE };
 const SLOW_LATENCY_MS = 1200;
 
 // AMOUNT -> PURPOSE -> PHONE is the 3-step flow shown by the progress bar.
@@ -554,11 +562,13 @@ export const QuickPay: React.FC = () => {
                 </div>
                 <StepProgress step={STEP_INDEX.AMOUNT} />
 
-                {/* Flex spacers (flex-1 min-h-0) between each block, instead of fixed
-                    mt-* margins, so extra vertical space on tall phones gets
-                    distributed as breathing room across the whole step rather than
-                    dumped below the keypad — and on short phones every spacer just
-                    collapses to 0 and the section scrolls, so nothing overlaps. */}
+                {/* Single flex-1 spacer pushes the amounts+keypad group down so its
+                    top lands around mid-screen; the group itself uses vh-based
+                    clamp() sizing (not fixed breakpoints) so digit size and row
+                    gaps scale continuously with the viewport's actual height —
+                    bigger on a Pixel 7 (915px tall), tighter on an iPhone SE
+                    (667px) — landing its bottom just above the sticky footer
+                    instead of floating with dead space either above or below it. */}
                 <div className="flex-1 min-h-0 flex flex-col px-6 py-2 overflow-y-auto">
                     <div className="flex flex-col items-center">
                         <span className="text-xs text-black">You are sending money to</span>
@@ -583,42 +593,57 @@ export const QuickPay: React.FC = () => {
                         You can send money using any mobile money network
                     </p>
 
-                    <div className="flex-1 min-h-2" />
-
-                    <div className="w-full flex gap-3 sm:gap-4">
-                        {QUICK_AMOUNTS.map(a => (
-                            <button
-                                key={a}
-                                onClick={() => setAmountStr(String(a))}
-                                className="flex-1 h-10 sm:h-12 bg-zinc-100 hover:bg-zinc-200 rounded-xl flex items-center justify-center transition-colors"
-                            >
-                                <span className="text-xs font-bold text-black">K{a.toLocaleString()}</span>
-                            </button>
-                        ))}
-                    </div>
-
                     <div className="flex-1 min-h-4" />
 
-                    <div className="w-full flex flex-col gap-2 sm:gap-4">
-                        {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']].map((row, i) => (
-                            <div key={i} className="flex items-center gap-10">
-                                {row.map(d => (
-                                    <button key={d} onClick={() => pressDigit(d)} className="flex-1 py-1 sm:py-2 text-center text-2xl sm:text-3xl font-bold text-black">
-                                        {d}
-                                    </button>
-                                ))}
+                    {/* Quick-amount presets + keypad, grouped as one unit with a
+                        modest fixed gap between them (not a flexible spacer) so
+                        they always read as one section. */}
+                    <div className="w-full flex flex-col" style={{ gap: 'clamp(14px, 2.6vh, 32px)' }}>
+                        <div className="w-full flex gap-3 sm:gap-4">
+                            {QUICK_AMOUNTS.map(a => (
+                                <button
+                                    key={a}
+                                    onClick={() => setAmountStr(String(a))}
+                                    className="flex-1 bg-zinc-100 hover:bg-zinc-200 rounded-xl flex items-center justify-center transition-colors"
+                                    style={{ height: 'clamp(38px, 5vh, 54px)' }}
+                                >
+                                    <span className="text-xs font-bold text-black">K{a.toLocaleString()}</span>
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="w-full flex flex-col" style={{ gap: 'clamp(4px, 1.8vh, 24px)' }}>
+                            {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']].map((row, i) => (
+                                <div key={i} className="flex items-center gap-10">
+                                    {row.map(d => (
+                                        <button
+                                            key={d}
+                                            onClick={() => pressDigit(d)}
+                                            className="flex-1 text-center font-bold text-black"
+                                            style={keyStyle}
+                                        >
+                                            {d}
+                                        </button>
+                                    ))}
+                                </div>
+                            ))}
+                            <div className="flex items-center gap-10">
+                                <button onClick={() => pressDigit('.')} className="flex-1 text-center font-bold text-black" style={keyStyle}>.</button>
+                                <button onClick={() => pressDigit('0')} className="flex-1 text-center font-bold text-black" style={keyStyle}>0</button>
+                                <button
+                                    onClick={pressBackspace}
+                                    className="flex-1 flex items-center justify-center"
+                                    style={{ paddingTop: KEY_PAD_Y, paddingBottom: KEY_PAD_Y }}
+                                >
+                                    <Delete size={24} className="text-black" />
+                                </button>
                             </div>
-                        ))}
-                        <div className="flex items-center gap-10">
-                            <button onClick={() => pressDigit('.')} className="flex-1 py-1 sm:py-2 text-center text-2xl sm:text-3xl font-bold text-black">.</button>
-                            <button onClick={() => pressDigit('0')} className="flex-1 py-1 sm:py-2 text-center text-2xl sm:text-3xl font-bold text-black">0</button>
-                            <button onClick={pressBackspace} className="flex-1 py-1 sm:py-2 flex items-center justify-center">
-                                <Delete size={24} className="text-black" />
-                            </button>
                         </div>
                     </div>
 
-                    <div className="flex-1 min-h-2" />
+                    {/* Fixed (not flex-1) so leftover height collects above the group,
+                        pinning the keypad's last row just above the sticky footer. */}
+                    <div className="shrink-0 h-3" />
                 </div>
 
                 <div className="px-7 py-4 sm:py-8 bg-white border-t border-gray-100 flex flex-col items-center gap-3">
