@@ -596,7 +596,6 @@ export const QuickPay: React.FC = () => {
                                 <span className="mw-blink-cursor inline-block w-1 h-9 sm:h-11 bg-black" />
                             </div>
                         </div>
-                        <div className="border-b-2 border-neutral-300 mt-2 w-full" />
                     </div>
 
                     <p className="text-xs font-medium text-neutral-500 text-center mt-2">
