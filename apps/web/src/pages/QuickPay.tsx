@@ -554,7 +554,12 @@ export const QuickPay: React.FC = () => {
                 </div>
                 <StepProgress step={STEP_INDEX.AMOUNT} />
 
-                <div className="flex-1 min-h-0 flex flex-col px-6 py-2 sm:py-4 overflow-y-auto">
+                {/* Flex spacers (flex-1 min-h-0) between each block, instead of fixed
+                    mt-* margins, so extra vertical space on tall phones gets
+                    distributed as breathing room across the whole step rather than
+                    dumped below the keypad — and on short phones every spacer just
+                    collapses to 0 and the section scrolls, so nothing overlaps. */}
+                <div className="flex-1 min-h-0 flex flex-col px-6 py-2 overflow-y-auto">
                     <div className="flex flex-col items-center">
                         <span className="text-xs text-black">You are sending money to</span>
                         <div className="flex items-center gap-2 mt-1">
@@ -563,7 +568,7 @@ export const QuickPay: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="w-full max-w-xs mx-auto mt-3 sm:mt-4">
+                    <div className="w-full max-w-xs mx-auto mt-3">
                         <div className="flex items-center justify-between gap-1.5">
                             <span className="text-4xl sm:text-5xl font-bold text-black">K</span>
                             <div className="flex items-center gap-1.5">
@@ -574,11 +579,13 @@ export const QuickPay: React.FC = () => {
                         <div className="border-b-2 border-neutral-300 mt-2 w-full" />
                     </div>
 
-                    <p className="text-xs font-medium text-neutral-500 text-center mt-2 sm:mt-3">
+                    <p className="text-xs font-medium text-neutral-500 text-center mt-2">
                         You can send money using any mobile money network
                     </p>
 
-                    <div className="w-full flex gap-3 sm:gap-4 mt-4 sm:mt-8">
+                    <div className="flex-1 min-h-2" />
+
+                    <div className="w-full flex gap-3 sm:gap-4">
                         {QUICK_AMOUNTS.map(a => (
                             <button
                                 key={a}
@@ -590,7 +597,9 @@ export const QuickPay: React.FC = () => {
                         ))}
                     </div>
 
-                    <div className="w-full flex flex-col gap-2 sm:gap-5 mt-4 sm:mt-8">
+                    <div className="flex-1 min-h-4" />
+
+                    <div className="w-full flex flex-col gap-2 sm:gap-4">
                         {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']].map((row, i) => (
                             <div key={i} className="flex items-center gap-10">
                                 {row.map(d => (
@@ -608,6 +617,8 @@ export const QuickPay: React.FC = () => {
                             </button>
                         </div>
                     </div>
+
+                    <div className="flex-1 min-h-2" />
                 </div>
 
                 <div className="px-7 py-4 sm:py-8 bg-white border-t border-gray-100 flex flex-col items-center gap-3">
