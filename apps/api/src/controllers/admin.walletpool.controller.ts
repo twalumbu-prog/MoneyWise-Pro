@@ -30,12 +30,35 @@ export const listWalletPool = async (_req: any, res: Response): Promise<any> => 
 
 export const addPoolWallet = async (req: any, res: Response): Promise<any> => {
     try {
-        const provider_account_id = String(req.body?.provider_account_id || '').trim();
+        let provider_account_id = String(req.body?.provider_account_id || '').trim();
         const api_secret = String(req.body?.api_secret || '').trim();
         const public_key = String(req.body?.public_key || '').trim();
 
         if (!provider_account_id || !api_secret || !public_key) {
             return res.status(400).json({ error: 'provider_account_id, api_secret and public_key are required' });
+        }
+
+        // ── Auto-resolve Account Name/Label to UUID ──
+        // If the user provided a name instead of a UUID, look it up automatically.
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(provider_account_id);
+        if (!isUuid) {
+            try {
+                const accounts = await LencoService.listAccounts(api_secret);
+                const match = accounts.find((a: any) => 
+                    a.name === provider_account_id || 
+                    a.reference === provider_account_id ||
+                    String(a.tillNumber) === provider_account_id ||
+                    String(a.merchantId) === provider_account_id ||
+                    String(a.accountNumber) === provider_account_id
+                );
+                if (match && match.id) {
+                    provider_account_id = match.id;
+                } else {
+                    return res.status(400).json({ error: `Could not find a Lenco account matching the name/label/ID: "${provider_account_id}". Please ensure it matches exactly.` });
+                }
+            } catch (err: any) {
+                return res.status(400).json({ error: `Failed to fetch accounts from Lenco to resolve the name: ${err.message}` });
+            }
         }
 
         // ── Verify against Lenco BEFORE this can ever reach a real organization ──
