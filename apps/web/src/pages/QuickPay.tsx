@@ -562,14 +562,18 @@ export const QuickPay: React.FC = () => {
                 </div>
                 <StepProgress step={STEP_INDEX.AMOUNT} />
 
-                {/* Single flex-1 spacer pushes the amounts+keypad group down so its
-                    top lands around mid-screen; the group itself uses vh-based
-                    clamp() sizing (not fixed breakpoints) so digit size and row
-                    gaps scale continuously with the viewport's actual height —
-                    bigger on a Pixel 7 (915px tall), tighter on an iPhone SE
-                    (667px) — landing its bottom just above the sticky footer
-                    instead of floating with dead space either above or below it. */}
+                {/* Leftover vertical space on tall screens is split across TWO flex-1
+                    spacers — one above the org/amount block, one between it and the
+                    keypad group — instead of dumping it all into a single gap right
+                    above the keypad. That reads as one big awkward hole in the
+                    middle; splitting it gives the top block some breathing room
+                    from the header and keeps the pre-keypad gap modest. The keypad
+                    group itself uses vh-based clamp() sizing (not fixed breakpoints)
+                    so digit size and row gaps scale with the viewport's actual
+                    height, landing its bottom just above the sticky footer. */}
                 <div className="flex-1 min-h-0 flex flex-col px-6 py-2 overflow-y-auto">
+                    <div className="flex-1 min-h-2" style={{ flexGrow: 0.6 }} />
+
                     <div className="flex flex-col items-center">
                         <span className="text-xs text-black">You are sending money to</span>
                         <div className="flex items-center gap-2 mt-1">
