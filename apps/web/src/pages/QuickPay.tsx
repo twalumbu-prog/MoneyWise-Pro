@@ -66,12 +66,18 @@ const OPERATOR_COLORS: Record<string, string> = {
 
 const QUICK_AMOUNTS = [500, 1000, 2500];
 
-// Keypad sizing scales continuously with viewport height rather than at fixed
-// width breakpoints, so the amounts+keypad group grows on tall phones and
-// compresses on short ones. The vh coefficients are tuned so the whole group
-// still fits a 667px-tall iPhone SE without scrolling.
-const KEY_FONT_SIZE = 'clamp(22px, 3.4vh, 36px)';
-const KEY_PAD_Y = 'clamp(0px, 0.5vh, 10px)';
+// Keypad sizing is anchored to the exact values that already fit a 667px-tall
+// iPhone SE with zero slack, then grows *beyond* that baseline as viewport
+// height increases — `calc(base + (100vh - 667px) * slope)`. A plain
+// `X * vh` formula can't do this: it scales linearly from zero, so making it
+// big enough to fill a tall screen also inflates it on a short one and
+// breaks the SE layout. Anchoring at 667px means short phones are byte-for-
+// byte unaffected (the calc term is 0 there) while the keypad itself — not a
+// spacer around it — absorbs the extra height on taller screens.
+const vhGrow = (basePx: number, slope: number, capPx: number) =>
+    `clamp(${basePx}px, calc(${basePx}px + (100vh - 667px) * ${slope}), ${capPx}px)`;
+const KEY_FONT_SIZE = vhGrow(22, 0.075, 44);
+const KEY_PAD_Y = vhGrow(0, 0.03, 9);
 const keyStyle = { paddingTop: KEY_PAD_Y, paddingBottom: KEY_PAD_Y, fontSize: KEY_FONT_SIZE };
 const SLOW_LATENCY_MS = 1200;
 
@@ -572,7 +578,7 @@ export const QuickPay: React.FC = () => {
                     so digit size and row gaps scale with the viewport's actual
                     height, landing its bottom just above the sticky footer. */}
                 <div className="flex-1 min-h-0 flex flex-col px-6 py-2 overflow-y-auto">
-                    <div className="flex-1 min-h-2" style={{ flexGrow: 0.35 }} />
+                    <div className="flex-1 min-h-2" style={{ flexGrow: 0.3 }} />
 
                     <div className="flex flex-col items-center">
                         <span className="text-xs text-black">You are sending money to</span>
@@ -597,26 +603,28 @@ export const QuickPay: React.FC = () => {
                         You can send money using any mobile money network
                     </p>
 
-                    <div className="flex-1 min-h-4" style={{ flexGrow: 1.6 }} />
+                    <div className="flex-1 min-h-4" style={{ flexGrow: 0.5 }} />
 
-                    {/* Quick-amount presets + keypad, grouped as one unit with a
-                        modest fixed gap between them (not a flexible spacer) so
-                        they always read as one section. */}
-                    <div className="w-full flex flex-col" style={{ gap: 'clamp(14px, 2.6vh, 32px)' }}>
+                    {/* Quick-amount presets + keypad, grouped as one unit. Sizing is
+                        anchored-growth (see vhGrow above): identical to the tuned SE
+                        values below 667px of viewport height, and growing from there
+                        so the group's own footprint — not the spacer above it —
+                        fills the extra space on taller screens. */}
+                    <div className="w-full flex flex-col" style={{ gap: vhGrow(14, 0.07, 34) }}>
                         <div className="w-full flex gap-3 sm:gap-4">
                             {QUICK_AMOUNTS.map(a => (
                                 <button
                                     key={a}
                                     onClick={() => setAmountStr(String(a))}
                                     className="flex-1 bg-zinc-100 hover:bg-zinc-200 rounded-xl flex items-center justify-center transition-colors"
-                                    style={{ height: 'clamp(38px, 5vh, 54px)' }}
+                                    style={{ height: vhGrow(38, 0.1, 58) }}
                                 >
                                     <span className="text-xs font-bold text-black">K{a.toLocaleString()}</span>
                                 </button>
                             ))}
                         </div>
 
-                        <div className="w-full flex flex-col" style={{ gap: 'clamp(4px, 1.8vh, 24px)' }}>
+                        <div className="w-full flex flex-col" style={{ gap: vhGrow(4, 0.05, 20) }}>
                             {[['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']].map((row, i) => (
                                 <div key={i} className="flex items-center gap-10">
                                     {row.map(d => (
