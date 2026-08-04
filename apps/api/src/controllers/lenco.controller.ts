@@ -380,6 +380,217 @@ export const verifyCollectionStatus = async (req: Request, res: Response) => {
     }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 2 — Server-held long-poll
+//
+// The client makes ONE request and the server polls Lenco at 1-second intervals
+// from Frankfurt (fast EU→EU hop) for up to 22 s, well inside the 30 s Vercel
+// maxDuration.  As soon as Lenco flips to successful the server returns
+// {verified:true} — the client never has to make another round-trip from Zambia
+// for a "not yet" answer.  If the window closes without resolution the client
+// receives {status:'still-pending'} and reconnects immediately.
+//
+// Deliberately does NOT run handleCollectionSuccessful.  Finalization is a
+// separate POST (below) so the payer sees the success screen the instant status
+// flips rather than waiting for ledger writes, routing, bookings and notifications.
+// ─────────────────────────────────────────────────────────────────────────────
+export const longPollCollectionStatus = async (req: Request, res: Response) => {
+    const { reference } = req.params;
+    const { organizationId: queryOrgId } = req.query;
+    const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
+
+    let secretKey: string | undefined;
+    if (organizationId) {
+        try { secretKey = await getCachedOrgSecretKey(organizationId); } catch { /* fall through */ }
+    }
+
+    // Fast path: already finalized in our DB (e.g. webhook fired first).
+    const { data: existingRows } = await supabase
+        .from('cashbook_entries')
+        .select('id, status, reference_number')
+        .or(`external_reference.eq.${reference},description.like.%${reference}%`)
+        .limit(5);
+
+    const finalized = (existingRows || []).find(r => r.status !== 'PENDING');
+    if (finalized) {
+        console.log(`[LongPoll] ${reference} already finalized in DB — fast path.`);
+        return res.json({
+            verified: true,
+            source: 'database',
+            status: finalized.status,
+            referenceNumber: finalized.reference_number,
+        });
+    }
+
+    // Hold the connection: poll Lenco every 1 s for up to 22 s.
+    const MAX_HOLD_MS = 22_000;
+    const POLL_INTERVAL_MS = 1_000;
+    const holdStart = Date.now();
+    const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
+
+    let pollCount = 0;
+    console.log(`[LongPoll] Holding for ref ${reference} (org=${organizationId}, max=${MAX_HOLD_MS}ms)`);
+
+    while (Date.now() - holdStart < MAX_HOLD_MS) {
+        pollCount++;
+        try {
+            const lencoStatus = await LencoService.getCollectionStatus(reference, secretKey);
+
+            if (!lencoStatus) {
+                await sleep(POLL_INTERVAL_MS);
+                continue;
+            }
+
+            console.log(`[LongPoll] Poll ${pollCount} for ${reference}: status=${lencoStatus.status} elapsed=${Date.now() - holdStart}ms`);
+
+            if (lencoStatus.status === 'successful') {
+                return res.json({
+                    verified: true,
+                    source: 'lenco_longpoll',
+                    status: 'COMPLETED',
+                    initiatedAt: lencoStatus.initiatedAt || null,
+                    completedAt: lencoStatus.completedAt || null,
+                });
+            }
+
+            if (lencoStatus.status === 'failed') {
+                const { code, message } = classifyLencoFailureReason(lencoStatus.reasonForFailure);
+                console.log(`[LongPoll] ${reference} failed: ${lencoStatus.reasonForFailure || 'unknown'}`);
+                return res.json({
+                    verified: false,
+                    status: 'failed',
+                    reasonCode: code,
+                    reason: lencoStatus.reasonForFailure || null,
+                    message,
+                });
+            }
+
+            // Still pending — wait 1 s then retry.
+            await sleep(POLL_INTERVAL_MS);
+
+        } catch (err: any) {
+            // Transient Lenco error — back off 1 s and retry rather than aborting.
+            console.warn(`[LongPoll] Poll ${pollCount} error for ${reference}: ${err.message}`);
+            await sleep(POLL_INTERVAL_MS);
+        }
+    }
+
+    // 22-second hold exhausted — client reconnects immediately.
+    console.log(`[LongPoll] ${reference} still pending after ${pollCount} server polls. Telling client to reconnect.`);
+    return res.json({ verified: false, status: 'still-pending' });
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 1+4 — Background finalization (idempotent)
+//
+// Called by the client AFTER longPollCollectionStatus returns {verified:true},
+// while the payer is already looking at the success screen.  Runs
+// handleCollectionSuccessful and returns the generated receipt reference_number
+// so the UI can populate it without the payer waiting.
+//
+// Safe to call multiple times: the DB unique constraint on external_reference
+// turns any duplicate into a no-op.  The webhook path and the janitor cron both
+// converge on the same guard, so whichever source writes first wins cleanly.
+//
+// Phase 3 broadcast: after a successful write, sends a Supabase Realtime
+// broadcast on channel `payment:<reference>` so authenticated surfaces
+// (QuickPay, NewSale, CashierDashboard) that hold an open socket can receive
+// the receipt number without waiting for the HTTP finalize response.
+// ─────────────────────────────────────────────────────────────────────────────
+export const finalizeCollection = async (req: Request, res: Response) => {
+    const { reference } = req.params;
+    const { organizationId: queryOrgId } = req.query;
+    const organizationId = typeof queryOrgId === 'string' ? queryOrgId : null;
+
+    let secretKey: string | undefined;
+    if (organizationId) {
+        try { secretKey = await getCachedOrgSecretKey(organizationId); } catch { }
+    }
+
+    // Idempotency check — already finalized?
+    const { data: existingRows } = await supabase
+        .from('cashbook_entries')
+        .select('id, status, reference_number')
+        .or(`external_reference.eq.${reference},description.like.%${reference}%`)
+        .limit(5);
+
+    const finalized = (existingRows || []).find(r => r.status !== 'PENDING');
+    if (finalized) {
+        console.log(`[Finalize] ${reference} already finalized — returning early.`);
+        return res.json({
+            success: true,
+            source: 'already_finalized',
+            referenceNumber: finalized.reference_number,
+        });
+    }
+
+    try {
+        const lencoStatus = await LencoService.getCollectionStatus(reference, secretKey);
+
+        if (!lencoStatus) {
+            return res.status(503).json({ error: 'Could not reach Lenco to confirm collection status.' });
+        }
+
+        if (lencoStatus.status !== 'successful') {
+            console.warn(`[Finalize] ${reference} not yet successful on Lenco (status: ${lencoStatus.status})`);
+            return res.status(422).json({
+                error: 'Collection not yet successful on Lenco',
+                status: lencoStatus.status,
+            });
+        }
+
+        console.log(`[Finalize] Running handleCollectionSuccessful for ${reference}`);
+        const success = await handleCollectionSuccessful(lencoStatus, organizationId);
+
+        if (!success) {
+            // handleCollectionSuccessful returns false only when it detects the entry
+            // was already written (the unique-constraint guard).  Treat as idempotent.
+            const { data: raceRow } = await supabase
+                .from('cashbook_entries')
+                .select('reference_number')
+                .or(`external_reference.eq.${reference},description.like.%${reference}%`)
+                .neq('status', 'PENDING')
+                .maybeSingle();
+
+            return res.json({
+                success: true,
+                source: 'already_finalized',
+                referenceNumber: raceRow?.reference_number || null,
+            });
+        }
+
+        const { data: createdEntry } = await supabase
+            .from('cashbook_entries')
+            .select('reference_number')
+            .or(`external_reference.eq.${reference},description.like.%${reference}%`)
+            .neq('status', 'PENDING')
+            .maybeSingle();
+
+        const referenceNumber = createdEntry?.reference_number || null;
+
+        // Phase 3: broadcast over Supabase Realtime so any page holding an open
+        // socket (QuickPay, NewSale, CashierDashboard) can update its receipt
+        // number without waiting for this HTTP response to arrive.
+        supabase.channel(`payment:${reference}`).send({
+            type: 'broadcast',
+            event: 'finalized',
+            payload: { reference, referenceNumber },
+        }).catch((err: any) => {
+            console.warn(`[Finalize] Realtime broadcast failed (non-fatal):`, err?.message);
+        });
+
+        return res.json({
+            success: true,
+            source: 'finalized_now',
+            referenceNumber,
+        });
+
+    } catch (err: any) {
+        console.error(`[Finalize] Error for ${reference}:`, err);
+        return res.status(500).json({ error: err.message || 'Finalization error' });
+    }
+};
+
 /**
  * Compares Lenco API balance with MoneyWise Ledger balance for reconciliation
  */

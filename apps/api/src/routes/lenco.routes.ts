@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import { handleLencoWebhook } from '../controllers/lenco.webhook.controller';
-import { 
-    listLencoAccounts, 
-    provisionOrganizationLencoAccount, 
-    listAvailableAccounts, 
-    linkOrganizationLencoAccount, 
+import {
+    listLencoAccounts,
+    provisionOrganizationLencoAccount,
+    listAvailableAccounts,
+    linkOrganizationLencoAccount,
     verifyCollectionStatus,
+    longPollCollectionStatus,
+    finalizeCollection,
     getReconciliationSummary,
     getBanks,
     resolveBankAccount,
@@ -38,6 +40,14 @@ router.post('/webhook', handleLencoWebhook);
 
 // Public payment portal endpoints
 router.post('/public-diagnostics/report', reportDiagnosticLogs);
+// Phase 2: server-held long-poll — replaces the 2 s client-side poll loop.
+// Holds the connection for up to 22 s while the server polls Lenco at 1 s
+// intervals from Frankfurt, returning verified:true the instant Lenco confirms.
+router.get('/public-collection-longpoll/:reference', longPollCollectionStatus);
+// Phase 1+4: background finalization — called AFTER the long-poll confirms so
+// the payer sees the success screen before ledger writes finish.  Idempotent.
+router.post('/public-collection-finalize/:reference', finalizeCollection);
+// Legacy verify-status kept for backward compatibility (widget checkout path).
 router.get('/public-verify-status/:reference', verifyCollectionStatus);
 router.get('/public-context/:wallet_id', getPublicWalletContext);
 router.get('/public-payment-link/:token', getPaymentLinkContext);

@@ -434,102 +434,121 @@ export const PublicPaymentLink: React.FC = () => {
         }
     };
 
-    // Poll verify-status for a reference until it resolves. Shared by a fresh
-    // payment and resume-after-reload. Clears the saved recovery record on
-    // success/decline; keeps it on a poll timeout so a reload or manual re-check
-    // can still recover a slow-but-successful payment.
+    // Phase 2: server-held long-poll replaces the 2 s client-side timer loop.
+    // One request stays open for up to 22 s while the server polls Lenco at 1 s
+    // intervals from Frankfurt (EU→EU).  On still-pending the client reconnects
+    // immediately — max 8 reconnects ≈ ~3 min total ceiling.
+    //
+    // Phase 1: on verified:true the success screen flips immediately, then a
+    // background POST to /public-collection-finalize runs ledger writes while the
+    // payer reads the confirmation.  On poll timeout the saved recovery record is
+    // kept so a reload or manual re-check can still recover the payment.
     const startCompletionPoll = (ref: string, orgId: string, startedAt: number, analytics?: Record<string, any>) => {
         pollCancelledRef.current = false;
-        let attempts = 0;
-        const maxAttempts = 90; // ~3 min at 2s
-        console.log(`[Diagnostic] Starting payment confirmation poll for ref ${ref} at ${new Date(startedAt).toISOString()}`);
-        const pollStatus = async () => {
+        let reconnects = 0;
+        const maxReconnects = 8;
+        console.log(`[Diagnostic] Starting long-poll for ref ${ref} at ${new Date(startedAt).toISOString()}`);
+
+        const attemptLongPoll = async () => {
             if (pollCancelledRef.current) return;
-            attempts++;
+            reconnects++;
             const attemptStart = performance.now();
             try {
-                const verifyRes = await axios.get(
-                    `${API_URL}/lenco/public-verify-status/${ref}?organizationId=${orgId}`
+                const res = await axios.get(
+                    `${API_URL}/lenco/public-collection-longpoll/${ref}?organizationId=${orgId}`,
+                    { timeout: 30_000 }
                 );
                 const attemptMs = Math.round(performance.now() - attemptStart);
                 const elapsedMs = Date.now() - startedAt;
-                console.log(`[Diagnostic] Poll attempt ${attempts} (ref ${ref}): verify-status responded in ${attemptMs}ms — status=${verifyRes.data.status || (verifyRes.data.verified ? 'verified' : 'pending')}, elapsed=${elapsedMs}ms`);
+                console.log(`[Diagnostic] Long-poll attempt ${reconnects} (ref ${ref}): responded in ${attemptMs}ms — status=${res.data.status || (res.data.verified ? 'verified' : 'pending')}, elapsed=${elapsedMs}ms`);
+
                 if (pollCancelledRef.current) return;
-                if (verifyRes.data.verified) {
-                    setReceiptNumber(verifyRes.data.referenceNumber || null);
+
+                if (res.data.verified) {
                     setAwaitingApproval(false);
                     setPaymentPhase('success');
                     clearPendingPayment();
-                    // Split the wait into carrier latency (Lenco's own initiatedAt→completedAt,
-                    // outside our control) vs pipeline latency (completedAt→now, ours to fix) —
-                    // omitted when Lenco didn't return timestamps (e.g. resumed-from-DB stage).
-                    const completedAt = verifyRes.data.completedAt ? new Date(verifyRes.data.completedAt).getTime() : null;
-                    const initiatedAt = verifyRes.data.initiatedAt ? new Date(verifyRes.data.initiatedAt).getTime() : null;
+
+                    const completedAt = res.data.completedAt ? new Date(res.data.completedAt).getTime() : null;
+                    const initiatedAt = res.data.initiatedAt ? new Date(res.data.initiatedAt).getTime() : null;
                     const carrierMs = completedAt && initiatedAt ? completedAt - initiatedAt : null;
                     const pipelineMs = completedAt ? Date.now() - completedAt : null;
                     console.log(
-                        `[Diagnostic] Payment CONFIRMED for ref ${ref} after ${elapsedMs}ms total (${attempts} poll attempts).` +
-                        (carrierMs !== null ? ` Carrier latency (Lenco initiatedAt→completedAt, outside our control): ${carrierMs}ms.` : '') +
-                        (pipelineMs !== null ? ` Pipeline latency (Lenco completedAt→confirmed on screen): ${pipelineMs}ms.` : '')
+                        `[Diagnostic] Payment CONFIRMED for ref ${ref} after ${elapsedMs}ms total (${reconnects} long-poll reconnects).` +
+                        (carrierMs !== null ? ` Carrier latency: ${carrierMs}ms.` : '') +
+                        (pipelineMs !== null ? ` Pipeline latency: ${pipelineMs}ms.` : '')
                     );
                     trackEvent('payment_link_checkout', 'payment', 'succeeded', {
-                        workflow_id: ref,
-                        organization_id: orgId,
-                        ...(analytics || {}),
-                        receipt_number: verifyRes.data.referenceNumber,
-                        payment_method: 'mobile-money',
-                        duration_ms: elapsedMs,
-                        carrier_latency_ms: carrierMs,
-                        pipeline_latency_ms: pipelineMs,
+                        workflow_id: ref, organization_id: orgId, ...(analytics || {}),
+                        payment_method: 'mobile-money', duration_ms: elapsedMs,
+                        carrier_latency_ms: carrierMs, pipeline_latency_ms: pipelineMs,
                     });
+
+                    if (res.data.referenceNumber) {
+                        setReceiptNumber(res.data.referenceNumber);
+                        return;
+                    }
+
+                    axios.post(`${API_URL}/lenco/public-collection-finalize/${ref}?organizationId=${orgId}`)
+                        .then(fin => {
+                            if (fin.data?.referenceNumber) setReceiptNumber(fin.data.referenceNumber);
+                        })
+                        .catch(err => console.error(`[Diagnostic] Background finalize error for ref ${ref}:`, err));
                     return;
                 }
-                if (verifyRes.data.status === 'failed') {
+
+                if (res.data.status === 'failed') {
+                    const elapsedMs = Date.now() - startedAt;
                     setVerificationStep('FAILED');
-                    // Server classifies Lenco's reasonForFailure (insufficient funds, wrong
-                    // PIN, expired prompt, ...) into a specific message; falls back to the
-                    // old generic copy if Lenco didn't give a reason.
-                    setVerificationReason(verifyRes.data.message || 'The payment was declined or not approved on your phone. You can go back and try again.');
+                    setVerificationReason(res.data.message || 'The payment was declined or not approved on your phone. You can go back and try again.');
                     setAwaitingApproval(false);
                     setFailureIsDeclined(true);
                     setPaymentPhase('failed');
                     clearPendingPayment();
-                    console.log(`[Diagnostic] Payment FAILED for ref ${ref} after ${elapsedMs}ms total (${attempts} poll attempts). Reason: ${verifyRes.data.reason || 'declined'}`);
-                    // Distinct from a poll timeout — Lenco itself confirmed the decline.
+                    console.log(`[Diagnostic] Payment FAILED for ref ${ref} after ${elapsedMs}ms (${reconnects} reconnects). Reason: ${res.data.reason || 'declined'}`);
                     trackEvent('payment_link_checkout', 'payment', 'failed', {
-                        workflow_id: ref,
-                        organization_id: orgId,
-                        ...(analytics || {}),
+                        workflow_id: ref, organization_id: orgId, ...(analytics || {}),
                         payment_method: 'mobile-money',
-                        error_code: verifyRes.data.reasonCode || 'declined',
-                        error_message: verifyRes.data.reason || 'Customer declined or did not approve the mobile money prompt',
+                        error_code: res.data.reasonCode || 'declined',
+                        error_message: res.data.reason || 'Customer declined or did not approve the mobile money prompt',
                         duration_ms: elapsedMs,
                     });
                     return;
                 }
+
+                // still-pending: reconnect immediately.
+                if (!pollCancelledRef.current && reconnects < maxReconnects) {
+                    console.log(`[Diagnostic] Long-poll still-pending for ref ${ref}, reconnecting (${reconnects}/${maxReconnects})`);
+                    attemptLongPoll();
+                } else {
+                    const elapsedMs = Date.now() - startedAt;
+                    setVerificationStep('FAILED');
+                    setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
+                    setAwaitingApproval(false);
+                    setFailureIsDeclined(false);
+                    setPaymentPhase('failed');
+                    console.log(`[Diagnostic] Long-poll TIMED OUT for ref ${ref} after ${elapsedMs}ms (${reconnects} reconnects). Payment may still complete server-side.`);
+                    trackVerificationTimeout('payment_link_checkout', { workflow_id: ref, organization_id: orgId, attempts: reconnects, duration_ms: elapsedMs });
+                }
+
             } catch (err) {
-                console.error(`[Diagnostic] Poll attempt ${attempts} (ref ${ref}) failed after ${Math.round(performance.now() - attemptStart)}ms:`, err);
-            }
-            if (pollCancelledRef.current) return;
-            if (attempts < maxAttempts) {
-                setTimeout(pollStatus, 2000);
-            } else {
                 const elapsedMs = Date.now() - startedAt;
-                setVerificationStep('FAILED');
-                setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
-                setAwaitingApproval(false);
-                setFailureIsDeclined(false);
-                setPaymentPhase('failed');
-                console.log(`[Diagnostic] Payment poll TIMED OUT for ref ${ref} after ${elapsedMs}ms (${attempts} attempts). Payment may still complete server-side.`);
-                trackVerificationTimeout('payment_link_checkout', {
-                    workflow_id: ref,
-                    organization_id: orgId,
-                    attempts,
-                    duration_ms: elapsedMs,
-                });
+                console.error(`[Diagnostic] Long-poll attempt ${reconnects} network error for ref ${ref} (${elapsedMs}ms elapsed):`, err);
+                if (!pollCancelledRef.current && reconnects < maxReconnects) {
+                    setTimeout(attemptLongPoll, 2000);
+                } else {
+                    setVerificationStep('FAILED');
+                    setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
+                    setAwaitingApproval(false);
+                    setFailureIsDeclined(false);
+                    setPaymentPhase('failed');
+                    console.log(`[Diagnostic] Long-poll gave up for ref ${ref} after network errors (${reconnects} attempts).`);
+                    trackVerificationTimeout('payment_link_checkout', { workflow_id: ref, organization_id: orgId, attempts: reconnects, duration_ms: elapsedMs });
+                }
             }
         };
-        pollStatus();
+
+        attemptLongPoll();
     };
 
     // Own-UX mobile money checkout: initiate the collection server-side, then poll

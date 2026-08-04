@@ -307,75 +307,113 @@ export const QuickPay: React.FC = () => {
     };
 
     // ---- Submission (mirrors PublicPay's handlePayMobileMoney) ----
+    // Phase 2: server-held long-poll replaces the 2 s client-side timer loop.
+    // One request stays open for up to 22 s while the server polls Lenco at 1 s
+    // intervals from Frankfurt (EU→EU).  On still-pending the client reconnects
+    // immediately with no gap — max 8 reconnects ≈ ~3 min total ceiling.
+    //
+    // Phase 1: on verified:true the success screen flips immediately, then a
+    // background POST to /public-collection-finalize runs the ledger writes while
+    // the payer reads their confirmation.  setReceiptNumber is called when the
+    // finalize response arrives (or from the Phase 3 Realtime broadcast, whichever
+    // fires first).
     const startCompletionPoll = (ref: string, orgId: string, startedAt: number) => {
         pollCancelledRef.current = false;
-        let attempts = 0;
-        const maxAttempts = 90; // ~3 min at 2s
-        console.log(`[Diagnostic] Starting payment confirmation poll for ref ${ref} at ${new Date(startedAt).toISOString()}`);
-        const pollStatus = async () => {
+        let reconnects = 0;
+        const maxReconnects = 8; // 8 × 22 s ≈ 3 min ceiling
+        console.log(`[Diagnostic] Starting long-poll for ref ${ref} at ${new Date(startedAt).toISOString()}`);
+
+        const attemptLongPoll = async () => {
             if (pollCancelledRef.current) return;
-            attempts++;
+            reconnects++;
             const attemptStart = performance.now();
             try {
-                const verifyRes = await axios.get(`${API_URL}/lenco/public-verify-status/${ref}?organizationId=${orgId}`);
+                const res = await axios.get(
+                    `${API_URL}/lenco/public-collection-longpoll/${ref}?organizationId=${orgId}`,
+                    { timeout: 30_000 }
+                );
                 const attemptMs = Math.round(performance.now() - attemptStart);
                 const elapsedMs = Date.now() - startedAt;
-                console.log(`[Diagnostic] Poll attempt ${attempts} (ref ${ref}): verify-status responded in ${attemptMs}ms — status=${verifyRes.data.status || (verifyRes.data.verified ? 'verified' : 'pending')}, elapsed=${elapsedMs}ms`);
+                console.log(`[Diagnostic] Long-poll attempt ${reconnects} (ref ${ref}): responded in ${attemptMs}ms — status=${res.data.status || (res.data.verified ? 'verified' : 'pending')}, elapsed=${elapsedMs}ms`);
+
                 if (pollCancelledRef.current) return;
-                if (verifyRes.data.verified) {
+
+                if (res.data.verified) {
+                    // Phase 1: show success BEFORE finalization completes.
                     setAwaitingApproval(false);
                     setPaymentPhase('success');
                     clearPendingPayment();
-                    // Split the wait into carrier latency (Lenco's own initiatedAt→completedAt,
-                    // outside our control) vs pipeline latency (completedAt→now, ours to fix) —
-                    // omitted when Lenco didn't return timestamps (e.g. resumed-from-DB stage).
-                    const completedAt = verifyRes.data.completedAt ? new Date(verifyRes.data.completedAt).getTime() : null;
-                    const initiatedAt = verifyRes.data.initiatedAt ? new Date(verifyRes.data.initiatedAt).getTime() : null;
+
+                    const completedAt = res.data.completedAt ? new Date(res.data.completedAt).getTime() : null;
+                    const initiatedAt = res.data.initiatedAt ? new Date(res.data.initiatedAt).getTime() : null;
                     const carrierMs = completedAt && initiatedAt ? completedAt - initiatedAt : null;
                     const pipelineMs = completedAt ? Date.now() - completedAt : null;
                     console.log(
-                        `[Diagnostic] Payment CONFIRMED for ref ${ref} after ${elapsedMs}ms total (${attempts} poll attempts).` +
-                        (carrierMs !== null ? ` Carrier latency (Lenco initiatedAt→completedAt, outside our control): ${carrierMs}ms.` : '') +
-                        (pipelineMs !== null ? ` Pipeline latency (Lenco completedAt→confirmed on screen): ${pipelineMs}ms.` : '')
+                        `[Diagnostic] Payment CONFIRMED for ref ${ref} after ${elapsedMs}ms total (${reconnects} long-poll reconnects).` +
+                        (carrierMs !== null ? ` Carrier latency: ${carrierMs}ms.` : '') +
+                        (pipelineMs !== null ? ` Pipeline latency: ${pipelineMs}ms.` : '')
                     );
                     trackEvent('quick_link_checkout', 'payment', 'succeeded', {
                         workflow_id: ref, organization_id: orgId, amount, total_payable: totalPayable,
-                        duration_ms: elapsedMs,
-                        carrier_latency_ms: carrierMs,
-                        pipeline_latency_ms: pipelineMs,
+                        duration_ms: elapsedMs, carrier_latency_ms: carrierMs, pipeline_latency_ms: pipelineMs,
                     });
+
+                    // Fire finalization in the background while the success screen shows.
+                    // QuickPay doesn't display a receipt number so we don't block on it.
+                    axios.post(`${API_URL}/lenco/public-collection-finalize/${ref}?organizationId=${orgId}`)
+                        .catch(err => console.error(`[Diagnostic] Background finalize error for ref ${ref}:`, err));
                     return;
                 }
-                if (verifyRes.data.status === 'failed') {
-                    setVerificationReason(verifyRes.data.message || 'The payment was declined or not approved on your phone. You can go back and try again.');
+
+                if (res.data.status === 'failed') {
+                    const elapsedMs = Date.now() - startedAt;
+                    setVerificationReason(res.data.message || 'The payment was declined or not approved on your phone. You can go back and try again.');
                     setAwaitingApproval(false);
                     setFailureIsDeclined(true);
                     setPaymentPhase('failed');
                     clearPendingPayment();
-                    console.log(`[Diagnostic] Payment FAILED for ref ${ref} after ${elapsedMs}ms total (${attempts} poll attempts). Reason: ${verifyRes.data.reason || 'declined'}`);
+                    console.log(`[Diagnostic] Payment FAILED for ref ${ref} after ${elapsedMs}ms (${reconnects} reconnects). Reason: ${res.data.reason || 'declined'}`);
                     trackEvent('quick_link_checkout', 'payment', 'failed', {
-                        workflow_id: ref, organization_id: orgId, error_code: verifyRes.data.reasonCode || 'declined',
+                        workflow_id: ref, organization_id: orgId,
+                        error_code: res.data.reasonCode || 'declined',
                         duration_ms: elapsedMs,
                     });
                     return;
                 }
+
+                // still-pending: reconnect immediately (server already held 22 s).
+                if (!pollCancelledRef.current && reconnects < maxReconnects) {
+                    console.log(`[Diagnostic] Long-poll still-pending for ref ${ref}, reconnecting (${reconnects}/${maxReconnects})`);
+                    attemptLongPoll();
+                } else {
+                    const elapsedMs = Date.now() - startedAt;
+                    setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
+                    setAwaitingApproval(false);
+                    setFailureIsDeclined(false);
+                    setPaymentPhase('failed');
+                    console.log(`[Diagnostic] Long-poll TIMED OUT for ref ${ref} after ${elapsedMs}ms (${reconnects} reconnects). Payment may still complete server-side.`);
+                    trackVerificationTimeout('quick_link_checkout', { workflow_id: ref, organization_id: orgId, attempts: reconnects, duration_ms: elapsedMs });
+                }
+
             } catch (err) {
-                console.error(`[Diagnostic] Poll attempt ${attempts} (ref ${ref}) failed after ${Math.round(performance.now() - attemptStart)}ms:`, err);
-            }
-            if (pollCancelledRef.current) return;
-            if (attempts < maxAttempts) {
-                setTimeout(pollStatus, 2000);
-            } else {
+                // Network/timeout error on the long-poll request itself.
                 const elapsedMs = Date.now() - startedAt;
-                setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
-                setAwaitingApproval(false);
-                setFailureIsDeclined(false);
-                setPaymentPhase('failed');
-                console.log(`[Diagnostic] Payment poll TIMED OUT for ref ${ref} after ${elapsedMs}ms (${attempts} attempts). Payment may still complete server-side.`);
-                trackVerificationTimeout('quick_link_checkout', { workflow_id: ref, organization_id: orgId, attempts, duration_ms: elapsedMs });
+                console.error(`[Diagnostic] Long-poll attempt ${reconnects} network error for ref ${ref} (${elapsedMs}ms elapsed):`, err);
+                if (!pollCancelledRef.current && reconnects < maxReconnects) {
+                    // Brief back-off on network error before retrying.
+                    setTimeout(attemptLongPoll, 2000);
+                } else {
+                    setVerificationReason('This is taking longer than usual. If you approved the prompt, your payment may still be processing — check its status below.');
+                    setAwaitingApproval(false);
+                    setFailureIsDeclined(false);
+                    setPaymentPhase('failed');
+                    console.log(`[Diagnostic] Long-poll gave up for ref ${ref} after network errors (${reconnects} attempts).`);
+                    trackVerificationTimeout('quick_link_checkout', { workflow_id: ref, organization_id: orgId, attempts: reconnects, duration_ms: elapsedMs });
+                }
             }
         };
-        pollStatus();
+
+        attemptLongPoll();
     };
 
     const handleSend = async () => {
