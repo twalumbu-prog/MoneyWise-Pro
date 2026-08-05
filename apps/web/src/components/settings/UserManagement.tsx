@@ -140,18 +140,19 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
         }
     };
 
-    if (loading && users.length === 0) {
-        return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-brand-green" /></div>;
-    }
-
-    const isAdmin = userRole === 'ADMIN';
-
+    // Must be before any early return — Rules of Hooks.
     // If a parent wants to own the Add Member button (e.g. mobile nav bar),
     // give it a stable opener function.
     React.useEffect(() => {
         if (onRequestAdd) onRequestAdd(() => setIsAddModalOpen(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [onRequestAdd]);
+
+    if (loading && users.length === 0) {
+        return <div className="flex justify-center p-12"><Loader2 className="animate-spin h-8 w-8 text-brand-green" /></div>;
+    }
+
+    const isAdmin = userRole === 'ADMIN';
 
     // Shared dropdown actions for a user — used in both table and card views
     const renderDropdown = (user: UserProfile) => (
