@@ -52,7 +52,7 @@ export const Settings: React.FC = () => {
                 <div className="self-stretch flex-1 flex justify-start items-start gap-2.5 w-full overflow-hidden">
                     <div className="flex-1 h-full p-3.5 bg-white rounded-[20px] flex flex-col justify-start items-center gap-7 overflow-hidden shadow-sm w-full">
                         <div className="self-stretch h-full flex flex-col justify-start items-center gap-3 w-full">
-                            
+
                             {/* Header */}
                             <div className="self-stretch flex justify-between items-center w-full flex-shrink-0">
                                 <div className="flex justify-start items-center gap-2">
@@ -60,7 +60,7 @@ export const Settings: React.FC = () => {
                                     <div className="justify-center text-gray-900 text-base font-semibold font-['DM_Sans'] leading-5">Settings</div>
                                 </div>
                             </div>
-                            
+
                             {/* Tabs Row */}
                             <div className="self-stretch flex justify-between items-center w-full overflow-x-auto custom-scrollbar flex-shrink-0">
                                 <div className="flex-1 h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-2.5 min-w-max">
@@ -76,8 +76,8 @@ export const Settings: React.FC = () => {
                                             key={tab.id}
                                             onClick={() => handleTabChange(tab.id)}
                                             className={`h-full px-3.5 rounded-lg flex justify-center items-center gap-2 transition-all ${
-                                                activeTab === tab.id 
-                                                    ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] text-gray-900 font-medium' 
+                                                activeTab === tab.id
+                                                    ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] text-gray-900 font-medium'
                                                     : 'text-gray-600 font-normal hover:bg-white/50 hover:text-gray-900'
                                             }`}
                                         >
@@ -118,10 +118,10 @@ export const Settings: React.FC = () => {
                                                             <p className="text-sm text-gray-500">Manage connections to external services.</p>
                                                         </div>
                                                     </div>
-                                                    
+
                                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                         {/* QuickBooks Card */}
-                                                        <button 
+                                                        <button
                                                             onClick={() => setActiveIntegration('quickbooks')}
                                                             className="flex flex-col items-start p-6 bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md hover:border-brand-green/30 transition-all text-left group"
                                                         >

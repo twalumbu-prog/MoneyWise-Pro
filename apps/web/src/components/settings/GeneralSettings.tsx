@@ -622,7 +622,7 @@ export const GeneralSettings: React.FC = () => {
                             Irreversible and destructive actions for this organization.
                         </p>
                     </div>
-                    <div className="p-6 flex items-center justify-between">
+                    <div className="p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
                             <h4 className="text-sm font-bold text-gray-900">Delete Organization</h4>
                             <p className="text-sm text-gray-500 mt-1 max-w-xl">
@@ -631,7 +631,7 @@ export const GeneralSettings: React.FC = () => {
                         </div>
                         <button
                             onClick={() => setShowDeleteModal(true)}
-                            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2 whitespace-nowrap"
+                            className="w-full sm:w-auto px-4 py-3 sm:py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors focus:ring-2 focus:ring-red-500 focus:ring-offset-2 whitespace-nowrap"
                         >
                             Delete Organization
                         </button>
