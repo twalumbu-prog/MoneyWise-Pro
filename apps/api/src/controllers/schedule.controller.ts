@@ -211,36 +211,35 @@ export async function runScheduledItemNow(req: Request, res: Response) {
             run = newRun;
         }
 
-        // Build requisition description
-        const recipientInfo = item.recipient_name
-            ? `Recipient: ${item.recipient_name}${item.recipient_account ? ` (${item.recipient_account})` : ''}${item.payment_method === 'MOBILE_MONEY' ? ' – Mobile Money' : ' – Bank Transfer'}`
-            : null;
+        const description = `Scheduled payment: ${item.title}`;
 
-        const description = [
-            `Scheduled payment: ${item.title}`,
-            `Cadence: ${item.cadence}`,
-            `Due date: ${item.next_due_date}`,
-            recipientInfo,
-        ].filter(Boolean).join('\n');
+        // Build requisition insert payload with correct column names
+        const reqInsertData: Record<string, any> = {
+            organization_id,
+            requestor_id: triggered_by,
+            estimated_total: item.amount,
+            status: 'PENDING_APPROVAL',
+            description,
+        };
 
-        // Create PENDING_APPROVAL requisition
+        // Conditionally include payment fields (safe schema check, same pattern as createRequisition)
+        if (item.payment_method) {
+            const { error: schemaError } = await supabase
+                .from('requisitions')
+                .select('payment_method')
+                .limit(1);
+            if (!schemaError) {
+                reqInsertData.payment_method = item.payment_method;
+                reqInsertData.recipient_account = item.recipient_account ?? null;
+                reqInsertData.recipient_bank_code = item.recipient_bank_code ?? null;
+                reqInsertData.recipient_name = item.recipient_name ?? null;
+            }
+        }
+
+        // Create requisition
         const { data: requisition, error: reqErr } = await supabase
             .from('requisitions')
-            .insert({
-                organization_id,
-                created_by: triggered_by,
-                title: item.title,
-                amount: item.amount,
-                status: 'PENDING_APPROVAL',
-                description,
-                // Payment fields so approver can send money directly
-                ...(item.payment_method && {
-                    payment_method: item.payment_method,
-                    recipient_account: item.recipient_account,
-                    recipient_bank_code: item.recipient_bank_code,
-                    recipient_name: item.recipient_name,
-                }),
-            })
+            .insert(reqInsertData)
             .select()
             .single();
         if (reqErr) throw reqErr;

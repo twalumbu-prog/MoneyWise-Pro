@@ -525,10 +525,10 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose, onEdit, onRunN
                 </div>
 
                 {upcoming && (
-                    <div className="mx-4 mt-4 p-4 bg-blue-50 rounded-2xl border border-blue-100 flex-shrink-0">
+                    <div className="mx-4 mt-4 p-4 bg-white rounded-2xl border border-gray-100 flex-shrink-0">
                         <div className="flex items-center justify-between mb-2">
-                            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wide">Next Run</span>
-                            <span className="text-[10px] font-bold text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">Upcoming</span>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wide">Next Run</span>
+                            <span className="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full">Upcoming</span>
                         </div>
                         <p className="text-sm font-semibold text-gray-900 mb-3">
                             {format(parseISO(upcoming.due_date), 'EEEE, d MMMM yyyy')}
@@ -654,8 +654,8 @@ const ItemMenu: React.FC<{ onEdit: () => void; onArchive: () => void; onDelete: 
             </button>
             {open && (
                 <>
-                    <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-                    <div className="absolute right-0 top-8 z-20 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden text-xs">
+                    <div className="fixed inset-0 z-[100]" onClick={() => setOpen(false)} />
+                    <div className="absolute right-0 top-8 z-[110] w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden text-xs">
                         <button type="button" onClick={() => { setOpen(false); onEdit(); }}
                             className="w-full text-left px-4 py-2.5 hover:bg-gray-50 text-gray-700 font-medium transition">Edit</button>
                         <button type="button" onClick={() => { setOpen(false); onArchive(); }}
@@ -830,7 +830,7 @@ export const Schedules: React.FC = () => {
                                 </button>
                             </div>
                         ) : (
-                            <div className="rounded-2xl overflow-hidden">
+                            <div className="rounded-2xl">
                                 {items.map((item, idx) => {
                                     const CatIcon = CATEGORIES.find(c => c.value === item.category)?.icon ?? FileText;
                                     return (
