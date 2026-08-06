@@ -29,6 +29,10 @@ const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default:
 const RunPayrollPage = React.lazy(() => import('./pages/RunPayrollPage').then(m => ({ default: m.RunPayrollPage })));
 const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
+const Schedules = React.lazy(() => import('./pages/Schedules').then(m => ({ default: m.Schedules })));
+const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m => ({ default: m.InvestHome })));
+const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').then(m => ({ default: m.InvestCompany })));
+const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
@@ -321,6 +325,38 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <RunPayrollPage />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/schedules"
+                            element={
+                                <ProtectedRoute>
+                                    <Schedules />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/invest"
+                            element={
+                                <ProtectedRoute>
+                                    <InvestHome />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/invest/company/:id"
+                            element={
+                                <ProtectedRoute>
+                                    <InvestCompany />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/invest/product/:id"
+                            element={
+                                <ProtectedRoute>
+                                    <InvestProductDetail />
                                 </ProtectedRoute>
                             }
                         />

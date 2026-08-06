@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Inbox,
+    CalendarDays,
     TrendingUp,
     ShieldCheck,
     ShoppingBag,
@@ -12,6 +13,9 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     LogOut,
+    Store,
+    LineChart,
+    Landmark,
 } from 'lucide-react';
 import { WalletCardsIcon, AstroidIcon } from './icons/BrandIcons';
 import { useAuth } from '../context/AuthContext';
@@ -27,6 +31,7 @@ interface NavItem {
 
 const GENERAL_ITEMS: NavItem[] = [
     { label: 'Inbox', path: '/requisitions', icon: Inbox, isActive: (p) => p === '/requisitions' || p === '/' },
+    { label: 'Schedules', path: '/schedules', icon: CalendarDays, isActive: (p) => p === '/schedules' },
     { label: 'Wallets', path: '/cashbook', icon: WalletCardsIcon, isActive: (p) => p === '/cashbook' },
     { label: 'Reporting', path: '/reporting', icon: TrendingUp, isActive: (p) => p === '/reporting' },
     { label: 'Business Intelligence', path: '/intelligence', icon: AstroidIcon, isActive: (p) => p === '/intelligence' },
@@ -39,6 +44,12 @@ const SUPPORT_ITEMS: NavItem[] = [
     { label: 'Integrations', path: '/settings?tab=integrations', icon: Share2, isActive: (p, s) => p === '/settings' && s.includes('tab=integrations') },
     { label: 'Customer Care & Help', path: '#', icon: HelpCircle, isActive: () => false, disabled: true },
     { label: 'Settings', path: '/settings', icon: SettingsIcon, isActive: (p, s) => p === '/settings' && !s.includes('tab=integrations') },
+];
+
+const SERVICES_ITEMS: NavItem[] = [
+    { label: 'Marketplace', path: '#', icon: Store, isActive: () => false, disabled: true },
+    { label: 'Invest', path: '/invest', icon: LineChart, isActive: (p) => p.startsWith('/invest') },
+    { label: 'Loans', path: '#', icon: Landmark, isActive: () => false, disabled: true },
 ];
 
 const COLLAPSE_KEY = 'moneywise:sidebarCollapsed';
@@ -161,6 +172,22 @@ export const Sidebar: React.FC = () => {
                     {GENERAL_ITEMS.map(item => (
                         <SidebarLink
                             key={item.path}
+                            item={item}
+                            collapsed={collapsed}
+                            active={item.isActive(location.pathname, location.search)}
+                        />
+                    ))}
+                </nav>
+
+                {!collapsed && (
+                    <div className="px-2 pt-1 pb-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                        Services
+                    </div>
+                )}
+                <nav className="flex flex-col gap-[3px] mb-6">
+                    {SERVICES_ITEMS.map(item => (
+                        <SidebarLink
+                            key={item.label}
                             item={item}
                             collapsed={collapsed}
                             active={item.isActive(location.pathname, location.search)}

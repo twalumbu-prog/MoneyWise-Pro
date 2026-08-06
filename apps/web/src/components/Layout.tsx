@@ -42,9 +42,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
         if (path === '/approvals') return 'Approvals';
         if (path === '/disbursements') return 'Disbursements';
         if (path.startsWith('/vouchers')) return 'Vouchers';
+        if (path === '/schedules') return 'Schedules';
         if (path === '/apps') return 'Apps';
         if (path.startsWith('/apps/payroll/run')) return 'Run Payroll';
         if (path.startsWith('/apps/payroll')) return 'Payroll';
+        if (path.startsWith('/invest')) return 'Invest';
         return 'MoneyWise';
     };
 
