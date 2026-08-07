@@ -12,11 +12,18 @@ import {
 
 // ── OAuth helpers ─────────────────────────────────────────────────────────────
 
-/** Returns the public base URL of this API (used to build the OAuth callback URL). */
+/** Returns the public base URL of this API (used to build the OAuth callback URL).
+ *
+ * IMPORTANT: this must be the DIRECT API URL, not the web-app proxy path
+ * (/api/*).  The web project's service worker intercepts navigation to its own
+ * domain and returns the cached SPA shell for any unrecognised path — including
+ * /api/integrations/masterfees/oauth/callback — so the callback never reaches
+ * the network.  Pointing to money-wise-pro-api.vercel.app bypasses both the
+ * proxy rewrite and the service worker entirely.
+ */
 function getApiBaseUrl(): string {
     if (process.env.API_BASE_URL) return process.env.API_BASE_URL.replace(/\/$/, '');
-    // Production: the API is served at /api on the custom domain.
-    if (process.env.NODE_ENV === 'production') return 'https://moneywise.blueopus.cloud/api';
+    if (process.env.NODE_ENV === 'production') return 'https://money-wise-pro-api.vercel.app';
     return 'http://localhost:3000';
 }
 

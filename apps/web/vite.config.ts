@@ -43,7 +43,11 @@ export default defineConfig({
             },
             workbox: {
                 globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-                maximumFileSizeToCacheInBytes: 6000000
+                maximumFileSizeToCacheInBytes: 6000000,
+                // Never serve the cached SPA shell for /api/* paths — those are
+                // server-side routes (including OAuth callbacks) that must reach
+                // the network, not the React Router.
+                navigateFallbackDenylist: [/^\/api\//]
             }
         })
     ],
