@@ -55,7 +55,8 @@ export const getMasterFeesOAuthUrl = async (req: AuthRequest, res: Response) => 
  * Stores credentials and kicks an initial sync, then redirects to the frontend.
  */
 export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
-    const { status, school_id, public_key, state } = req.query;
+    // Master Fees sends: ?status=success&school_id=UUID&school_name=...&public_key=mf_pub_...&state=org:<orgId>
+    const { status, school_id, school_name, public_key, state } = req.query;
     const frontendUrl = getFrontendUrl();
     const settingsBase = `${frontendUrl}/settings?tab=integrations`;
 
@@ -72,18 +73,19 @@ export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
     }
 
     try {
+        // Build config directly from the callback params — no outbound HTTP calls here.
+        // Master Fees sends school_name in the callback so we don't need to ping their
+        // API (which would go through Vercel's network and risk the same IP-block issue).
+        // detectLencoMode is deferred to the first sync run in the background.
         const config: MasterFeesConfig = {
             schoolId: String(school_id).trim(),
             publicKey: String(public_key).trim(),
+            schoolName: school_name ? String(school_name).trim() : String(school_id).trim(),
+            // Default to 'separate' (the safe assumption); the first sync will
+            // re-detect and update this if it turns out to be shared.
+            lencoMode: 'separate',
+            lencoModeOverridden: false,
         };
-        const client = new MasterFeesClient(config);
-
-        // Validate the key and pull the school name. Master Fees auto-enables the
-        // key during OAuth, so this call should always succeed here.
-        const ping = await client.ping();
-        config.schoolName = ping.school_name;
-        config.lencoMode = await detectLencoMode(organizationId, client);
-        config.lencoModeOverridden = false;
 
         const existing = await getMasterFeesIntegration(organizationId);
         const merged = existing ? { ...existing.config, ...config } : config;
@@ -95,7 +97,8 @@ export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
             );
         if (error) throw error;
 
-        // Non-blocking initial sync.
+        // Non-blocking initial sync — runs in the background after we redirect.
+        // The cron will also pick this up every 5 minutes going forward.
         syncMasterfees(organizationId).catch(err =>
             console.error('[MasterFees OAuth] initial sync failed:', err.message),
         );
