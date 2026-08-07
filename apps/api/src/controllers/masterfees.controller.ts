@@ -10,7 +10,105 @@ import {
     MasterFeesConfig,
 } from '../services/masterfees.service';
 
+// ── OAuth helpers ─────────────────────────────────────────────────────────────
+
+/** Returns the public base URL of this API (used to build the OAuth callback URL). */
+function getApiBaseUrl(): string {
+    if (process.env.API_BASE_URL) return process.env.API_BASE_URL.replace(/\/$/, '');
+    // Production: the API is served at /api on the custom domain.
+    if (process.env.NODE_ENV === 'production') return 'https://moneywise.blueopus.cloud/api';
+    return 'http://localhost:3000';
+}
+
+function getFrontendUrl(): string {
+    if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, '');
+    if (process.env.NODE_ENV === 'production') return 'https://moneywise.blueopus.cloud';
+    return 'http://localhost:5173';
+}
+
 const PROVIDER = 'MASTERFEES';
+const MF_OAUTH_BASE = 'https://dashboard.master-fees.com/oauth/consent';
+
+// ── OAuth flow ────────────────────────────────────────────────────────────────
+
+/**
+ * GET /integrations/masterfees/oauth/url
+ * Returns the Master Fees consent URL to redirect the user to for 1-click OAuth setup.
+ * Embeds `state=org:<orgId>` so the callback can identify which org is connecting.
+ */
+export const getMasterFeesOAuthUrl = async (req: AuthRequest, res: Response) => {
+    try {
+        const organizationId = req.user.organization_id;
+        const callbackUrl = `${getApiBaseUrl()}/integrations/masterfees/oauth/callback`;
+        const state = `org:${organizationId}`;
+        const url = `${MF_OAUTH_BASE}?client_id=moneywise&redirect_uri=${encodeURIComponent(callbackUrl)}&state=${encodeURIComponent(state)}`;
+        res.json({ url });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * GET /integrations/masterfees/oauth/callback
+ * No auth — called by Master Fees after the user authorizes the connection.
+ * Receives: ?status=success&school_id=UUID&public_key=mf_pub_...&state=org:<orgId>
+ * Stores credentials and kicks an initial sync, then redirects to the frontend.
+ */
+export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
+    const { status, school_id, public_key, state } = req.query;
+    const frontendUrl = getFrontendUrl();
+    const settingsBase = `${frontendUrl}/settings?tab=integrations`;
+
+    if (status !== 'success' || !school_id || !public_key) {
+        const msg = encodeURIComponent('Master Fees authorization was cancelled or did not complete.');
+        return res.redirect(`${settingsBase}&mf_status=error&mf_message=${msg}`);
+    }
+
+    // Validate state — "org:<orgId>"
+    const [prefix, organizationId] = String(state || '').split(':');
+    if (prefix !== 'org' || !organizationId) {
+        const msg = encodeURIComponent('Invalid OAuth state — please try connecting again.');
+        return res.redirect(`${settingsBase}&mf_status=error&mf_message=${msg}`);
+    }
+
+    try {
+        const config: MasterFeesConfig = {
+            schoolId: String(school_id).trim(),
+            publicKey: String(public_key).trim(),
+        };
+        const client = new MasterFeesClient(config);
+
+        // Validate the key and pull the school name. Master Fees auto-enables the
+        // key during OAuth, so this call should always succeed here.
+        const ping = await client.ping();
+        config.schoolName = ping.school_name;
+        config.lencoMode = await detectLencoMode(organizationId, client);
+        config.lencoModeOverridden = false;
+
+        const existing = await getMasterFeesIntegration(organizationId);
+        const merged = existing ? { ...existing.config, ...config } : config;
+        const { error } = await supabase
+            .from('integrations')
+            .upsert(
+                { provider: PROVIDER, organization_id: organizationId, config: merged, updated_at: new Date().toISOString() },
+                { onConflict: 'organization_id,provider' },
+            );
+        if (error) throw error;
+
+        // Non-blocking initial sync.
+        syncMasterfees(organizationId).catch(err =>
+            console.error('[MasterFees OAuth] initial sync failed:', err.message),
+        );
+
+        return res.redirect(`${settingsBase}&mf_status=success`);
+    } catch (err: any) {
+        console.error('[MasterFees OAuth callback]', err);
+        const msg = encodeURIComponent(err.message || 'Failed to complete Master Fees connection');
+        return res.redirect(`${settingsBase}&mf_status=error&mf_message=${msg}`);
+    }
+};
+
+// ── Manual connect (kept as fallback) ────────────────────────────────────────
 
 /** Connect (or re-connect) a Master Fees school to this organization. */
 export const connectMasterFees = async (req: AuthRequest, res: Response) => {

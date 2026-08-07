@@ -118,7 +118,7 @@ export const InvestCompany: React.FC = () => {
                         </div>
 
                         {/* All Products */}
-                        <div className="flex flex-col gap-4 pt-4 border-t border-slate-200">
+                        <div className="flex flex-col gap-4 pt-4">
                             <div className="flex justify-between items-center pb-3">
                                 <h2 className="text-black text-sm font-semibold font-['DM_Sans']">All Investment Products</h2>
                                 <div className="flex items-center gap-4 text-gray-500">

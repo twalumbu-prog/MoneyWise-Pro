@@ -28,13 +28,23 @@ export const Settings: React.FC = () => {
     const [integrationError, setIntegrationError] = useState<string | null>(null);
 
     useEffect(() => {
-        // Handle OAuth callback params
+        // Handle QuickBooks OAuth callback params (?status=success|error)
         const syncStatus = searchParams.get('status');
         if (syncStatus === 'success' || syncStatus === 'error') {
             setActiveTab('integrations');
             setActiveIntegration('quickbooks');
             if (syncStatus === 'error') {
                 setIntegrationError(searchParams.get('message') || 'Failed to connect');
+            }
+            return;
+        }
+        // Handle Master Fees OAuth callback params (?mf_status=success|error)
+        const mfStatus = searchParams.get('mf_status');
+        if (mfStatus === 'success' || mfStatus === 'error') {
+            setActiveTab('integrations');
+            setActiveIntegration('masterfees');
+            if (mfStatus === 'error') {
+                setIntegrationError(searchParams.get('mf_message') || 'Master Fees connection failed');
             }
         }
     }, [searchParams]);
@@ -165,6 +175,7 @@ export const Settings: React.FC = () => {
                                             ) : activeIntegration === 'masterfees' ? (
                                                 <MasterfeesIntegration
                                                     onBack={() => setActiveIntegration(null)}
+                                                    initialError={integrationError}
                                                 />
                                             ) : (
                                                 <LencoIntegration
