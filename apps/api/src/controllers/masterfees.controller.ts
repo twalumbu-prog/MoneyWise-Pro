@@ -39,13 +39,21 @@ function getFrontendUrl(): string {
  * correct settings URL.
  */
 function jsRedirect(res: Response, url: string) {
-    const safe = url.replace(/'/g, '%27');
+    const safe = url.replace(/'/g, '%27').replace(/"/g, '%22');
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    // Visible fallback link in case JS is blocked — also shows the user something
+    // while we diagnose. Remove once the flow is confirmed working.
     res.send(
         `<!DOCTYPE html><html><head><meta charset="utf-8">` +
         `<meta http-equiv="refresh" content="0;url=${safe}">` +
-        `</head><body><script>window.location.replace('${safe}');</script>` +
-        `<p>Redirecting…</p></body></html>`,
+        `<style>body{font-family:sans-serif;padding:40px;max-width:600px;margin:auto}` +
+        `a{color:#1a6ef7;word-break:break-all}</style>` +
+        `</head><body>` +
+        `<script>try{window.location.replace("${safe}");}catch(e){document.getElementById('err').textContent=e.message;}</script>` +
+        `<p><strong>Completing Master Fees connection…</strong></p>` +
+        `<p>You should be redirected automatically. If not, <a href="${safe}">click here</a>.</p>` +
+        `<p id="err" style="color:red"></p>` +
+        `</body></html>`,
     );
 }
 
@@ -78,39 +86,44 @@ export const getMasterFeesOAuthUrl = async (req: AuthRequest, res: Response) => 
  * Stores credentials and kicks an initial sync, then redirects to the frontend.
  */
 export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
+    console.log('[MF OAuth] callback hit — method:', req.method, 'path:', req.path, 'query keys:', Object.keys(req.query));
+
     // Master Fees sends: ?status=success&school_id=UUID&school_name=...&public_key=mf_pub_...&state=org:<orgId>
     const { status, school_id, school_name, public_key, state } = req.query;
     const frontendUrl = getFrontendUrl();
     const settingsBase = `${frontendUrl}/settings?tab=integrations`;
 
+    console.log('[MF OAuth] status=%s school_id=%s school_name=%s state=%s frontendUrl=%s',
+        status, school_id, school_name, state, frontendUrl);
+
     if (status !== 'success' || !school_id || !public_key) {
+        console.log('[MF OAuth] early exit: missing required params');
         const msg = encodeURIComponent('Master Fees authorization was cancelled or did not complete.');
         return jsRedirect(res, `${settingsBase}&mf_status=error&mf_message=${msg}`);
     }
 
     // Validate state — "org:<orgId>"
     const [prefix, organizationId] = String(state || '').split(':');
+    console.log('[MF OAuth] state split — prefix=%s orgId=%s', prefix, organizationId);
     if (prefix !== 'org' || !organizationId) {
+        console.log('[MF OAuth] invalid state');
         const msg = encodeURIComponent('Invalid OAuth state — please try connecting again.');
         return jsRedirect(res, `${settingsBase}&mf_status=error&mf_message=${msg}`);
     }
 
     try {
-        // Build config directly from the callback params — no outbound HTTP calls here.
-        // Master Fees sends school_name in the callback so we don't need to ping their
-        // API (which would go through Vercel's network and risk the same IP-block issue).
-        // detectLencoMode is deferred to the first sync run in the background.
         const config: MasterFeesConfig = {
             schoolId: String(school_id).trim(),
             publicKey: String(public_key).trim(),
             schoolName: school_name ? String(school_name).trim() : String(school_id).trim(),
-            // Default to 'separate' (the safe assumption); the first sync will
-            // re-detect and update this if it turns out to be shared.
             lencoMode: 'separate',
             lencoModeOverridden: false,
         };
+        console.log('[MF OAuth] config built — schoolId=%s schoolName=%s', config.schoolId, config.schoolName);
 
         const existing = await getMasterFeesIntegration(organizationId);
+        console.log('[MF OAuth] existing integration:', existing ? 'found' : 'none');
+
         const merged = existing ? { ...existing.config, ...config } : config;
         const { error } = await supabase
             .from('integrations')
@@ -118,17 +131,19 @@ export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
                 { provider: PROVIDER, organization_id: organizationId, config: merged, updated_at: new Date().toISOString() },
                 { onConflict: 'organization_id,provider' },
             );
-        if (error) throw error;
+        if (error) {
+            console.error('[MF OAuth] supabase upsert error:', error);
+            throw error;
+        }
+        console.log('[MF OAuth] upsert OK — firing background sync and redirecting to success');
 
-        // Non-blocking initial sync — runs in the background after we redirect.
-        // The cron will also pick this up every 5 minutes going forward.
         syncMasterfees(organizationId).catch(err =>
             console.error('[MasterFees OAuth] initial sync failed:', err.message),
         );
 
         return jsRedirect(res, `${settingsBase}&mf_status=success`);
     } catch (err: any) {
-        console.error('[MasterFees OAuth callback]', err);
+        console.error('[MF OAuth] caught error:', err.message, err.stack);
         const msg = encodeURIComponent(err.message || 'Failed to complete Master Fees connection');
         return jsRedirect(res, `${settingsBase}&mf_status=error&mf_message=${msg}`);
     }
