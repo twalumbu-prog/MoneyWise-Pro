@@ -26,6 +26,29 @@ function getFrontendUrl(): string {
     return 'http://localhost:5173';
 }
 
+/**
+ * Respond with HTML that performs a client-side redirect to `url`.
+ *
+ * We cannot use res.redirect() here because the web app's Vercel config
+ * rewrites /api/* to the API via a transparent server-side proxy.  When the
+ * API sends a 302, Vercel's proxy follows it server-side, fetches the SPA's
+ * index.html, and returns that to the browser with the original callback URL
+ * still in the address bar — so React Router sees the /api/... path and
+ * renders nothing.  A JS-based redirect in the HTML body bypasses this: the
+ * proxy passes the HTML through as-is, and the browser's JS navigates to the
+ * correct settings URL.
+ */
+function jsRedirect(res: Response, url: string) {
+    const safe = url.replace(/'/g, '%27');
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(
+        `<!DOCTYPE html><html><head><meta charset="utf-8">` +
+        `<meta http-equiv="refresh" content="0;url=${safe}">` +
+        `</head><body><script>window.location.replace('${safe}');</script>` +
+        `<p>Redirecting…</p></body></html>`,
+    );
+}
+
 const PROVIDER = 'MASTERFEES';
 const MF_OAUTH_BASE = 'https://dashboard.master-fees.com/oauth/consent';
 
@@ -62,14 +85,14 @@ export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
 
     if (status !== 'success' || !school_id || !public_key) {
         const msg = encodeURIComponent('Master Fees authorization was cancelled or did not complete.');
-        return res.redirect(`${settingsBase}&mf_status=error&mf_message=${msg}`);
+        return jsRedirect(res, `${settingsBase}&mf_status=error&mf_message=${msg}`);
     }
 
     // Validate state — "org:<orgId>"
     const [prefix, organizationId] = String(state || '').split(':');
     if (prefix !== 'org' || !organizationId) {
         const msg = encodeURIComponent('Invalid OAuth state — please try connecting again.');
-        return res.redirect(`${settingsBase}&mf_status=error&mf_message=${msg}`);
+        return jsRedirect(res, `${settingsBase}&mf_status=error&mf_message=${msg}`);
     }
 
     try {
@@ -103,11 +126,11 @@ export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
             console.error('[MasterFees OAuth] initial sync failed:', err.message),
         );
 
-        return res.redirect(`${settingsBase}&mf_status=success`);
+        return jsRedirect(res, `${settingsBase}&mf_status=success`);
     } catch (err: any) {
         console.error('[MasterFees OAuth callback]', err);
         const msg = encodeURIComponent(err.message || 'Failed to complete Master Fees connection');
-        return res.redirect(`${settingsBase}&mf_status=error&mf_message=${msg}`);
+        return jsRedirect(res, `${settingsBase}&mf_status=error&mf_message=${msg}`);
     }
 };
 
