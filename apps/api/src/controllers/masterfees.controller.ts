@@ -67,6 +67,52 @@ function jsRedirect(res: Response, url: string) {
 const PROVIDER = 'MASTERFEES';
 const MF_OAUTH_BASE = 'https://dashboard.master-fees.com/oauth/consent';
 
+/**
+ * TEMPORARY diagnostic — GET /integrations/masterfees/diag
+ * Reports this serverless function's egress IP and the RAW Master Fees response
+ * (status, content-type, body snippet) so we can tell an IP/WAF block (HTML page)
+ * apart from an app-level resource guard (JSON message). Remove once resolved.
+ */
+export const masterFeesDiag = async (req: AuthRequest, res: Response) => {
+    const axios = require('axios');
+    const out: any = { region: process.env.VERCEL_REGION || process.env.AWS_REGION || 'unknown' };
+
+    // 1. What egress IP does this function present to the outside world?
+    for (const svc of ['https://api.ipify.org?format=json', 'https://ifconfig.me/all.json']) {
+        try {
+            const r = await axios.get(svc, { timeout: 8000 });
+            out.egress = r.data;
+            out.egressSource = svc;
+            break;
+        } catch (e: any) { out.egressError = e.message; }
+    }
+
+    // 2. Raw Master Fees call from this function.
+    const integration = await getMasterFeesIntegration(req.user.organization_id);
+    if (!integration) { out.mf = 'not connected'; return res.json(out); }
+    const { schoolId, publicKey } = integration.config;
+    const url = `https://dashboard.master-fees.com/api/v1/school/${schoolId}/data/fee-categories`;
+    out.mfUrl = url;
+    out.keyPrefix = String(publicKey || '').slice(0, 12);
+    try {
+        const r = await axios.get(url, {
+            headers: { 'X-MF-Public-Key': publicKey, 'Content-Type': 'application/json' },
+            timeout: 20000,
+            validateStatus: () => true, // capture any status, don't throw
+        });
+        out.mf = {
+            status: r.status,
+            contentType: r.headers['content-type'],
+            server: r.headers['server'],
+            cfRay: r.headers['cf-ray'],
+            bodySnippet: (typeof r.data === 'string' ? r.data : JSON.stringify(r.data)).slice(0, 600),
+        };
+    } catch (e: any) {
+        out.mf = { error: e.message, code: e.code };
+    }
+    res.json(out);
+};
+
 // ── OAuth flow ────────────────────────────────────────────────────────────────
 
 /**

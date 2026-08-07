@@ -11,6 +11,7 @@ import {
 import {
     getMasterFeesOAuthUrl,
     masterFeesOAuthCallback,
+    masterFeesDiag,
     connectMasterFees,
     getMasterFeesStatus,
     disconnectMasterFees,
@@ -41,6 +42,9 @@ router.post('/masterfees/sync-all', syncAllMasterFees);
 // OAuth 1-click flow.
 router.get('/masterfees/oauth/url', requireAuth, getMasterFeesOAuthUrl);
 router.get('/masterfees/oauth/callback', masterFeesOAuthCallback); // No auth — called by Master Fees
+
+// TEMPORARY diagnostic endpoint — remove once the egress/IP issue is resolved.
+router.get('/masterfees/diag', requireAuth, masterFeesDiag);
 
 router.post('/masterfees/connect', requireAuth, connectMasterFees);
 router.get('/masterfees/status', requireAuth, getMasterFeesStatus);
