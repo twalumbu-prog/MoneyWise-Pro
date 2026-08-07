@@ -104,6 +104,13 @@ async function parseError(response: Response, fallback: string): Promise<never> 
 }
 
 export const masterFeesService = {
+    /** Returns the Master Fees OAuth consent URL. Redirect the user's browser there to start 1-click setup. */
+    async getOAuthUrl(): Promise<string> {
+        const response = await fetch(`${API_URL}/integrations/masterfees/oauth/url`, { headers: await authHeaders() });
+        if (!response.ok) await parseError(response, 'Failed to get Master Fees OAuth URL');
+        return (await response.json()).url;
+    },
+
     async getStatus(): Promise<MasterFeesStatus> {
         const response = await fetch(`${API_URL}/integrations/masterfees/status`, { headers: await authHeaders() });
         if (!response.ok) await parseError(response, 'Failed to fetch Master Fees status');

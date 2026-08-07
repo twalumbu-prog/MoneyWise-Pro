@@ -10,21 +10,29 @@ import {
     GraduationCap,
     ArrowRightLeft,
     Scale,
+    ChevronDown,
+    Zap,
 } from 'lucide-react';
 
 interface MasterfeesIntegrationProps {
     onBack: () => void;
+    /** Error message forwarded from the OAuth callback redirect (Settings.tsx). */
+    initialError?: string | null;
 }
 
-export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ onBack }) => {
+export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ onBack, initialError }) => {
     const [status, setStatus] = useState<MasterFeesStatus | null>(null);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [syncing, setSyncing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(initialError || null);
     const [notice, setNotice] = useState<string | null>(null);
 
-    // Connect form
+    // OAuth connect
+    const [oauthLoading, setOauthLoading] = useState(false);
+
+    // Manual connect form (fallback)
+    const [showManualForm, setShowManualForm] = useState(false);
     const [schoolId, setSchoolId] = useState('');
     const [publicKey, setPublicKey] = useState('');
 
@@ -56,6 +64,22 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
         ]);
         setIncomeAccounts((accts as Account[]).filter((a: Account) => a.type === 'INCOME'));
         setCategories(cats);
+    };
+
+    const handleOAuthConnect = async () => {
+        setError(null);
+        setNotice(null);
+        try {
+            setOauthLoading(true);
+            const url = await masterFeesService.getOAuthUrl();
+            // Redirect the browser — Master Fees will redirect back to our callback URL
+            // (/integrations/masterfees/oauth/callback) which then stores the key and
+            // sends the browser back to /settings?tab=integrations&mf_status=success.
+            window.location.href = url;
+        } catch (err: any) {
+            setError(err.message || 'Failed to start Master Fees OAuth');
+            setOauthLoading(false);
+        }
     };
 
     const handleConnect = async (e: React.FormEvent) => {
@@ -203,43 +227,86 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                         </div>
                     </div>
 
-                    {/* Connect form */}
+                    {/* Connect section */}
                     {!loading && !status?.connected && (
-                        <form onSubmit={handleConnect} className="mt-6 pt-6 border-t border-gray-100 space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">School ID</label>
-                                <input
-                                    type="text"
-                                    value={schoolId}
-                                    onChange={(e) => setSchoolId(e.target.value)}
-                                    placeholder="b0486782-b2e1-4ce0-9aed-29e16ac77563"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-brand-green focus:border-brand-green"
-                                    required
-                                />
+                        <div className="mt-6 pt-6 border-t border-gray-100 space-y-4">
+
+                            {/* Primary: 1-click OAuth */}
+                            <div className="rounded-xl border border-brand-green/30 bg-brand-green/5 p-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="mt-0.5 h-8 w-8 rounded-lg bg-brand-green flex items-center justify-center flex-shrink-0">
+                                        <Zap className="h-4 w-4 text-white" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-bold text-gray-900">1-Click Authorization <span className="text-brand-green text-xs font-medium ml-1">Recommended</span></p>
+                                        <p className="text-xs text-gray-500 mt-0.5">
+                                            Select your school in Master Fees and MoneyWise is connected instantly — no API keys to copy.
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={handleOAuthConnect}
+                                    disabled={oauthLoading}
+                                    className="mt-3 w-full inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-sm font-bold text-white bg-brand-navy hover:bg-brand-navy/90 disabled:opacity-50 transition-colors"
+                                >
+                                    {oauthLoading ? (
+                                        <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Redirecting to Master Fees…</>
+                                    ) : (
+                                        <><Zap className="h-4 w-4 mr-2" /> Connect with Master Fees</>
+                                    )}
+                                </button>
                             </div>
+
+                            {/* Secondary: manual key entry fallback */}
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Public Key</label>
-                                <input
-                                    type="password"
-                                    value={publicKey}
-                                    onChange={(e) => setPublicKey(e.target.value)}
-                                    placeholder="mf_pub_…"
-                                    className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-brand-green focus:border-brand-green"
-                                    required
-                                />
-                                <p className="text-xs text-gray-400 mt-1">
-                                    Found in Master Fees → School API settings. Ensure the Endpoint Master Switch is ON.
-                                </p>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowManualForm(v => !v)}
+                                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+                                >
+                                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showManualForm ? 'rotate-180' : ''}`} />
+                                    Enter API credentials manually
+                                </button>
+
+                                {showManualForm && (
+                                    <form onSubmit={handleConnect} className="mt-3 space-y-3 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                            Manual entry requires the Endpoint Master Switch to be ON in Master Fees → School API settings. If the switch was off when you last tried, use 1-click authorization above instead.
+                                        </p>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">School ID</label>
+                                            <input
+                                                type="text"
+                                                value={schoolId}
+                                                onChange={(e) => setSchoolId(e.target.value)}
+                                                placeholder="b0486782-b2e1-4ce0-9aed-29e16ac77563"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-brand-green focus:border-brand-green"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">Public Key</label>
+                                            <input
+                                                type="password"
+                                                value={publicKey}
+                                                onChange={(e) => setPublicKey(e.target.value)}
+                                                placeholder="mf_pub_…"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm focus:ring-brand-green focus:border-brand-green"
+                                                required
+                                            />
+                                        </div>
+                                        <button
+                                            type="submit"
+                                            disabled={actionLoading}
+                                            className="inline-flex items-center px-4 py-2 rounded-xl shadow-sm text-sm font-bold text-white bg-brand-navy hover:bg-brand-navy/90 disabled:opacity-50"
+                                        >
+                                            <Link2 className="h-4 w-4 mr-2" />
+                                            {actionLoading ? 'Connecting…' : 'Connect manually'}
+                                        </button>
+                                    </form>
+                                )}
                             </div>
-                            <button
-                                type="submit"
-                                disabled={actionLoading}
-                                className="inline-flex items-center px-4 py-2 rounded-xl shadow-sm text-sm font-bold text-white bg-brand-navy hover:bg-brand-navy/90 disabled:opacity-50"
-                            >
-                                <Link2 className="h-4 w-4 mr-2" />
-                                {actionLoading ? 'Connecting…' : 'Connect Master Fees'}
-                            </button>
-                        </form>
+                        </div>
                     )}
 
                     {/* Connected details */}

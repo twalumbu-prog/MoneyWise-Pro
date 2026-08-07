@@ -9,6 +9,8 @@ import {
     syncRequisition
 } from '../controllers/integrations.controller';
 import {
+    getMasterFeesOAuthUrl,
+    masterFeesOAuthCallback,
     connectMasterFees,
     getMasterFeesStatus,
     disconnectMasterFees,
@@ -35,6 +37,10 @@ router.post('/quickbooks/sync/:id', requireAuth, syncRequisition);
 // ── Master Fees ──────────────────────────────────────────────────────────────
 // Cron sync (secured inside the handler via MASTERFEES_SYNC_SECRET/LENCO_SYNC_SECRET).
 router.post('/masterfees/sync-all', syncAllMasterFees);
+
+// OAuth 1-click flow.
+router.get('/masterfees/oauth/url', requireAuth, getMasterFeesOAuthUrl);
+router.get('/masterfees/oauth/callback', masterFeesOAuthCallback); // No auth — called by Master Fees
 
 router.post('/masterfees/connect', requireAuth, connectMasterFees);
 router.get('/masterfees/status', requireAuth, getMasterFeesStatus);
