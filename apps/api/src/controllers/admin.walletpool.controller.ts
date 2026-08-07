@@ -44,12 +44,18 @@ export const addPoolWallet = async (req: any, res: Response): Promise<any> => {
         if (!isUuid) {
             try {
                 const accounts = await LencoService.listAccounts(api_secret);
-                const match = accounts.find((a: any) => 
-                    a.name === provider_account_id || 
+                const match = accounts.find((a: any) =>
+                    // Top-level fields
+                    a.name === provider_account_id ||
                     a.reference === provider_account_id ||
                     String(a.tillNumber) === provider_account_id ||
                     String(a.merchantId) === provider_account_id ||
-                    String(a.accountNumber) === provider_account_id
+                    String(a.accountNumber) === provider_account_id ||
+                    // Nested under details (Lenco Merchant accounts store these here)
+                    String(a.details?.tillNumber) === provider_account_id ||
+                    String(a.details?.merchantId) === provider_account_id ||
+                    String(a.details?.accountNumber) === provider_account_id ||
+                    a.details?.accountName === provider_account_id
                 );
                 if (match && match.id) {
                     provider_account_id = match.id;
