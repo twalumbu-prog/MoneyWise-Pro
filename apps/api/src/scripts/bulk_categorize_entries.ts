@@ -231,7 +231,7 @@ const HR = '─'.repeat(80);
                     const amount = Number(entry.debit) > 0 ? Number(entry.debit) : Number(entry.credit);
                     const decision = await decisionRouter.classify(
                         accounts,
-                        { description: cleanDescription(desc), amount, organizationId: org.id },
+                        { description: cleanDescription(desc), amount },
                         org.id,
                     );
 
