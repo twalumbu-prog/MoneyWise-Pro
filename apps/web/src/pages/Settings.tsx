@@ -188,7 +188,9 @@ export const Settings: React.FC = () => {
                                     {/* AI & Automation Tab */}
                                     {activeTab === 'automation' && (
                                         <div className="space-y-12">
-                                            <AIMetrics />
+                                            <div>
+                                                <AIMetrics />
+                                            </div>
                                             <div className="border-t border-gray-100 pt-12">
                                                 <RuleManagement />
                                             </div>

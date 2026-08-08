@@ -18,6 +18,7 @@ import {
     Upload
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { AIModelSettings } from './AIModelSettings';
 
 import { supabase } from '../../lib/supabase';
 
@@ -608,6 +609,11 @@ export const GeneralSettings: React.FC = () => {
                         )}
                     </form>
                 </div>
+            </div>
+
+            {/* AI Model Configuration */}
+            <div className="mt-6">
+                <AIModelSettings />
             </div>
 
             {/* Danger Zone */}

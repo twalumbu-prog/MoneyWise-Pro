@@ -66,5 +66,24 @@ export const aiService = {
         const response = await apiFetch('/ai/metrics/stats');
         if (!response.ok) throw new Error('Failed to fetch stats');
         return response.json();
-    }
+    },
+
+    // Model Settings
+    async getModelSettings(): Promise<{ settings: Record<string, string>; catalog: Record<string, any> }> {
+        const response = await apiFetch('/ai/model-settings');
+        if (!response.ok) throw new Error('Failed to load model settings');
+        return response.json();
+    },
+
+    async updateModelSettings(partial: Record<string, string>): Promise<{ settings: Record<string, string> }> {
+        const response = await apiFetch('/ai/model-settings', {
+            method: 'PUT',
+            body: JSON.stringify(partial),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error((err as any).error || 'Failed to save model settings');
+        }
+        return response.json();
+    },
 };
