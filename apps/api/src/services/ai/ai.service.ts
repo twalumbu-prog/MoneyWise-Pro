@@ -2,9 +2,9 @@
 import { CATEGORIZATION_SYSTEM_PROMPT, buildCategorizationPrompt, CategorizationExample } from './prompts';
 import { memoryService } from './memory.service';
 import { ruleEngine } from './rule.engine';
+import { callAllCategorizationProviders } from './ai.provider';
 
 const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
-const GEMINI_MODEL = process.env.GEMINI_CATEGORIZATION_MODEL || 'gemini-2.5-flash';
 
 export interface SuggestionResult {
     account_code: string | null;
@@ -50,14 +50,7 @@ export const aiService = {
      */
     async classifyItem(accounts: any[], item: ClassifyItem): Promise<SuggestionResult> {
         if (AI_TEST_MODE) {
-            const desc = item.description.toLowerCase();
-            if (desc.includes('kfc') || desc.includes('subway') || desc.includes('pizza') || desc.includes('diner')) return { account_code: '1001', confidence: 0.95, reasoning: 'MOCK: Staff Meal AI', method: 'AI' };
-            if (desc.includes('microsoft') || desc.includes('amazon') || desc.includes('oracle') || desc.includes('zesco')) return { account_code: '4000', confidence: 0.95, reasoning: 'MOCK: Vendor AI', method: 'AI' };
-            if (desc.includes('office') || desc.includes('stationery') || desc.includes('paper')) return { account_code: '6101', confidence: 0.95, reasoning: 'MOCK: Office Supplies AI', method: 'AI' };
-            if (desc.includes('uber') || desc.includes('emirates') || desc.includes('hilton') || desc.includes('cab')) return { account_code: '6200', confidence: 0.95, reasoning: 'MOCK: Travel AI', method: 'AI' };
-            if (desc.includes('water') || desc.includes('electric') || desc.includes('waste')) return { account_code: '6100', confidence: 0.98, reasoning: 'MOCK: Utility AI', method: 'AI' };
-            if (desc.includes('consulting') || desc.includes('fee') || desc.includes('sale') || desc.includes('revenue')) return { account_code: '4100', confidence: 0.98, reasoning: 'MOCK: Income AI', method: 'AI' };
-            return { account_code: '9999', confidence: 0.50, reasoning: 'MOCK: Generic fallback', method: 'AI' };
+            return this._mockClassify(item.description);
         }
 
         // TIER 1: Rule Engine — resolve the rule's target account (UUID) to its COA code.
@@ -105,47 +98,57 @@ export const aiService = {
     },
 
     /**
-     * PURE model ensemble (OpenAI + Gemini) with strict exact-code validation.
-     * No rule/memory tiers here — callers that want those use classifyItem or
-     * the DecisionRouter. Used directly by the DecisionRouter for its AI tier.
+     * PURE model ensemble across all configured providers (Gemini + OpenRouter +
+     * Perplexity) with strict exact-code validation and optional advanced-model
+     * override. Used directly by the DecisionRouter for its AI tier.
      */
-    async classifyWithModels(accounts: any[], item: ClassifyItem, examples: CategorizationExample[] = []): Promise<SuggestionResult> {
+    async classifyWithModels(
+        accounts: any[],
+        item: ClassifyItem,
+        examples: CategorizationExample[] = [],
+        options?: { useAdvancedModel?: boolean }
+    ): Promise<SuggestionResult> {
         if (AI_TEST_MODE) {
-            const desc = item.description.toLowerCase();
-            if (desc.includes('kfc') || desc.includes('subway') || desc.includes('pizza') || desc.includes('diner')) return { account_code: '1001', confidence: 0.95, reasoning: 'MOCK: Staff Meal AI', method: 'AI' };
-            if (desc.includes('microsoft') || desc.includes('amazon') || desc.includes('oracle') || desc.includes('zesco')) return { account_code: '4000', confidence: 0.95, reasoning: 'MOCK: Vendor AI', method: 'AI' };
-            if (desc.includes('office') || desc.includes('stationery') || desc.includes('paper')) return { account_code: '6101', confidence: 0.95, reasoning: 'MOCK: Office Supplies AI', method: 'AI' };
-            if (desc.includes('uber') || desc.includes('emirates') || desc.includes('hilton') || desc.includes('cab')) return { account_code: '6200', confidence: 0.95, reasoning: 'MOCK: Travel AI', method: 'AI' };
-            if (desc.includes('water') || desc.includes('electric') || desc.includes('waste')) return { account_code: '6100', confidence: 0.98, reasoning: 'MOCK: Utility AI', method: 'AI' };
-            if (desc.includes('consulting') || desc.includes('fee') || desc.includes('sale') || desc.includes('revenue')) return { account_code: '4100', confidence: 0.98, reasoning: 'MOCK: Income AI', method: 'AI' };
-            return { account_code: '9999', confidence: 0.50, reasoning: 'MOCK: Generic fallback', method: 'AI' };
+            return this._mockClassify(item.description);
         }
 
-        const timeout = <T>(promise: Promise<T>, ms: number, name: string): Promise<T> =>
-            new Promise((resolve, reject) => {
-                const timer = setTimeout(() => reject(new Error(`${name} timed out after ${ms}ms`)), ms);
-                promise.then(res => { clearTimeout(timer); resolve(res); }).catch(err => { clearTimeout(timer); reject(err); });
+        const userPrompt = buildCategorizationPrompt(accounts, item.description, item.amount, item.receipt_data, examples);
+        const messages = [
+            { role: 'system' as const, content: CATEGORIZATION_SYSTEM_PROMPT },
+            { role: 'user' as const, content: userPrompt },
+        ];
+
+        let providerResponses;
+        if (options?.useAdvancedModel) {
+            // For auto-completion: use the heavyweight reasoning model
+            const { callAutoCompleteProvider } = await import('./ai.provider');
+            const single = await callAutoCompleteProvider(messages).catch(err => {
+                console.warn('[AI Service] Advanced model failed, falling back:', err.message);
+                return null;
             });
-
-        const aiPromises: Promise<SuggestionResult>[] = [];
-
-        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-        if (GEMINI_API_KEY && GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY') {
-            aiPromises.push(timeout(
-                this.suggestCategoryGemini(accounts, item.description, item.amount, item.receipt_data, examples),
-                12000,
-                'Gemini'
-            ).catch(err => {
-                console.warn(`[AI Service] Gemini failed: ${err.message}`);
-                return { model: 'Gemini', error: err.message } as any;
-            }));
+            providerResponses = single ? [single] : await callAllCategorizationProviders(messages);
+        } else {
+            providerResponses = await callAllCategorizationProviders(messages);
         }
 
-        const results = await Promise.all(aiPromises);
+        // Parse each provider's response into a SuggestionResult
+        const parsed: SuggestionResult[] = [];
+        for (const resp of providerResponses) {
+            try {
+                const jsonText = resp.text.replace(/```json\n?|\n?```/g, '').trim();
+                const data = JSON.parse(jsonText);
+                parsed.push({
+                    account_code: data.account_code || 'UNCATEGORIZED',
+                    confidence: data.confidence || 0,
+                    reasoning: data.reasoning || `${resp.provider} suggestion`,
+                    method: `AI-${resp.provider.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`,
+                });
+            } catch (err: any) {
+                console.warn(`[AI Service] Failed to parse ${resp.provider} response:`, err.message);
+            }
+        }
 
-        // Strict validation: the suggested code MUST be an EXACT member of the COA
-        // (by code, or by name as a fallback for models that echo the name). This is
-        // what prevents "correct logic, wrong account" from loose substring matching.
+        // Strict validation: suggested code MUST be an EXACT member of the COA.
         const codeMap = new Map<string, any>();
         const nameMap = new Map<string, any>();
         for (const a of accounts) {
@@ -153,11 +156,12 @@ export const aiService = {
             nameMap.set(String(a.name ?? a.Name ?? '').trim().toLowerCase(), a);
         }
 
-        const validResults = results.filter((r: any): r is SuggestionResult => {
-            if (!r || r.error || !r.account_code) return false;
+        const validResults = parsed.filter((r): r is SuggestionResult => {
+            if (!r || !r.account_code) return false;
             if (r.account_code === 'UNCATEGORIZED') return true;
 
-            const key = String(r.account_code).trim().toLowerCase();
+            // Strip surrounding brackets some models emit e.g. "[1200]" → "1200"
+            const key = String(r.account_code).trim().replace(/^\[|\]$/g, '').toLowerCase();
             const matched = codeMap.get(key) || nameMap.get(key);
             if (matched) {
                 r.account_code = String(matched.code ?? matched.AcctNum ?? '');
@@ -168,11 +172,9 @@ export const aiService = {
         });
 
         if (validResults.length === 0) {
-            const failureDetails = results.map((r: any) => {
-                const modelName = r?.method?.includes('GEMINI') ? 'Gemini' : (r?.model || 'AI');
-                if (!r || r.error) return `${modelName}: ${r?.error || 'Unknown Error'}`;
-                return `${modelName}: invalid code "${r.account_code}"`;
-            }).join('; ');
+            const failureDetails = parsed.length === 0
+                ? `No providers responded (configured: ${providerResponses.length > 0 ? 'yes' : 'none'})`
+                : parsed.map(r => `${r.method}: invalid code "${r.account_code}"`).join('; ');
 
             console.warn(`[AI Service] No valid suggestions: ${failureDetails}`);
             return {
@@ -183,17 +185,23 @@ export const aiService = {
             };
         }
 
-        // Agreement boost: if both models independently chose the same code, trust it more.
+        // Agreement boost: if multiple providers independently chose the same code, trust it more.
         const byCode = new Map<string, SuggestionResult[]>();
         for (const r of validResults) {
             const k = String(r.account_code);
-            (byCode.get(k) || byCode.set(k, []).get(k)!).push(r);
+            if (!byCode.has(k)) byCode.set(k, []);
+            byCode.get(k)!.push(r);
         }
-        let best = validResults.sort((a, b) => b.confidence - a.confidence)[0];
+
+        let best = [...validResults].sort((a, b) => b.confidence - a.confidence)[0];
         for (const [, group] of byCode) {
             if (group.length > 1) {
-                const top = group.sort((a, b) => b.confidence - a.confidence)[0];
-                best = { ...top, confidence: Math.min(0.99, top.confidence + 0.05), reasoning: `${top.reasoning} (models agreed)` };
+                const top = [...group].sort((a, b) => b.confidence - a.confidence)[0];
+                best = {
+                    ...top,
+                    confidence: Math.min(0.99, top.confidence + 0.05),
+                    reasoning: `${top.reasoning} (providers agreed)`,
+                };
                 break;
             }
         }
@@ -214,40 +222,19 @@ export const aiService = {
         return { description: e.description, account_code: this.codeOf(acc), account_name: acc.name ?? acc.Name };
     },
 
+    /** Kept for backward-compat; delegates to classifyWithModels. */
     async suggestCategoryGemini(accounts: any[], description: string, amount: number, receipt_data?: any, examples: CategorizationExample[] = []): Promise<SuggestionResult> {
-        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-        const userPrompt = buildCategorizationPrompt(accounts, description, amount, receipt_data, examples);
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
+        return this.classifyWithModels(accounts, { description, amount, receipt_data }, examples);
+    },
 
-        const payload = {
-            contents: [{ parts: [{ text: CATEGORIZATION_SYSTEM_PROMPT + '\n' + userPrompt }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0 },
-        };
-
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-            const errBody = await response.text();
-            console.error(`[AI Service] Gemini API Error Response:`, errBody);
-            throw new Error(`Gemini API Status ${response.status}`);
-        }
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error('Empty response from Gemini');
-
-        const jsonText = text.replace(/```json\n?|\n?```/g, '').trim();
-        const parsed = JSON.parse(jsonText);
-
-        return {
-            account_code: parsed.account_code || 'UNCATEGORIZED',
-            confidence: parsed.confidence || 0,
-            reasoning: parsed.reasoning || 'Gemini Suggestion',
-            method: 'AI-GEMINI',
-        };
+    _mockClassify(description: string): SuggestionResult {
+        const desc = description.toLowerCase();
+        if (desc.includes('kfc') || desc.includes('subway') || desc.includes('pizza') || desc.includes('diner')) return { account_code: '1001', confidence: 0.95, reasoning: 'MOCK: Staff Meal AI', method: 'AI' };
+        if (desc.includes('microsoft') || desc.includes('amazon') || desc.includes('oracle') || desc.includes('zesco')) return { account_code: '4000', confidence: 0.95, reasoning: 'MOCK: Vendor AI', method: 'AI' };
+        if (desc.includes('office') || desc.includes('stationery') || desc.includes('paper')) return { account_code: '6101', confidence: 0.95, reasoning: 'MOCK: Office Supplies AI', method: 'AI' };
+        if (desc.includes('uber') || desc.includes('emirates') || desc.includes('hilton') || desc.includes('cab')) return { account_code: '6200', confidence: 0.95, reasoning: 'MOCK: Travel AI', method: 'AI' };
+        if (desc.includes('water') || desc.includes('electric') || desc.includes('waste')) return { account_code: '6100', confidence: 0.98, reasoning: 'MOCK: Utility AI', method: 'AI' };
+        if (desc.includes('consulting') || desc.includes('fee') || desc.includes('sale') || desc.includes('revenue')) return { account_code: '4100', confidence: 0.98, reasoning: 'MOCK: Income AI', method: 'AI' };
+        return { account_code: '9999', confidence: 0.50, reasoning: 'MOCK: Generic fallback', method: 'AI' };
     },
 };

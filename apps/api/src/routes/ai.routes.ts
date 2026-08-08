@@ -38,4 +38,8 @@ router.delete('/rules/:id', requireAuth, requireRole(['ADMIN', 'ACCOUNTANT']), r
 router.get('/metrics/daily', requireAuth, requireRole(['ADMIN', 'ACCOUNTANT']), metricsController.getDailyMetrics);
 router.get('/metrics/stats', requireAuth, requireRole(['ADMIN', 'ACCOUNTANT']), metricsController.getClassificationStats);
 
+// AI Model Settings — read (any authed admin/accountant), write (admin only)
+router.get('/model-settings', requireAuth, requireRole(['ADMIN', 'ACCOUNTANT']), aiController.getModelSettings);
+router.put('/model-settings', requireAuth, requireRole(['ADMIN']), aiController.updateModelSettings);
+
 export default router;

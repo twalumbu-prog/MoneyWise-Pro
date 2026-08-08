@@ -24,7 +24,9 @@ import {
     getAuditReport,
     backfillAuditScores,
     updateLineItemDetails,
-    deleteRequisition
+    deleteRequisition,
+    autoCompleteRequisition,
+    sendAutoCategorizationReminder,
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -40,6 +42,11 @@ import { postVoucher } from '../controllers/accounting.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
+
+// Internal automation routes — protected by LENCO_SYNC_SECRET, NOT by requireAuth.
+// These are called by the auto-complete-requisitions edge function via pg_cron.
+router.post('/auto-reminder', sendAutoCategorizationReminder);
+router.post('/:id/auto-complete', autoCompleteRequisition);
 
 router.use(requireAuth);
 

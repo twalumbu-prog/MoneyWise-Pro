@@ -1,6 +1,11 @@
 /**
- * OCR Service — uses Gemini Vision to extract structured data from receipt images.
+ * OCR Service — uses Gemini Vision (primary) and OpenRouter vision (parallel) to
+ * extract structured data from receipt images.  Both providers run in parallel
+ * when configured; the first valid JSON response wins.  Set OPENROUTER_OCR_MODEL
+ * to enable the OpenRouter path (e.g. google/gemini-2.0-flash-001 or
+ * meta-llama/llama-3.2-90b-vision-instruct).
  */
+import { callAllOcrProviders } from './ai.provider';
 
 export interface ReceiptOcrData {
     vendor?: string | null;
@@ -94,10 +99,11 @@ Return ONLY a JSON object:
 
 export const ocrService = {
     async analyzeReceipt(imageUrl?: string, imageData?: Buffer | Uint8Array): Promise<ReceiptOcrData> {
-        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+        const hasGemini = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY');
+        const hasOpenRouterVision = !!(process.env.OPENROUTER_API_KEY && process.env.OPENROUTER_OCR_MODEL);
 
-        if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
-            console.warn('[OCR Service] Gemini API key not configured. Cannot analyze receipt.');
+        if (!hasGemini && !hasOpenRouterVision) {
+            console.warn('[OCR Service] No vision provider configured (GEMINI_API_KEY or OPENROUTER_API_KEY+OPENROUTER_OCR_MODEL).');
             return { error: 'AI analysis not configured', confidence: 0 };
         }
 
@@ -115,68 +121,28 @@ export const ocrService = {
                 throw new Error('Either imageUrl or imageData must be provided');
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-            
-            const payload = {
-                contents: [{
-                    parts: [
-                        { text: RECEIPT_ANALYSIS_PROMPT },
-                        {
-                            inline_data: {
-                                mime_type: 'image/jpeg',
-                                data: base64Data
-                            }
-                        }
-                    ]
-                }],
-                generationConfig: {
-                    responseMimeType: 'application/json',
-                    temperature: 0.1,
-                    maxOutputTokens: 2048
+            // Run all configured vision providers in parallel; use the first valid response.
+            const responses = await callAllOcrProviders(RECEIPT_ANALYSIS_PROMPT, base64Data, 'image/jpeg');
+
+            if (responses.length === 0) {
+                throw new Error('All OCR providers failed to respond');
+            }
+
+            // Try each response in order until one parses cleanly.
+            let lastErr: string = '';
+            for (const resp of responses) {
+                try {
+                    const jsonText = resp.text.replace(/```json\n?|\n?```/g, '').trim();
+                    const parsed: ReceiptOcrData = JSON.parse(jsonText);
+                    console.log(`[OCR Service] Receipt analyzed via ${resp.provider}. Vendor: ${parsed.vendor}, Total: ${parsed.total_amount}`);
+                    return parsed;
+                } catch (parseErr: any) {
+                    lastErr = parseErr.message;
+                    console.warn(`[OCR Service] ${resp.provider} returned unparseable JSON: ${parseErr.message}`);
                 }
-            };
-
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 120000); // 120s timeout for Gemini
-
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-                signal: controller.signal as any
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                const errBody = await response.text();
-                console.error('[OCR Service] Gemini Vision API Error:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    body: errBody
-                });
-                throw new Error(`Gemini API Status ${response.status}: ${errBody}`);
             }
 
-            const data = await response.json();
-            
-            if (!data.candidates || data.candidates.length === 0) {
-                console.error('[OCR Service] No candidates in Gemini response:', JSON.stringify(data));
-                throw new Error('No analysis candidates returned from Gemini');
-            }
-
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-            if (!text) {
-                console.error('[OCR Service] No text in first candidate parts:', JSON.stringify(data.candidates[0]));
-                throw new Error('Empty response text from Gemini Vision');
-            }
-
-            const jsonText = text.replace(/```json\n?|\n?```/g, '').trim();
-            const parsed: ReceiptOcrData = JSON.parse(jsonText);
-
-            console.log(`[OCR Service] Successfully analyzed receipt. Vendor: ${parsed.vendor}, Total: ${parsed.total_amount}`);
-            return parsed;
+            throw new Error(`No provider returned valid JSON: ${lastErr}`);
 
         } catch (error: any) {
             console.error('[OCR Service] Critical failure during analysis:', {
@@ -188,32 +154,27 @@ export const ocrService = {
     },
 
     async matchExtractedItems(requestedItems: any[], extractedItems: any[]): Promise<any> {
-        const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-        if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') return null;
+        const { callAllCategorizationProviders } = await import('./ai.provider');
+        const hasAny = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY')
+            || !!process.env.OPENROUTER_API_KEY
+            || !!process.env.PERPLEXITY_API_KEY;
+        if (!hasAny) return null;
 
         try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-            
             const prompt = ITEM_MATCHING_PROMPT
                 .replace('{{requested_items}}', JSON.stringify(requestedItems, null, 2))
                 .replace('{{extracted_items}}', JSON.stringify(extractedItems, null, 2));
 
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { responseMimeType: 'application/json', temperature: 0.1 }
-                })
-            });
+            const responses = await callAllCategorizationProviders([
+                { role: 'user', content: prompt },
+            ]);
 
-            if (!response.ok) throw new Error(`Gemini API Match Error: ${response.status}`);
-            
-            const data = await response.json();
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) return null;
-
-            return JSON.parse(text.replace(/```json\n?|\n?```/g, '').trim());
+            for (const resp of responses) {
+                try {
+                    return JSON.parse(resp.text.replace(/```json\n?|\n?```/g, '').trim());
+                } catch { /* try next */ }
+            }
+            return null;
         } catch (error: any) {
             console.error('[OCR Service] Matching failed:', error.message);
             return null;

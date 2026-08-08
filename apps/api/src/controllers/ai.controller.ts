@@ -158,3 +158,39 @@ export const assistantChat = async (req: AuthRequest, res: Response) => {
         });
     }
 };
+
+// ─── AI Model Settings ───────────────────────────────────────────────────────
+
+import { getAIModelSettings, updateAIModelSettings, PROVIDER_CATALOG } from '../services/ai/ai.settings.service';
+
+export const getModelSettings = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const settings = await getAIModelSettings();
+        res.json({ settings, catalog: PROVIDER_CATALOG });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to load AI model settings', details: err.message });
+    }
+};
+
+export const updateModelSettings = async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+        const partial = req.body;
+        const allowed = [
+            'categorization_provider', 'categorization_model',
+            'autocomplete_provider', 'autocomplete_model',
+            'ocr_provider', 'ocr_model',
+            'perplexity_mode',
+        ];
+        const filtered = Object.fromEntries(
+            Object.entries(partial).filter(([k]) => allowed.includes(k))
+        );
+        if (Object.keys(filtered).length === 0) {
+            return res.status(400).json({ error: 'No valid settings keys provided' });
+        }
+        await updateAIModelSettings(filtered as any);
+        const updated = await getAIModelSettings();
+        res.json({ message: 'AI model settings saved', settings: updated });
+    } catch (err: any) {
+        res.status(500).json({ error: 'Failed to save AI model settings', details: err.message });
+    }
+};

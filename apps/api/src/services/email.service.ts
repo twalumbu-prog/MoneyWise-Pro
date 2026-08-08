@@ -15,7 +15,9 @@ export type NotificationType =
     | 'REQUISITION_REJECTED'
     | 'CASH_DISBURSED'
     | 'CHANGE_SUBMITTED'
-    | 'REQUISITION_COMPLETED';
+    | 'REQUISITION_COMPLETED'
+    | 'AUTO_CATEGORIZATION_REMINDER'
+    | 'AUTO_CATEGORIZED';
 
 interface EmailParams {
     to: string | string[];
@@ -1130,6 +1132,163 @@ export const emailService = {
         }
 
         console.log('[EmailService] Email sent successfully:', data?.id);
+    },
+
+    /**
+     * Remind requestors that their pending requisitions will be auto-categorized
+     * within ~12 hours if not actioned.  One email per org, listing all pending items.
+     */
+    async notifyAutoCategorizationReminder(params: {
+        organizationId: string;
+        requisitions: Array<{ id: string; description: string; reference_number: string | null; estimated_total: number }>;
+    }) {
+        const { organizationId, requisitions } = params;
+        if (requisitions.length === 0) return;
+
+        // Collect all unique requestor IDs for this batch and send to each.
+        const { data: lineups } = await supabase
+            .from('requisitions')
+            .select('requestor_id')
+            .in('id', requisitions.map(r => r.id));
+
+        const requestorIds = [...new Set((lineups || []).map((r: any) => r.requestor_id).filter(Boolean))];
+        const emailLists = await Promise.all(requestorIds.map(id => this.getUserEmail(id)));
+        const recipients = [...new Set(emailLists.flat())];
+        if (recipients.length === 0) return;
+
+        const count = requisitions.length;
+        const rowsHtml = requisitions.map(r => `
+            <tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;">${r.reference_number || r.id.slice(0, 8).toUpperCase()}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;">${r.description || 'No description'}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;text-align:right;">K${Number(r.estimated_total).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}</td>
+            </tr>
+        `).join('');
+
+        const body = `
+            <h2 style="color:#d97706;">⏳ Pending Expense Accounting</h2>
+            <p>You have <strong>${count} requisition${count !== 1 ? 's' : ''}</strong> that still need${count === 1 ? 's' : ''} to be accounted for.
+               If no action is taken in the next <strong>12 hours</strong>, MoneyWise will automatically categorize them on your behalf.</p>
+
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                <thead>
+                    <tr style="background:#f9fafb;">
+                        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb;">REF</th>
+                        <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb;">DESCRIPTION</th>
+                        <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;font-weight:600;border-bottom:2px solid #e5e7eb;">AMOUNT</th>
+                    </tr>
+                </thead>
+                <tbody>${rowsHtml}</tbody>
+            </table>
+
+            <p style="color:#6b7280;font-size:13px;">To account for these yourself, open each requisition and submit your actual expenses and change. This keeps your records accurate.</p>
+
+            <a href="${FRONTEND_URL}/requisitions"
+               style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;margin-top:8px;">
+               Review Requisitions
+            </a>
+        `;
+
+        await this.sendEmail({
+            to: recipients,
+            subject: `⏳ ${count} pending expense${count !== 1 ? 's' : ''} will be auto-categorized soon`,
+            html: this.wrapTemplate(body),
+        });
+        console.log(`[EmailService] Auto-categorization reminder sent to ${recipients.join(', ')} (${count} requisitions)`);
+    },
+
+    /**
+     * Send a detailed summary when requisitions have been auto-categorized.
+     * Shows each requisition and how every line item was categorized.
+     */
+    async notifyAutoCategorizationComplete(params: {
+        organizationId: string;
+        categorized: Array<{
+            id: string;
+            description: string;
+            reference_number: string | null;
+            requestor_id: string;
+            estimated_total: number;
+            line_items: Array<{
+                description: string;
+                amount: number;
+                category_name: string | null;
+                account_code: string | null;
+                reasoning: string | null;
+            }>;
+        }>;
+    }) {
+        const { organizationId, categorized } = params;
+        if (categorized.length === 0) return;
+
+        // One email per requestor, showing only their own requisitions.
+        const byRequestor = new Map<string, typeof categorized>();
+        for (const req of categorized) {
+            const list = byRequestor.get(req.requestor_id) || [];
+            list.push(req);
+            byRequestor.set(req.requestor_id, list);
+        }
+
+        for (const [requestorId, reqs] of byRequestor) {
+            const emails = await this.getUserEmail(requestorId);
+            if (emails.length === 0) continue;
+
+            const count = reqs.length;
+            const reqBlocksHtml = reqs.map(req => {
+                const itemRows = req.line_items.map(li => `
+                    <tr>
+                        <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;font-size:13px;">${li.description}</td>
+                        <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;font-size:13px;text-align:right;">K${Number(li.amount).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}</td>
+                        <td style="padding:6px 10px;border-bottom:1px solid #f3f4f6;font-size:13px;">
+                            <strong>${li.category_name || li.account_code || 'Uncategorized'}</strong>
+                            ${li.reasoning ? `<br><span style="color:#6b7280;font-size:11px;">${li.reasoning}</span>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+
+                return `
+                    <div style="margin-bottom:24px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
+                        <div style="background:#f9fafb;padding:10px 16px;border-bottom:1px solid #e5e7eb;">
+                            <strong>${req.reference_number || req.id.slice(0, 8).toUpperCase()}</strong>
+                            <span style="color:#6b7280;margin-left:8px;">${req.description || 'No description'}</span>
+                            <span style="float:right;font-weight:600;">K${Number(req.estimated_total).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <table style="width:100%;border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f3f4f6;">
+                                    <th style="padding:6px 10px;text-align:left;font-size:11px;color:#9ca3af;font-weight:600;">ITEM</th>
+                                    <th style="padding:6px 10px;text-align:right;font-size:11px;color:#9ca3af;font-weight:600;">AMOUNT</th>
+                                    <th style="padding:6px 10px;text-align:left;font-size:11px;color:#9ca3af;font-weight:600;">CATEGORY</th>
+                                </tr>
+                            </thead>
+                            <tbody>${itemRows}</tbody>
+                        </table>
+                    </div>
+                `;
+            }).join('');
+
+            const body = `
+                <h2 style="color:#059669;">✅ Auto-Categorization Complete</h2>
+                <p>${count} requisition${count !== 1 ? 's were' : ' was'} automatically accounted for because no manual action was taken within 24 hours.</p>
+                <p style="background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;border-radius:4px;font-size:13px;color:#92400e;">
+                    These records have been marked as <strong>Auto-Categorized</strong>. Please review them to ensure accuracy — you can still correct individual categories if needed.
+                </p>
+
+                ${reqBlocksHtml}
+
+                <a href="${FRONTEND_URL}/requisitions"
+                   style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;margin-top:8px;">
+                   View All Requisitions
+                </a>
+            `;
+
+            await this.sendEmail({
+                to: emails,
+                subject: `✅ ${count} requisition${count !== 1 ? 's' : ''} auto-categorized by MoneyWise`,
+                html: this.wrapTemplate(body),
+            });
+            console.log(`[EmailService] Auto-categorization complete email sent to ${emails.join(', ')} (${count} requisitions)`);
+        }
     },
 
     /**

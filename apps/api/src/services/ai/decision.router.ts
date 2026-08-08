@@ -18,8 +18,13 @@ export class DecisionRouter {
     private TERMINATION_MEDIUM = 0.70;
     private RISK_HARDENING_THRESHOLD = 0.93;
 
-    async classify(accounts: any[], item: { description: string, amount: number, department?: string, receipt_data?: any }, organizationId?: string): Promise<DecisionResult> {
-        console.log(`[DecisionRouter] Hardening Pass Classifying: "${item.description}" (K${item.amount})`);
+    async classify(
+        accounts: any[],
+        item: { description: string, amount: number, department?: string, receipt_data?: any },
+        organizationId?: string,
+        options?: { useAdvancedModel?: boolean }
+    ): Promise<DecisionResult> {
+        console.log(`[DecisionRouter] Hardening Pass Classifying: "${item.description}" (K${item.amount})${options?.useAdvancedModel ? ' [advanced]' : ''}`);
 
         let bestResult: SuggestionResult = {
             account_code: null,
@@ -106,7 +111,8 @@ export class DecisionRouter {
         const rawAI = await aiService.classifyWithModels(
             accounts,
             { description: item.description, amount: item.amount, receipt_data: item.receipt_data, organizationId },
-            examples
+            examples,
+            options
         );
         if (rawAI && rawAI.account_code) {
             const normalizedConf = confidenceNormalizer.normalizeAI(rawAI.confidence);

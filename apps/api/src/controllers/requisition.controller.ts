@@ -622,6 +622,15 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
             emailService.notifyRequisitionEvent(id, 'CASH_DISBURSED').catch(err =>
                 console.error('[Notification Error] Failed to send CASH_DISBURSED email:', err)
             );
+
+            // Fire-and-forget: pre-classify line items in the background so the
+            // AI_REVIEW card appears instantly when the user later submits change.
+            const orgId = (req as any).user?.organization_id || data?.organization_id;
+            if (orgId) {
+                triggerEarlyClassification(id, orgId).catch(err =>
+                    console.error('[Early Classification] Background trigger failed:', err.message)
+                );
+            }
         }
 
         res.json(data);
@@ -1393,9 +1402,14 @@ export const sendRequisitionMessage = async (req: any, res: any): Promise<any> =
 /**
  * Helper to trigger AI Categorization and send the Review message
  */
-export async function triggerAIReview(requisitionId: string, organizationId: string, userId: string) {
+export async function triggerAIReview(
+    requisitionId: string,
+    organizationId: string,
+    userId: string,
+    options?: { useAdvancedModel?: boolean }
+) {
     try {
-        console.log(`[AI Review] Triggering for Req ${requisitionId}`);
+        console.log(`[AI Review] Triggering for Req ${requisitionId}${options?.useAdvancedModel ? ' (advanced model)' : ''}`);
         
         // Check requisition type
         const { data: requisition } = await supabase
@@ -1659,47 +1673,94 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
 
         // 5 + 6. Classify each item through the full hybrid Decision Router
         // (org-scoped memory -> rules -> few-shot AI ensemble) and persist results.
+        //
+        // Optimization: if triggerEarlyClassification already ran (pre_classified_at is
+        // set) and an item already has a high-confidence account_id, skip the AI call
+        // and reuse the stored result.  This makes the AI_REVIEW card appear instantly
+        // for items classified in the background at DISBURSED time.
+        const { data: reqMeta } = await supabase
+            .from('requisitions')
+            .select('pre_classified_at')
+            .eq('id', requisitionId)
+            .single();
+        const wasPreClassified = !!reqMeta?.pre_classified_at;
+
         const itemsMetadata = [];
         for (const li of lineItems) {
             const amount = li.actual_amount ?? li.estimated_amount ?? 0;
 
+            // Re-fetch the item to check if early classification already wrote to it.
+            const { data: freshItem } = await supabase
+                .from('line_items')
+                .select('account_id, ai_confidence, ai_decision_path, ai_reasoning, ai_similarity_score, ai_rule_id, ai_risk_level')
+                .eq('id', li.id)
+                .single();
+
+            const alreadyClassified =
+                wasPreClassified &&
+                freshItem?.account_id &&
+                (freshItem?.ai_confidence ?? 0) >= 0.7;
+
+            let accountId: string | null;
+            let matchedAccount: any;
+
+            if (alreadyClassified && !options?.useAdvancedModel) {
+                // Reuse the pre-classified result — no AI round-trip needed.
+                accountId = freshItem!.account_id;
+                matchedAccount = accounts?.find(a => a.id === accountId);
+                itemsMetadata.push({
+                    id:             li.id,
+                    description:    li.description,
+                    amount,
+                    category_code:  matchedAccount?.code || null,
+                    category_name:  matchedAccount?.name || null,
+                    reasoning:      freshItem!.ai_reasoning || 'Pre-classified at disbursement.',
+                    confidence:     freshItem!.ai_confidence,
+                    method:         freshItem!.ai_decision_path || 'EARLY_CLASSIFICATION',
+                    requires_review: (freshItem!.ai_confidence ?? 0) < 0.9,
+                });
+                continue;
+            }
+
+            // Standard path: run the Decision Router (or advanced model for auto-complete).
             const decision = await decisionRouter.classify(
                 accounts || [],
                 { description: li.description, amount, receipt_data: li.receipt_ocr_data },
-                organizationId
+                organizationId,
+                options
             );
 
             // Resolve the COA code back to the concrete account row (by code, then id).
-            const matchedAccount =
+            matchedAccount =
                 accounts?.find(a => String(a.code) === String(decision.account_code)) ||
                 accounts?.find(a => String(a.id) === String(decision.account_code));
-            const accountId = matchedAccount ? matchedAccount.id : null;
+            accountId = matchedAccount ? matchedAccount.id : null;
 
             await supabase
                 .from('line_items')
                 .update({
-                    account_id: accountId,
-                    qb_account_id: matchedAccount?.qb_account_id || null,
-                    qb_account_name: matchedAccount?.name || null,
-                    ai_reasoning: decision.reasoning,
-                    ai_confidence: decision.confidence,
-                    ai_similarity_score: decision.similarity_score ?? decision.confidence,
-                    ai_decision_path: decision.decision_path,
-                    ai_rule_id: decision.rule_id || null,
-                    ai_risk_level: decision.risk?.riskLevel || 'LOW'
+                    account_id:           accountId,
+                    qb_account_id:        matchedAccount?.qb_account_id || null,
+                    qb_account_name:      matchedAccount?.name || null,
+                    ai_reasoning:         decision.reasoning,
+                    ai_confidence:        decision.confidence,
+                    ai_similarity_score:  decision.similarity_score ?? decision.confidence,
+                    ai_decision_path:     decision.decision_path,
+                    ai_rule_id:           decision.rule_id || null,
+                    ai_risk_level:        decision.risk?.riskLevel || 'LOW',
                 })
                 .eq('id', li.id);
 
             itemsMetadata.push({
-                id: li.id,
-                description: li.description,
+                id:             li.id,
+                description:    li.description,
                 amount,
-                category_code: decision.account_code,
-                category_name: matchedAccount?.name || decision.account_code,
-                reasoning: decision.reasoning,
-                confidence: decision.confidence,
-                method: decision.decision_path,
-                requires_review: decision.requires_review
+                category_code:  decision.account_code,
+                category_name:  matchedAccount?.name || decision.account_code,
+                reasoning:      decision.reasoning,
+                confidence:     decision.confidence,
+                method:         decision.decision_path,
+                requires_review: decision.requires_review,
             });
         }
 
@@ -1737,6 +1798,238 @@ export async function triggerAIReview(requisitionId: string, organizationId: str
         }
     }
 }
+
+/**
+ * Background early classification — fires when a requisition reaches DISBURSED status.
+ *
+ * Classifies every un-categorized line item through the full Decision Router
+ * (memory → rules → AI ensemble) and persists the results to `line_items`.  The
+ * requisition status is NOT changed here; this is purely a pre-computation so that
+ * when `triggerAIReview` runs later (at change submission) it can reuse the
+ * already-stored results and skip the AI round-trip, making the review card appear
+ * instantly.
+ *
+ * Safe to call fire-and-forget (.catch(...)) — any failure leaves line items in their
+ * original null state and `triggerAIReview` will classify them from scratch as normal.
+ */
+export async function triggerEarlyClassification(requisitionId: string, organizationId: string) {
+    console.log(`[Early Classification] Starting pre-classification for ${requisitionId}`);
+    try {
+        const { data: accounts } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true);
+
+        if (!accounts?.length) {
+            console.log(`[Early Classification] No active accounts for org ${organizationId}, skipping.`);
+            return;
+        }
+
+        // Only classify items that don't already have an account assigned.
+        const { data: lineItems } = await supabase
+            .from('line_items')
+            .select('id, description, estimated_amount, actual_amount, receipt_ocr_data')
+            .eq('requisition_id', requisitionId)
+            .is('account_id', null);
+
+        if (!lineItems?.length) {
+            console.log(`[Early Classification] All items already classified for ${requisitionId}.`);
+            return;
+        }
+
+        let classified = 0;
+        for (const li of lineItems) {
+            try {
+                const amount = li.actual_amount ?? li.estimated_amount ?? 0;
+                const decision = await decisionRouter.classify(
+                    accounts,
+                    { description: li.description, amount, receipt_data: li.receipt_ocr_data },
+                    organizationId
+                );
+
+                if (!decision.account_code || decision.account_code === 'UNCATEGORIZED') continue;
+
+                const matchedAccount =
+                    accounts.find(a => String(a.code) === String(decision.account_code)) ||
+                    accounts.find(a => String(a.id) === String(decision.account_code));
+
+                if (!matchedAccount) continue;
+
+                await supabase
+                    .from('line_items')
+                    .update({
+                        account_id:           matchedAccount.id,
+                        qb_account_id:        matchedAccount.qb_account_id || null,
+                        qb_account_name:      matchedAccount.name || null,
+                        ai_reasoning:         decision.reasoning,
+                        ai_confidence:        decision.confidence,
+                        ai_similarity_score:  decision.similarity_score ?? decision.confidence,
+                        ai_decision_path:     decision.decision_path,
+                        ai_rule_id:           decision.rule_id || null,
+                        ai_risk_level:        decision.risk?.riskLevel || 'LOW',
+                    })
+                    .eq('id', li.id);
+
+                classified++;
+            } catch (itemErr: any) {
+                console.warn(`[Early Classification] Item ${li.id} failed: ${itemErr.message}`);
+            }
+        }
+
+        // Record that pre-classification has run so triggerAIReview can detect it.
+        await supabase
+            .from('requisitions')
+            .update({ pre_classified_at: new Date().toISOString() })
+            .eq('id', requisitionId);
+
+        console.log(`[Early Classification] Completed for ${requisitionId}: ${classified}/${lineItems.length} items classified.`);
+    } catch (err: any) {
+        console.error(`[Early Classification] Failed for ${requisitionId}:`, err.message);
+    }
+}
+
+/**
+ * Auto-complete a requisition that has been stuck in DISBURSED for > 24 hours.
+ *
+ * POST /requisitions/:id/auto-complete
+ * Protected by X-Internal-Secret header (same value as LENCO_SYNC_SECRET).
+ *
+ * Flow:
+ *   1. Validate the requisition is still in DISBURSED and not yet auto-completed.
+ *   2. Copy estimated_amount → actual_amount for items with no actuals.
+ *   3. Set actual_total = estimated_total, status = RECEIVED, is_auto_categorized = true.
+ *   4. Run triggerAIReview with the heavyweight reasoning model flag.
+ *   5. Send the requestor an email summary of what was categorized.
+ */
+export const autoCompleteRequisition = async (req: any, res: any): Promise<any> => {
+    // Internal-only: protected by the same shared secret used by the sync edge functions.
+    const secret = req.headers['authorization']?.replace('Bearer ', '');
+    if (!secret || secret !== process.env.LENCO_SYNC_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { id } = req.params;
+    try {
+        const { data: requisition, error: reqErr } = await supabase
+            .from('requisitions')
+            .select('id, status, organization_id, requestor_id, description, reference_number, estimated_total, is_auto_categorized')
+            .eq('id', id)
+            .single();
+
+        if (reqErr || !requisition) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+        if (requisition.status !== 'DISBURSED') {
+            return res.status(400).json({ error: `Requisition is in ${requisition.status}, not DISBURSED — skipping.` });
+        }
+        if (requisition.is_auto_categorized) {
+            return res.status(400).json({ error: 'Already auto-categorized.' });
+        }
+
+        const { organization_id: organizationId, requestor_id } = requisition;
+
+        // 1. Fill in actuals from estimates for items that have none.
+        const { data: lineItems } = await supabase
+            .from('line_items')
+            .select('id, description, estimated_amount, actual_amount, account_id, ai_confidence, ai_decision_path')
+            .eq('requisition_id', id);
+
+        for (const li of lineItems || []) {
+            if (!li.actual_amount) {
+                await supabase
+                    .from('line_items')
+                    .update({ actual_amount: li.estimated_amount })
+                    .eq('id', li.id);
+            }
+        }
+
+        // 2. Mark requisition as RECEIVED (no change) and auto-categorized.
+        const estimatedTotal = Number(requisition.estimated_total) || 0;
+        await supabase
+            .from('requisitions')
+            .update({
+                actual_total:         estimatedTotal,
+                status:               'RECEIVED',
+                is_auto_categorized:  true,
+                auto_categorized_at:  new Date().toISOString(),
+                updated_at:           new Date().toISOString(),
+            })
+            .eq('id', id);
+
+        // 3. Run AI review with the heavyweight model (deepseek-r1 or equivalent).
+        //    Pass a flag so classifyWithModels() uses callAutoCompleteProvider().
+        await triggerAIReview(id, organizationId, requestor_id, { useAdvancedModel: true });
+
+        // 4. Fetch final line items for the summary email.
+        const { data: finalItems } = await supabase
+            .from('line_items')
+            .select('description, actual_amount, estimated_amount, ai_reasoning, accounts(name, code)')
+            .eq('requisition_id', id);
+
+        const lineItemSummary = (finalItems || []).map((li: any) => ({
+            description:   li.description,
+            amount:        li.actual_amount ?? li.estimated_amount ?? 0,
+            category_name: (li.accounts as any)?.name || null,
+            account_code:  (li.accounts as any)?.code || null,
+            reasoning:     li.ai_reasoning || null,
+        }));
+
+        // 5. Send summary email to the requestor.
+        emailService.notifyAutoCategorizationComplete({
+            organizationId,
+            categorized: [{
+                id:                requisition.id,
+                description:       requisition.description,
+                reference_number:  requisition.reference_number,
+                requestor_id,
+                estimated_total:   estimatedTotal,
+                line_items:        lineItemSummary,
+            }],
+        }).catch(err => console.error('[AutoComplete] Email failed:', err.message));
+
+        console.log(`[AutoComplete] Completed for ${id}`);
+        res.json({ message: 'Auto-completion successful', requisition_id: id });
+    } catch (err: any) {
+        console.error('[AutoComplete] Error:', err.message);
+        res.status(500).json({ error: 'Auto-completion failed', details: err.message });
+    }
+};
+
+/**
+ * Send a "pending accounting" reminder for an org's batch of stuck requisitions.
+ *
+ * POST /requisitions/auto-reminder
+ * Protected by X-Internal-Secret header.
+ */
+export const sendAutoCategorizationReminder = async (req: any, res: any): Promise<any> => {
+    const secret = req.headers['authorization']?.replace('Bearer ', '');
+    if (!secret || secret !== process.env.LENCO_SYNC_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const { organization_id, requisition_ids } = req.body;
+    if (!organization_id || !Array.isArray(requisition_ids) || requisition_ids.length === 0) {
+        return res.status(400).json({ error: 'organization_id and requisition_ids[] are required' });
+    }
+
+    try {
+        const { data: reqs } = await supabase
+            .from('requisitions')
+            .select('id, description, reference_number, estimated_total')
+            .in('id', requisition_ids);
+
+        await emailService.notifyAutoCategorizationReminder({
+            organizationId: organization_id,
+            requisitions: reqs || [],
+        });
+
+        res.json({ message: 'Reminder sent', count: (reqs || []).length });
+    } catch (err: any) {
+        console.error('[AutoReminder] Error:', err.message);
+        res.status(500).json({ error: 'Reminder failed', details: err.message });
+    }
+};
 
 export const approveCategorization = async (req: AuthRequest, res: Response): Promise<any> => {
     try {
