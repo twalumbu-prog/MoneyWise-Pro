@@ -5,7 +5,7 @@ import { reportService, ExpenditureAggregation, ExpenditureItem } from '../servi
 import { budgetService, Budget } from '../services/budget.service';
 import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
-import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Settings2, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Search, Link2, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Settings2, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Search, Link2, ArrowUpRight, ArrowDownRight, CalendarDays, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { FinancialHighlights } from '../components/FinancialHighlights';
@@ -45,15 +45,19 @@ const getPercentageChange = (current: number, previous: number) => {
 export const Reporting: React.FC = () => {
         // State
     const [mode] = useState<ModeType>('EXPENSE');
-    const [periodType, setPeriodType] = useState<PeriodType>('MONTHLY');
-    const [currentDate, setCurrentDate] = useState<Date>(new Date());
+    const [periodType] = useState<PeriodType>('MONTHLY');
+    // null = YTD (default); set = custom date-range filter
+    const [customFilter, setCustomFilter] = useState<{ start: string; end: string } | null>(null);
+    // Controls for the date-range filter picker UI
+    const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
+    const [filterStartInput, setFilterStartInput] = useState('');
+    const [filterEndInput, setFilterEndInput] = useState('');
     
     const queryClient = useQueryClient();
     const [reportView, setReportView] = useState<'PROFIT_LOSS' | 'NET_WORTH'>('PROFIT_LOSS');
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
 
     // Mobile Layout States
-    const [isMonthDropdownOpen, setIsMonthDropdownOpen] = useState(false);
     const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
     
     // Visibility Settings
@@ -157,68 +161,34 @@ export const Reporting: React.FC = () => {
     // After a zoom change, re-anchor the scroll so the spot under the fingers stays put.
     const zoomAnchorRef = useRef<{ fraction: number; focalX: number } | null>(null);
 
-    // Date Math
+    // Date Math — defaults to YTD; overridden by customFilter when set.
     const periodData = useMemo(() => {
-        const start = new Date(currentDate);
-        const end = new Date(currentDate);
-
-        if (periodType === 'MONTHLY') {
-            start.setDate(1);
-            end.setMonth(end.getMonth() + 1);
-            end.setDate(0);
-        } else if (periodType === 'WEEKLY') {
-            const day = start.getDay();
-            const diff = start.getDate() - day + (day === 0 ? -6 : 1);
-            start.setDate(diff);
-            end.setDate(start.getDate() + 6);
-        } else if (periodType === 'QUARTERLY') {
-            const currentMonth = start.getMonth();
-            const quarterStartMonth = Math.floor(currentMonth / 3) * 3;
-            start.setMonth(quarterStartMonth, 1);
-            end.setMonth(quarterStartMonth + 3, 0);
+        if (customFilter) {
+            const s = new Date(customFilter.start + 'T00:00:00');
+            const e = new Date(customFilter.end + 'T00:00:00');
+            const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            const fmt = (d: Date) => `${d.getDate()} ${monthNames[d.getMonth()]} ${d.getFullYear()}`;
+            return { start: customFilter.start, end: customFilter.end, label: `${fmt(s)} – ${fmt(e)}`, type: periodType };
         }
-
-        const startStr = toLocalISODate(start);
-        const endStr = toLocalISODate(end);
-
-        // Formatting label
-        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        let label = '';
-        if (periodType === 'MONTHLY') {
-            label = `${monthNames[start.getMonth()]} ${start.getFullYear()}`;
-        } else if (periodType === 'WEEKLY') {
-            label = `${start.getDate()} ${monthNames[start.getMonth()]} - ${end.getDate()} ${monthNames[end.getMonth()]}`;
-        } else {
-            label = `Q${Math.floor(start.getMonth() / 3) + 1} ${start.getFullYear()}`;
-        }
-
-        return { start: startStr, end: endStr, label, type: periodType };
-    }, [currentDate, periodType]);
+        // YTD: Jan 1 → today
+        const today = new Date();
+        const start = new Date(today.getFullYear(), 0, 1);
+        return {
+            start: toLocalISODate(start),
+            end: toLocalISODate(today),
+            label: `YTD ${today.getFullYear()}`,
+            type: periodType,
+        };
+    }, [customFilter, periodType]);
 
     const prevPeriodData = useMemo(() => {
-        const start = new Date(currentDate);
-        const end = new Date(currentDate);
-
-        if (periodType === 'MONTHLY') {
-            start.setMonth(start.getMonth() - 1, 1);
-            end.setMonth(end.getMonth(), 0);
-        } else if (periodType === 'WEEKLY') {
-            const day = start.getDay();
-            const diff = start.getDate() - day + (day === 0 ? -6 : 1) - 7;
-            start.setDate(diff);
-            end.setDate(start.getDate() + 6);
-        } else if (periodType === 'QUARTERLY') {
-            const currentMonth = start.getMonth();
-            const quarterStartMonth = (Math.floor(currentMonth / 3) * 3) - 3;
-            start.setMonth(quarterStartMonth, 1);
-            end.setMonth(quarterStartMonth + 3, 0);
-        }
-
-        const startStr = toLocalISODate(start);
-        const endStr = toLocalISODate(end);
-
-        return { start: startStr, end: endStr };
-    }, [currentDate, periodType]);
+        // Compare against the equivalent window one year earlier
+        const s = new Date(periodData.start + 'T00:00:00');
+        const e = new Date(periodData.end + 'T00:00:00');
+        s.setFullYear(s.getFullYear() - 1);
+        e.setFullYear(e.getFullYear() - 1);
+        return { start: toLocalISODate(s), end: toLocalISODate(e) };
+    }, [periodData.start, periodData.end]);
 
     // ── Data Fetching (cached) ───────────────────────────────────────────────
     // The whole report payload for a given period+mode is one cached query, so
@@ -510,20 +480,25 @@ export const Reporting: React.FC = () => {
     }, [isChartOpen]);
 
     // Handlers
-    const handlePrevPeriod = () => {
-        const d = new Date(currentDate);
-        if (periodType === 'MONTHLY') d.setMonth(d.getMonth() - 1);
-        if (periodType === 'WEEKLY') d.setDate(d.getDate() - 7);
-        if (periodType === 'QUARTERLY') d.setMonth(d.getMonth() - 3);
-        setCurrentDate(d);
+    const handleApplyFilter = () => {
+        if (filterStartInput && filterEndInput && filterStartInput <= filterEndInput) {
+            setCustomFilter({ start: filterStartInput, end: filterEndInput });
+            setIsDateFilterOpen(false);
+        }
     };
 
-    const handleNextPeriod = () => {
-        const d = new Date(currentDate);
-        if (periodType === 'MONTHLY') d.setMonth(d.getMonth() + 1);
-        if (periodType === 'WEEKLY') d.setDate(d.getDate() + 7);
-        if (periodType === 'QUARTERLY') d.setMonth(d.getMonth() + 3);
-        setCurrentDate(d);
+    const handleClearFilter = () => {
+        setCustomFilter(null);
+        setFilterStartInput('');
+        setFilterEndInput('');
+        setIsDateFilterOpen(false);
+    };
+
+    const openDateFilter = () => {
+        // Pre-populate inputs with whatever is currently active
+        setFilterStartInput(customFilter?.start ?? periodData.start);
+        setFilterEndInput(customFilter?.end ?? periodData.end);
+        setIsDateFilterOpen(true);
     };
 
     // Chart view open/close with a premium enter/exit transition. On close we
@@ -866,28 +841,7 @@ export const Reporting: React.FC = () => {
         draggingRef.current = null;
     };
 
-    const displayMonthName = useMemo(() => {
-        if (periodType === 'MONTHLY') {
-            return currentDate.toLocaleDateString('en-US', { month: 'long' });
-        }
-        return periodData.label;
-    }, [currentDate, periodType, periodData.label]);
-
-    const monthOptions = useMemo(() => {
-        const options = [];
-        const date = new Date();
-        // Go 10 months back and 2 months forward
-        for (let i = -10; i <= 2; i++) {
-            const d = new Date();
-            d.setDate(1); // avoid month overflow issues
-            d.setMonth(date.getMonth() + i);
-            options.push({
-                label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
-                date: new Date(d.getFullYear(), d.getMonth(), 1)
-            });
-        }
-        return options;
-    }, []);
+    const displayPeriodLabel = periodData.label;
 
 
 
@@ -936,16 +890,68 @@ export const Reporting: React.FC = () => {
                                     )}
                                 </div>
 
-                                <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-2.5">
-                                    <button onClick={handlePrevPeriod} className="px-2 h-full rounded flex items-center hover:bg-white/50 transition-colors">
-                                        <ChevronLeft size={14} className="text-gray-600" />
-                                    </button>
-                                    <div className="px-2 text-center text-gray-900 text-[10px] font-bold font-['DM_Sans'] uppercase min-w-[80px]">
-                                        {periodData.label}
+                                {/* Date-range filter — defaults to YTD; filter opens a date picker */}
+                                <div className="relative flex items-center gap-2">
+                                    <div className="h-8 px-3 bg-slate-100 rounded-[10px] flex items-center gap-2">
+                                        <span className="text-gray-900 text-[10px] font-bold font-['DM_Sans'] uppercase whitespace-nowrap">
+                                            {displayPeriodLabel}
+                                        </span>
+                                        {customFilter && (
+                                            <button onClick={handleClearFilter} className="text-gray-400 hover:text-gray-700 transition-colors">
+                                                <X size={12} />
+                                            </button>
+                                        )}
                                     </div>
-                                    <button onClick={handleNextPeriod} className="px-2 h-full rounded flex items-center hover:bg-white/50 transition-colors">
-                                        <ChevronRight size={14} className="text-gray-600" />
+                                    <button
+                                        onClick={openDateFilter}
+                                        className={`h-8 w-8 flex items-center justify-center rounded-[10px] transition-colors ${isDateFilterOpen || customFilter ? 'bg-[#006AFF] text-white' : 'bg-slate-100 text-gray-600 hover:bg-slate-200'}`}
+                                        title="Filter by date range"
+                                    >
+                                        <CalendarDays size={14} />
                                     </button>
+                                    {isDateFilterOpen && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setIsDateFilterOpen(false)} />
+                                            <div className="absolute right-0 top-10 z-50 bg-white border border-gray-100 rounded-2xl shadow-xl p-4 w-72 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Filter by Date Range</p>
+                                                <div className="flex flex-col gap-3">
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">From</label>
+                                                        <input
+                                                            type="date"
+                                                            value={filterStartInput}
+                                                            onChange={e => setFilterStartInput(e.target.value)}
+                                                            className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">To</label>
+                                                        <input
+                                                            type="date"
+                                                            value={filterEndInput}
+                                                            onChange={e => setFilterEndInput(e.target.value)}
+                                                            className="w-full text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                                        />
+                                                    </div>
+                                                    <div className="flex gap-2 pt-1">
+                                                        <button
+                                                            onClick={handleClearFilter}
+                                                            className="flex-1 py-2 text-xs font-bold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
+                                                        >
+                                                            Reset to YTD
+                                                        </button>
+                                                        <button
+                                                            onClick={handleApplyFilter}
+                                                            disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
+                                                            className="flex-1 py-2 text-xs font-bold text-white bg-[#006AFF] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                                        >
+                                                            Apply
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             </div>
 
@@ -1464,7 +1470,7 @@ export const Reporting: React.FC = () => {
 
                 {/* Month Dropdown / Timeframe Buttons & Pill Controls Row */}
                 <div className={`mx-6 ${isChartOpen ? 'mb-3' : 'mb-5'} flex items-center justify-between relative`}>
-                    {/* In chart view: timeframe selector. Otherwise: month dropdown. */}
+                    {/* In chart view: timeframe selector. Otherwise: period label (YTD or custom range). */}
                     {isChartOpen ? (
                         <SegmentedControl
                             variant="outline"
@@ -1473,39 +1479,64 @@ export const Reporting: React.FC = () => {
                             options={TIMEFRAME_ORDER.map((tf) => ({ value: tf, label: tf }))}
                         />
                     ) : (
-                    <div className="relative">
+                    <div className="relative flex items-center gap-2">
                         <button
-                            onClick={() => setIsMonthDropdownOpen(!isMonthDropdownOpen)}
-                            className="flex items-center gap-1 text-2xl font-black text-brand-navy tracking-tight focus:outline-none"
+                            onClick={openDateFilter}
+                            className="flex items-center gap-1.5 text-2xl font-black text-brand-navy tracking-tight focus:outline-none"
                         >
-                            <span>{displayMonthName}</span>
-                            <ChevronDown size={22} className="text-gray-400 mt-1" />
+                            <span>{displayPeriodLabel}</span>
+                            <CalendarDays size={18} className={`mt-0.5 ${customFilter ? 'text-[#006AFF]' : 'text-gray-400'}`} />
                         </button>
+                        {customFilter && (
+                            <button
+                                onClick={handleClearFilter}
+                                className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 transition-colors mt-0.5"
+                                title="Reset to YTD"
+                            >
+                                <X size={12} />
+                            </button>
+                        )}
 
-                        {isMonthDropdownOpen && (
+                        {isDateFilterOpen && (
                             <>
-                                <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setIsMonthDropdownOpen(false)} />
-                                <div className="absolute left-0 mt-2 w-64 bg-white border border-gray-100 rounded-3xl shadow-xl z-50 py-2 max-h-80 overflow-y-auto custom-scrollbar animate-in fade-in slide-in-from-top-2 duration-200">
-                                    {monthOptions.map((opt, index) => {
-                                        const isSelected = opt.date.getMonth() === currentDate.getMonth() && opt.date.getFullYear() === currentDate.getFullYear();
-                                        return (
+                                <div className="fixed inset-0 z-40 bg-black/20" onClick={() => setIsDateFilterOpen(false)} />
+                                <div className="absolute left-0 top-10 z-50 bg-white border border-gray-100 rounded-3xl shadow-xl p-5 w-72 animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Filter by Date Range</p>
+                                    <div className="flex flex-col gap-3">
+                                        <div>
+                                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">From</label>
+                                            <input
+                                                type="date"
+                                                value={filterStartInput}
+                                                onChange={e => setFilterStartInput(e.target.value)}
+                                                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">To</label>
+                                            <input
+                                                type="date"
+                                                value={filterEndInput}
+                                                onChange={e => setFilterEndInput(e.target.value)}
+                                                className="w-full text-sm bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 focus:outline-none focus:border-[#006AFF] focus:ring-1 focus:ring-[#006AFF]"
+                                            />
+                                        </div>
+                                        <div className="flex gap-2 pt-1">
                                             <button
-                                                key={index}
-                                                onClick={() => {
-                                                    setCurrentDate(opt.date);
-                                                    setPeriodType('MONTHLY');
-                                                    setIsMonthDropdownOpen(false);
-                                                }}
-                                                className={`w-full text-left px-5 py-3 text-sm font-bold transition-all ${
-                                                    isSelected 
-                                                        ? 'text-[#006AFF] bg-[#F5FAFF]' 
-                                                        : 'text-gray-600 hover:text-brand-navy hover:bg-gray-50'
-                                                }`}
+                                                onClick={handleClearFilter}
+                                                className="flex-1 py-2.5 text-xs font-bold text-gray-500 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors"
                                             >
-                                                {opt.label}
+                                                Reset to YTD
                                             </button>
-                                        );
-                                    })}
+                                            <button
+                                                onClick={handleApplyFilter}
+                                                disabled={!filterStartInput || !filterEndInput || filterStartInput > filterEndInput}
+                                                className="flex-1 py-2.5 text-xs font-bold text-white bg-[#006AFF] rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-40"
+                                            >
+                                                Apply
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </>
                         )}
