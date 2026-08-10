@@ -1,6 +1,14 @@
 import { supabase } from '../lib/supabase';
 import { encrypt, decrypt } from '../utils/security.utils';
 
+/**
+ * In-process token refresh lock.
+ * Maps organizationId → the in-flight refresh Promise.
+ * Any concurrent call for the same org awaits the existing Promise instead of
+ * racing to call Intuit's token endpoint, which would invalidate the first
+ * refresh token before the second caller can use it.
+ */
+const refreshLocks = new Map<string, Promise<{ accessToken: string; realmId: string }>>();
 
 export class QuickBooksService {
     private static getEnv() {
@@ -147,8 +155,17 @@ export class QuickBooksService {
             }
         }
 
-        // Token expired — try refresh
+        // Token expired — try refresh.
+        // Use the in-process lock so that concurrent requests for the same org
+        // all await a single refresh call rather than each trying to rotate the
+        // token independently (which would invalidate the first rotated token
+        // before the second caller could use it).
         console.log('[QuickBooks Token] Access token expired. Attempting refresh using refresh token...');
+
+        if (refreshLocks.has(organizationId)) {
+            console.log('[QB Token] Refresh already in-flight for this org — awaiting existing lock...');
+            return refreshLocks.get(organizationId)!;
+        }
 
         if (!qb.refresh_token) {
             console.error('[QuickBooks Token] Refresh token missing from database record');
@@ -173,41 +190,53 @@ export class QuickBooksService {
             throw new Error(`Failed to decrypt QB refresh token: ${decryptError.message}. Reconnect QuickBooks.`);
         }
 
-        const response = await fetch(tokenUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Authorization': `Basic ${b64Auth}`,
-                'Accept': 'application/json'
-            },
-            body: new URLSearchParams({
-                grant_type: 'refresh_token',
-                refresh_token: decryptedRefreshToken
-            })
-        });
+        const refreshPromise = (async (): Promise<{ accessToken: string; realmId: string }> => {
+            try {
+                const response = await fetch(tokenUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'Authorization': `Basic ${b64Auth}`,
+                        'Accept': 'application/json'
+                    },
+                    body: new URLSearchParams({
+                        grant_type: 'refresh_token',
+                        refresh_token: decryptedRefreshToken
+                    })
+                });
 
-        const data = await response.json();
-        if (!response.ok) {
-            console.error(`[QB Token] Refresh failed:`, data);
-            throw new Error(`QB Token Refresh Failed: ${data.error_description || data.error || 'Unknown error'}. You may need to reconnect QuickBooks.`);
-        }
+                const data = await response.json();
+                if (!response.ok) {
+                    console.error(`[QB Token] Refresh failed:`, data);
+                    throw new Error(`QB Token Refresh Failed: ${data.error_description || data.error || 'Unknown error'}. You may need to reconnect QuickBooks.`);
+                }
 
-        console.log('[QB Token] Token refreshed successfully');
+                console.log('[QB Token] Token refreshed successfully');
 
-        // Store refreshed tokens (encrypted)
-        await supabase
-            .from('integrations')
-            .update({
-                access_token: encrypt(data.access_token),
-                refresh_token: encrypt(data.refresh_token),
-                token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
-                refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
-                updated_at: new Date().toISOString()
-            })
-            .eq('provider', 'QUICKBOOKS')
-            .eq('organization_id', organizationId);
+                // Persist the new tokens immediately so that if this process restarts
+                // between now and the next request the DB always holds the latest pair.
+                await supabase
+                    .from('integrations')
+                    .update({
+                        access_token: encrypt(data.access_token),
+                        refresh_token: encrypt(data.refresh_token),
+                        token_expires_at: new Date(Date.now() + data.expires_in * 1000).toISOString(),
+                        refresh_token_expires_at: new Date(Date.now() + data.x_refresh_token_expires_in * 1000).toISOString(),
+                        updated_at: new Date().toISOString()
+                    })
+                    .eq('provider', 'QUICKBOOKS')
+                    .eq('organization_id', organizationId);
 
-        return { accessToken: data.access_token, realmId: qb.realm_id };
+                return { accessToken: data.access_token, realmId: qb.realm_id };
+            } finally {
+                // Always release the lock — whether the refresh succeeded or failed —
+                // so that the next call can retry rather than being stuck forever.
+                refreshLocks.delete(organizationId);
+            }
+        })();
+
+        refreshLocks.set(organizationId, refreshPromise);
+        return refreshPromise;
     }
 
     static async fetchAccounts(organizationId: string) {

@@ -115,6 +115,41 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [qbFetchError, setQbFetchError] = useState<string | null>(null);
     const [isQBCreditDropdownOpen, setIsQBCreditDropdownOpen] = useState(false);
     const [qbCreditSearch, setQBCreditSearch] = useState('');
+    // Portal-anchored QB credit dropdown (escapes overflow-hidden parent cards)
+    const [qbCreditDropdownPos, setQbCreditDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
+    const qbCreditTriggerRef = useRef<HTMLDivElement | null>(null);
+
+    const resolveQBCreditDropdownPos = (el: HTMLElement) => {
+        const rect = el.getBoundingClientRect();
+        const isMobile = window.innerWidth < 768;
+        const width = Math.min(rect.width, window.innerWidth - 24);
+        let left: number;
+        if (isMobile) {
+            left = (window.innerWidth - width) / 2;
+        } else {
+            left = rect.left;
+            if (left + width > window.innerWidth - 12) left = window.innerWidth - 12 - width;
+            if (left < 12) left = 12;
+        }
+        return { top: rect.bottom + 8, left, width };
+    };
+
+    // Keep portal dropdown in sync while the page scrolls/resizes
+    useEffect(() => {
+        if (!isQBCreditDropdownOpen) return;
+        const update = () => {
+            if (qbCreditTriggerRef.current) {
+                setQbCreditDropdownPos(resolveQBCreditDropdownPos(qbCreditTriggerRef.current));
+            }
+        };
+        window.addEventListener('scroll', update, true);
+        window.addEventListener('resize', update);
+        return () => {
+            window.removeEventListener('scroll', update, true);
+            window.removeEventListener('resize', update);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isQBCreditDropdownOpen]);
     
     // Disbursal State
     const [activeMethod, setActiveMethod] = useState<string | null>(null);
@@ -2834,12 +2869,17 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         </label>
                                         <div className="relative">
                                             <div
+                                                ref={qbCreditTriggerRef}
                                                 role="button"
                                                 tabIndex={0}
                                                 onClick={() => {
                                                     if (isWallet) return;
-                                                    setIsQBCreditDropdownOpen(!isQBCreditDropdownOpen);
+                                                    const next = !isQBCreditDropdownOpen;
+                                                    setIsQBCreditDropdownOpen(next);
                                                     setQBCreditSearch('');
+                                                    if (next && qbCreditTriggerRef.current) {
+                                                        setQbCreditDropdownPos(resolveQBCreditDropdownPos(qbCreditTriggerRef.current));
+                                                    }
                                                 }}
                                                 className={`w-full h-14 px-6 bg-white border ${isQBCreditDropdownOpen ? 'border-blue-200 ring-2 ring-blue-50' : 'border-gray-100'} rounded-2xl flex items-center justify-between ${isWallet ? 'cursor-default bg-gray-50/50' : 'cursor-pointer'} transition-all shadow-sm group hover:border-gray-200`}
                                             >
@@ -2864,8 +2904,26 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                 {!isWallet && <ChevronDown size={16} className={`text-gray-400 transition-transform duration-300 ${isQBCreditDropdownOpen ? 'rotate-180' : ''}`} />}
                                             </div>
 
+                                            {/* Backdrop to close on outside click */}
                                             {isQBCreditDropdownOpen && (
-                                                <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-100 shadow-2xl rounded-2xl z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                                                <div
+                                                    className="fixed inset-0 z-[199]"
+                                                    onClick={() => setIsQBCreditDropdownOpen(false)}
+                                                />
+                                            )}
+
+                                            {/* Portal — renders outside all overflow-hidden ancestors */}
+                                            {isQBCreditDropdownOpen && qbCreditDropdownPos && createPortal(
+                                                <div
+                                                    style={{
+                                                        position: 'fixed',
+                                                        top: qbCreditDropdownPos.top,
+                                                        left: qbCreditDropdownPos.left,
+                                                        width: qbCreditDropdownPos.width,
+                                                        zIndex: 200,
+                                                    }}
+                                                    className="bg-white border border-gray-100 shadow-2xl rounded-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+                                                >
                                                     <div className="p-4 border-b border-gray-50 bg-gray-50/30">
                                                         <div className="relative">
                                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
@@ -2885,9 +2943,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                     <div className="max-h-[250px] overflow-y-auto p-2 scrollbar-hide">
                                                         {qbAccounts.length > 0 ? (
                                                             qbAccounts
-                                                                .filter(a => 
+                                                                .filter(a =>
                                                                     (a.AccountType === 'Bank' || a.AccountType === 'Credit Card' || a.AccountType === 'Other Current Asset') &&
-                                                                    (a.Name.toLowerCase().includes(qbCreditSearch.toLowerCase()) || 
+                                                                    (a.Name.toLowerCase().includes(qbCreditSearch.toLowerCase()) ||
                                                                      a.AccountType.toLowerCase().includes(qbCreditSearch.toLowerCase()))
                                                                 )
                                                                 .map((acc) => (
@@ -2912,7 +2970,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             </div>
                                                         )}
                                                     </div>
-                                                </div>
+                                                </div>,
+                                                document.body
                                             )}
                                         </div>
                                     </div>
