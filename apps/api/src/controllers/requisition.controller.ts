@@ -96,7 +96,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             console.error('Error checking active requisitions:', activeError);
         }
 
-        if (activeReq) {
+        if (activeReq && (!type || type === 'EXPENSE')) {
             return res.status(400).json({ 
                 error: 'Accountability Block: Multiple requisitions not allowed.',
                 message: `You have an outstanding requisition (#${activeReq.id.slice(0, 8)}) with status "${activeReq.status}". Please submit any pending change or complete the existing cycle before requesting more funds.`,

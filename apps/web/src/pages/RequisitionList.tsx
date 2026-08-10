@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
-import { FileText, History, XCircle, X, Users } from 'lucide-react';
+import { FileText, History, XCircle, X, Users, TrendingUp } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { useAuth } from '../context/AuthContext';
 import { RequisitionInbox } from '../components/RequisitionInbox';
@@ -12,6 +12,7 @@ import { MobileRequisitionWizard } from '../components/requisitions/MobileRequis
 import { MobileStaffLoanWizard } from '../components/requisitions/MobileStaffLoanWizard';
 import { MobileSalaryAdvanceWizard } from '../components/requisitions/MobileSalaryAdvanceWizard';
 import { MobilePayrollWizard } from '../components/requisitions/MobilePayrollWizard';
+import { MobileInvestWizard } from '../components/requisitions/MobileInvestWizard';
 import { DesktopRequisitionWorkspace } from '../components/requisitions/DesktopRequisitionWorkspace';
 import { DesktopStaffLoanWorkspace } from '../components/requisitions/DesktopStaffLoanWorkspace';
 import { DesktopSalaryAdvanceWorkspace } from '../components/requisitions/DesktopSalaryAdvanceWorkspace';
@@ -23,6 +24,7 @@ import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
 import { InflowInbox, inflowTitle, InflowRow } from '../components/InflowInbox';
 import { cashbookService } from '../services/cashbook.service';
+import { payrollService } from '../services/payroll.service';
 import { useNewnessTracker } from '../hooks/useNewnessTracker';
 
 interface Requisition {
@@ -63,7 +65,7 @@ const MOBILE_STATUS_LABELS: Record<string, string> = {
 export const RequisitionList: React.FC = () => {
     const navigate = useNavigate();
     const [searchParams, setSearchParams] = useSearchParams();
-    const { userRole, refreshNotifications, organizationId } = useAuth();
+    const { user, userRole, refreshNotifications, organizationId } = useAuth();
     const isCashHandler = userRole ? ['CASHIER', 'ACCOUNTANT', 'ADMIN'].includes(userRole) : false;
     const queryClient = useQueryClient();
 
@@ -98,7 +100,31 @@ export const RequisitionList: React.FC = () => {
         // months ago) can rank below a low cap and never appear even though they're
         // real, current data. 1000 covers this org's full inflow history today with
         // room to grow; revisit with real pagination if it's ever not enough.
-        queryFn: async () => (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 1000 })) || [],
+        queryFn: async () => {
+            if (isRequestor && user?.id) {
+                try {
+                    const allStaff = await payrollService.listStaff();
+                    const me = allStaff.find(s => s.user_id === user.id);
+                    if (me) {
+                        const history = await payrollService.getStaffPayrollHistory(me.id);
+                        return history.map(h => ({
+                            id: h.id,
+                            description: `Payroll Notification - ${h.payroll_runs.period_label}`,
+                            debit: h.net_pay,
+                            status: 'COMPLETED',
+                            date: h.payroll_runs.run_at || new Date().toISOString(),
+                            created_at: h.payroll_runs.run_at || new Date().toISOString(),
+                            reference_number: 'PAYROLL',
+                            account_type: 'BANK',
+                        }));
+                    }
+                } catch (e) {
+                    console.error('Failed to load payslips for staff', e);
+                }
+                return [];
+            }
+            return (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 1000 })) || [];
+        },
         enabled: !!organizationId,
     });
     const inflowsLoading = inflowsFetching || !organizationId;
@@ -115,6 +141,9 @@ export const RequisitionList: React.FC = () => {
     const [isDesktopStaffLoanOpen, setIsDesktopStaffLoanOpen] = useState(false);
     const [isDesktopSalaryAdvanceOpen, setIsDesktopSalaryAdvanceOpen] = useState(false);
     const [isDesktopPayrollOpen, setIsDesktopPayrollOpen] = useState(false);
+    
+    // New Invest Wizard State
+    const [isInvestWizardOpen, setIsInvestWizardOpen] = useState(false);
 
     // Org departments config
     const { data: departmentConfig } = useQuery({
@@ -400,12 +429,19 @@ export const RequisitionList: React.FC = () => {
             onSelect: () => setIsDesktopStaffLoanOpen(true),
         },
         {
+            label: 'Invest',
+            description: 'Grow your money with our partners',
+            icon: TrendingUp, // Need to import TrendingUp if not already or use another icon
+            iconColor: '#10B981',
+            onSelect: () => setIsInvestWizardOpen(true), // We'll just open the mobile one for now since there's no desktop version
+        },
+        ...(!isRequestor ? [{
             label: 'New Payroll Requisition',
             description: 'Batch processing via spreadsheet upload',
             icon: Users,
             iconColor: '#4F46E5',
             onSelect: () => setIsDesktopPayrollOpen(true),
-        },
+        }] : []),
     ];
 
     return (
@@ -906,12 +942,16 @@ export const RequisitionList: React.FC = () => {
                 onClose={() => setIsPayrollWizardOpen(false)}
                 onSuccess={loadRequisitions}
             />
+            <MobileInvestWizard
+                isOpen={isInvestWizardOpen}
+                onClose={() => setIsInvestWizardOpen(false)}
+            />
 
             {/* Mobile Only UI Elements - Outside Layout for best z-index/fixed behavior */}
             <div className="md:hidden">
                 {/* Backdrop */}
                 <div
-                    className={`fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-[150] transition-opacity duration-300 ${isNewRequisitionOpen && !isRequisitionWizardOpen && !isStaffLoanWizardOpen && !isSalaryAdvanceWizardOpen && !isPayrollWizardOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+                    className={`fixed inset-0 bg-brand-navy/60 backdrop-blur-sm z-[150] transition-opacity duration-300 ${isNewRequisitionOpen && !isRequisitionWizardOpen && !isStaffLoanWizardOpen && !isSalaryAdvanceWizardOpen && !isPayrollWizardOpen && !isInvestWizardOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
                     onClick={() => setIsNewRequisitionOpen(false)}
                 />
 
@@ -1007,22 +1047,40 @@ export const RequisitionList: React.FC = () => {
                                 <div className="text-xs text-blue-600/70 font-medium">Long-term loan with fixed 15% interest</div>
                             </div>
                         </button>
-
+                        
                         <button
                             onClick={() => {
                                 setIsNewRequisitionOpen(false);
-                                setIsPayrollWizardOpen(true);
+                                setIsInvestWizardOpen(true);
                             }}
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <FileText className="h-6 w-6 text-indigo-650" />
+                                <TrendingUp className="h-6 w-6 text-emerald-600" />
                             </div>
                             <div>
-                                <div className="font-bold text-gray-900 text-base">New Payroll Requisition</div>
-                                <div className="text-xs text-indigo-600/70 font-medium">Batch processing via spreadsheet upload</div>
+                                <div className="font-bold text-gray-900 text-base">Invest</div>
+                                <div className="text-xs text-emerald-600/70 font-medium">Grow your money with our partners</div>
                             </div>
                         </button>
+
+                        {!isRequestor && (
+                            <button
+                                onClick={() => {
+                                    setIsNewRequisitionOpen(false);
+                                    setIsPayrollWizardOpen(true);
+                                }}
+                                className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
+                            >
+                                <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
+                                    <FileText className="h-6 w-6 text-indigo-650" />
+                                </div>
+                                <div>
+                                    <div className="font-bold text-gray-900 text-base">New Payroll Requisition</div>
+                                    <div className="text-xs text-indigo-600/70 font-medium">Batch processing via spreadsheet upload</div>
+                                </div>
+                            </button>
+                        )}
                         </>)}
                     </div>
                 </div>
@@ -1204,11 +1262,11 @@ export const RequisitionList: React.FC = () => {
 
                 <div
                     className={`fixed bottom-24 right-6 z-[140] flex items-center justify-center transition-all duration-300 ${
-                        selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen || (inboxMode === 'inflows' && !isCashHandler)
+                        selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen || isInvestWizardOpen || (inboxMode === 'inflows' && !isCashHandler)
                             ? 'opacity-0 pointer-events-none scale-0' 
                             : 'opacity-100 scale-100'
                     }`}
-                    style={{ display: selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen || (inboxMode === 'inflows' && !isCashHandler) ? 'none' : 'flex' }}
+                    style={{ display: selectedRequisition || isRequisitionWizardOpen || isStaffLoanWizardOpen || isSalaryAdvanceWizardOpen || isPayrollWizardOpen || isInvestWizardOpen || (inboxMode === 'inflows' && !isCashHandler) ? 'none' : 'flex' }}
                 >
                     <button
                         onClick={() => setIsNewRequisitionOpen(true)}

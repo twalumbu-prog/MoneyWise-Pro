@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Settings2, 
 import { useAuth } from '../context/AuthContext';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { FinancialHighlights } from '../components/FinancialHighlights';
+import { StaffPortfolio } from './StaffPortfolio';
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
@@ -76,7 +77,8 @@ export const Reporting: React.FC = () => {
     const [isGroupingEnabled, setIsGroupingEnabled] = useState(false);
     const [newGroupName, setNewGroupName] = useState('');
     
-    const { organizationId: orgId } = useAuth();
+    const { organizationId: orgId, userRole } = useAuth();
+    const isRequestor = userRole === 'REQUESTOR';
 
     // "Since last login" marker used to glow newly-arrived transactions. It's
     // frozen for the whole browser session (sessionStorage) so it doesn't move
@@ -207,7 +209,7 @@ export const Reporting: React.FC = () => {
             ]);
             return { expData, budData, accData, prevExpData };
         },
-        enabled: !!orgId,
+        enabled: !!orgId && !isRequestor,
         placeholderData: keepPreviousData,
     });
     const expenditures: ExpenditureAggregation[] = reportData?.expData ?? [];
@@ -311,7 +313,7 @@ export const Reporting: React.FC = () => {
 
     // Fetch (once) and cache the raw expenditures for one timeframe under one mode.
     const ensureTimeframe = async (tf: '1D' | '1W' | '1M' | '3M' | 'YTD', m: ModeType) => {
-        if (!orgId) return;
+        if (!orgId || isRequestor) return;
         const key = `${m}|${tf}`;
         if (chartRawCache[key] || chartFetchingRef.current.has(key)) return;
         chartFetchingRef.current.add(key);
@@ -851,6 +853,14 @@ export const Reporting: React.FC = () => {
     const TIMEFRAME_ORDER: ('1D' | '1W' | '1M' | '3M' | 'YTD')[] = ['1D', '1W', '1M', '3M', 'YTD'];
     const reportViewIndex = REPORT_VIEW_ORDER.indexOf(reportView);
     const timeframeIndex = TIMEFRAME_ORDER.indexOf(chartTimeframe);
+
+    if (isRequestor) {
+        return (
+            <Layout backgroundColor="bg-gray-50 md:bg-white" title="Portfolio">
+                <StaffPortfolio />
+            </Layout>
+        );
+    }
 
     return (
         <Layout noPadding={true} backgroundColor="bg-gray-50 md:bg-white" title="Reports">

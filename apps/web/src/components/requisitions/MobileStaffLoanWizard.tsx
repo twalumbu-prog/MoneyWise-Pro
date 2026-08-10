@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, X, AlertCircle, Loader2 } from 'lucide-react';
+import { ArrowRight, X, AlertCircle, Loader2, Building, Landmark, ChevronRight } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 
 interface MobileStaffLoanWizardProps {
@@ -8,10 +8,39 @@ interface MobileStaffLoanWizardProps {
     onSuccess: () => void;
 }
 
-type Stage = 1 | 2;
+type Stage = 1 | 2 | 3;
+
+const LOAN_PROVIDERS = [
+    {
+        id: 'school',
+        name: 'Internal (The School)',
+        description: 'Direct staff loans from the institution with favorable rates.',
+        icon: Building,
+        color: 'text-blue-500',
+        bg: 'bg-blue-50',
+        products: [
+            { id: 'standard', name: 'Standard Staff Loan', interest: 15, maxPeriod: 36 }
+        ]
+    },
+    {
+        id: 'zanaco',
+        name: 'Zanaco',
+        description: 'External bank loans with longer repayment periods.',
+        icon: Landmark,
+        color: 'text-orange-500',
+        bg: 'bg-orange-50',
+        products: [
+            { id: 'personal', name: 'Zanaco Personal Loan', interest: 21, maxPeriod: 60 },
+            { id: 'auto', name: 'Zanaco Auto Loan', interest: 18, maxPeriod: 48 }
+        ]
+    }
+];
 
 export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ isOpen, onClose, onSuccess }) => {
     const [stage, setStage] = useState<Stage>(1);
+    const [providerId, setProviderId] = useState<string | null>(null);
+    const [productId, setProductId] = useState<string | null>(null);
+
     const [staffName, setStaffName] = useState('');
     const [employeeId, setEmployeeId] = useState('');
     const [amount, setAmount] = useState<number>(0);
@@ -20,12 +49,17 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const interestRate = 15;
+    const selectedProvider = LOAN_PROVIDERS.find(p => p.id === providerId);
+    const selectedProduct = selectedProvider?.products.find(p => p.id === productId);
+
+    const interestRate = selectedProduct?.interest || 15;
     const totalRepayment = amount * (1 + interestRate / 100);
     const monthlyDeduction = repaymentPeriod > 0 ? totalRepayment / repaymentPeriod : 0;
 
     const reset = () => {
         setStage(1);
+        setProviderId(null);
+        setProductId(null);
         setStaffName('');
         setEmployeeId('');
         setAmount(0);
@@ -35,19 +69,27 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
     };
 
     React.useEffect(() => {
-        if (isOpen) {
-            reset();
-        }
+        if (isOpen) reset();
     }, [isOpen]);
 
     const handleClose = () => { reset(); onClose(); };
 
-    const handleProceed = () => {
+    const handleProceedProvider = (pId: string) => {
+        setProviderId(pId);
+        setStage(2);
+    };
+
+    const handleProceedProduct = (prodId: string) => {
+        setProductId(prodId);
+        setStage(3);
+    };
+
+    const handleProceedDetails = () => {
         if (!staffName.trim()) { setError('Please enter the staff member\'s name.'); return; }
         if (!employeeId.trim()) { setError('Please enter the employee ID.'); return; }
         if (!amount || amount <= 0) { setError('Please enter a valid loan amount.'); return; }
         setError(null);
-        setStage(2);
+        handleSubmit();
     };
 
     const handleSubmit = async () => {
@@ -55,7 +97,7 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
         setError(null);
         try {
             await requisitionService.create({
-                description: `LOAN: ${staffName} - ${remarks || 'Staff Loan'}`,
+                description: `LOAN: ${staffName} - ${selectedProvider?.name} - ${selectedProduct?.name} - ${remarks || 'Staff Loan'}`,
                 department: 'HR',
                 type: 'LOAN',
                 estimated_total: amount,
@@ -80,7 +122,6 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
 
     return (
         <div className="fixed inset-0 z-[80] bg-white flex flex-col">
-            {/* App Top Bar - Logo and User */}
             <div className="h-16 bg-white border-b border-gray-100 px-6 flex items-center justify-between shrink-0">
                 <div className="flex items-center">
                     <span className="text-xl font-medium text-brand-navy tracking-tight">MoneyWise</span>
@@ -88,7 +129,6 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                 </div>
             </div>
 
-            {/* Header with Title and Cancel Button */}
             <div className="px-6 py-4 flex items-center justify-between shrink-0">
                 <h1 className="text-[18px] font-bold text-brand-navy">New Staff Loan</h1>
                 <button
@@ -99,19 +139,17 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                 </button>
             </div>
 
-            {/* Progress */}
             <div className="px-6 pt-4 shrink-0">
                 <div className="flex gap-2">
-                    {([1, 2] as Stage[]).map(s => (
+                    {([1, 2, 3] as Stage[]).map(s => (
                         <div key={s} className={`h-1 flex-1 rounded-full transition-all ${stage >= s ? 'bg-[#006AFF]' : 'bg-gray-100'}`} />
                     ))}
                 </div>
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mt-2">
-                    Step {stage} of 2 — {stage === 1 ? 'Loan Details' : 'Summary'}
+                    Step {stage} of 3 — {stage === 1 ? 'Select Provider' : stage === 2 ? 'Select Product' : 'Loan Details'}
                 </p>
             </div>
 
-            {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-6 space-y-5">
                 {error && (
                     <div className="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-start gap-3">
@@ -123,11 +161,62 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                 {stage === 1 && (
                     <>
                         <div>
+                            <h2 className="text-[20px] font-bold text-brand-navy">Select a Provider</h2>
+                            <p className="text-[13px] text-gray-400 mt-1">Choose where you want to request your loan from.</p>
+                        </div>
+                        <div className="space-y-4">
+                            {LOAN_PROVIDERS.map(provider => (
+                                <button
+                                    key={provider.id}
+                                    onClick={() => handleProceedProvider(provider.id)}
+                                    className="w-full text-left bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 hover:border-blue-200 hover:shadow-md transition-all active:scale-[0.98]"
+                                >
+                                    <div className={`w-12 h-12 rounded-xl ${provider.bg} ${provider.color} flex items-center justify-center shrink-0`}>
+                                        <provider.icon size={24} />
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="font-bold text-brand-navy">{provider.name}</h3>
+                                        <p className="text-xs text-gray-400 mt-0.5">{provider.description}</p>
+                                    </div>
+                                    <ChevronRight size={20} className="text-gray-300" />
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                {stage === 2 && selectedProvider && (
+                    <>
+                        <div>
+                            <h2 className="text-[20px] font-bold text-brand-navy">Select a Product</h2>
+                            <p className="text-[13px] text-gray-400 mt-1">Choose a loan product from {selectedProvider.name}.</p>
+                        </div>
+                        <div className="space-y-4">
+                            {selectedProvider.products.map(product => (
+                                <button
+                                    key={product.id}
+                                    onClick={() => handleProceedProduct(product.id)}
+                                    className="w-full text-left bg-white border border-gray-100 rounded-2xl p-5 flex items-center justify-between hover:border-blue-200 hover:shadow-md transition-all active:scale-[0.98]"
+                                >
+                                    <div>
+                                        <h3 className="font-bold text-brand-navy">{product.name}</h3>
+                                        <p className="text-xs text-gray-400 mt-1">Interest: <span className="font-bold text-gray-700">{product.interest}%</span></p>
+                                    </div>
+                                    <ChevronRight size={20} className="text-gray-300" />
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                {stage === 3 && selectedProduct && (
+                    <>
+                        <div>
                             <h2 className="text-[20px] font-bold text-brand-navy">Loan Details</h2>
-                            <p className="text-[13px] text-gray-400 mt-1">Fill in the details for the staff loan</p>
+                            <p className="text-[13px] text-gray-400 mt-1">Fill in the details for your {selectedProduct.name}</p>
                         </div>
 
-                        <div className="space-y-4">
+                        <div className="space-y-4 pb-20">
                             <div>
                                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1.5">Staff Member Name</label>
                                 <input
@@ -161,7 +250,7 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                             <div>
                                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 block mb-1.5">Repayment Period</label>
                                 <div className="grid grid-cols-3 gap-2">
-                                    {[3, 6, 12, 18, 24, 36].map(m => (
+                                    {[3, 6, 12, 18, 24, 36].filter(m => m <= selectedProduct.maxPeriod).map(m => (
                                         <button
                                             key={m}
                                             onClick={() => setRepaymentPeriod(m)}
@@ -186,72 +275,35 @@ export const MobileStaffLoanWizard: React.FC<MobileStaffLoanWizardProps> = ({ is
                                     className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 resize-none focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all"
                                 />
                             </div>
-                        </div>
 
-                        {/* Live Calculation Preview */}
-                        {amount > 0 && (
-                            <div className="bg-gradient-to-br from-[#006AFF] to-blue-600 rounded-2xl p-5 text-white">
-                                <p className="text-[10px] font-black uppercase tracking-widest opacity-70 mb-3">Estimated Repayment</p>
-                                <div className="flex justify-between items-end">
-                                    <div>
-                                        <p className="text-[10px] opacity-70 mb-1">Monthly Deduction</p>
-                                        <p className="text-2xl font-black">K{monthlyDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            {amount > 0 && (
+                                <div className="bg-gradient-to-br from-[#006AFF] to-blue-600 rounded-2xl p-5 text-white shadow-xl shadow-blue-500/20">
+                                    <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-4 text-blue-100">Repayment Preview</p>
+                                    <div className="space-y-4">
+                                        <div className="flex justify-between items-baseline border-b border-white/10 pb-3">
+                                            <span className="text-xs text-blue-100">Monthly Deduction (Payroll)</span>
+                                            <span className="text-xl font-black">K{monthlyDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <div className="flex justify-between items-baseline pt-1">
+                                            <span className="text-xs text-blue-100">Total (incl. {interestRate}% interest)</span>
+                                            <span className="text-sm font-bold">K{totalRepayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                                        </div>
                                     </div>
-                                    <div className="text-right">
-                                        <p className="text-[10px] opacity-70 mb-1">Total (incl. {interestRate}% interest)</p>
-                                        <p className="text-base font-bold">K{totalRepayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </>
-                )}
-
-                {stage === 2 && (
-                    <>
-                        <div>
-                            <h2 className="text-[20px] font-bold text-brand-navy">Loan Summary</h2>
-                            <p className="text-[13px] text-gray-400 mt-1">Review and confirm the loan request</p>
-                        </div>
-
-                        <div className="bg-gray-50 border border-gray-100 rounded-2xl p-4 space-y-3">
-                            {[
-                                { label: 'Staff Member', value: staffName },
-                                { label: 'Employee ID', value: employeeId },
-                                { label: 'Loan Amount', value: `K${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` },
-                                { label: 'Repayment Period', value: `${repaymentPeriod} months` },
-                                { label: 'Interest Rate', value: `${interestRate}%` },
-                                { label: 'Monthly Deduction', value: `K${monthlyDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-                                { label: 'Total Repayment', value: `K${totalRepayment.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
-                            ].map(row => (
-                                <div key={row.label} className="flex justify-between items-center">
-                                    <span className="text-xs text-gray-500">{row.label}</span>
-                                    <span className="text-sm font-bold text-gray-900">{row.value}</span>
-                                </div>
-                            ))}
-                            {remarks && (
-                                <div className="pt-2 border-t border-gray-200">
-                                    <p className="text-xs text-gray-400">Remarks: {remarks}</p>
                                 </div>
                             )}
                         </div>
-
-                        <button
-                            onClick={handleSubmit}
-                            disabled={submitting}
-                            className="w-full h-14 bg-[#006AFF] rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
-                        >
-                            {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Loan Request'}
-                        </button>
                     </>
                 )}
             </div>
 
-            {/* FAB */}
-            {stage === 1 && (
-                <div className="shrink-0 p-6 pb-8 flex justify-end">
-                    <button onClick={handleProceed} className="w-14 h-14 bg-[#006AFF] rounded-full flex items-center justify-center text-white active:scale-90 transition-all">
-                        <ArrowRight size={24} />
+            {stage === 3 && (
+                <div className="fixed bottom-0 left-0 right-0 p-6 bg-white border-t border-gray-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)] z-10">
+                    <button
+                        onClick={handleProceedDetails}
+                        disabled={submitting || amount <= 0}
+                        className="w-full h-14 bg-[#006AFF] rounded-2xl text-white font-black text-base active:scale-[0.98] transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                    >
+                        {submitting ? <><Loader2 size={18} className="animate-spin" />Submitting...</> : 'Submit Request'}
                     </button>
                 </div>
             )}

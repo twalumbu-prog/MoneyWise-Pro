@@ -60,6 +60,21 @@ export class LencoService {
     }
 
     /**
+     * Fetch list of banks
+     */
+    static async getBanks(secretKey?: string) {
+        try {
+            const response = await axios.get(`${this.BASE_URL}/banks`, {
+                headers: this.getHeaders(secretKey)
+            });
+            return response.data.data;
+        } catch (error: any) {
+            console.error('Lenco fetch banks failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to fetch banks');
+        }
+    }
+
+    /**
      * Resolve account details (Bank Account)
      */
     static async resolveBankAccount(accountNumber: string, bankId: string, secretKey?: string): Promise<LencoAccountResolution> {

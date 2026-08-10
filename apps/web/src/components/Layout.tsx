@@ -32,7 +32,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
         const path = location.pathname;
         if (path === '/' || path === '/requisitions') return 'Inbox';
         if (path === '/cashbook') return 'Wallet';
-        if (path === '/reporting') return 'Reports';
+        if (path === '/reporting') return isRequestor ? 'Portfolio' : 'Reports';
         if (path === '/intelligence') return 'Business Intelligence';
         if (path === '/audit') return 'Audit';
         if (path === '/products') return 'Products & Services';
@@ -174,11 +174,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             <div className="md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
                 {[
                     { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
-                    { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook' },
-                    { path: '/intelligence', icon: AstroidIcon, label: 'BI', isActive: (p: string) => p === '/intelligence' },
+                    { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook', hide: isRequestor },
+                    { path: '/intelligence', icon: AstroidIcon, label: 'BI', isActive: (p: string) => p === '/intelligence', hide: isRequestor },
                     { path: '/reporting', icon: TrendingUp, label: 'Reporting', isActive: (p: string) => p === '/reporting' },
                     { path: '/menu', icon: Menu, label: 'Menu', isActive: (p: string) => ['/menu', '/settings', '/audit', '/approvals', '/disbursements'].some(prefix => p.startsWith(prefix)) || p.startsWith('/vouchers') }
-                ].map((tab, idx) => {
+                ].filter(tab => !tab.hide).map((tab, idx) => {
                     const TabIcon = tab.icon;
                     const active = tab.isActive(location.pathname);
                     return (

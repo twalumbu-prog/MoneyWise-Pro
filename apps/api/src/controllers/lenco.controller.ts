@@ -39,6 +39,7 @@ export const listLencoAccounts = async (req: Request, res: Response) => {
     }
 };
 
+
 export const provisionOrganizationLencoAccount = async (req: Request, res: Response) => {
     const { id } = req.params;
     console.log(`[Lenco] Provisioning request for organization ${id}`);
