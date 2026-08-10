@@ -5,8 +5,10 @@ import { useQuery } from '@tanstack/react-query';
 import { payrollService, StaffAllowance, StaffDeduction } from '../../services/payroll.service';
 import { useAuth } from '../../context/AuthContext';
 
-interface ImportRow {
+export interface ImportRow {
     first_name: string;
+    middle_name?: string;
+    date_of_birth?: string;
     last_name: string;
     employee_number?: string;
     department?: string;
@@ -33,6 +35,9 @@ const FIELD_ALIASES: Record<string, keyof ImportRow> = {
     'first name': 'first_name',
     'firstname': 'first_name',
     'first_name': 'first_name',
+    'other name': 'middle_name',
+    'middle name': 'middle_name',
+    'middle_name': 'middle_name',
     'last name': 'last_name',
     'lastname': 'last_name',
     'last_name': 'last_name',
@@ -45,6 +50,10 @@ const FIELD_ALIASES: Record<string, keyof ImportRow> = {
     'position': 'position',
     'job title': 'position',
     'role': 'position',
+    'birthday': 'date_of_birth',
+    'dob': 'date_of_birth',
+    'date of birth': 'date_of_birth',
+    'date_of_birth': 'date_of_birth',
     'email': 'email',
     'phone': 'phone',
     'mobile': 'phone',
@@ -160,15 +169,15 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
         const deductionHeaders = config?.deduction_types?.map((d: any) => `${d.name} (Deduction)`) || [];
 
         const headers = [
-            'First Name', 'Last Name', 'Employee Number', 'Department', 'Position',
-            'Email', 'Phone', 'ID Type', 'ID Number',
+            'First Name', 'Other Name', 'Last Name', 'Employee Number', 'Department', 'Position',
+            'Date of Birth', 'Email', 'Phone', 'ID Type', 'ID Number',
             'NAPSA Number', 'NHIMA Number', 'ZRA TPIN', 'Basic Pay',
             ...allowanceHeaders, ...deductionHeaders,
             'Bank Name', 'Bank Account Number', 'Mobile Money Number',
         ];
         const sample = [
-            'Jane', 'Mwale', 'EMP001', 'Finance', 'Accountant',
-            'jane@example.com', '0977123456', 'NRC', '123456/10/1',
+            'Jane', 'Bwalya', 'Mwale', 'EMP001', 'Finance', 'Accountant',
+            '1990-05-20', 'jane@example.com', '0977123456', 'NRC', '123456/10/1',
             'NAP123', 'NHI456', '1234567890', '5000',
             ...allowanceHeaders.map(() => '500'), ...deductionHeaders.map(() => '100'),
             'Zanaco', '0012345678', '0971234567',
@@ -218,10 +227,12 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
             try {
                 await payrollService.createStaffMember({
                     first_name: row.first_name,
+                    middle_name: row.middle_name || undefined,
                     last_name: row.last_name,
                     employee_number: row.employee_number || undefined,
                     department: row.department || undefined,
                     position: row.position || undefined,
+                    date_of_birth: row.date_of_birth || undefined,
                     email: row.email || undefined,
                     phone: row.phone || undefined,
                     basic_pay: row.basic_pay,
