@@ -196,7 +196,12 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
             try {
                 const wb = XLSX.read(e.target?.result, { type: 'binary' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
-                const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+                const data: any[][] = XLSX.utils.sheet_to_json(ws, { 
+                    header: 1, 
+                    defval: null,
+                    raw: false,
+                    dateNF: 'yyyy-mm-dd'
+                });
                 const parsed = parseRows(data, config);
                 setRows(parsed);
                 setStage('preview');
