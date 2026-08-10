@@ -92,9 +92,16 @@ export const RunPayrollPage: React.FC = () => {
 
     // Stage 2 – Staff & Overtime
     const [items, setItems] = useState<PayrollItem[]>([]);
-    const [staffSearch, setStaffSearch] = useState('');
-    const [staffFocused, setStaffFocused] = useState(false);
-    const staffDropdownRef = useRef<HTMLDivElement>(null);
+    const [overtimeIds, setOvertimeIds] = useState<Set<string>>(new Set());
+    const [overtimeSearch, setOvertimeSearch] = useState('');
+    const [overtimeFocused, setOvertimeFocused] = useState(false);
+    const overtimeDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Stage 3 – Bonuses & Allowances
+    const [allowanceIds, setAllowanceIds] = useState<Set<string>>(new Set());
+    const [allowanceSearch, setAllowanceSearch] = useState('');
+    const [allowanceFocused, setAllowanceFocused] = useState(false);
+    const allowanceDropdownRef = useRef<HTMLDivElement>(null);
 
     // Stage 4 – Deductions: track which staff members are in deduction panel
     const [deductionIds, setDeductionIds] = useState<Set<string>>(new Set());
@@ -135,75 +142,70 @@ export const RunPayrollPage: React.FC = () => {
         setItems(prev => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
     };
 
-    const addStaff = (s: StaffMember) => {
-        if (items.some(i => i.staff_id === s.id)) return;
-        const hasBank = !!(s.bank_account_number?.trim());
-        // Default destination: use the staff member's recorded preference; fallback based on what they have
-        const defaultDest: 'BANK' | 'MOBILE_MONEY' =
-            s.payment_method === 'MOBILE_MONEY' ? 'MOBILE_MONEY' :
-            s.payment_method === 'BANK' ? 'BANK' :
-            hasBank ? 'BANK' : 'MOBILE_MONEY';
-            
-        // Calculate auto-synced loans & advances for this user
-        let autoLoans = 0;
-        if (s.user_id && suggestedDeductions && suggestedDeductions[s.user_id]) {
-            const sd = suggestedDeductions[s.user_id];
-            autoLoans = (sd.loans || 0) + (sd.advances || 0);
+    // Auto-populate all active staff into items on load
+    useEffect(() => {
+        if (allStaff.length > 0 && config && items.length === 0) {
+            const initialItems = allStaff.filter(s => s.status === 'ACTIVE').map(s => {
+                const hasBank = !!(s.bank_account_number?.trim());
+                // Default destination: use the staff member's recorded preference; fallback based on what they have
+                const defaultDest: 'BANK' | 'MOBILE_MONEY' =
+                    s.payment_method === 'MOBILE_MONEY' ? 'MOBILE_MONEY' :
+                    s.payment_method === 'BANK' ? 'BANK' :
+                    hasBank ? 'BANK' : 'MOBILE_MONEY';
+                    
+                // Calculate auto-synced loans & advances for this user
+                let autoLoans = 0;
+                if (s.user_id && suggestedDeductions && suggestedDeductions[s.user_id]) {
+                    const sd = suggestedDeductions[s.user_id];
+                    autoLoans = (sd.loans || 0) + (sd.advances || 0);
+                }
+                
+                // Find existing standing deductions for loans/advances if any, and add auto-synced
+                const standingLoans = s.deductions?.filter(d => d.type === 'LOAN' || d.type === 'ADVANCE').reduce((sum, d) => sum + d.amount, 0) ?? 0;
+                
+                // Base allowances (excluding separate ones, or we can just keep them together and let them override)
+                const initialCustomAllowances: Record<string, number> = {};
+                separateAllowances.forEach(sa => {
+                    const existing = s.allowances?.find(a => a.name === sa.name);
+                    initialCustomAllowances[sa.name] = existing ? existing.amount : 0;
+                });
+                
+                // The rest of the allowances go to the base 'allowances' pool
+                let baseTaxable = 0;
+                let baseNonTaxable = 0;
+                
+                s.allowances?.forEach(a => {
+                    const cfg = config?.allowance_types?.find(ca => ca.name === a.name);
+                    if (cfg?.separate_step) return; // handled by initialCustomAllowances
+                    
+                    if (cfg?.subject_to_statutory !== false) {
+                        baseTaxable += a.amount;
+                    } else {
+                        baseNonTaxable += a.amount;
+                    }
+                });
+
+                return {
+                    staff_id: s.id,
+                    staff_name: `${s.first_name} ${s.last_name}`,
+                    basic_pay: s.basic_pay,
+                    overtime: 0,
+                    taxable_allowances: baseTaxable,
+                    non_taxable_allowances: baseNonTaxable,
+                    loans: standingLoans + autoLoans,
+                    other_deductions: s.deductions?.filter(d => d.type === 'FIXED').reduce((sum, d) => sum + d.amount, 0) ?? 0,
+                    bank_name: s.bank_name ?? undefined,
+                    bank_account_number: s.bank_account_number ?? undefined,
+                    mobile_money_provider: s.mobile_money_provider ?? undefined,
+                    mobile_money_number: s.mobile_money_number ?? undefined,
+                    destination_method: defaultDest,
+                    pay_source: defaultPaySource,
+                    custom_allowances: initialCustomAllowances,
+                };
+            });
+            setItems(initialItems);
         }
-        
-        // Find existing standing deductions for loans/advances if any, and add auto-synced
-        const standingLoans = s.deductions?.filter(d => d.type === 'LOAN' || d.type === 'ADVANCE').reduce((sum, d) => sum + d.amount, 0) ?? 0;
-        
-        // Base allowances (excluding separate ones, or we can just keep them together and let them override)
-        // For simplicity, we keep standard allowances as they are, and initialize custom_allowances for separate ones to 0
-        const initialCustomAllowances: Record<string, number> = {};
-        separateAllowances.forEach(sa => {
-            // If the staff has this allowance in their profile, use its amount, otherwise 0
-            const existing = s.allowances?.find(a => a.name === sa.name);
-            initialCustomAllowances[sa.name] = existing ? existing.amount : 0;
-        });
-        
-        // The rest of the allowances go to the base 'allowances' pool
-        let baseTaxable = 0;
-        let baseNonTaxable = 0;
-        
-        s.allowances?.forEach(a => {
-            const cfg = config?.allowance_types?.find(ca => ca.name === a.name);
-            if (cfg?.separate_step) return; // handled by initialCustomAllowances
-            
-            if (cfg?.subject_to_statutory !== false) {
-                baseTaxable += a.amount;
-            } else {
-                baseNonTaxable += a.amount;
-            }
-        });
-
-        setItems(prev => [...prev, {
-            staff_id: s.id,
-            staff_name: `${s.first_name} ${s.last_name}`,
-            basic_pay: s.basic_pay,
-            overtime: 0,
-            taxable_allowances: baseTaxable,
-            non_taxable_allowances: baseNonTaxable,
-            loans: standingLoans + autoLoans,
-            other_deductions: s.deductions?.filter(d => d.type === 'FIXED').reduce((sum, d) => sum + d.amount, 0) ?? 0,
-            bank_name: s.bank_name ?? undefined,
-            bank_account_number: s.bank_account_number ?? undefined,
-            mobile_money_provider: s.mobile_money_provider ?? undefined,
-            mobile_money_number: s.mobile_money_number ?? undefined,
-            destination_method: defaultDest,
-            pay_source: defaultPaySource,
-            custom_allowances: initialCustomAllowances,
-        }]);
-        setStaffSearch('');
-        setStaffFocused(false);
-    };
-
-    const removeItem = (idx: number) => {
-        const id = items[idx].staff_id;
-        setItems(prev => prev.filter((_, i) => i !== idx));
-        setDeductionIds(prev => { const s = new Set(prev); s.delete(id); return s; });
-    };
+    }, [allStaff, config, suggestedDeductions, wallets, separateAllowances, defaultPaySource]);
 
     // When entering stage 4, auto-populate employees who have deductions
     useEffect(() => {
@@ -218,7 +220,7 @@ export const RunPayrollPage: React.FC = () => {
                 return next;
             });
         }
-    }, [stage]);
+    }, [stage, items]);
 
     const totals = items.reduce((acc, item) => {
         const g = calcGross(item);
@@ -226,11 +228,16 @@ export const RunPayrollPage: React.FC = () => {
         return { gross: acc.gross + g, net: acc.net + n };
     }, { gross: 0, net: 0 });
 
-    // Staff available to add in step 2
-    const availableStaff = allStaff.filter(s =>
-        s.status === 'ACTIVE' &&
-        !items.some(i => i.staff_id === s.id) &&
-        (staffSearch ? `${s.first_name} ${s.last_name}`.toLowerCase().includes(staffSearch.toLowerCase()) : true)
+    // Staff available to add to overtime panel
+    const availableForOvertime = items.filter(item =>
+        !overtimeIds.has(item.staff_id) &&
+        (overtimeSearch ? item.staff_name.toLowerCase().includes(overtimeSearch.toLowerCase()) : true)
+    );
+
+    // Staff available to add to allowance panel
+    const availableForAllowance = items.filter(item =>
+        !allowanceIds.has(item.staff_id) &&
+        (allowanceSearch ? item.staff_name.toLowerCase().includes(allowanceSearch.toLowerCase()) : true)
     );
 
     // Staff available to add to deduction panel (already in items, not yet in deductionIds)
@@ -278,7 +285,7 @@ export const RunPayrollPage: React.FC = () => {
     const stages: Stage[] = [1, 2, 3, 4, 5];
 
     const goNext = () => {
-        if (stage === 2 && items.length === 0) { setError('Add at least one employee before continuing'); return; }
+        if (stage === 1 && items.length === 0) { setError('No active employees found to run payroll for.'); return; }
         setError('');
         if (stage < 5) setStage((stage + 1) as Stage);
         else handleSubmit();
@@ -361,39 +368,43 @@ export const RunPayrollPage: React.FC = () => {
                         {/* ── Stage 2: Staff & Overtime ── */}
                         {stage === 2 && (
                             <>
-                                <p className="text-xs text-gray-500 -mt-3">Search and add employees to include in this payroll run.</p>
+                                <p className="text-xs text-gray-500 -mt-3">Search to add an employee to the overtime adjustment panel.</p>
 
-                                {/* Staff search with always-visible dropdown */}
-                                <div className="relative" ref={staffDropdownRef}>
+                                {/* Overtime search with always-visible dropdown */}
+                                <div className="relative" ref={overtimeDropdownRef}>
                                     <div className="flex items-center gap-2 h-9 px-3 border border-gray-200 rounded-lg bg-white">
                                         <Search size={13} className="text-gray-400 flex-shrink-0" />
                                         <input
-                                            value={staffSearch}
-                                            onChange={e => setStaffSearch(e.target.value)}
-                                            onFocus={() => setStaffFocused(true)}
-                                            onBlur={() => setTimeout(() => setStaffFocused(false), 150)}
-                                            placeholder="Search staff members to add…"
+                                            value={overtimeSearch}
+                                            onChange={e => setOvertimeSearch(e.target.value)}
+                                            onFocus={() => setOvertimeFocused(true)}
+                                            onBlur={() => setTimeout(() => setOvertimeFocused(false), 150)}
+                                            placeholder="Search staff to add overtime…"
                                             className="flex-1 text-sm bg-transparent outline-none text-gray-900 placeholder:text-gray-400"
                                         />
                                     </div>
 
-                                    {(staffFocused || staffSearch) && (
+                                    {(overtimeFocused || overtimeSearch) && (
                                         <div className="absolute top-full left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white shadow-md z-10 max-h-52 overflow-y-auto">
-                                            {availableStaff.length > 0 ? availableStaff.map(s => (
+                                            {availableForOvertime.length > 0 ? availableForOvertime.map(s => (
                                                 <button
-                                                    key={s.id}
-                                                    onMouseDown={() => addStaff(s)}
+                                                    key={s.staff_id}
+                                                    onMouseDown={() => {
+                                                        setOvertimeIds(prev => new Set([...prev, s.staff_id]));
+                                                        setOvertimeSearch('');
+                                                        setOvertimeFocused(false);
+                                                    }}
                                                     className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0"
                                                 >
                                                     <div>
-                                                        <p className="text-sm font-medium text-gray-900">{s.first_name} {s.last_name}</p>
-                                                        <p className="text-[10px] text-gray-400">{s.employee_number} · {s.position || s.department || '—'} · K{fmt(s.basic_pay)}/mo</p>
+                                                        <p className="text-sm font-medium text-gray-900">{s.staff_name}</p>
+                                                        <p className="text-[10px] text-gray-400">Basic: K{fmt(s.basic_pay)}/mo</p>
                                                     </div>
                                                     <Plus size={14} className="text-blue-600 flex-shrink-0" />
                                                 </button>
                                             )) : (
                                                 <p className="px-4 py-3 text-xs text-gray-400 italic">
-                                                    {staffSearch ? 'No matching active staff found' : 'All active staff already added'}
+                                                    {overtimeSearch ? 'No matching staff found' : 'All staff already added to overtime panel'}
                                                 </p>
                                             )}
                                         </div>
@@ -401,20 +412,21 @@ export const RunPayrollPage: React.FC = () => {
                                 </div>
 
                                 {/* Added employees */}
-                                {items.length === 0 ? (
+                                {overtimeIds.size === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-10 text-center gap-2 border border-dashed border-gray-200 rounded-xl">
-                                        <p className="text-sm text-gray-400">No employees added yet</p>
-                                        <p className="text-xs text-gray-300">Search above to add employees</p>
+                                        <p className="text-sm text-gray-400">No overtime added yet</p>
+                                        <p className="text-xs text-gray-300">Search above to add employees to this panel</p>
                                     </div>
                                 ) : (
                                     <div className="flex flex-col gap-3">
-                                        <span className="text-xs font-semibold text-gray-700">{items.length} employee{items.length !== 1 ? 's' : ''} added</span>
                                         <div className="grid grid-cols-[1fr_120px_40px] gap-3 px-4 py-2 bg-gray-50 rounded-lg text-[10px] font-semibold text-gray-500 uppercase tracking-wide">
                                             <span>Employee</span>
                                             <span className="text-right">Overtime (K)</span>
                                             <span />
                                         </div>
-                                        {items.map((item, idx) => (
+                                        {items.filter(item => overtimeIds.has(item.staff_id)).map((item, _) => {
+                                            const idx = items.findIndex(i => i.staff_id === item.staff_id);
+                                            return (
                                             <div key={item.staff_id} className="grid grid-cols-[1fr_120px_40px] gap-3 items-center px-4 py-2.5 border border-gray-100 rounded-lg bg-white">
                                                 <div>
                                                     <p className="text-sm font-medium text-gray-900">{item.staff_name}</p>
@@ -428,11 +440,12 @@ export const RunPayrollPage: React.FC = () => {
                                                     className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm text-right text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500"
                                                     placeholder="0.00"
                                                 />
-                                                <button onClick={() => removeItem(idx)} className="flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
+                                                <button onClick={() => setOvertimeIds(prev => { const s = new Set(prev); s.delete(item.staff_id); return s; })} className="flex items-center justify-center text-gray-300 hover:text-red-500 transition-colors">
                                                     <Trash2 size={14} />
                                                 </button>
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 )}
 
@@ -443,56 +456,110 @@ export const RunPayrollPage: React.FC = () => {
                         {/* ── Stage 3: Bonuses & Allowances ── */}
                         {stage === 3 && (
                             <>
-                                <p className="text-xs text-gray-500 -mt-3">Adjust allowances and one-time bonuses for individual employees this period.</p>
-                                {items.map((item, idx) => (
-                                    <div key={item.staff_id} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3">
-                                        <div>
-                                            <p className="text-sm font-semibold text-gray-900">{item.staff_name}</p>
-                                            <p className="text-[10px] text-gray-400">Basic: K{fmt(item.basic_pay)} · Overtime: K{fmt(item.overtime)}</p>
+                                <p className="text-xs text-gray-500 -mt-3">Search to add an employee to the allowance and bonus adjustment panel.</p>
+
+                                {/* Allowance search with always-visible dropdown */}
+                                <div className="relative" ref={allowanceDropdownRef}>
+                                    <div className="flex items-center gap-2 h-9 px-3 border border-gray-200 rounded-lg bg-white">
+                                        <Search size={13} className="text-gray-400 flex-shrink-0" />
+                                        <input
+                                            value={allowanceSearch}
+                                            onChange={e => setAllowanceSearch(e.target.value)}
+                                            onFocus={() => setAllowanceFocused(true)}
+                                            onBlur={() => setTimeout(() => setAllowanceFocused(false), 150)}
+                                            placeholder="Search staff to adjust allowances…"
+                                            className="flex-1 text-sm bg-transparent outline-none text-gray-900 placeholder:text-gray-400"
+                                        />
+                                    </div>
+
+                                    {(allowanceFocused || allowanceSearch) && (
+                                        <div className="absolute top-full left-0 right-0 mt-1 border border-gray-200 rounded-lg bg-white shadow-md z-10 max-h-52 overflow-y-auto">
+                                            {availableForAllowance.length > 0 ? availableForAllowance.map(s => (
+                                                <button
+                                                    key={s.staff_id}
+                                                    onMouseDown={() => {
+                                                        setAllowanceIds(prev => new Set([...prev, s.staff_id]));
+                                                        setAllowanceSearch('');
+                                                        setAllowanceFocused(false);
+                                                    }}
+                                                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-gray-50 transition-colors text-left border-b border-gray-50 last:border-0"
+                                                >
+                                                    <p className="text-sm font-medium text-gray-900">{s.staff_name}</p>
+                                                    <Plus size={14} className="text-blue-600 flex-shrink-0" />
+                                                </button>
+                                            )) : (
+                                                <p className="px-4 py-3 text-xs text-gray-400 italic">
+                                                    {allowanceSearch ? 'No matching staff found' : 'All staff already added to panel'}
+                                                </p>
+                                            )}
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className={LABEL}>Other Taxable Allowances / Bonus (K)</label>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={item.taxable_allowances || ''}
-                                                    onChange={e => updateItem(idx, 'taxable_allowances', parseFloat(e.target.value) || 0)}
-                                                    className={INPUT}
-                                                    placeholder="0.00"
-                                                />
+                                    )}
+                                </div>
+
+                                {allowanceIds.size === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-10 text-center gap-2 border border-dashed border-gray-200 rounded-xl">
+                                        <p className="text-sm text-gray-400">No allowance adjustments</p>
+                                        <p className="text-xs text-gray-300">Search above to adjust allowances for specific employees</p>
+                                    </div>
+                                ) : (
+                                    items.filter(item => allowanceIds.has(item.staff_id)).map((item, _) => {
+                                        const idx = items.findIndex(i => i.staff_id === item.staff_id);
+                                        return (
+                                        <div key={item.staff_id} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-sm font-semibold text-gray-900">{item.staff_name}</p>
+                                                    <p className="text-[10px] text-gray-400">Basic: K{fmt(item.basic_pay)} · Overtime: K{fmt(item.overtime)}</p>
+                                                </div>
+                                                <button onClick={() => setAllowanceIds(prev => { const s = new Set(prev); s.delete(item.staff_id); return s; })} className="text-gray-300 hover:text-red-400 transition-colors">
+                                                    <Trash2 size={13} />
+                                                </button>
                                             </div>
-                                            <div>
-                                                <label className={LABEL}>Other Non-Taxable Allowances (K)</label>
-                                                <input
-                                                    type="number"
-                                                    min="0"
-                                                    value={item.non_taxable_allowances || ''}
-                                                    onChange={e => updateItem(idx, 'non_taxable_allowances', parseFloat(e.target.value) || 0)}
-                                                    className={INPUT}
-                                                    placeholder="0.00"
-                                                />
-                                            </div>
-                                            {separateAllowances.map(sa => (
-                                                <div key={sa.name}>
-                                                    <label className={LABEL}>{sa.name} (K)</label>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div>
+                                                    <label className={LABEL}>Other Taxable Allowances / Bonus (K)</label>
                                                     <input
                                                         type="number"
                                                         min="0"
-                                                        value={item.custom_allowances?.[sa.name] || ''}
-                                                        onChange={e => {
-                                                            const val = parseFloat(e.target.value) || 0;
-                                                            const newCustom = { ...(item.custom_allowances || {}), [sa.name]: val };
-                                                            updateItem(idx, 'custom_allowances', newCustom);
-                                                        }}
+                                                        value={item.taxable_allowances || ''}
+                                                        onChange={e => updateItem(idx, 'taxable_allowances', parseFloat(e.target.value) || 0)}
                                                         className={INPUT}
                                                         placeholder="0.00"
                                                     />
                                                 </div>
-                                            ))}
+                                                <div>
+                                                    <label className={LABEL}>Other Non-Taxable Allowances (K)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={item.non_taxable_allowances || ''}
+                                                        onChange={e => updateItem(idx, 'non_taxable_allowances', parseFloat(e.target.value) || 0)}
+                                                        className={INPUT}
+                                                        placeholder="0.00"
+                                                    />
+                                                </div>
+                                                {separateAllowances.map(sa => (
+                                                    <div key={sa.name}>
+                                                        <label className={LABEL}>{sa.name} (K)</label>
+                                                        <input
+                                                            type="number"
+                                                            min="0"
+                                                            value={item.custom_allowances?.[sa.name] || ''}
+                                                            onChange={e => {
+                                                                const val = parseFloat(e.target.value) || 0;
+                                                                const newCustom = { ...(item.custom_allowances || {}), [sa.name]: val };
+                                                                updateItem(idx, 'custom_allowances', newCustom);
+                                                            }}
+                                                            className={INPUT}
+                                                            placeholder="0.00"
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                        );
+                                    })
+                                )}
                             </>
                         )}
 
