@@ -167,7 +167,7 @@ export const PayrollRunDetail: React.FC<Props> = ({ runId, onBack, onApproved })
                                                 <div className="flex items-center gap-6">
                                                     <span className="w-16 text-center text-xs font-bold text-black font-['DM_Sans'] leading-5">K{fmt(item.basic_pay)}</span>
                                                     <span className="w-16 text-center text-xs text-black font-['DM_Sans'] leading-5">K{fmt(item.overtime)}</span>
-                                                    <span className="w-16 text-center text-xs text-black font-['DM_Sans'] leading-5">K{fmt(item.allowances)}</span>
+                                                    <span className="w-16 text-center text-xs text-black font-['DM_Sans'] leading-5">K{fmt(item.allowances || 0)}</span>
                                                     <span className="w-16 text-center text-xs font-bold text-black font-['DM_Sans'] leading-5">K{fmt(item.gross_pay)}</span>
                                                 </div>
                                                 <div className="flex items-center gap-6">

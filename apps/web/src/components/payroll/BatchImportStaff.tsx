@@ -1,7 +1,9 @@
 import React, { useState, useRef, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { Upload, X, CheckCircle, AlertCircle, Loader2, FileSpreadsheet, Download } from 'lucide-react';
-import { payrollService } from '../../services/payroll.service';
+import { useQuery } from '@tanstack/react-query';
+import { payrollService, StaffAllowance, StaffDeduction } from '../../services/payroll.service';
+import { useAuth } from '../../context/AuthContext';
 
 interface ImportRow {
     first_name: string;
@@ -21,6 +23,8 @@ interface ImportRow {
     bank_account_number?: string;
     mobile_money_provider?: string;
     mobile_money_number?: string;
+    allowances: StaffAllowance[];
+    deductions: StaffDeduction[];
     _row: number;
     _errors: string[];
 }
@@ -78,24 +82,42 @@ const FIELD_ALIASES: Record<string, keyof ImportRow> = {
     'mobile money': 'mobile_money_number',
 };
 
-function parseRows(data: any[][]): ImportRow[] {
+function parseRows(data: any[][], config: any): ImportRow[] {
     if (data.length < 2) return [];
     const headers = data[0].map((h: any) => String(h ?? '').toLowerCase().trim());
     const rows: ImportRow[] = [];
+
+    const configuredAllowances = config?.allowance_types || [];
+    const configuredDeductions = config?.deduction_types || [];
 
     for (let i = 1; i < data.length; i++) {
         const raw = data[i];
         if (raw.every((c: any) => c === null || c === undefined || c === '')) continue;
 
-        const obj: any = { _row: i + 1, _errors: [] };
+        const obj: any = { _row: i + 1, _errors: [], allowances: [], deductions: [] };
         headers.forEach((h, idx) => {
             const field = FIELD_ALIASES[h];
+            const val = raw[idx];
+
             if (field) {
-                const val = raw[idx];
                 if (field === 'basic_pay') {
                     obj[field] = parseFloat(String(val ?? '0').replace(/[^0-9.]/g, '')) || 0;
                 } else {
                     obj[field] = val !== null && val !== undefined ? String(val).trim() : '';
+                }
+            } else {
+                // Check if header matches a configured allowance
+                const confAllowance = configuredAllowances.find((a: any) => h === a.name.toLowerCase() || h === `${a.name.toLowerCase()} (allowance)`);
+                if (confAllowance) {
+                    const amt = parseFloat(String(val ?? '0').replace(/[^0-9.]/g, '')) || 0;
+                    if (amt > 0) obj.allowances.push({ name: confAllowance.name, amount: amt });
+                }
+
+                // Check if header matches a configured deduction
+                const confDeduction = configuredDeductions.find((d: any) => h === d.name.toLowerCase() || h === `${d.name.toLowerCase()} (deduction)`);
+                if (confDeduction) {
+                    const amt = parseFloat(String(val ?? '0').replace(/[^0-9.]/g, '')) || 0;
+                    if (amt > 0) obj.deductions.push({ name: confDeduction.name, amount: amt, type: 'FIXED' });
                 }
             }
         });
@@ -117,6 +139,7 @@ interface Props {
 type Stage = 'upload' | 'preview' | 'importing' | 'done';
 
 export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
+    const { organizationId } = useAuth();
     const [stage, setStage] = useState<Stage>('upload');
     const [rows, setRows] = useState<ImportRow[]>([]);
     const [fileName, setFileName] = useState('');
@@ -126,17 +149,28 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
     const [isDragging, setIsDragging] = useState(false);
     const fileRef = useRef<HTMLInputElement>(null);
 
+    const { data: config } = useQuery({
+        queryKey: ['payroll-config', organizationId],
+        queryFn: () => payrollService.getPayrollConfig(),
+        enabled: !!organizationId,
+    });
+
     const downloadTemplate = useCallback(() => {
+        const allowanceHeaders = config?.allowance_types?.map((a: any) => `${a.name} (Allowance)`) || [];
+        const deductionHeaders = config?.deduction_types?.map((d: any) => `${d.name} (Deduction)`) || [];
+
         const headers = [
             'First Name', 'Last Name', 'Employee Number', 'Department', 'Position',
-            'Email', 'Phone', 'Basic Pay', 'ID Type', 'ID Number',
-            'NAPSA Number', 'NHIMA Number', 'ZRA TPIN',
+            'Email', 'Phone', 'ID Type', 'ID Number',
+            'NAPSA Number', 'NHIMA Number', 'ZRA TPIN', 'Basic Pay',
+            ...allowanceHeaders, ...deductionHeaders,
             'Bank Name', 'Bank Account Number', 'Mobile Money Number',
         ];
         const sample = [
             'Jane', 'Mwale', 'EMP001', 'Finance', 'Accountant',
-            'jane@example.com', '0977123456', '5000', 'NRC', '123456/10/1',
-            'NAP123', 'NHI456', '1234567890',
+            'jane@example.com', '0977123456', 'NRC', '123456/10/1',
+            'NAP123', 'NHI456', '1234567890', '5000',
+            ...allowanceHeaders.map(() => '500'), ...deductionHeaders.map(() => '100'),
             'Zanaco', '0012345678', '0971234567',
         ];
         const ws = XLSX.utils.aoa_to_sheet([headers, sample]);
@@ -144,7 +178,7 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, 'Staff Import');
         XLSX.writeFile(wb, 'staff_import_template.xlsx');
-    }, []);
+    }, [config]);
 
     const handleFile = useCallback((file: File) => {
         setFileName(file.name);
@@ -154,7 +188,7 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
                 const wb = XLSX.read(e.target?.result, { type: 'binary' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const data: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-                const parsed = parseRows(data);
+                const parsed = parseRows(data, config);
                 setRows(parsed);
                 setStage('preview');
             } catch {
@@ -162,7 +196,7 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
             }
         };
         reader.readAsBinaryString(file);
-    }, []);
+    }, [config]);
 
     const onDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -201,8 +235,8 @@ export const BatchImportStaff: React.FC<Props> = ({ onClose, onSuccess }) => {
                     mobile_money_provider: row.mobile_money_provider || undefined,
                     mobile_money_number: row.mobile_money_number || undefined,
                     payment_method: row.bank_account_number ? 'BANK' : row.mobile_money_number ? 'MOBILE_MONEY' : 'WALLET',
-                    allowances: [],
-                    deductions: [],
+                    allowances: row.allowances,
+                    deductions: row.deductions as any,
                     status: 'ACTIVE',
                 });
             } catch (err: any) {

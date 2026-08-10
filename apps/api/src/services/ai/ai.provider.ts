@@ -304,18 +304,22 @@ export async function callAllOcrProviders(
 
     const tasks: Promise<LLMResponse>[] = [];
 
-    if (geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
-        tasks.push(callGeminiVision(settings.ocr_model, prompt, imageBase64, mimeType).catch(e => { throw e; }));
-    }
+    const primary = settings.ocr_provider;
+    
+    console.log(`[OCR Provider] primary=${primary}, hasOrKey=${!!orKey}, hasGeminiKey=${!!geminiKey}, ocrModel=${settings.ocr_model}`);
 
-    const orOcrModel = settings.ocr_provider === 'openrouter' ? settings.ocr_model : process.env.OPENROUTER_OCR_MODEL;
-    if (orKey && orOcrModel) {
+    // ── Primary provider ──────────────────────────────────────────────────────
+    if (primary === 'gemini' && geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+        console.log(`[OCR Provider] Pushing Gemini Vision task`);
+        tasks.push(callGeminiVision(settings.ocr_model, prompt, imageBase64, mimeType).catch(e => { throw e; }));
+    } else if (primary === 'openrouter' && orKey && settings.ocr_model) {
+        console.log(`[OCR Provider] Pushing OpenRouter Vision task`);
         tasks.push((async () => {
             const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, ...OR_HEADERS },
                 body: JSON.stringify({
-                    model: orOcrModel,
+                    model: settings.ocr_model,
                     messages: [{
                         role: 'user',
                         content: [
@@ -332,12 +336,54 @@ export async function callAllOcrProviders(
             const data = await resp.json();
             const text = data.choices?.[0]?.message?.content;
             if (!text) throw new Error('OpenRouter Vision: empty response');
-            return { text, provider: 'OpenRouter-Vision', model: orOcrModel } as LLMResponse;
+            return { text, provider: 'OpenRouter-Vision', model: settings.ocr_model } as LLMResponse;
+        })().catch(e => { throw e; }));
+    }
+
+    // ── Parallel backup: always add Gemini Vision when it's not already primary ─
+    // This mirrors how callAllCategorizationProviders works and provides redundancy.
+    if (primary !== 'gemini' && geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+        const backupOcrModel = process.env.GEMINI_OCR_MODEL || 'gemini-2.5-flash-lite';
+        tasks.push(callGeminiVision(backupOcrModel, prompt, imageBase64, mimeType).catch(e => { throw e; }));
+    }
+
+    // ── Legacy: OPENROUTER_OCR_MODEL env-var fallback (when provider is gemini but env is set) ─
+    const legacyOrOcrModel = primary !== 'openrouter' ? process.env.OPENROUTER_OCR_MODEL : undefined;
+    if (orKey && legacyOrOcrModel) {
+        tasks.push((async () => {
+            const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${orKey}`, ...OR_HEADERS },
+                body: JSON.stringify({
+                    model: legacyOrOcrModel,
+                    messages: [{
+                        role: 'user',
+                        content: [
+                            { type: 'text', text: prompt },
+                            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+                        ],
+                    }],
+                    temperature: 0.1,
+                    response_format: { type: 'json_object' },
+                }),
+                signal: AbortSignal.timeout(120_000),
+            });
+            if (!resp.ok) throw new Error(`OpenRouter Vision (legacy) ${resp.status}: ${await resp.text()}`);
+            const data = await resp.json();
+            const text = data.choices?.[0]?.message?.content;
+            if (!text) throw new Error('OpenRouter Vision (legacy): empty response');
+            return { text, provider: 'OpenRouter-Vision', model: legacyOrOcrModel } as LLMResponse;
         })().catch(e => { throw e; }));
     }
 
     const settled = await Promise.allSettled(tasks);
-    return settled
-        .filter((r): r is PromiseFulfilledResult<LLMResponse> => r.status === 'fulfilled')
-        .map(r => r.value);
+    const results: LLMResponse[] = [];
+    for (const r of settled) {
+        if (r.status === 'fulfilled') {
+            results.push(r.value);
+        } else {
+            console.warn('[OCR Provider] Provider call failed:', r.reason?.message || r.reason);
+        }
+    }
+    return results;
 }

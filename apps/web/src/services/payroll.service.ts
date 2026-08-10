@@ -19,6 +19,26 @@ export interface StaffDeduction {
     type: 'FIXED' | 'LOAN' | 'ADVANCE';
 }
 
+export interface AllowanceConfig {
+    id: string;
+    name: string;
+    separate_step: boolean;
+    subject_to_statutory: boolean;
+}
+
+export interface DeductionConfig {
+    id: string;
+    name: string;
+}
+
+export interface PayrollConfig {
+    id?: string;
+    organization_id?: string;
+    basic_pay_configured: boolean;
+    allowance_types: AllowanceConfig[];
+    deduction_types: DeductionConfig[];
+}
+
 export interface StaffMember {
     id: string;
     organization_id: string;
@@ -47,6 +67,7 @@ export interface StaffMember {
     mobile_money_provider?: string;
     mobile_money_number?: string;
     payment_method: 'BANK' | 'MOBILE_MONEY' | 'WALLET';
+    user_id?: string;
     created_at: string;
     updated_at: string;
     is_archived: boolean;
@@ -78,7 +99,9 @@ export interface PayrollRunItem {
     staff_name: string;
     basic_pay: number;
     overtime: number;
-    allowances: number;
+    taxable_allowances: number;
+    non_taxable_allowances: number;
+    allowances?: number; // retained for backwards compatibility with DB
     gross_pay: number;
     napsa_employee: number;
     napsa_employer: number;
@@ -193,7 +216,8 @@ export const payrollService = {
             staff_name: string;
             basic_pay: number;
             overtime: number;
-            allowances: number;
+            taxable_allowances: number;
+            non_taxable_allowances: number;
             loans: number;
             other_deductions: number;
             payment_method: string;
@@ -212,4 +236,23 @@ export const payrollService = {
         const res = await axios.post(`${API_URL}/payroll/runs/${id}/approve`, {}, { headers });
         return res.data;
     },
+
+    async getSuggestedDeductions(month: number, year: number): Promise<Record<string, { loans: number; advances: number }>> {
+        const headers = await getHeaders();
+        const res = await axios.get(`${API_URL}/payroll/runs/suggested-deductions`, { headers, params: { month, year } });
+        return res.data;
+    },
+
+    // Config
+    async getPayrollConfig(): Promise<PayrollConfig> {
+        const headers = await getHeaders();
+        const res = await axios.get(`${API_URL}/payroll/config`, { headers });
+        return res.data;
+    },
+
+    async upsertPayrollConfig(data: Partial<PayrollConfig>): Promise<PayrollConfig> {
+        const headers = await getHeaders();
+        const res = await axios.put(`${API_URL}/payroll/config`, data, { headers });
+        return res.data;
+    }
 };

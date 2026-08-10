@@ -29,7 +29,8 @@ interface PayrollItem {
     staff_name: string;
     basic_pay: number;
     overtime: number;
-    allowances: number;
+    taxable_allowances: number;
+    non_taxable_allowances: number;
     loans: number;
     other_deductions: number;
     payment_method: 'BANK' | 'MOBILE_MONEY';
@@ -40,7 +41,7 @@ interface PayrollItem {
 
 const fmt = (n: number) => n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const calcGross = (item: PayrollItem) => item.basic_pay + item.overtime + item.allowances;
+const calcGross = (item: PayrollItem) => item.basic_pay + item.overtime + item.taxable_allowances + item.non_taxable_allowances;
 const NAPSA_RATE = 0.05;
 const NAPSA_CEILING = 1073.15;
 const NHIMA_RATE = 0.01;
@@ -85,7 +86,8 @@ export const RunPayrollWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
                 staff_name: `${s.first_name} ${s.last_name}`,
                 basic_pay: s.basic_pay,
                 overtime: 0,
-                allowances: s.allowances?.reduce((sum, a) => sum + a.amount, 0) ?? 0,
+                taxable_allowances: s.allowances?.reduce((sum, a) => sum + a.amount, 0) ?? 0,
+                non_taxable_allowances: 0,
                 loans: s.deductions?.filter(d => d.type === 'LOAN' || d.type === 'ADVANCE').reduce((sum, d) => sum + d.amount, 0) ?? 0,
                 other_deductions: s.deductions?.filter(d => d.type === 'FIXED').reduce((sum, d) => sum + d.amount, 0) ?? 0,
                 payment_method: s.payment_method === 'MOBILE_MONEY' ? 'MOBILE_MONEY' : 'BANK',
@@ -108,7 +110,8 @@ export const RunPayrollWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
             staff_name: `${s.first_name} ${s.last_name}`,
             basic_pay: s.basic_pay,
             overtime: 0,
-            allowances: s.allowances?.reduce((sum, a) => sum + a.amount, 0) ?? 0,
+            taxable_allowances: s.allowances?.reduce((sum, a) => sum + a.amount, 0) ?? 0,
+            non_taxable_allowances: 0,
             loans: 0,
             other_deductions: 0,
             payment_method: 'BANK',
@@ -137,7 +140,8 @@ export const RunPayrollWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
                     staff_name: item.staff_name,
                     basic_pay: item.basic_pay,
                     overtime: item.overtime,
-                    allowances: item.allowances,
+                    taxable_allowances: item.taxable_allowances,
+                    non_taxable_allowances: item.non_taxable_allowances,
                     loans: item.loans,
                     other_deductions: item.other_deductions,
                     payment_method: item.payment_method,
@@ -302,13 +306,24 @@ export const RunPayrollWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
                                     <div key={idx} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
                                         <span className="flex-1 text-xs font-medium text-gray-800 truncate">{item.staff_name}</span>
                                         <div className="flex flex-col">
-                                            <label className="text-[9px] text-gray-400 mb-0.5">Allowances (K)</label>
+                                            <label className="text-[9px] text-gray-400 mb-0.5">Taxable Allowances (K)</label>
                                             <input
                                                 type="number"
                                                 min="0"
                                                 className="w-24 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                value={item.allowances || ''}
-                                                onChange={e => updateItem(idx, 'allowances', parseFloat(e.target.value) || 0)}
+                                                value={item.taxable_allowances || ''}
+                                                onChange={e => updateItem(idx, 'taxable_allowances', parseFloat(e.target.value) || 0)}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col">
+                                            <label className="text-[9px] text-gray-400 mb-0.5">Non-Taxable Allowances (K)</label>
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-24 border border-gray-200 rounded px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                value={item.non_taxable_allowances || ''}
+                                                onChange={e => updateItem(idx, 'non_taxable_allowances', parseFloat(e.target.value) || 0)}
                                                 placeholder="0.00"
                                             />
                                         </div>

@@ -12,6 +12,9 @@ import {
     getPayrollRun,
     createPayrollRun,
     approvePayrollRun,
+    getPayrollConfig,
+    upsertPayrollConfig,
+    getSuggestedDeductions
 } from '../controllers/payroll.controller';
 
 const router = Router();
@@ -29,8 +32,13 @@ router.get('/staff/:id/history', getStaffPayrollHistory);
 
 // Runs
 router.get('/runs', listPayrollRuns);
+router.get('/runs/suggested-deductions', getSuggestedDeductions);
 router.get('/runs/:id', getPayrollRun);
 router.post('/runs', createPayrollRun);
 router.post('/runs/:id/approve', approvePayrollRun);
+
+// Config
+router.get('/config', getPayrollConfig);
+router.put('/config', upsertPayrollConfig);
 
 export default router;

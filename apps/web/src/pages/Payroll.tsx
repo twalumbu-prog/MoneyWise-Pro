@@ -8,7 +8,8 @@ import { PayrollRunDetail } from '../components/payroll/PayrollRunDetail';
 import { StaffMemberDetail } from '../components/payroll/StaffMemberDetail';
 import { AddStaffWizard } from '../components/payroll/AddStaffWizard';
 import { BatchImportStaff } from '../components/payroll/BatchImportStaff';
-import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserPlus, FileSpreadsheet } from 'lucide-react';
+import { PayrollConfigModal } from '../components/payroll/PayrollConfigModal';
+import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserPlus, FileSpreadsheet, Settings } from 'lucide-react';
 
 type MainTab = 'history' | 'staff';
 type SortDir = 'desc' | 'asc';
@@ -46,6 +47,7 @@ export const Payroll: React.FC = () => {
     const [selectedRunIds, setSelectedRunIds] = useState<Set<string>>(new Set());
     const [isAddStaffOpen, setIsAddStaffOpen] = useState(false);
     const [isBatchImportOpen, setIsBatchImportOpen] = useState(false);
+    const [isConfigureOpen, setIsConfigureOpen] = useState(false);
     const [isNewMemberMenuOpen, setIsNewMemberMenuOpen] = useState(false);
     const newMemberMenuRef = useRef<HTMLDivElement>(null);
 
@@ -179,6 +181,15 @@ export const Payroll: React.FC = () => {
                                 Staff Members
                             </button>
                         </div>
+                        
+                        {/* Configure Button */}
+                        <button
+                            onClick={() => setIsConfigureOpen(true)}
+                            className="h-8 px-3 py-1 bg-white border border-gray-200 text-gray-700 rounded-lg flex items-center gap-2 text-xs font-bold font-['DM_Sans'] hover:bg-gray-50 transition-colors shadow-sm"
+                        >
+                            <Settings size={13} className="text-gray-500" />
+                            Configure
+                        </button>
                     </div>
 
                     {/* Inner content */}
@@ -492,6 +503,12 @@ export const Payroll: React.FC = () => {
                         queryClient.invalidateQueries({ queryKey: ['payroll-staff', organizationId] });
                         queryClient.invalidateQueries({ queryKey: ['payroll-departments', organizationId] });
                     }}
+                />
+            )}
+            {isConfigureOpen && (
+                <PayrollConfigModal
+                    isOpen={isConfigureOpen}
+                    onClose={() => setIsConfigureOpen(false)}
                 />
             )}
         </div>

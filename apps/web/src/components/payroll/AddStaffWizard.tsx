@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { payrollService, StaffAllowance, StaffDeduction } from '../../services/payroll.service';
 import { lencoService } from '../../services/lenco.service';
+import { userService, UserProfile } from '../../services/user.service';
 import { useAuth } from '../../context/AuthContext';
-import { X, Plus, Trash2, ChevronRight, Loader2, CheckCircle2, AlertCircle, CreditCard, Smartphone } from 'lucide-react';
+import { X, ChevronRight, Loader2, CheckCircle2, AlertCircle, CreditCard, Smartphone } from 'lucide-react';
 
 interface Props {
     onClose: () => void;
@@ -42,6 +44,18 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState('');
 
+    const { data: config } = useQuery({
+        queryKey: ['payroll-config', organizationId],
+        queryFn: () => payrollService.getPayrollConfig(),
+        enabled: !!organizationId,
+    });
+
+    const { data: users } = useQuery<UserProfile[]>({
+        queryKey: ['users', organizationId],
+        queryFn: () => userService.getAll(),
+        enabled: !!organizationId,
+    });
+
     // Stage 1 – Personal
     const [firstName, setFirstName] = useState('');
     const [middleName, setMiddleName] = useState('');
@@ -52,6 +66,7 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
     const [email, setEmail] = useState('');
     const [department, setDepartment] = useState('');
     const [position, setPosition] = useState('');
+    const [userId, setUserId] = useState('');
 
     // Stage 2 – Statutory IDs
     const [idType, setIdType] = useState('NRC');
@@ -84,6 +99,20 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
     const [basicPay, setBasicPay] = useState('');
     const [allowances, setAllowances] = useState<StaffAllowance[]>([]);
     const [deductions, setDeductions] = useState<StaffDeduction[]>([]);
+
+    // Auto-populate allowances and deductions from config
+    useEffect(() => {
+        if (config) {
+            setAllowances(prev => {
+                if (prev.length > 0) return prev;
+                return config.allowance_types?.map(a => ({ name: a.name, amount: 0 })) || [];
+            });
+            setDeductions(prev => {
+                if (prev.length > 0) return prev;
+                return config.deduction_types?.map(d => ({ name: d.name, amount: 0, type: 'FIXED' })) || [];
+            });
+        }
+    }, [config]);
 
     // Load banks list when bank section is opened
     useEffect(() => {
@@ -143,15 +172,11 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
         return () => clearTimeout(t);
     }, [mobileNumber, mobileEnabled]);
 
-    const addAllowance = () => setAllowances(prev => [...prev, { name: '', amount: 0 }]);
-    const removeAllowance = (i: number) => setAllowances(prev => prev.filter((_, idx) => idx !== i));
-    const updateAllowance = (i: number, field: 'name' | 'amount', val: string) =>
-        setAllowances(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: field === 'amount' ? parseFloat(val) || 0 : val } : a));
+    const updateAllowance = (i: number, field: 'amount', val: string) =>
+        setAllowances(prev => prev.map((a, idx) => idx === i ? { ...a, [field]: parseFloat(val) || 0 } : a));
 
-    const addDeduction = () => setDeductions(prev => [...prev, { name: '', amount: 0, type: 'FIXED' }]);
-    const removeDeduction = (i: number) => setDeductions(prev => prev.filter((_, idx) => idx !== i));
-    const updateDeduction = (i: number, field: string, val: string) =>
-        setDeductions(prev => prev.map((d, idx) => idx === i ? { ...d, [field]: field === 'amount' ? parseFloat(val) || 0 : val } : d));
+    const updateDeduction = (i: number, field: 'amount', val: string) =>
+        setDeductions(prev => prev.map((d, idx) => idx === i ? { ...d, [field]: parseFloat(val) || 0 } : d));
 
     const canAdvance = () => {
         if (stage === 1) return !!(firstName.trim() && lastName.trim());
@@ -187,6 +212,7 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
                 email: email.trim() || undefined,
                 department: department.trim() || undefined,
                 position: position.trim() || undefined,
+                user_id: userId || undefined,
                 id_type: idType || undefined,
                 id_number: idNumber.trim() || undefined,
                 napsa_number: napsaNumber.trim() || undefined,
@@ -297,6 +323,18 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
                                     <label className={LABEL}>Position</label>
                                     <input className={INPUT} value={position} onChange={e => setPosition(e.target.value)} placeholder="e.g. Teacher" />
                                 </div>
+                            </div>
+                            <div>
+                                <label className={LABEL}>Link Team Member (Optional)</label>
+                                <select className={SELECT} value={userId} onChange={e => setUserId(e.target.value)}>
+                                    <option value="">Do not link to a system account</option>
+                                    {users?.map(u => (
+                                        <option key={u.id} value={u.id}>
+                                            {u.name || u.email} ({u.email})
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-[10px] text-gray-400 mt-1">Linking an account enables automatic deductions for staff loans and salary advances requested by this team member.</p>
                             </div>
                         </div>
                     )}
@@ -504,44 +542,40 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
                             </div>
 
                             <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className={LABEL}>Allowances</label>
-                                    <button type="button" onClick={addAllowance} className="flex items-center gap-1 text-[10px] text-blue-600 font-semibold hover:text-blue-700">
-                                        <Plus size={11} /> Add
-                                    </button>
-                                </div>
-                                {allowances.length === 0 && <p className="text-xs text-gray-400 italic">No allowances added</p>}
+                                <label className={LABEL}>Allowances</label>
+                                {allowances.length === 0 && <p className="text-xs text-gray-400 italic mb-4">No allowances configured in Payroll Settings.</p>}
                                 {allowances.map((a, i) => (
                                     <div key={i} className="flex items-center gap-2 mb-2">
-                                        <input className={`${INPUT} flex-1`} value={a.name} onChange={e => updateAllowance(i, 'name', e.target.value)} placeholder="e.g. Housing" />
+                                        <input 
+                                            className={`${INPUT} flex-1 bg-gray-50 text-gray-500 font-medium`} 
+                                            value={a.name} 
+                                            readOnly 
+                                        />
                                         <input type="number" min="0" className={`${INPUT} w-28`} value={a.amount || ''} onChange={e => updateAllowance(i, 'amount', e.target.value)} placeholder="Amount" />
-                                        <button type="button" onClick={() => removeAllowance(i)} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
-                                            <Trash2 size={14} />
-                                        </button>
                                     </div>
                                 ))}
                             </div>
 
-                            <div>
-                                <div className="flex items-center justify-between mb-2">
-                                    <label className={LABEL}>Standing Deductions</label>
-                                    <button type="button" onClick={addDeduction} className="flex items-center gap-1 text-[10px] text-blue-600 font-semibold hover:text-blue-700">
-                                        <Plus size={11} /> Add
-                                    </button>
-                                </div>
-                                {deductions.length === 0 && <p className="text-xs text-gray-400 italic">No standing deductions</p>}
+                            <div className="mt-2">
+                                <label className={LABEL}>Standing Deductions</label>
+                                {deductions.length === 0 && <p className="text-xs text-gray-400 italic mb-4">No deductions configured in Payroll Settings.</p>}
                                 {deductions.map((d, i) => (
                                     <div key={i} className="flex items-center gap-2 mb-2">
-                                        <input className={`${INPUT} flex-1`} value={d.name} onChange={e => updateDeduction(i, 'name', e.target.value)} placeholder="e.g. Staff loan" />
+                                        <input 
+                                            className={`${INPUT} flex-1 bg-gray-50 text-gray-500 font-medium`} 
+                                            value={d.name} 
+                                            readOnly 
+                                        />
                                         <input type="number" min="0" className={`${INPUT} w-28`} value={d.amount || ''} onChange={e => updateDeduction(i, 'amount', e.target.value)} placeholder="Amount" />
-                                        <select className={`${SELECT} w-24`} value={d.type} onChange={e => updateDeduction(i, 'type', e.target.value)}>
+                                        <select 
+                                            className={`${SELECT} w-24 bg-gray-50 text-gray-500`} 
+                                            value={d.type} 
+                                            disabled 
+                                        >
                                             <option value="FIXED">Fixed</option>
                                             <option value="LOAN">Loan</option>
                                             <option value="ADVANCE">Advance</option>
                                         </select>
-                                        <button type="button" onClick={() => removeDeduction(i)} className="text-gray-300 hover:text-red-500 transition-colors flex-shrink-0">
-                                            <Trash2 size={14} />
-                                        </button>
                                     </div>
                                 ))}
                             </div>

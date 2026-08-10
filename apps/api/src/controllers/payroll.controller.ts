@@ -95,6 +95,7 @@ export const createStaffMember = async (req: Request, res: Response) => {
                 mobile_money_provider: body.mobile_money_provider || null,
                 mobile_money_number: body.mobile_money_number || null,
                 payment_method: body.payment_method || 'BANK',
+                user_id: body.user_id || null,
             })
             .select()
             .single();
@@ -118,7 +119,7 @@ export const updateStaffMember = async (req: Request, res: Response) => {
             'phone', 'email', 'department', 'position', 'status',
             'basic_pay', 'allowances', 'deductions',
             'bank_name', 'bank_account_number', 'bank_account_name',
-            'mobile_money_provider', 'mobile_money_number', 'payment_method',
+            'mobile_money_provider', 'mobile_money_number', 'payment_method', 'user_id'
         ];
         const updates: Record<string, any> = { updated_at: new Date().toISOString() };
         for (const key of allowed) {
@@ -250,15 +251,18 @@ export const createPayrollRun = async (req: Request, res: Response) => {
         const computedItems = submittedItems.map((item: any) => {
             const basicPay = Number(item.basic_pay) || 0;
             const overtime = Number(item.overtime) || 0;
-            const allowancesTotal = Number(item.allowances) || 0;
+            const taxableAllowances = Number(item.taxable_allowances) || 0;
+            const nonTaxableAllowances = Number(item.non_taxable_allowances) || 0;
+            const allowancesTotal = taxableAllowances + nonTaxableAllowances;
             const grossPay = basicPay + overtime + allowancesTotal;
+            const statutoryGross = basicPay + overtime + taxableAllowances;
 
-            const napsaBase = Math.min(grossPay, NAPSA_CEILING * 12 / 12);
+            const napsaBase = Math.min(statutoryGross, NAPSA_CEILING * 12 / 12); // NAPSA_CEILING is 1073.15 per month limit (or maybe higher now, but we use the defined constant)
             const napsaEmployee = parseFloat((napsaBase * NAPSA_RATE).toFixed(2));
             const napsaEmployer = napsaEmployee;
-            const nhimaEmployee = parseFloat((grossPay * NHIMA_RATE).toFixed(2));
+            const nhimaEmployee = parseFloat((statutoryGross * NHIMA_RATE).toFixed(2));
             const nhimaEmployer = nhimaEmployee;
-            const paye = parseFloat(calcPAYE(grossPay).toFixed(2));
+            const paye = parseFloat(calcPAYE(statutoryGross).toFixed(2));
             const statutoryTotal = napsaEmployee + nhimaEmployee + paye;
 
             const loans = Number(item.loans) || 0;
@@ -363,3 +367,141 @@ export const getStaffDepartments = async (req: Request, res: Response) => {
         res.status(500).json({ error: err.message });
     }
 };
+
+// ── Configuration ─────────────────────────────────────────────────────────────
+
+export const getPayrollConfig = async (req: Request, res: Response) => {
+    try {
+        const orgId = (req as any).user.organization_id;
+        const { data, error } = await supabase
+            .from('payroll_config')
+            .select('*')
+            .eq('organization_id', orgId)
+            .maybeSingle();
+
+        if (error) {
+            console.error('getPayrollConfig DB Error:', error);
+            // If the table does not exist (42P01) or other error, we can fail gracefully or throw
+            throw error;
+        }
+
+        if (!data) {
+            return res.json({
+                basic_pay_configured: true,
+                allowance_types: [],
+                deduction_types: [],
+            });
+        }
+        res.json(data);
+    } catch (err: any) {
+        console.error('getPayrollConfig Error:', err);
+        res.status(500).json({ error: err.message || JSON.stringify(err), details: err });
+    }
+};
+
+export const upsertPayrollConfig = async (req: Request, res: Response) => {
+    try {
+        if (!adminOnly(req, res)) return;
+        const orgId = (req as any).user.organization_id;
+        const { basic_pay_configured, allowance_types, deduction_types } = req.body;
+
+        const { data: existing, error: checkError } = await supabase
+            .from('payroll_config')
+            .select('id')
+            .eq('organization_id', orgId)
+            .maybeSingle();
+
+        if (checkError) {
+            throw checkError;
+        }
+
+        let data, error;
+        if (existing) {
+            const payload = {
+                basic_pay_configured: basic_pay_configured ?? true,
+                allowance_types: allowance_types ?? [],
+                deduction_types: deduction_types ?? []
+            };
+            const result = await supabase
+                .from('payroll_config')
+                .update(payload)
+                .eq('organization_id', orgId)
+                .select()
+                .maybeSingle();
+            data = result.data;
+            error = result.error;
+        } else {
+            const payload = {
+                organization_id: orgId,
+                basic_pay_configured: basic_pay_configured ?? true,
+                allowance_types: allowance_types ?? [],
+                deduction_types: deduction_types ?? []
+            };
+            const result = await supabase
+                .from('payroll_config')
+                .insert(payload)
+                .select()
+                .maybeSingle();
+            data = result.data;
+            error = result.error;
+        }
+
+        if (error) throw error;
+        res.json(data);
+    } catch (err: any) {
+        console.error('upsertPayrollConfig Error:', err);
+        res.status(500).json({ error: err.message || err.details || JSON.stringify(err) });
+    }
+};
+
+// ── Requisition Sync ─────────────────────────────────────────────────────────
+
+export const getSuggestedDeductions = async (req: Request, res: Response) => {
+    try {
+        const orgId = (req as any).user.organization_id;
+        const { data: staffData, error: staffErr } = await supabase
+            .from('payroll_staff')
+            .select('id, user_id')
+            .eq('organization_id', orgId)
+            .not('user_id', 'is', null)
+            .eq('is_archived', false);
+
+        if (staffErr) throw staffErr;
+        if (!staffData || staffData.length === 0) return res.json({});
+
+        const userIds = staffData.map(s => s.user_id);
+
+        const { data: reqData, error: reqErr } = await supabase
+            .from('requisitions')
+            .select('requestor_id, type, monthly_deduction, loan_amount, actual_total, estimated_total')
+            .eq('organization_id', orgId)
+            .in('type', ['ADVANCE', 'LOAN'])
+            .in('status', ['DISBURSED', 'RECEIVED'])
+            .in('requestor_id', userIds);
+
+        if (reqErr) throw reqErr;
+
+        const suggestions: Record<string, { loans: number, advances: number }> = {};
+        staffData.forEach(staff => {
+            const userReqs = (reqData || []).filter(r => r.requestor_id === staff.user_id);
+            let loans = 0;
+            let advances = 0;
+            userReqs.forEach(r => {
+                const deduction = Number(r.monthly_deduction) || 0;
+                if (r.type === 'LOAN') loans += deduction;
+                if (r.type === 'ADVANCE') {
+                    if (deduction > 0) advances += deduction;
+                    else advances += (Number(r.actual_total) || Number(r.estimated_total) || Number(r.loan_amount) || 0);
+                }
+            });
+            if (loans > 0 || advances > 0) {
+                suggestions[staff.id] = { loans, advances };
+            }
+        });
+
+        res.json(suggestions);
+    } catch (err: any) {
+        res.status(500).json({ error: err.message });
+    }
+};
+

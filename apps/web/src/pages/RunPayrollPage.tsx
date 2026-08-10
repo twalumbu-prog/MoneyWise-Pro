@@ -32,7 +32,8 @@ interface PayrollItem {
     staff_name: string;
     basic_pay: number;
     overtime: number;
-    allowances: number;
+    taxable_allowances: number;
+    non_taxable_allowances: number;
     loans: number;
     other_deductions: number;
     // All known destination accounts
@@ -44,6 +45,8 @@ interface PayrollItem {
     destination_method: 'BANK' | 'MOBILE_MONEY';
     // Source account
     pay_source: string; // wallet:<id> | CASH | AIRTEL_MONEY | MTN_MONEY | ZAMTEL_MONEY | BANK_TRANSFER
+    // Breakdown for separate allowance steps
+    custom_allowances: Record<string, number>;
 }
 
 const NAPSA_RATE = 0.05;
@@ -56,11 +59,16 @@ function calcPAYE(g: number) {
     if (g <= 16000) return (9600 - 4800) * 0.20 + (g - 9600) * 0.30;
     return (9600 - 4800) * 0.20 + (16000 - 9600) * 0.30 + (g - 16000) * 0.375;
 }
-const calcGross = (item: PayrollItem) => item.basic_pay + item.overtime + item.allowances;
-const calcStatutory = (g: number) => Math.min(g, NAPSA_CEILING) * NAPSA_RATE + g * NHIMA_RATE + calcPAYE(g);
-const calcNet = (item: PayrollItem) => {
+const calcGross = (item: PayrollItem) => item.basic_pay + item.overtime + item.taxable_allowances + item.non_taxable_allowances + Object.values(item.custom_allowances || {}).reduce((a, b) => a + b, 0);
+
+const calcStatutory = (sg: number) => Math.min(sg, NAPSA_CEILING) * NAPSA_RATE + sg * NHIMA_RATE + calcPAYE(sg);
+const calcNet = (item: PayrollItem, separateAllowances: any[]) => {
     const g = calcGross(item);
-    return g - calcStatutory(g) - item.loans - item.other_deductions;
+    const sg = item.basic_pay + item.overtime + item.taxable_allowances + Object.entries(item.custom_allowances || {}).reduce((sum, [name, val]) => {
+        const isTaxable = separateAllowances.find(sa => sa.name === name)?.subject_to_statutory !== false;
+        return isTaxable ? sum + val : sum;
+    }, 0);
+    return g - calcStatutory(sg) - item.loans - item.other_deductions;
 };
 
 const fmt = (n: number) => n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -106,6 +114,20 @@ export const RunPayrollPage: React.FC = () => {
         enabled: !!organizationId,
     });
 
+    const { data: config } = useQuery({
+        queryKey: ['payroll-config', organizationId],
+        queryFn: () => payrollService.getPayrollConfig(),
+        enabled: !!organizationId,
+    });
+
+    const { data: suggestedDeductions } = useQuery({
+        queryKey: ['suggested-deductions', month, year],
+        queryFn: () => payrollService.getSuggestedDeductions(month, year),
+        enabled: !!organizationId,
+    });
+
+    const separateAllowances = config?.allowance_types?.filter(a => a.separate_step) || [];
+
     // Default pay_source for new items (first wallet if available)
     const defaultPaySource = wallets.length > 0 ? `wallet:${wallets[0].id}` : 'CASH';
 
@@ -121,13 +143,49 @@ export const RunPayrollPage: React.FC = () => {
             s.payment_method === 'MOBILE_MONEY' ? 'MOBILE_MONEY' :
             s.payment_method === 'BANK' ? 'BANK' :
             hasBank ? 'BANK' : 'MOBILE_MONEY';
+            
+        // Calculate auto-synced loans & advances for this user
+        let autoLoans = 0;
+        if (s.user_id && suggestedDeductions && suggestedDeductions[s.user_id]) {
+            const sd = suggestedDeductions[s.user_id];
+            autoLoans = (sd.loans || 0) + (sd.advances || 0);
+        }
+        
+        // Find existing standing deductions for loans/advances if any, and add auto-synced
+        const standingLoans = s.deductions?.filter(d => d.type === 'LOAN' || d.type === 'ADVANCE').reduce((sum, d) => sum + d.amount, 0) ?? 0;
+        
+        // Base allowances (excluding separate ones, or we can just keep them together and let them override)
+        // For simplicity, we keep standard allowances as they are, and initialize custom_allowances for separate ones to 0
+        const initialCustomAllowances: Record<string, number> = {};
+        separateAllowances.forEach(sa => {
+            // If the staff has this allowance in their profile, use its amount, otherwise 0
+            const existing = s.allowances?.find(a => a.name === sa.name);
+            initialCustomAllowances[sa.name] = existing ? existing.amount : 0;
+        });
+        
+        // The rest of the allowances go to the base 'allowances' pool
+        let baseTaxable = 0;
+        let baseNonTaxable = 0;
+        
+        s.allowances?.forEach(a => {
+            const cfg = config?.allowance_types?.find(ca => ca.name === a.name);
+            if (cfg?.separate_step) return; // handled by initialCustomAllowances
+            
+            if (cfg?.subject_to_statutory !== false) {
+                baseTaxable += a.amount;
+            } else {
+                baseNonTaxable += a.amount;
+            }
+        });
+
         setItems(prev => [...prev, {
             staff_id: s.id,
             staff_name: `${s.first_name} ${s.last_name}`,
             basic_pay: s.basic_pay,
             overtime: 0,
-            allowances: s.allowances?.reduce((sum, a) => sum + a.amount, 0) ?? 0,
-            loans: s.deductions?.filter(d => d.type === 'LOAN' || d.type === 'ADVANCE').reduce((sum, d) => sum + d.amount, 0) ?? 0,
+            taxable_allowances: baseTaxable,
+            non_taxable_allowances: baseNonTaxable,
+            loans: standingLoans + autoLoans,
             other_deductions: s.deductions?.filter(d => d.type === 'FIXED').reduce((sum, d) => sum + d.amount, 0) ?? 0,
             bank_name: s.bank_name ?? undefined,
             bank_account_number: s.bank_account_number ?? undefined,
@@ -135,6 +193,7 @@ export const RunPayrollPage: React.FC = () => {
             mobile_money_number: s.mobile_money_number ?? undefined,
             destination_method: defaultDest,
             pay_source: defaultPaySource,
+            custom_allowances: initialCustomAllowances,
         }]);
         setStaffSearch('');
         setStaffFocused(false);
@@ -163,7 +222,7 @@ export const RunPayrollPage: React.FC = () => {
 
     const totals = items.reduce((acc, item) => {
         const g = calcGross(item);
-        const n = calcNet(item);
+        const n = calcNet(item, separateAllowances);
         return { gross: acc.gross + g, net: acc.net + n };
     }, { gross: 0, net: 0 });
 
@@ -199,7 +258,8 @@ export const RunPayrollPage: React.FC = () => {
                     staff_name: item.staff_name,
                     basic_pay: item.basic_pay,
                     overtime: item.overtime,
-                    allowances: item.allowances,
+                    taxable_allowances: item.taxable_allowances + Object.entries(item.custom_allowances || {}).reduce((sum, [name, val]) => (separateAllowances.find(sa => sa.name === name)?.subject_to_statutory !== false ? sum + val : sum), 0),
+                    non_taxable_allowances: item.non_taxable_allowances + Object.entries(item.custom_allowances || {}).reduce((sum, [name, val]) => (separateAllowances.find(sa => sa.name === name)?.subject_to_statutory === false ? sum + val : sum), 0),
                     loans: item.loans,
                     other_deductions: item.other_deductions,
                     payment_method: item.destination_method,
@@ -383,23 +443,53 @@ export const RunPayrollPage: React.FC = () => {
                         {/* ── Stage 3: Bonuses & Allowances ── */}
                         {stage === 3 && (
                             <>
-                                <p className="text-xs text-gray-500 -mt-3">Add one-time bonuses or adjust allowances for individual employees this period.</p>
+                                <p className="text-xs text-gray-500 -mt-3">Adjust allowances and one-time bonuses for individual employees this period.</p>
                                 {items.map((item, idx) => (
                                     <div key={item.staff_id} className="border border-gray-100 rounded-xl p-4 flex flex-col gap-3">
                                         <div>
                                             <p className="text-sm font-semibold text-gray-900">{item.staff_name}</p>
                                             <p className="text-[10px] text-gray-400">Basic: K{fmt(item.basic_pay)} · Overtime: K{fmt(item.overtime)}</p>
                                         </div>
-                                        <div>
-                                            <label className={LABEL}>Total Allowances / Bonus (K)</label>
-                                            <input
-                                                type="number"
-                                                min="0"
-                                                value={item.allowances || ''}
-                                                onChange={e => updateItem(idx, 'allowances', parseFloat(e.target.value) || 0)}
-                                                className={INPUT}
-                                                placeholder="0.00"
-                                            />
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className={LABEL}>Other Taxable Allowances / Bonus (K)</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={item.taxable_allowances || ''}
+                                                    onChange={e => updateItem(idx, 'taxable_allowances', parseFloat(e.target.value) || 0)}
+                                                    className={INPUT}
+                                                    placeholder="0.00"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className={LABEL}>Other Non-Taxable Allowances (K)</label>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    value={item.non_taxable_allowances || ''}
+                                                    onChange={e => updateItem(idx, 'non_taxable_allowances', parseFloat(e.target.value) || 0)}
+                                                    className={INPUT}
+                                                    placeholder="0.00"
+                                                />
+                                            </div>
+                                            {separateAllowances.map(sa => (
+                                                <div key={sa.name}>
+                                                    <label className={LABEL}>{sa.name} (K)</label>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        value={item.custom_allowances?.[sa.name] || ''}
+                                                        onChange={e => {
+                                                            const val = parseFloat(e.target.value) || 0;
+                                                            const newCustom = { ...(item.custom_allowances || {}), [sa.name]: val };
+                                                            updateItem(idx, 'custom_allowances', newCustom);
+                                                        }}
+                                                        className={INPUT}
+                                                        placeholder="0.00"
+                                                    />
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 ))}
@@ -537,7 +627,7 @@ export const RunPayrollPage: React.FC = () => {
                                                         <p className="text-sm font-medium text-gray-900">{item.staff_name}</p>
                                                         <p className="text-[10px] text-gray-400">{destLabel}</p>
                                                     </div>
-                                                    <span className="text-sm font-bold text-gray-900">K{fmt(calcNet(item))}</span>
+                                                    <span className="text-sm font-bold text-gray-900">K{fmt(calcNet(item, separateAllowances))}</span>
                                                 </div>
 
                                                 {/* Receive via — only when employee has both bank and mobile money */}
