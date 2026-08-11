@@ -7,19 +7,18 @@ import {
     Loader2,
     AlertCircle,
     RefreshCw,
-    ShieldCheck,
     Building2,
-    Phone,
     Smartphone,
     CreditCard,
     ArrowLeft,
-    CheckCircle,
     XCircle,
     BadgeCheck,
     Check,
     Wallet,
-    ClipboardList
+    ClipboardList,
+    ChevronDown,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
 import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
@@ -247,10 +246,8 @@ export const PublicPaymentLink: React.FC = () => {
     const processingFee = subtotal > 0 ? calculatePlatformFee(subtotal) : 0;
     const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
 
-    // Once the customer presses Pay, the flow fills the whole screen on mobile —
-    // same full-bleed treatment as the open catalogue portal (PublicPay.tsx) —
-    // instead of staying inside the small floating card used for READY/LOADING/ERROR.
-    const isAppStep = step === 'CHECKOUT' || step === 'VERIFYING' || step === 'SUCCESS';
+    // CHECKOUT has its own full-screen early return; VERIFYING and SUCCESS fill the
+    // screen too (handled via isRemainingAppStep defined just before the main return).
 
     // Normalize both link shapes (multi-item invoice vs legacy single product) into
     // one list, so the display + intent payload + analytics never touch a null product.
@@ -774,105 +771,149 @@ export const PublicPaymentLink: React.FC = () => {
         setStep('READY');
     };
 
-    const renderLogo = (sizeClass = 'w-20 h-20', textClass = 'text-3xl') => {
-        if (!ctx) return null;
-        if (ctx.organization.logo_url) {
-            return (
-                <div className={`${sizeClass} rounded-3xl overflow-hidden shadow-md bg-white border border-slate-100/50 flex-shrink-0`}>
-                    <img src={ctx.organization.logo_url} alt={`${ctx.organization.name} Logo`} className="w-full h-full object-cover" />
-                </div>
-            );
+    const handleDownloadInvoice = () => {
+        if (!ctx) return;
+        const invoiceNumber = token
+            ? token.replace(/-/g, '').toUpperCase().slice(0, 12).replace(/^(.{6})(.{6})$/, '$1-$2')
+            : '—';
+        const invoiceDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+        const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a5' });
+        const pageW = 148;
+        const margin = 20;
+        let y = margin;
+
+        doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
+        doc.text(ctx.organization.name.toUpperCase(), margin, y);
+        y += 8;
+        doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(110);
+        doc.text('E-Invoice', margin, y);
+        y += 10;
+        doc.setFontSize(22); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
+        doc.text(`K${totalPayable.toFixed(2)}`, margin, y);
+        y += 10;
+        doc.setFontSize(9); doc.setFont('helvetica', 'normal'); doc.setTextColor(90);
+        doc.text(`Invoice Number: ${invoiceNumber}`, margin, y); y += 5;
+        doc.text(`Invoice Date:   ${invoiceDate}`, margin, y); y += 10;
+
+        doc.setDrawColor(220); doc.line(margin, y, pageW - margin, y); y += 7;
+        doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
+        doc.text('Order Summary', margin, y); y += 6;
+
+        doc.setFont('helvetica', 'normal'); doc.setTextColor(60);
+        linkItems.forEach(it => {
+            const label = it.quantity > 1 ? `${it.name} x${it.quantity}` : it.name;
+            doc.text(label, margin, y);
+            doc.text(`K${(it.unit_price * it.quantity).toFixed(2)}`, pageW - margin, y, { align: 'right' });
+            y += 5;
+        });
+        if (processingFee > 0) {
+            doc.text('Platform Fee', margin, y);
+            doc.text(`K${processingFee.toFixed(2)}`, pageW - margin, y, { align: 'right' });
+            y += 5;
         }
-        return (
-            <div className={`${sizeClass} rounded-3xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black ${textClass} shadow-md uppercase flex-shrink-0`}>
-                {ctx.organization.name.charAt(0)}
-            </div>
-        );
+        doc.setDrawColor(220); doc.line(margin, y, pageW - margin, y); y += 5;
+        doc.setFont('helvetica', 'bold'); doc.setTextColor(0);
+        doc.text('Invoice Total', margin, y);
+        doc.text(`K${totalPayable.toFixed(2)}`, pageW - margin, y, { align: 'right' });
+        y += 14;
+        doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(160);
+        doc.text('Powered by MoneyWise', pageW / 2, y, { align: 'center' });
+
+        doc.save(`invoice-${invoiceNumber}.pdf`);
     };
 
     const operator = detectOperator(phone);
 
-    return (
-        <div className={`flex flex-col ${isAppStep
-            ? 'h-[100dvh] bg-white sm:h-auto sm:min-h-screen sm:bg-gradient-to-br sm:from-slate-50 sm:via-slate-100 sm:to-blue-50/30 sm:justify-between sm:py-10 sm:px-4'
-            : 'min-h-screen bg-gradient-to-br from-slate-50 via-slate-100 to-blue-50/30 justify-between py-10 px-4'}`}
-        >
-            <div className={`w-full bg-white overflow-hidden flex flex-col sm:max-w-md sm:mx-auto sm:my-auto sm:bg-white/70 sm:backdrop-blur-xl sm:rounded-[32px] sm:border sm:border-slate-100 sm:shadow-2xl sm:justify-between transition-all duration-300 ${isAppStep ? 'flex-1 min-h-0' : 'rounded-[32px] border border-slate-100 shadow-2xl'}`}>
+    // ── READY: Figma-matching E-Invoice landing page ───────────────────────────
+    if (step === 'READY' && ctx) {
+        const invoiceNumber = token
+            ? token.replace(/-/g, '').toUpperCase().slice(0, 12).replace(/^(.{6})(.{6})$/, '$1-$2')
+            : '—';
+        const invoiceDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
-                {step === 'LOADING' && (
-                    <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
-                        <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl animate-spin mb-4">
-                            <Loader2 size={32} />
+        return (
+            <div className="min-h-screen bg-neutral-50 flex flex-col items-center px-4 py-10">
+                {/* Business header — above the card, mirrors the Figma */}
+                <div className="flex items-center gap-4 mb-6 w-full max-w-sm">
+                    {ctx.organization.logo_url ? (
+                        <img
+                            src={ctx.organization.logo_url}
+                            alt={ctx.organization.name}
+                            className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
+                        />
+                    ) : (
+                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black text-sm uppercase flex-shrink-0">
+                            {ctx.organization.name.charAt(0)}
                         </div>
-                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Loading Payment Link</h3>
+                    )}
+                    <div className="flex items-center gap-2">
+                        <span className="text-base font-bold text-black">{ctx.organization.name}</span>
+                        <BadgeCheck size={20} fill="#2563EB" className="text-white" strokeWidth={2} />
                     </div>
-                )}
+                </div>
 
-                {step === 'READY' && ctx && (
-                    <div className="p-8">
-                        <div className="flex flex-col items-center text-center">
-                            {renderLogo()}
-                            <h2 className="text-lg font-black text-slate-900 mt-4 uppercase tracking-wider">{ctx.organization.name}</h2>
-                            <p className="text-xs font-semibold text-slate-400 mt-1">Secure Payment Request</p>
+                {/* E-Invoice card */}
+                <div className="w-full max-w-sm bg-white rounded-2xl shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] border border-zinc-200 p-6 flex flex-col gap-6 overflow-hidden">
+
+                    {/* Amount block */}
+                    <div className="flex flex-col gap-2">
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="text-xs font-bold text-zinc-600 text-center">E-Invoice</span>
+                            <span className="text-4xl font-bold text-black text-center">
+                                K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </span>
                         </div>
+                        <p className="text-xs text-zinc-600 text-center">View Invoice and Payment Details</p>
+                    </div>
 
-                        {/* Customer details, left-aligned like Order Summary below */}
-                        <div className="mt-6 mb-8">
-                            <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Customer Details</h4>
-                            <div className="flex flex-col gap-0.5">
-                                <span className="text-sm font-normal text-black">{ctx.customer_name}</span>
-                                <span className="text-xs font-normal text-black">{ctx.customer_phone}</span>
+                    {/* Invoice metadata + order summary */}
+                    <div className="py-4 flex flex-col gap-6">
+                        {/* Metadata row */}
+                        <div className="flex flex-col gap-2">
+                            <div className="flex justify-between items-center">
+                                <span className="flex-1 text-xs text-zinc-600">Invoice Number</span>
+                                <span className="flex-1 text-right text-xs font-bold text-zinc-600">{invoiceNumber}</span>
                             </div>
-                        </div>
-
-                        {/* Order Summary — itemized table, matching the invoice email */}
-                        <div className="mb-5">
-                            <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-2">Order Summary</h4>
-                            <div className="border border-slate-100 rounded-2xl overflow-hidden">
-                                <table className="w-full text-xs border-collapse">
-                                    <tbody>
-                                        {linkItems.map((it, i) => (
-                                            <tr key={i} className={i > 0 ? 'border-t border-slate-100' : ''}>
-                                                <td className="py-3 pl-4 pr-2 align-top">
-                                                    <div className="text-[13px] font-bold text-slate-900">{it.name}</div>
-                                                    <div className="text-[10px] font-semibold text-slate-400 mt-0.5">
-                                                        {it.check_in && it.check_out ? `${it.check_in} → ${it.check_out}` : `x${it.quantity}`}
-                                                    </div>
-                                                </td>
-                                                <td className="py-3 pl-2 pr-4 text-right align-top text-[13px] font-black text-slate-800 whitespace-nowrap">
-                                                    K{(it.unit_price * it.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        <tr className="border-t border-slate-200 bg-slate-50/70">
-                                            <td className="py-3 pl-4 pr-2 text-[13px] font-black text-slate-900">Subtotal</td>
-                                            <td className="py-3 pl-2 pr-4 text-right text-[13px] font-black text-slate-900 whitespace-nowrap">
-                                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            <div className="flex justify-between items-center gap-9">
+                                <span className="flex-1 text-xs text-zinc-600">Invoice Date</span>
+                                <span className="flex-1 text-right text-xs font-bold text-zinc-600">{invoiceDate}</span>
                             </div>
                         </div>
 
-                        <div className="space-y-1.5 text-xs mb-5">
-                            <div className="flex justify-between font-normal text-slate-400 text-[11px]">
-                                <span>Processing fee</span>
-                                <span>K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            </div>
-                            <div className="flex justify-between font-black text-slate-900 text-sm pt-2 border-t border-slate-200/50">
-                                <span>Total Amount</span>
-                                <span>K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        {/* Order summary */}
+                        <div className="flex flex-col gap-2">
+                            <span className="text-xs font-bold text-zinc-600">Order Summary</span>
+                            <div className="flex flex-col gap-1">
+                                {linkItems.map((it, i) => (
+                                    <div key={i} className="flex justify-between items-center gap-2.5 min-h-4">
+                                        <span className="flex-1 text-xs text-zinc-600 truncate">
+                                            {it.name}{it.quantity > 1 ? ` x${it.quantity}` : ''}
+                                            {it.check_in && it.check_out ? ` · ${it.check_in} → ${it.check_out}` : ''}
+                                        </span>
+                                        <span className="text-xs text-zinc-600 flex-shrink-0">
+                                            K{(it.unit_price * it.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </span>
+                                    </div>
+                                ))}
+                                <div className="h-px outline outline-1 outline-offset-[-0.5px] outline-gray-200 my-1" />
+                                <div className="flex justify-between items-center gap-2.5">
+                                    <span className="flex-1 text-xs font-bold text-black">Invoice Total</span>
+                                    <span className="text-xs font-bold text-black flex-shrink-0">
+                                        K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                </div>
                             </div>
                         </div>
+                    </div>
 
-                        {error && (
-                            <div className="p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2 mb-4">
-                                <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
-                                <span className="text-[11px] font-semibold leading-normal">{error}</span>
-                            </div>
-                        )}
-
+                    {/* Action buttons */}
+                    <div className="flex gap-2.5">
+                        <button
+                            onClick={handleDownloadInvoice}
+                            className="flex-1 h-8 px-3 py-1 bg-white rounded-lg border border-stone-900 flex items-center justify-center gap-2.5"
+                        >
+                            <span className="text-xs font-normal text-black">Download Invoice</span>
+                        </button>
                         <button
                             onClick={() => {
                                 if (ctx.collections_api_enabled) {
@@ -885,130 +926,187 @@ export const PublicPaymentLink: React.FC = () => {
                                     handlePay();
                                 }
                             }}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2"
+                            className="flex-1 h-8 px-3 py-1 bg-black rounded-lg flex items-center justify-center gap-2.5"
                         >
-                            <ShieldCheck size={14} />
-                            <span>Pay</span>
+                            <CreditCard size={12} className="text-white" />
+                            <span className="text-xs font-bold text-white">Pay Now</span>
                         </button>
                     </div>
-                )}
+                </div>
 
-                {step === 'CHECKOUT' && ctx && (
-                    <div className="flex flex-col flex-1 min-h-0 sm:min-h-[520px]">
-                        {/* Top bar — back + title, toggle directly beneath */}
-                        <div className="px-6 pt-6 pb-4 border-b border-slate-100">
-                            <div className="flex items-center gap-3 mb-4">
-                                <button
-                                    onClick={() => { setStep('READY'); setError(null); }}
-                                    className="p-2 -ml-2 rounded-xl hover:bg-slate-100 transition-colors"
-                                >
-                                    <ArrowLeft size={18} className="text-slate-500" />
-                                </button>
-                                <div>
-                                    <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Payment</h3>
-                                    <p className="text-[10px] font-semibold text-slate-400">{ctx.organization.name} · K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                {/* Powered by footer */}
+                <div className="mt-8 flex items-center justify-center">
+                    <span className="text-xs text-zinc-500">Powered by </span>
+                    <span className="text-xs font-bold text-zinc-500 ml-1">Moneywise</span>
+                </div>
+            </div>
+        );
+    }
+
+    // ── CHECKOUT: QuickPay-style phone-entry layout ────────────────────────────
+    if (step === 'CHECKOUT' && ctx) {
+        const canPay = !submitting && operator !== null && !resolvingAccountName;
+        return (
+            <div className="h-[100dvh] bg-white flex flex-col overflow-hidden">
+                {/* Header — back button + title */}
+                <div className="px-7 py-3 flex items-center gap-6 bg-white">
+                    <button
+                        onClick={() => { setStep('READY'); setError(null); }}
+                        className="p-1 -ml-1 rounded-lg hover:bg-slate-100 transition-colors"
+                    >
+                        <ArrowLeft size={20} className="text-black" />
+                    </button>
+                    <h3 className="text-base font-semibold text-black">Payment</h3>
+                </div>
+
+                {/* Payment method toggle — pill style (matching QuickPay) */}
+                <div className="px-4 pt-4">
+                    <div className="p-0.5 bg-neutral-100 rounded-full flex items-center">
+                        <button
+                            onClick={() => { setCheckoutMethod('mobile-money'); setError(null); }}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs leading-4 transition-all ${
+                                checkoutMethod === 'mobile-money'
+                                    ? 'bg-white text-gray-800 font-normal shadow-sm'
+                                    : 'text-gray-800 font-normal'
+                            }`}
+                        >
+                            <Smartphone size={16} /> Mobile Money
+                        </button>
+                        <button
+                            onClick={() => { setCheckoutMethod('card'); setError(null); }}
+                            className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-full text-xs leading-4 transition-all ${
+                                checkoutMethod === 'card'
+                                    ? 'bg-white text-gray-800 font-normal shadow-sm'
+                                    : 'text-gray-800 font-normal'
+                            }`}
+                        >
+                            <CreditCard size={16} /> Debit Card
+                        </button>
+                    </div>
+                </div>
+
+                {/* Scrollable content */}
+                <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6 pb-2">
+                    {checkoutMethod === 'mobile-money' ? (
+                        <>
+                            <label className="block text-sm font-semibold text-gray-800 mb-2">
+                                Enter your mobile money number
+                            </label>
+                            {/* Phone input — flag + country code pill (matching QuickPay) */}
+                            <div className="min-h-12 bg-white rounded-full border border-slate-300 flex items-center overflow-hidden">
+                                <div className="self-stretch px-3 bg-neutral-100 border-r border-slate-300 flex items-center gap-1.5">
+                                    <span className="text-base leading-none" role="img" aria-label="Zambia">🇿🇲</span>
+                                    <ChevronDown size={14} className="text-slate-400" />
+                                </div>
+                                <div className="flex-1 px-5 py-3 flex items-center gap-1.5 min-w-0">
+                                    <span className="text-base font-semibold text-gray-600 flex-shrink-0">+260</span>
+                                    <input
+                                        type="tel"
+                                        value={phone}
+                                        onChange={(e) => setPhone(e.target.value)}
+                                        placeholder="(971) 234 - 567"
+                                        className="flex-1 min-w-0 text-base text-gray-600 outline-none bg-transparent placeholder:text-gray-400"
+                                    />
+                                    {operator && (
+                                        <span className={`text-xs font-semibold uppercase tracking-tighter flex-shrink-0 ${OPERATOR_COLORS[operator]}`}>
+                                            {operator}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-2xl">
-                                <button
-                                    onClick={() => { setCheckoutMethod('mobile-money'); setError(null); }}
-                                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
-                                        checkoutMethod === 'mobile-money' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'
-                                    }`}
-                                >
-                                    <Smartphone size={13} /> Mobile Money
-                                </button>
-                                <button
-                                    onClick={() => { setCheckoutMethod('card'); setError(null); }}
-                                    className={`flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all ${
-                                        checkoutMethod === 'card' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'
-                                    }`}
-                                >
-                                    <CreditCard size={13} /> Card
-                                </button>
-                            </div>
-                        </div>
 
-                        <div className="flex-1 overflow-y-auto px-6 py-6">
-                            {checkoutMethod === 'mobile-money' ? (
-                                <>
-                                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5">
-                                        Mobile Money Number
-                                    </label>
-                                    <div className="relative">
-                                        <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                                        <input
-                                            type="tel"
-                                            value={phone}
-                                            onChange={(e) => setPhone(e.target.value)}
-                                            placeholder="e.g. 0971234567"
-                                            className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-11 pr-20 py-3.5 text-sm font-bold text-slate-800 focus:border-blue-500 focus:outline-none"
-                                        />
-                                        {operator && (
-                                            <div className="absolute right-4 top-1/2 -translate-y-1/2">
-                                                <span className={`text-[10px] font-black px-2 py-1 rounded bg-white border border-slate-100 uppercase tracking-tighter ${OPERATOR_COLORS[operator]}`}>
-                                                    {operator}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {phone.length >= 9 && (
-                                        <div className="mt-3 p-4 rounded-2xl bg-blue-50/70 border border-blue-100 flex items-center gap-3">
-                                            {resolvingAccountName ? (
-                                                <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
-                                            ) : resolvedAccountName ? (
-                                                <CheckCircle size={16} className="text-emerald-500 flex-shrink-0" />
-                                            ) : (
-                                                <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
-                                            )}
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-[10px] font-black uppercase tracking-widest text-blue-600">Account Holder</p>
-                                                <p className="text-sm font-bold text-slate-800 truncate">
-                                                    {resolvingAccountName
-                                                        ? 'Verifying number…'
-                                                        : resolvedAccountName || (resolveFailed ? 'Could not verify — check the number' : 'Waiting for a valid number…')}
-                                                </p>
-                                            </div>
-                                        </div>
+                            {/* Account holder verification */}
+                            {phone.length >= 9 && (
+                                <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
+                                    {resolvingAccountName ? (
+                                        <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />
+                                    ) : resolvedAccountName ? (
+                                        <Check size={16} className="text-emerald-500 flex-shrink-0" />
+                                    ) : (
+                                        <AlertCircle size={16} className="text-amber-500 flex-shrink-0" />
                                     )}
-
-                                    {error && (
-                                        <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start space-x-2">
-                                            <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
-                                            <span className="text-[11px] font-semibold leading-normal">{error}</span>
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <div className="text-center py-10 px-4 bg-slate-50/70 border border-slate-100 rounded-2xl">
-                                    <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
-                                        <CreditCard size={22} />
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Account Holder</p>
+                                        <p className="text-sm font-semibold text-gray-800 truncate">
+                                            {resolvingAccountName
+                                                ? 'Verifying number…'
+                                                : resolvedAccountName || (resolveFailed ? 'Could not verify — check the number' : 'Waiting for a valid number…')}
+                                        </p>
                                     </div>
-                                    <h4 className="text-sm font-black text-slate-700 uppercase tracking-wider">Card — Coming Soon</h4>
-                                    <p className="text-[11px] font-semibold text-slate-400 mt-2 max-w-[220px] mx-auto leading-relaxed">
-                                        Card payments aren’t available here yet. Please use Mobile Money for now.
-                                    </p>
                                 </div>
                             )}
-                        </div>
 
-                        <div className="sticky bottom-0 mt-auto bg-white border-t border-slate-100 px-6 pt-4 pb-6">
-                            {checkoutMethod === 'mobile-money' ? (
-                                <button
-                                    onClick={handlePayMobileMoney}
-                                    disabled={submitting || !operator || resolvingAccountName}
-                                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] transition-all shadow-lg shadow-blue-100 flex items-center justify-center space-x-2"
-                                >
-                                    {submitting ? <Loader2 size={14} className="animate-spin" /> : <Smartphone size={14} />}
-                                    <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
-                                </button>
-                            ) : (
-                                <button disabled className="w-full py-4 rounded-2xl font-black text-xs uppercase tracking-[0.15em] bg-slate-100 text-slate-400 cursor-not-allowed">
-                                    Coming Soon
-                                </button>
+                            {error && (
+                                <div className="mt-4 p-3.5 bg-rose-50 text-rose-600 rounded-xl flex items-start gap-2">
+                                    <AlertCircle className="flex-shrink-0 mt-0.5" size={14} />
+                                    <span className="text-[11px] font-semibold leading-normal">{error}</span>
+                                </div>
                             )}
+                        </>
+                    ) : (
+                        <div className="text-center py-10 px-4 bg-white border border-slate-100 rounded-2xl">
+                            <div className="mx-auto w-12 h-12 bg-slate-200 text-slate-500 rounded-full flex items-center justify-center mb-3">
+                                <CreditCard size={22} />
+                            </div>
+                            <h4 className="text-sm font-black text-slate-700 uppercase tracking-wider">Card — Coming Soon</h4>
+                            <p className="text-[11px] font-semibold text-slate-400 mt-2 max-w-[220px] mx-auto leading-relaxed">
+                                Card payments aren't available here yet. Please use Mobile Money for now.
+                            </p>
                         </div>
+                    )}
+                </div>
+
+                {/* Bottom bar — fee breakdown + pay button (matching QuickPay) */}
+                <div className="bg-white border-t border-gray-100 px-7 py-6 flex flex-col gap-3">
+                    <div className="flex flex-col gap-1">
+                        <div className="flex justify-between items-center">
+                            <span className="text-xs font-bold text-zinc-600">Invoice Amount</span>
+                            <span className="text-xs font-bold text-zinc-600">K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        {processingFee > 0 && (
+                            <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-zinc-600">Platform Fee</span>
+                                <span className="text-[10px] text-zinc-600">K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        )}
+                    </div>
+                    {checkoutMethod === 'mobile-money' ? (
+                        <button
+                            onClick={handlePayMobileMoney}
+                            disabled={!canPay}
+                            className={`w-full h-14 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
+                                canPay ? 'bg-black hover:bg-slate-800 text-white' : 'bg-neutral-100 text-zinc-400 cursor-not-allowed'
+                            }`}
+                        >
+                            {submitting ? <Loader2 size={16} className="animate-spin" /> : null}
+                            <span>{submitting ? 'Starting…' : `Pay K${totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}</span>
+                        </button>
+                    ) : (
+                        <button disabled className="w-full h-14 rounded-xl font-bold text-base bg-neutral-100 text-zinc-400 cursor-not-allowed">
+                            Coming Soon
+                        </button>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    // ── Remaining steps: LOADING, INACTIVE, VERIFYING, SUCCESS, ERROR ─────────
+    const isRemainingAppStep = step === 'VERIFYING' || step === 'SUCCESS';
+
+    return (
+        <div className={`flex flex-col ${isRemainingAppStep
+            ? 'h-[100dvh] bg-white sm:h-auto sm:min-h-screen sm:bg-neutral-50 sm:justify-between sm:py-10 sm:px-4'
+            : 'min-h-screen bg-neutral-50 justify-between py-10 px-4'}`}
+        >
+            <div className={`w-full bg-white overflow-hidden flex flex-col sm:max-w-md sm:mx-auto sm:my-auto sm:rounded-[32px] sm:border sm:border-slate-100 sm:shadow-2xl sm:justify-between transition-all duration-300 ${isRemainingAppStep ? 'flex-1 min-h-0' : 'rounded-[32px] border border-slate-100 shadow-2xl'}`}>
+
+                {step === 'LOADING' && (
+                    <div className="p-10 flex flex-col items-center justify-center min-h-[450px]">
+                        <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl animate-spin mb-4">
+                            <Loader2 size={32} />
+                        </div>
+                        <h3 className="text-sm font-bold text-slate-700 uppercase tracking-widest">Loading Payment Link</h3>
                     </div>
                 )}
 
@@ -1213,7 +1311,7 @@ export const PublicPaymentLink: React.FC = () => {
             {/* Hidden on the premium processing screen (own header) and on mobile during
                 the full-bleed post-pay steps, where it would push past the viewport. */}
             {!(step === 'VERIFYING' && displayPaymentPhase) && (
-                <div className={`mt-8 text-center space-y-2 ${isAppStep ? 'hidden sm:block' : ''}`}>
+                <div className={`mt-8 text-center space-y-2 ${isRemainingAppStep ? 'hidden sm:block' : ''}`}>
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                         <Building2 size={12} />
                         <span>Secured by MoneyWise Ledger Gateway</span>
