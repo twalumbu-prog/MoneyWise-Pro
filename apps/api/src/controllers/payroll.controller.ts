@@ -287,6 +287,8 @@ export const createPayrollRun = async (req: Request, res: Response) => {
                 other_deductions: otherDeductions,
                 net_pay: netPay,
                 payment_method: item.payment_method || 'BANK',
+                pay_source: item.pay_source || null,
+                destination_method: item.destination_method || null,
                 bank_name: item.bank_name || null,
                 bank_account_number: item.bank_account_number || null,
                 mobile_money_number: item.mobile_money_number || null,
@@ -325,6 +327,26 @@ export const createPayrollRun = async (req: Request, res: Response) => {
     }
 };
 
+// Human-readable label for a pay_source value
+function paySourceLabel(paySource: string): string {
+    if (paySource.startsWith('wallet:')) return 'MoneyWise Wallet';
+    const labels: Record<string, string> = {
+        CASH: 'Cash',
+        CHEQUE: 'Cheque',
+        BANK_TRANSFER: 'Bank Transfer',
+        AIRTEL_MONEY: 'Airtel Money',
+        MTN_MONEY: 'MTN Money',
+        ZAMTEL_MONEY: 'Zamtel Money',
+        LEGACY: 'MoneyWise Wallet',
+    };
+    return labels[paySource] ?? paySource;
+}
+
+// Whether a pay_source routes through MoneyWise/Lenco electronic disbursement
+function isElectronicWallet(paySource: string): boolean {
+    return paySource.startsWith('wallet:') || paySource === 'LEGACY';
+}
+
 export const approvePayrollRun = async (req: Request, res: Response) => {
     try {
         if (!adminOnly(req, res)) return;
@@ -332,7 +354,122 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
         const userId = (req as any).user.id;
         const { id } = req.params;
 
-        const { data, error } = await supabase
+        // 1. Load the run + all its items
+        const { data: run, error: runErr } = await supabase
+            .from('payroll_runs')
+            .select('*')
+            .eq('id', id)
+            .eq('organization_id', orgId)
+            .single();
+        if (runErr) throw runErr;
+        if (!run) return res.status(404).json({ error: 'Payroll run not found' });
+        if (run.status !== 'PENDING_APPROVAL') {
+            return res.status(400).json({ error: `Payroll run is already ${run.status}` });
+        }
+
+        const { data: runItems, error: itemsErr } = await supabase
+            .from('payroll_run_items')
+            .select('*')
+            .eq('payroll_run_id', id);
+        if (itemsErr) throw itemsErr;
+        if (!runItems || runItems.length === 0) {
+            return res.status(400).json({ error: 'No items found for this payroll run' });
+        }
+
+        // 2. Load org details for requisition creation
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('name, lenco_secret_key, payment_test_mode')
+            .eq('id', orgId)
+            .single();
+
+        // 3. Group items by pay_source
+        const groups = new Map<string, typeof runItems>();
+        for (const item of runItems) {
+            const src = item.pay_source || 'LEGACY';
+            if (!groups.has(src)) groups.set(src, []);
+            groups.get(src)!.push(item);
+        }
+
+        const createdRequisitions: any[] = [];
+
+        // 4. Create one requisition per group
+        for (const [paySource, groupItems] of groups.entries()) {
+            const srcLabel = paySourceLabel(paySource);
+            const electronic = isElectronicWallet(paySource);
+            const groupNet = groupItems.reduce((s: number, i: any) => s + Number(i.net_pay), 0);
+            const groupGross = groupItems.reduce((s: number, i: any) => s + Number(i.gross_pay), 0);
+
+            const reqTitle = `${run.period_label} — ${srcLabel} (${groupItems.length} employee${groupItems.length !== 1 ? 's' : ''})`;
+
+            // Determine wallet id for electronic runs
+            const walletId = electronic && paySource.startsWith('wallet:')
+                ? paySource.replace('wallet:', '')
+                : null;
+
+            // Insert requisition header
+            const { data: req_, error: reqErr } = await supabase
+                .from('requisitions')
+                .insert({
+                    organization_id: orgId,
+                    requestor_id: userId,
+                    type: 'PAYROLL',
+                    status: electronic ? 'APPROVED' : 'APPROVED',
+                    description: reqTitle,
+                    estimated_total: parseFloat(groupNet.toFixed(2)),
+                    actual_total: parseFloat(groupNet.toFixed(2)),
+                    payment_method: electronic ? 'BATCH_PAYROLL' : paySource,
+                    pay_from_wallet_id: walletId,
+                    payroll_run_id: id,
+                    department: 'Payroll',
+                    notes: `Auto-generated on approval of payroll run ${run.period_label}. Source: ${srcLabel}.`,
+                    approved_by: userId,
+                    approved_at: new Date().toISOString(),
+                })
+                .select()
+                .single();
+            if (reqErr) throw reqErr;
+
+            // Build line items
+            const lineItems = groupItems.map((item: any) => {
+                const destMethod = item.destination_method || item.payment_method || 'BANK';
+                return {
+                    requisition_id: req_.id,
+                    description: `Payroll for ${item.staff_name}`,
+                    quantity: 1,
+                    unit_price: Number(item.net_pay),
+                    estimated_amount: Number(item.net_pay),
+                    employee_id: item.staff_id || null,
+                    employee_name: item.staff_name,
+                    payment_method: electronic ? destMethod : paySource,
+                    recipient_account: destMethod === 'MOBILE_MONEY'
+                        ? item.mobile_money_number
+                        : item.bank_account_number,
+                    recipient_bank_code: destMethod === 'BANK' ? item.bank_name : null,
+                    is_valid: !electronic, // external methods are pre-valid; electronic need Lenco verification
+                    verified_name: !electronic ? item.staff_name : null,
+                    error_message: null,
+                };
+            });
+
+            // For electronic (Lenco) runs, verify accounts if org has a secret key
+            if (electronic && orgData?.lenco_secret_key && !orgData?.payment_test_mode) {
+                // Verification is handled downstream by the disbursement processor — leave is_valid as false until then
+            } else if (electronic && orgData?.payment_test_mode) {
+                for (const li of lineItems) {
+                    li.is_valid = true;
+                    li.verified_name = `Test: ${li.employee_name}`;
+                }
+            }
+
+            const { error: liErr } = await supabase.from('line_items').insert(lineItems);
+            if (liErr) throw liErr;
+
+            createdRequisitions.push({ requisition_id: req_.id, pay_source: paySource, label: srcLabel, employee_count: groupItems.length, net_total: groupNet });
+        }
+
+        // 5. Mark the payroll run as CLEARED
+        const { data: updatedRun, error: updateErr } = await supabase
             .from('payroll_runs')
             .update({
                 status: 'CLEARED',
@@ -344,9 +481,14 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             .eq('organization_id', orgId)
             .select()
             .single();
-        if (error) throw error;
-        res.json(data);
+        if (updateErr) throw updateErr;
+
+        res.json({
+            run: updatedRun,
+            requisitions: createdRequisitions,
+        });
     } catch (err: any) {
+        console.error('[approvePayrollRun]', err);
         res.status(500).json({ error: err.message });
     }
 };

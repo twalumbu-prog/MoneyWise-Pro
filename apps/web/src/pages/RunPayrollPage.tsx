@@ -285,6 +285,9 @@ export const RunPayrollPage: React.FC = () => {
                     non_taxable_allowances: item.non_taxable_allowances + Object.entries(item.custom_allowances || {}).reduce((sum, [name, val]) => (separateAllowances.find(sa => sa.name === name)?.subject_to_statutory === false ? sum + val : sum), 0),
                     loans: item.loans,
                     other_deductions: item.other_deductions,
+                    // Stage 5 method fields — saved to payroll_run_items
+                    pay_source: item.pay_source,
+                    destination_method: item.destination_method,
                     payment_method: item.destination_method,
                     bank_name: item.destination_method === 'BANK' ? item.bank_name : undefined,
                     bank_account_number: item.destination_method === 'BANK' ? item.bank_account_number : undefined,
