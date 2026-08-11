@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowRight, X, AlertCircle, Loader2, Building, Landmark, ChevronRight } from 'lucide-react';
+import { X, AlertCircle, Loader2, Building, Landmark, ChevronRight } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 
 interface MobileStaffLoanWizardProps {

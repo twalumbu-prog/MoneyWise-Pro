@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, ArrowUpRight, Search } from 'lucide-react';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
-import { useAuth } from '../context/AuthContext';
-
 export const StaffPortfolio: React.FC = () => {
-    const { user } = useAuth();
     const [portfolioView, setPortfolioView] = useState<'INVESTMENTS' | 'LOANS'>('INVESTMENTS');
 
     // Mocks for now until we have real data from the backend

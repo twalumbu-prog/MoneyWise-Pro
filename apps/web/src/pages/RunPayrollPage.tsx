@@ -5,7 +5,7 @@ import { Layout } from '../components/Layout';
 import { payrollService, StaffMember } from '../services/payroll.service';
 import { cashbookService } from '../services/cashbook.service';
 import { useAuth } from '../context/AuthContext';
-import { ArrowLeft, Plus, Trash2, Search, ChevronRight, Check } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, Search, ChevronRight, ChevronDown, Check, Building2, Smartphone, Wallet } from 'lucide-react';
 
 type Stage = 1 | 2 | 3 | 4 | 5;
 
@@ -30,6 +30,7 @@ const EXTERNAL_PAY_METHODS = [
 interface PayrollItem {
     staff_id: string;
     staff_name: string;
+    employee_number?: string;
     basic_pay: number;
     overtime: number;
     taxable_allowances: number;
@@ -108,6 +109,20 @@ export const RunPayrollPage: React.FC = () => {
     const [deductSearch, setDeductSearch] = useState('');
     const [deductFocused, setDeductFocused] = useState(false);
     const deductDropdownRef = useRef<HTMLDivElement>(null);
+
+    // Stage 5 – open method dropdown index
+    const [openMethodIdx, setOpenMethodIdx] = useState<number | null>(null);
+    const methodDropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClick = (e: MouseEvent) => {
+            if (methodDropdownRef.current && !methodDropdownRef.current.contains(e.target as Node)) {
+                setOpenMethodIdx(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
 
     const { data: allStaff = [] } = useQuery<StaffMember[]>({
         queryKey: ['payroll-staff', organizationId],
@@ -188,6 +203,7 @@ export const RunPayrollPage: React.FC = () => {
                 return {
                     staff_id: s.id,
                     staff_name: `${s.first_name} ${s.last_name}`,
+                    employee_number: s.employee_number,
                     basic_pay: s.basic_pay,
                     overtime: 0,
                     taxable_allowances: baseTaxable,
@@ -661,7 +677,7 @@ export const RunPayrollPage: React.FC = () => {
                         {stage === 5 && (
                             <>
                                 {/* Summary banner */}
-                                <div className="bg-blue-50 border border-blue-100 rounded-xl px-6 py-4 grid grid-cols-3 gap-4">
+                                <div className="bg-blue-50 border border-blue-100 rounded-xl px-6 py-4 grid grid-cols-3 gap-4 flex-shrink-0">
                                     <div className="flex flex-col items-center gap-0.5">
                                         <span className="text-[10px] font-semibold text-blue-400 uppercase tracking-wide">Employees</span>
                                         <span className="text-lg font-bold text-blue-900">{items.length}</span>
@@ -676,87 +692,182 @@ export const RunPayrollPage: React.FC = () => {
                                     </div>
                                 </div>
 
-                                {/* Per-employee payment method */}
-                                <div>
-                                    <p className="text-xs text-gray-500 mb-3">Select the payment source and destination for each employee.</p>
-                                    <div className="flex flex-col gap-3">
-                                        {items.map((item, idx) => {
-                                            const hasBank = !!(item.bank_account_number?.trim());
-                                            const hasMobile = !!(item.mobile_money_number?.trim());
-                                            const hasBoth = hasBank && hasMobile;
-                                            const destLabel = item.destination_method === 'MOBILE_MONEY'
-                                                ? `Mobile Money · ${item.mobile_money_number || '—'}`
-                                                : `Bank · ${item.bank_account_number || '—'}`;
-                                            return (
-                                            <div key={item.staff_id} className="border border-gray-100 rounded-xl px-4 py-3 flex flex-col gap-3">
-                                                <div className="flex items-center justify-between">
-                                                    <div>
-                                                        <p className="text-sm font-medium text-gray-900">{item.staff_name}</p>
-                                                        <p className="text-[10px] text-gray-400">{destLabel}</p>
-                                                    </div>
-                                                    <span className="text-sm font-bold text-gray-900">K{fmt(calcNet(item, separateAllowances))}</span>
-                                                </div>
+                                {/* Payroll table */}
+                                <div className="overflow-x-auto rounded-xl border border-gray-100" ref={methodDropdownRef}>
+                                    <table className="min-w-full text-[11px]">
+                                        <thead>
+                                            <tr className="bg-gray-50 border-b border-gray-100">
+                                                {/* Employee */}
+                                                <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Employee</th>
+                                                {/* Income */}
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Basic Pay</th>
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Overtime</th>
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Allowances</th>
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-blue-600 uppercase tracking-wide whitespace-nowrap">Gross</th>
+                                                {/* Deductions */}
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-red-400 uppercase tracking-wide whitespace-nowrap">NAPSA</th>
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-red-400 uppercase tracking-wide whitespace-nowrap">NHIMA</th>
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-red-400 uppercase tracking-wide whitespace-nowrap">PAYE</th>
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-red-400 uppercase tracking-wide whitespace-nowrap">Loans</th>
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-red-400 uppercase tracking-wide whitespace-nowrap">Other Ded.</th>
+                                                {/* Net */}
+                                                <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-gray-900 uppercase tracking-wide whitespace-nowrap">Net Pay</th>
+                                                {/* Method */}
+                                                <th className="px-3 py-2.5 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Method</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {items.map((item, idx) => {
+                                                const gross = calcGross(item);
+                                                // Taxable base for NAPSA/NHIMA/PAYE
+                                                const taxableCustom = Object.entries(item.custom_allowances || {}).reduce((sum, [name, val]) => {
+                                                    const isTaxable = separateAllowances.find(sa => sa.name === name)?.subject_to_statutory !== false;
+                                                    return isTaxable ? sum + val : sum;
+                                                }, 0);
+                                                const taxableGross = item.basic_pay + item.overtime + item.taxable_allowances + taxableCustom;
+                                                const napsa = Math.min(taxableGross, NAPSA_CEILING) * NAPSA_RATE;
+                                                const nhima = taxableGross * NHIMA_RATE;
+                                                const paye = calcPAYE(taxableGross);
+                                                const net = calcNet(item, separateAllowances);
+                                                const totalAllowances = item.taxable_allowances + item.non_taxable_allowances + Object.values(item.custom_allowances || {}).reduce((s, v) => s + v, 0);
+                                                const hasBank = !!(item.bank_account_number?.trim());
+                                                const hasMobile = !!(item.mobile_money_number?.trim());
+                                                const isWalletSource = item.pay_source.startsWith('wallet:');
 
-                                                {/* Receive via — only when employee has both bank and mobile money */}
-                                                {hasBoth && (
-                                                    <div>
-                                                        <label className={LABEL}>Receive Via</label>
-                                                        <div className="flex gap-2">
+                                                // Build method label
+                                                const srcWallet = isWalletSource ? wallets.find((w: any) => `wallet:${w.id}` === item.pay_source) : null;
+                                                const srcExternal = !isWalletSource ? EXTERNAL_PAY_METHODS.find(m => m.id === item.pay_source) : null;
+                                                const srcLabel = srcWallet ? srcWallet.name : srcExternal ? srcExternal.label : 'Select…';
+                                                const destLabel = isWalletSource
+                                                    ? (item.destination_method === 'BANK' ? `→ Bank ${item.bank_account_number ? `···${item.bank_account_number.slice(-4)}` : ''}` : item.destination_method === 'MOBILE_MONEY' ? `→ Mobile ${item.mobile_money_number || ''}` : '')
+                                                    : '';
+
+                                                return (
+                                                    <tr key={item.staff_id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/40 transition-colors">
+                                                        {/* Employee */}
+                                                        <td className="px-3 py-3 whitespace-nowrap">
+                                                            <p className="font-semibold text-[12px] text-gray-900">{item.staff_name}</p>
+                                                            <p className="text-[10px] text-gray-400">{item.employee_number || '—'}</p>
+                                                        </td>
+                                                        {/* Income */}
+                                                        <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">{fmt(item.basic_pay)}</td>
+                                                        <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">{item.overtime > 0 ? fmt(item.overtime) : <span className="text-gray-300">—</span>}</td>
+                                                        <td className="px-3 py-3 text-right text-gray-600 whitespace-nowrap">{totalAllowances > 0 ? fmt(totalAllowances) : <span className="text-gray-300">—</span>}</td>
+                                                        <td className="px-3 py-3 text-right font-semibold text-blue-700 whitespace-nowrap">{fmt(gross)}</td>
+                                                        {/* Deductions */}
+                                                        <td className="px-3 py-3 text-right text-red-500 whitespace-nowrap">({fmt(napsa)})</td>
+                                                        <td className="px-3 py-3 text-right text-red-500 whitespace-nowrap">({fmt(nhima)})</td>
+                                                        <td className="px-3 py-3 text-right text-red-500 whitespace-nowrap">{paye > 0 ? `(${fmt(paye)})` : <span className="text-gray-300">—</span>}</td>
+                                                        <td className="px-3 py-3 text-right text-red-500 whitespace-nowrap">{item.loans > 0 ? `(${fmt(item.loans)})` : <span className="text-gray-300">—</span>}</td>
+                                                        <td className="px-3 py-3 text-right text-red-500 whitespace-nowrap">{item.other_deductions > 0 ? `(${fmt(item.other_deductions)})` : <span className="text-gray-300">—</span>}</td>
+                                                        {/* Net */}
+                                                        <td className="px-3 py-3 text-right font-bold text-[12px] text-gray-900 whitespace-nowrap">K{fmt(net)}</td>
+                                                        {/* Method dropdown */}
+                                                        <td className="px-3 py-3 relative">
                                                             <button
                                                                 type="button"
-                                                                onClick={() => updateItem(idx, 'destination_method', 'BANK')}
-                                                                className={`flex-1 py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all text-left ${
-                                                                    item.destination_method === 'BANK'
-                                                                        ? 'border-blue-600 bg-blue-50 text-blue-800'
-                                                                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                                                                }`}
+                                                                onClick={() => setOpenMethodIdx(openMethodIdx === idx ? null : idx)}
+                                                                className="flex items-center gap-1 px-2.5 py-1.5 border border-gray-200 rounded-lg bg-white hover:border-blue-300 transition-colors text-left min-w-[130px]"
                                                             >
-                                                                <span className="block text-[10px] font-normal opacity-60 mb-0.5">Bank Account</span>
-                                                                {item.bank_account_number || '—'}
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-[11px] font-semibold text-gray-800 truncate">{srcLabel}</p>
+                                                                    {destLabel && <p className="text-[10px] text-gray-400 truncate">{destLabel}</p>}
+                                                                </div>
+                                                                <ChevronDown size={11} className="text-gray-400 flex-shrink-0" />
                                                             </button>
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => updateItem(idx, 'destination_method', 'MOBILE_MONEY')}
-                                                                className={`flex-1 py-1.5 px-3 rounded-lg border text-xs font-semibold transition-all text-left ${
-                                                                    item.destination_method === 'MOBILE_MONEY'
-                                                                        ? 'border-purple-600 bg-purple-50 text-purple-800'
-                                                                        : 'border-gray-200 bg-white text-gray-500 hover:border-gray-300'
-                                                                }`}
-                                                            >
-                                                                <span className="block text-[10px] font-normal opacity-60 mb-0.5">Mobile Money</span>
-                                                                {item.mobile_money_number || '—'}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                )}
 
-                                                <div>
-                                                    <label className={LABEL}>Pay From</label>
-                                                    <select
-                                                        className={`${INPUT} appearance-none`}
-                                                        value={item.pay_source}
-                                                        onChange={e => updateItem(idx, 'pay_source', e.target.value)}
-                                                    >
-                                                        {wallets.length > 0 && (
-                                                            <optgroup label="MoneyWise Wallets">
-                                                                {wallets.map((w: any) => (
-                                                                    <option key={w.id} value={`wallet:${w.id}`}>
-                                                                        {w.name}{w.balance != null ? ` — K${Number(w.balance).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}` : ''}
-                                                                    </option>
-                                                                ))}
-                                                            </optgroup>
-                                                        )}
-                                                        <optgroup label="External Methods">
-                                                            {EXTERNAL_PAY_METHODS.map(m => (
-                                                                <option key={m.id} value={m.id}>{m.label}</option>
-                                                            ))}
-                                                        </optgroup>
-                                                    </select>
-                                                </div>
-                                            </div>
-                                            );
-                                        })}
-                                    </div>
+                                                            {openMethodIdx === idx && (
+                                                                <div className="absolute right-0 top-[calc(100%+4px)] z-40 w-64 bg-white rounded-xl shadow-[0px_8px_24px_0px_rgba(17,24,39,0.12)] border border-gray-100 p-3 animate-in fade-in zoom-in-95 duration-100">
+                                                                    {/* Pay From */}
+                                                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1"><Wallet size={10} /> Pay From</p>
+
+                                                                    {wallets.length > 0 && (
+                                                                        <div className="mb-1">
+                                                                            <p className="text-[10px] text-gray-400 px-2 mb-0.5">MoneyWise Wallets</p>
+                                                                            {wallets.map((w: any) => (
+                                                                                <button
+                                                                                    key={w.id}
+                                                                                    type="button"
+                                                                                    onClick={() => updateItem(idx, 'pay_source', `wallet:${w.id}`)}
+                                                                                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex items-center justify-between ${item.pay_source === `wallet:${w.id}` ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                                                >
+                                                                                    <span>{w.name}</span>
+                                                                                    {w.balance != null && <span className="text-[10px] opacity-60">K{Number(w.balance).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</span>}
+                                                                                </button>
+                                                                            ))}
+                                                                        </div>
+                                                                    )}
+
+                                                                    <p className="text-[10px] text-gray-400 px-2 mb-0.5">External</p>
+                                                                    {EXTERNAL_PAY_METHODS.map(m => (
+                                                                        <button
+                                                                            key={m.id}
+                                                                            type="button"
+                                                                            onClick={() => updateItem(idx, 'pay_source', m.id)}
+                                                                            className={`w-full text-left px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors ${item.pay_source === m.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                                        >
+                                                                            {m.label}
+                                                                        </button>
+                                                                    ))}
+
+                                                                    {/* Pay To — only when wallet source and employee has accounts */}
+                                                                    {isWalletSource && (hasBank || hasMobile) && (
+                                                                        <>
+                                                                            <div className="border-t border-gray-100 my-2" />
+                                                                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5 flex items-center gap-1"><Smartphone size={10} /> Pay To</p>
+                                                                            {hasBank && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => updateItem(idx, 'destination_method', 'BANK')}
+                                                                                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-2 ${item.destination_method === 'BANK' ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                                                >
+                                                                                    <Building2 size={12} className="flex-shrink-0" />
+                                                                                    <div className="min-w-0">
+                                                                                        <p className="font-semibold truncate">{item.bank_name || 'Bank Account'}</p>
+                                                                                        <p className="text-[10px] opacity-60 truncate">{item.bank_account_number}</p>
+                                                                                    </div>
+                                                                                </button>
+                                                                            )}
+                                                                            {hasMobile && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => updateItem(idx, 'destination_method', 'MOBILE_MONEY')}
+                                                                                    className={`w-full text-left px-2 py-1.5 rounded-lg text-[11px] font-medium transition-colors flex items-center gap-2 ${item.destination_method === 'MOBILE_MONEY' ? 'bg-purple-50 text-purple-700' : 'hover:bg-gray-50 text-gray-700'}`}
+                                                                                >
+                                                                                    <Smartphone size={12} className="flex-shrink-0" />
+                                                                                    <div className="min-w-0">
+                                                                                        <p className="font-semibold truncate">{item.mobile_money_provider || 'Mobile Money'}</p>
+                                                                                        <p className="text-[10px] opacity-60 truncate">{item.mobile_money_number}</p>
+                                                                                    </div>
+                                                                                </button>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                        {/* Totals row */}
+                                        <tfoot>
+                                            <tr className="bg-gray-50 border-t border-gray-200">
+                                                <td className="px-3 py-2.5 text-[10px] font-bold text-gray-500 uppercase tracking-wide">Total</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-gray-700 text-[11px]">{fmt(items.reduce((s, i) => s + i.basic_pay, 0))}</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-gray-700 text-[11px]">{fmt(items.reduce((s, i) => s + i.overtime, 0))}</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-gray-700 text-[11px]">{fmt(items.reduce((s, i) => s + i.taxable_allowances + i.non_taxable_allowances + Object.values(i.custom_allowances || {}).reduce((a, b) => a + b, 0), 0))}</td>
+                                                <td className="px-3 py-2.5 text-right font-bold text-blue-700 text-[11px]">{fmt(totals.gross)}</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-red-500 text-[11px]">({fmt(items.reduce((s, i) => { const tg = i.basic_pay + i.overtime + i.taxable_allowances; return s + Math.min(tg, NAPSA_CEILING) * NAPSA_RATE; }, 0))})</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-red-500 text-[11px]">({fmt(items.reduce((s, i) => s + (i.basic_pay + i.overtime + i.taxable_allowances) * NHIMA_RATE, 0))})</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-red-500 text-[11px]">({fmt(items.reduce((s, i) => s + calcPAYE(i.basic_pay + i.overtime + i.taxable_allowances), 0))})</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-red-500 text-[11px]">({fmt(items.reduce((s, i) => s + i.loans, 0))})</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-red-500 text-[11px]">({fmt(items.reduce((s, i) => s + i.other_deductions, 0))})</td>
+                                                <td className="px-3 py-2.5 text-right font-bold text-gray-900 text-[12px]">K{fmt(totals.net)}</td>
+                                                <td />
+                                            </tr>
+                                        </tfoot>
+                                    </table>
                                 </div>
 
                                 {error && <p className="text-xs text-red-600 font-medium">{error}</p>}

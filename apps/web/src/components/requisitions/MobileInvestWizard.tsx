@@ -232,7 +232,7 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                     </div>
                 )}
 
-                {stage === 3 && selectedProduct && (
+                {stage === 3 && selectedProduct && selectedProvider && (
                     <div className="w-full pb-36">
                         {/* Product Header Info */}
                         <div className="w-full border-b border-gray-100 inline-flex justify-start items-center gap-2.5 bg-white">
