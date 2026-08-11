@@ -831,113 +831,149 @@ export const PublicPaymentLink: React.FC = () => {
             : '—';
         const invoiceDate = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
 
+        // Shared logo/avatar element
+        const orgAvatar = ctx.organization.logo_url ? (
+            <img src={ctx.organization.logo_url} alt={ctx.organization.name}
+                 className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+        ) : (
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black text-sm uppercase flex-shrink-0">
+                {ctx.organization.name.charAt(0)}
+            </div>
+        );
+
+        // Shared pay/checkout handler
+        const handlePayNow = () => {
+            if (ctx.collections_api_enabled) {
+                setError(null);
+                setResolvedAccountName('');
+                setResolveFailed(false);
+                setCheckoutMethod('mobile-money');
+                setStep('CHECKOUT');
+            } else {
+                handlePay();
+            }
+        };
+
         return (
-            <div className="min-h-screen bg-neutral-50 flex flex-col items-center px-4 py-10">
-                {/* Business header — above the card, mirrors the Figma */}
-                <div className="flex items-center gap-4 mb-6 w-full max-w-sm">
-                    {ctx.organization.logo_url ? (
-                        <img
-                            src={ctx.organization.logo_url}
-                            alt={ctx.organization.name}
-                            className="w-8 h-8 rounded-lg object-cover flex-shrink-0"
-                        />
-                    ) : (
-                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black text-sm uppercase flex-shrink-0">
-                            {ctx.organization.name.charAt(0)}
-                        </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                        <span className="text-base font-bold text-black">{ctx.organization.name}</span>
-                        <BadgeCheck size={20} fill="#2563EB" className="text-white" strokeWidth={2} />
+            <div className="bg-neutral-50 min-h-[100dvh] flex flex-col
+                            sm:min-h-screen sm:items-center sm:justify-center sm:px-4 sm:py-10">
+
+                {/* ── Mobile: top navbar (hidden on sm+) ───────────────────────── */}
+                <div className="sm:hidden px-4 h-14 flex items-center gap-3 flex-shrink-0">
+                    {orgAvatar}
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-bold text-black truncate">{ctx.organization.name}</span>
+                        <BadgeCheck size={18} fill="#2563EB" className="text-white flex-shrink-0" strokeWidth={2} />
                     </div>
                 </div>
 
-                {/* E-Invoice card */}
-                <div className="w-full max-w-sm bg-white rounded-2xl shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] border border-zinc-200 p-6 flex flex-col gap-6 overflow-hidden">
+                {/* ── Content wrapper ───────────────────────────────────────────── */}
+                {/* Mobile: flex-1 column with padding creating space around card   */}
+                {/* Desktop: shifted slightly above viewport centre                 */}
+                <div className="flex-1 flex flex-col items-center w-full px-4 pt-4 pb-4
+                                sm:flex-none sm:px-0 sm:pt-0 sm:pb-0 sm:-mt-[6vh]">
 
-                    {/* Amount block */}
-                    <div className="flex flex-col gap-2">
-                        <div className="flex flex-col items-center gap-1">
-                            <span className="text-xs font-bold text-zinc-600 text-center">E-Invoice</span>
-                            <span className="text-4xl font-bold text-black text-center">
-                                K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                            </span>
+                    {/* Desktop only: business header above card */}
+                    <div className="hidden sm:flex items-center gap-4 mb-6 w-full max-w-md">
+                        {orgAvatar}
+                        <div className="flex items-center gap-2">
+                            <span className="text-base font-bold text-black">{ctx.organization.name}</span>
+                            <BadgeCheck size={20} fill="#2563EB" className="text-white" strokeWidth={2} />
                         </div>
-                        <p className="text-xs text-zinc-600 text-center">View Invoice and Payment Details</p>
                     </div>
 
-                    {/* Invoice metadata + order summary */}
-                    <div className="py-4 flex flex-col gap-6">
-                        {/* Metadata row */}
-                        <div className="flex flex-col gap-2">
-                            <div className="flex justify-between items-center">
-                                <span className="flex-1 text-xs text-zinc-600">Invoice Number</span>
-                                <span className="flex-1 text-right text-xs font-bold text-zinc-600">{invoiceNumber}</span>
+                    {/* ── E-Invoice card ───────────────────────────────────────── */}
+                    {/* Mobile: flex-1 so it fills the padded area top-to-bottom   */}
+                    {/* Desktop: naturally sized, max-w-md centred                 */}
+                    <div className="w-full sm:max-w-md bg-white rounded-xl
+                                    shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)] border border-zinc-200
+                                    flex-1 sm:flex-none flex flex-col overflow-hidden
+                                    p-6 sm:p-8">
+
+                        {/* Amount block */}
+                        <div className="flex flex-col gap-2 flex-shrink-0">
+                            <div className="flex flex-col items-center gap-1">
+                                <span className="text-xs font-bold text-zinc-600 text-center">E-Invoice</span>
+                                <span className="text-4xl font-bold text-black text-center">
+                                    K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </span>
                             </div>
-                            <div className="flex justify-between items-center gap-9">
-                                <span className="flex-1 text-xs text-zinc-600">Invoice Date</span>
-                                <span className="flex-1 text-right text-xs font-bold text-zinc-600">{invoiceDate}</span>
-                            </div>
+                            <p className="text-xs text-zinc-600 text-center">View Invoice and Payment Details</p>
                         </div>
 
-                        {/* Order summary */}
-                        <div className="flex flex-col gap-2">
-                            <span className="text-xs font-bold text-zinc-600">Order Summary</span>
-                            <div className="flex flex-col gap-1">
-                                {linkItems.map((it, i) => (
-                                    <div key={i} className="flex justify-between items-center gap-2.5 min-h-4">
-                                        <span className="flex-1 text-xs text-zinc-600 truncate">
-                                            {it.name}{it.quantity > 1 ? ` x${it.quantity}` : ''}
-                                            {it.check_in && it.check_out ? ` · ${it.check_in} → ${it.check_out}` : ''}
-                                        </span>
-                                        <span className="text-xs text-zinc-600 flex-shrink-0">
-                                            K{(it.unit_price * it.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </span>
+                        {/* Middle section — grows to fill height on mobile */}
+                        <div className="flex-1 sm:flex-none min-h-0 flex flex-col py-6">
+
+                            {/* Metadata */}
+                            <div className="flex flex-col gap-2 flex-shrink-0 mb-4 sm:mb-0">
+                                <div className="flex justify-between items-center">
+                                    <span className="flex-1 text-xs text-zinc-600">Invoice Number</span>
+                                    <span className="flex-1 text-right text-xs font-bold text-zinc-600">{invoiceNumber}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="flex-1 text-xs text-zinc-600">Invoice Date</span>
+                                    <span className="flex-1 text-right text-xs font-bold text-zinc-600">{invoiceDate}</span>
+                                </div>
+                            </div>
+
+                            {/* Divider below Invoice Date — mobile only */}
+                            <div className="h-[0.5px] bg-gray-200 flex-shrink-0 sm:hidden" />
+
+                            {/* Order summary — flex-1 so invoice total is pushed to bottom on mobile */}
+                            <div className="flex-1 sm:flex-none min-h-0 flex flex-col gap-2 mt-6">
+                                <span className="text-xs font-bold text-zinc-600 flex-shrink-0">Order Summary</span>
+                                <div className="flex-1 sm:flex-none flex flex-col min-h-0">
+                                    {/* Items — scrollable if overflow */}
+                                    <div className="flex flex-col gap-1 overflow-y-auto">
+                                        {linkItems.map((it, i) => (
+                                            <div key={i} className="flex justify-between items-center gap-2.5 min-h-4">
+                                                <span className="flex-1 text-xs text-zinc-600 truncate">
+                                                    {it.name}{it.quantity > 1 ? ` x${it.quantity}` : ''}
+                                                    {it.check_in && it.check_out ? ` · ${it.check_in} → ${it.check_out}` : ''}
+                                                </span>
+                                                <span className="text-xs text-zinc-600 flex-shrink-0">
+                                                    K{(it.unit_price * it.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                        ))}
                                     </div>
-                                ))}
-                                <div className="h-px outline outline-1 outline-offset-[-0.5px] outline-gray-200 my-1" />
-                                <div className="flex justify-between items-center gap-2.5">
-                                    <span className="flex-1 text-xs font-bold text-black">Invoice Total</span>
-                                    <span className="text-xs font-bold text-black flex-shrink-0">
-                                        K{totalPayable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                    </span>
+                                    {/* Divider + total — pinned to bottom of this section on mobile */}
+                                    <div className="mt-auto pt-4 flex-shrink-0">
+                                        <div className="h-[0.5px] bg-gray-200 mb-3" />
+                                        <div className="flex justify-between items-center gap-2.5">
+                                            <span className="flex-1 text-xs font-bold text-black">Invoice Total</span>
+                                            <span className="text-xs font-bold text-black flex-shrink-0">
+                                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Action buttons — always at bottom of card */}
+                        <div className="flex gap-2.5 flex-shrink-0">
+                            <button
+                                onClick={handleDownloadInvoice}
+                                className="flex-1 h-10 px-3 bg-white rounded-lg border border-stone-900 flex items-center justify-center gap-2"
+                            >
+                                <span className="text-xs font-normal text-black">Download Invoice</span>
+                            </button>
+                            <button
+                                onClick={handlePayNow}
+                                className="flex-1 h-10 px-3 bg-black rounded-lg flex items-center justify-center gap-2"
+                            >
+                                <CreditCard size={12} className="text-white" />
+                                <span className="text-xs font-bold text-white">Pay Now</span>
+                            </button>
+                        </div>
                     </div>
 
-                    {/* Action buttons */}
-                    <div className="flex gap-2.5">
-                        <button
-                            onClick={handleDownloadInvoice}
-                            className="flex-1 h-8 px-3 py-1 bg-white rounded-lg border border-stone-900 flex items-center justify-center gap-2.5"
-                        >
-                            <span className="text-xs font-normal text-black">Download Invoice</span>
-                        </button>
-                        <button
-                            onClick={() => {
-                                if (ctx.collections_api_enabled) {
-                                    setError(null);
-                                    setResolvedAccountName('');
-                                    setResolveFailed(false);
-                                    setCheckoutMethod('mobile-money');
-                                    setStep('CHECKOUT');
-                                } else {
-                                    handlePay();
-                                }
-                            }}
-                            className="flex-1 h-8 px-3 py-1 bg-black rounded-lg flex items-center justify-center gap-2.5"
-                        >
-                            <CreditCard size={12} className="text-white" />
-                            <span className="text-xs font-bold text-white">Pay Now</span>
-                        </button>
+                    {/* Powered by footer */}
+                    <div className="mt-4 sm:mt-8 flex items-center justify-center flex-shrink-0">
+                        <span className="text-xs text-zinc-500">Powered by </span>
+                        <span className="text-xs text-zinc-500 ml-1 font-advercase">MoneyWise</span>
                     </div>
-                </div>
-
-                {/* Powered by footer */}
-                <div className="mt-8 flex items-center justify-center">
-                    <span className="text-xs text-zinc-500">Powered by </span>
-                    <span className="text-xs font-bold text-zinc-500 ml-1">Moneywise</span>
                 </div>
             </div>
         );
@@ -947,7 +983,15 @@ export const PublicPaymentLink: React.FC = () => {
     if (step === 'CHECKOUT' && ctx) {
         const canPay = !submitting && operator !== null && !resolvingAccountName;
         return (
-            <div className="h-[100dvh] bg-white flex flex-col overflow-hidden">
+            <div className="h-[100dvh] bg-white flex flex-col overflow-hidden
+                            sm:h-auto sm:min-h-screen sm:bg-neutral-50 sm:items-center sm:justify-center sm:px-4 sm:py-10">
+
+                {/* Card wrapper — full-screen on mobile, constrained card on desktop */}
+                <div className="flex flex-col flex-1 overflow-hidden
+                                sm:flex-none sm:w-full sm:max-w-md sm:min-h-[560px] sm:bg-white sm:rounded-xl
+                                sm:border sm:border-zinc-200 sm:shadow-[0px_4px_4px_0px_rgba(0,0,0,0.10)]
+                                sm:overflow-hidden">
+
                 {/* Header — back button + title */}
                 <div className="px-7 py-3 flex items-center gap-6 bg-white">
                     <button
@@ -1065,7 +1109,7 @@ export const PublicPaymentLink: React.FC = () => {
                         </div>
                         {processingFee > 0 && (
                             <div className="flex justify-between items-center">
-                                <span className="text-[10px] text-zinc-600">Platform Fee</span>
+                                <span className="text-[10px] text-zinc-600">Withdraw Fee</span>
                                 <span className="text-[10px] text-zinc-600">K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
                         )}
@@ -1086,6 +1130,14 @@ export const PublicPaymentLink: React.FC = () => {
                             Coming Soon
                         </button>
                     )}
+                </div>
+
+                </div>{/* end card wrapper */}
+
+                {/* Powered by footer — desktop only */}
+                <div className="hidden sm:flex mt-8 items-center justify-center">
+                    <span className="text-xs text-zinc-500">Powered by </span>
+                    <span className="text-xs text-zinc-500 ml-1 font-advercase">MoneyWise</span>
                 </div>
             </div>
         );
