@@ -38,89 +38,75 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
     const getStatusIcon = (status: string) => {
         const config = getStatusConfig(status);
         switch (config.iconType) {
-            case 'clock': return <Clock size={16} className="text-blue-500" />;
-            case 'check-circle': return <CheckCircle2 size={16} className="text-[#006AFF]" />;
-            case 'check': return <Check size={16} className="text-emerald-500" />;
-            case 'alert': return <AlertCircle size={16} className="text-red-500" />;
-            case 'rotate': return <RotateCcw size={16} className="text-gray-400" />;
-            default: return <Clock size={16} className="text-gray-400" />;
+            case 'clock': return <Clock size={12} className="text-[#0058DB]" />;
+            case 'check-circle': return <CheckCircle2 size={12} className="text-[#0058DB]" />;
+            case 'check': return <Check size={12} className="text-emerald-500" />;
+            case 'alert': return <AlertCircle size={12} className="text-red-500" />;
+            case 'rotate': return <RotateCcw size={12} className="text-gray-400" />;
+            default: return <Clock size={12} className="text-gray-400" />;
         }
     };
 
     return (
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden flex flex-col min-h-[500px] relative z-0 isolate">
-            <div className="flex-1 overflow-y-auto">
-                <table className="w-full text-left border-collapse">
-                    <tbody className="divide-y divide-gray-50/50">
-                        {inflows.map((row) => {
-                            const status = row.status || 'COMPLETED';
-                            const source = ACCOUNT_TYPE_LABEL[row.account_type || ''] || 'Inflow';
-                            return (
-                                <tr
-                                    key={row.id}
-                                    onClick={() => onRowClick?.(row.id)}
-                                    className="group cursor-pointer hover:bg-emerald-50/30 transition-all bg-gray-50/30"
-                                >
-                                    {/* Leading accent dot */}
-                                    <td className="py-6 px-8 w-4">
-                                        <div className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200" />
-                                    </td>
+        <div className="bg-white rounded-2xl p-3 flex flex-col gap-2">
+            <div className="flex flex-col divide-y divide-[#E8EEF8]">
+                {inflows.map((row) => {
+                    const status = row.status || 'COMPLETED';
+                    const source = ACCOUNT_TYPE_LABEL[row.account_type || ''] || 'Inflow';
+                    const statusConfig = getStatusConfig(status);
 
-                                    {/* Description + source / reference metadata */}
-                                    <td className="py-6 px-2 flex-1">
-                                        <div className="flex flex-col space-y-2">
-                                            <div className="text-[15px] tracking-[-0.01em] font-normal text-gray-700 line-clamp-1">
-                                                {inflowTitle(row.description)}
-                                            </div>
-                                            <div className="flex items-center space-x-3 text-[11px] uppercase tracking-tight font-medium">
-                                                <span className="text-gray-400">{source}</span>
-                                                <div className="h-1 w-1 rounded-full bg-gray-200" />
-                                                <span className="text-gray-300">
-                                                    {row.reference_number || 'Receipt'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </td>
+                    return (
+                        <div
+                            key={row.id}
+                            onClick={() => onRowClick?.(row.id)}
+                            className="group px-3 py-3.5 flex items-center gap-4 cursor-pointer transition-colors hover:bg-gray-50/70"
+                        >
+                            {/* Inflow accent dot */}
+                            <div className="w-5 h-4 flex-shrink-0 flex justify-center items-center">
+                                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200" />
+                            </div>
 
-                                    {/* Status pill */}
-                                    <td className="py-6 px-6 w-[180px]">
-                                        <div className="flex items-center bg-white px-3.5 py-1.5 rounded-full border border-gray-100 shadow-sm w-fit transition-all hover:border-gray-200 group-hover:shadow-md group-hover:shadow-emerald-50/50">
-                                            {getStatusIcon(status)}
-                                            <span className="text-[10px] font-black text-brand-navy uppercase tracking-widest ml-2">
-                                                {getStatusConfig(status).label}
-                                            </span>
-                                        </div>
-                                    </td>
-
-                                    {/* Amount + date */}
-                                    <td className="py-6 px-6 text-right w-[160px]">
-                                        <div className="flex flex-col space-y-1">
-                                            <div className="text-[17px] tracking-tight font-normal text-emerald-600">
-                                                +K{(row.debit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </div>
-                                            <div className="text-[11px] text-gray-400 tracking-widest leading-none font-normal">
-                                                {new Date(row.date).toLocaleDateString('en-GB')}
-                                            </div>
-                                        </div>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-
-                {inflows.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-24 text-center">
-                        <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-gray-100">
-                            <Search size={32} />
+                            {/* Main content */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-4">
+                                    <span className="text-sm truncate font-medium text-gray-700">
+                                        {inflowTitle(row.description)}
+                                    </span>
+                                    <span className="text-sm whitespace-nowrap font-semibold text-emerald-600">
+                                        +K{(row.debit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between mt-px">
+                                    <span className="text-[10px] font-normal capitalize text-[#6B7280]">
+                                        {source} · {row.reference_number || 'Receipt'}
+                                    </span>
+                                    <span className="text-[10px] font-normal text-neutral-500">
+                                        {new Date(row.date).toLocaleDateString('en-GB')}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-1 mt-1">
+                                    {getStatusIcon(status)}
+                                    <span className="text-[10px] font-normal capitalize text-[#6B7280]">
+                                        {statusConfig.label}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
-                        <p className="text-gray-400 max-w-xs mx-auto text-sm font-medium mt-2">
-                            Record a sale with the New Sale button to see money-in here.
-                        </p>
-                    </div>
-                )}
+                    );
+                })}
             </div>
+
+            {inflows.length === 0 && (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
+                        <Search size={32} />
+                    </div>
+                    <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                    <p className="text-gray-400 max-w-xs mx-auto text-sm font-medium mt-2">
+                        Record a sale with the New Sale button to see money-in here.
+                    </p>
+                </div>
+            )}
         </div>
     );
 };
