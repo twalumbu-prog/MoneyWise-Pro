@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Check, Copy, Link2, ExternalLink, Download, Store, Zap } from 'lucide-react';
+import { X, Check, Copy, ExternalLink, Download, Store, Zap } from 'lucide-react';
 import { QRCodeCanvas } from 'qrcode.react';
 import { organizationService } from '../services/organization.service';
 import { useAuth } from '../context/AuthContext';
@@ -273,9 +273,6 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                 {/* Header */}
                 <div className="p-6 flex justify-between items-center bg-white">
                     <div className="flex items-center space-x-2.5">
-                        <div className="text-blue-600">
-                            <Link2 size={20} strokeWidth={2.5} />
-                        </div>
                         <div>
                             <h2 className="text-base font-black text-slate-950 uppercase tracking-wider">Share Pay Links</h2>
                             <p className="text-xs font-semibold text-slate-400 mt-0.5">{walletName}</p>
@@ -323,12 +320,18 @@ const ShareWalletLinkModal: React.FC<ShareWalletLinkModalProps> = ({
                             <div className="space-y-4">
                                 <div className="flex justify-center">
                                     <div className="flex flex-col items-center p-4 bg-white border border-slate-100 rounded-2xl shadow-sm">
-                                        {logoUrl && (
+                                        {logoUrl ? (
                                             <img
                                                 src={logoUrl}
                                                 alt="Company logo"
-                                                className="h-10 w-auto max-w-[120px] object-contain mb-3 rounded-xl"
+                                                className="h-10 w-10 object-cover mb-3 rounded-xl flex-shrink-0"
                                             />
+                                        ) : (
+                                            <div className="h-10 w-10 mb-3 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center flex-shrink-0">
+                                                <span className="text-white font-black text-base uppercase">
+                                                    {(organizationName || walletName || 'B').charAt(0)}
+                                                </span>
+                                            </div>
                                         )}
                                         <div ref={qrRef}>
                                             <QRCodeCanvas
