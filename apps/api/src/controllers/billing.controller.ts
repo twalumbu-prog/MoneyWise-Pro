@@ -42,7 +42,8 @@ async function ensureSubscription(organizationId: string) {
 // ──────────────────────────────────────────────
 export async function getSubscription(req: Request, res: Response) {
     try {
-        const organizationId = (req as any).organizationId;
+        const organizationId = (req as any).user?.organization_id;
+        if (!organizationId) return res.status(400).json({ error: 'No organization found for this user' });
         const sub = await ensureSubscription(organizationId);
 
         const [planResult, creditsResult, invoicesResult] = await Promise.all([
@@ -95,7 +96,7 @@ export async function getSubscription(req: Request, res: Response) {
 // ──────────────────────────────────────────────
 export async function upgradeToPremium(req: Request, res: Response) {
     try {
-        const organizationId = (req as any).organizationId;
+        const organizationId = (req as any).user?.organization_id;
         const sub = await ensureSubscription(organizationId);
 
         if (sub.plan_id === 'premium') {
@@ -141,7 +142,7 @@ export async function upgradeToPremium(req: Request, res: Response) {
 // ──────────────────────────────────────────────
 export async function downgradeToFree(req: Request, res: Response) {
     try {
-        const organizationId = (req as any).organizationId;
+        const organizationId = (req as any).user?.organization_id;
         const sub = await ensureSubscription(organizationId);
 
         if (sub.plan_id === 'free') {
@@ -251,7 +252,7 @@ export async function recordFeeCredit(
 // ──────────────────────────────────────────────
 export async function generateInvoice(req: Request, res: Response) {
     try {
-        const organizationId = (req as any).organizationId;
+        const organizationId = (req as any).user?.organization_id;
         const sub = await ensureSubscription(organizationId);
 
         if (sub.plan_id !== 'premium') {
@@ -395,7 +396,7 @@ async function attemptWalletAutoDeduction(
 // ──────────────────────────────────────────────
 export async function initiateInvoicePayment(req: Request, res: Response) {
     try {
-        const organizationId = (req as any).organizationId;
+        const organizationId = (req as any).user?.organization_id;
         const { invoiceId } = req.params;
 
         const { data: invoice, error: invErr } = await supabase
@@ -453,7 +454,7 @@ export async function initiateInvoicePayment(req: Request, res: Response) {
 // ──────────────────────────────────────────────
 export async function getInvoiceReceipt(req: Request, res: Response) {
     try {
-        const organizationId = (req as any).organizationId;
+        const organizationId = (req as any).user?.organization_id;
         const { invoiceId } = req.params;
 
         const { data: invoice, error } = await supabase
