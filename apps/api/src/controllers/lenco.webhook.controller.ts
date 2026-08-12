@@ -7,6 +7,7 @@ import { supabase } from '../lib/supabase';
 import { ruleEngine } from '../services/ai/rule.engine';
 import { decisionRouter } from '../services/ai/decision.router';
 import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForReference } from '../services/product_routing.service';
+import { recordFeeCredit } from './billing.controller';
 import { whatsappService } from '../services/whatsapp.service';
 import { emailService } from '../services/email.service';
 import { QuickBooksService } from '../services/quickbooks.service';
@@ -578,6 +579,8 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
 
                     if (sourceAccountId && secretKey) {
                         await sweepPlatformCommission(sourceAccountId, secretKey, commission, reference, organizationId);
+                        // Credit this platform fee toward the org's monthly subscription
+                        void recordFeeCredit(organizationId, commission, reference, 'PAYMENT_LINK');
                     } else {
                         console.warn(`[Lenco Sweep] Skipped: missing source account or secret key for org ${organizationId}.`);
                     }

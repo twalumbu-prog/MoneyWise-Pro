@@ -10,7 +10,8 @@ import {
     Share2,
     BrainCircuit,
     User,
-    GraduationCap
+    GraduationCap,
+    CreditCard
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -18,6 +19,7 @@ import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
 import { RuleManagement } from '../components/settings/RuleManagement';
 import { AIMetrics } from '../components/settings/AIMetrics';
 import { MyProfileSettings } from '../components/settings/MyProfileSettings';
+import { SubscriptionBilling } from '../components/settings/SubscriptionBilling';
 import { Layout } from '../components/Layout';
 
 export const Settings: React.FC = () => {
@@ -80,7 +82,8 @@ export const Settings: React.FC = () => {
                                         { id: 'users', label: 'Team Members', icon: <Users className="w-2.5 h-2.5" /> },
                                         { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
-                                        { id: 'automation', label: 'AI & Automation', icon: <BrainCircuit className="w-2.5 h-2.5" /> }
+                                        { id: 'automation', label: 'AI & Automation', icon: <BrainCircuit className="w-2.5 h-2.5" /> },
+                                        { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> }
                                     ].map(tab => (
                                         <button
                                             key={tab.id}
@@ -184,6 +187,9 @@ export const Settings: React.FC = () => {
                                             )}
                                         </div>
                                     )}
+
+                                    {/* Subscription & Billing Tab */}
+                                    {activeTab === 'billing' && <SubscriptionBilling />}
 
                                     {/* AI & Automation Tab */}
                                     {activeTab === 'automation' && (
