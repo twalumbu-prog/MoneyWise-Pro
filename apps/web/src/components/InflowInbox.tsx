@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, Check, Clock, AlertCircle, CheckCircle2, RotateCcw } from 'lucide-react';
 import { getStatusConfig } from '../services/requisition.service';
 
@@ -12,6 +12,7 @@ export interface InflowRow {
     reference_number?: string;
     account_type?: string;
     accounts?: { name?: string } | null;
+    has_unread_updates?: boolean;
 }
 
 interface InflowInboxProps {
@@ -35,6 +36,17 @@ export const inflowTitle = (description: string) =>
     (description || 'Inflow').replace(/^PENDING_INTENT:\s*/, '').split(' | ')[0].trim();
 
 export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick }) => {
+    const [selected, setSelected] = useState<Set<string>>(new Set());
+
+    const toggleSelected = (id: string) => {
+        setSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            return next;
+        });
+    };
+
     const getStatusIcon = (status: string) => {
         const config = getStatusConfig(status);
         switch (config.iconType) {
@@ -59,11 +71,21 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                         <div
                             key={row.id}
                             onClick={() => onRowClick?.(row.id)}
-                            className="group px-3 py-3.5 flex items-center gap-4 cursor-pointer transition-colors hover:bg-gray-50/70"
+                            className={`group px-3 py-3.5 flex items-center gap-4 cursor-pointer transition-colors ${
+                                selected.has(row.id) ? 'bg-[#F0F7FF]' : 'hover:bg-gray-50/70'
+                            }`}
                         >
-                            {/* Inflow accent dot */}
-                            <div className="w-5 h-4 flex-shrink-0 flex justify-center items-center">
-                                <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-sm shadow-emerald-200" />
+                            {/* Checkbox */}
+                            <div
+                                className="w-5 h-4 flex-shrink-0 inline-flex justify-center items-center gap-4"
+                                onClick={(e) => e.stopPropagation()}
+                            >
+                                <input
+                                    type="checkbox"
+                                    checked={selected.has(row.id)}
+                                    onChange={() => toggleSelected(row.id)}
+                                    className="w-3.5 h-3.5 appearance-none bg-white rounded shadow-[inset_0px_2px_4px_0px_rgba(0,0,0,0.05)] border-[0.50px] border-indigo-300 checked:bg-[#0058DB] checked:border-[#0058DB] cursor-pointer"
+                                />
                             </div>
 
                             {/* Main content */}
@@ -72,7 +94,7 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                                     <span className="text-sm truncate font-medium text-gray-700">
                                         {inflowTitle(row.description)}
                                     </span>
-                                    <span className="text-sm whitespace-nowrap font-semibold text-emerald-600">
+                                    <span className="text-sm whitespace-nowrap font-semibold text-[#111827]">
                                         +K{(row.debit || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     </span>
                                 </div>
@@ -90,6 +112,13 @@ export const InflowInbox: React.FC<InflowInboxProps> = ({ inflows, onRowClick })
                                         {statusConfig.label}
                                     </span>
                                 </div>
+                            </div>
+
+                            {/* Unread dot */}
+                            <div className="w-4 flex-shrink-0 flex items-center justify-center">
+                                {row.has_unread_updates && (
+                                    <span className="h-1.5 w-1.5 rounded-full bg-[#0058DB] shadow-sm shadow-blue-200" />
+                                )}
                             </div>
                         </div>
                     );
