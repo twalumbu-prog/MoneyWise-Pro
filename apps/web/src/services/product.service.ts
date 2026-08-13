@@ -74,13 +74,25 @@ export interface Product {
     updated_at?: string;
 }
 
+/** Snapshot of a single line item stored inside payment_links.items */
+export interface InvoiceLinkSnapshotItem {
+    product_id: string;
+    name: string;
+    quantity: number;
+    unit_price: number;
+    check_in?: string;
+    check_out?: string;
+}
+
 export interface PaymentLink {
     id: string;
     organization_id: string;
-    product_id: string;
+    /** null for multi-item invoice links */
+    product_id?: string | null;
     token: string;
     customer_name: string;
     customer_phone: string;
+    customer_email?: string | null;
     amount: number;
     wallet_id?: string | null;
     status: 'ACTIVE' | 'PAID' | 'CANCELLED';
@@ -89,6 +101,15 @@ export interface PaymentLink {
     paid_at?: string | null;
     path?: string;
     email_sent?: boolean;
+    is_archived?: boolean;
+    /** Present on invoice-type links (product_id is null); null on single-product links */
+    items?: InvoiceLinkSnapshotItem[] | null;
+}
+
+export interface UpdateInvoiceLinkPayload {
+    customer_name: string;
+    customer_phone: string;
+    customer_email?: string | null;
 }
 
 export interface InvoiceLinkItem {
@@ -234,6 +255,20 @@ export const paymentLinkService = {
         return response.data;
     },
 
+    /** Invoice-type payment links only — those with a multi-item items[] snapshot.
+     *  Passes ?invoice=true so the API filters server-side; avoids pulling every
+     *  single-product link just to discard them on the client. */
+    async listInvoiceLinks(): Promise<PaymentLink[]> {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+
+        const response = await axios.get(`${API_URL}/organizations/payment-links`, {
+            params: { invoice: 'true' },
+            headers: { Authorization: `Bearer ${session.access_token}` }
+        });
+        return response.data;
+    },
+
     async deactivatePaymentLink(id: string): Promise<PaymentLink> {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) throw new Error('Not authenticated');
@@ -242,5 +277,29 @@ export const paymentLinkService = {
             headers: { Authorization: `Bearer ${session.access_token}` }
         });
         return response.data;
-    }
+    },
+
+    async archiveInvoiceLink(id: string, archived = true): Promise<PaymentLink> {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+
+        const response = await axios.patch(
+            `${API_URL}/organizations/payment-links/${id}/archive`,
+            { archived },
+            { headers: { Authorization: `Bearer ${session.access_token}` } }
+        );
+        return response.data;
+    },
+
+    async updateInvoiceLink(id: string, payload: UpdateInvoiceLinkPayload): Promise<PaymentLink> {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) throw new Error('Not authenticated');
+
+        const response = await axios.patch(
+            `${API_URL}/organizations/payment-links/${id}`,
+            payload,
+            { headers: { Authorization: `Bearer ${session.access_token}` } }
+        );
+        return response.data;
+    },
 };

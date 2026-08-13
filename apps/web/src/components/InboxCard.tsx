@@ -41,6 +41,13 @@ interface InboxCardProps {
     onRefresh: () => void;
     hasActiveFilters?: boolean;
 
+    /**
+     * When provided, renders in the left slot of Row 2 (where the status tab
+     * pills live for outflows) — use this to pass inflow sub-mode tabs so they
+     * appear in the same position and at the same visual level as outflow tabs.
+     */
+    leftContent?: React.ReactNode;
+
     children: React.ReactNode;
 }
 
@@ -72,6 +79,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
     onOpenFilters,
     onRefresh,
     hasActiveFilters,
+    leftContent,
     children,
 }) => {
     const [isNewMenuOpen, setIsNewMenuOpen] = useState(false);
@@ -193,7 +201,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                             );
                         })}
                     </div>
-                ) : <div />}
+                ) : leftContent ?? <div />}
 
                 <div className="flex items-center gap-2 flex-shrink-0">
                     <div className="relative">

@@ -4,7 +4,9 @@ import {
     createPaymentLink,
     createInvoiceLink,
     listPaymentLinks,
-    deactivatePaymentLink
+    deactivatePaymentLink,
+    archivePaymentLink,
+    updatePaymentLink,
 } from '../controllers/payment_link.controller';
 
 const router = Router();
@@ -15,5 +17,7 @@ router.get('/', listPaymentLinks);
 router.post('/', createPaymentLink);
 router.post('/invoice', createInvoiceLink);
 router.post('/:id/deactivate', deactivatePaymentLink);
+router.patch('/:id/archive', archivePaymentLink);
+router.patch('/:id', updatePaymentLink);
 
 export default router;

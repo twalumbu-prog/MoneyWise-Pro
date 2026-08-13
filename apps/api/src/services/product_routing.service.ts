@@ -28,9 +28,34 @@ export async function markPaymentLinkPaid(orgId: string, reference: string): Pro
                 .eq('organization_id', orgId)
                 .eq('reference', reference)
                 .eq('status', 'ACTIVE')
-                .select('id');
+                .select('id, items');
             if (error) throw new Error(error.message);
-            return Array.isArray(data) && data.length > 0;
+
+            const flipped = Array.isArray(data) && data.length > 0;
+
+            // For invoice-type links (have items[]), void the PENDING Accounts
+            // Receivable cashbook entry that was created at invoice issuance.
+            // The real INFLOW (account_type=MONEYWISE_WALLET) created by the
+            // Lenco webhook is now the authoritative settled entry — the AR
+            // entry would double-count if left as PENDING.
+            if (flipped) {
+                for (const link of data as any[]) {
+                    if (!Array.isArray(link.items) || link.items.length === 0) continue;
+                    const { error: voidErr } = await supabase
+                        .from('cashbook_entries')
+                        .update({ status: 'CANCELLED' })
+                        .eq('organization_id', orgId)
+                        .eq('invoice_link_id', link.id)
+                        .eq('status', 'PENDING');
+                    if (voidErr) {
+                        console.error(`[ProductRouting] Failed to void AR entry for invoice ${link.id}:`, voidErr.message);
+                    } else {
+                        console.log(`[ProductRouting] AR entry voided for invoice ${link.id} (ref ${reference}).`);
+                    }
+                }
+            }
+
+            return flipped;
         });
     } catch (err: any) {
         console.error(`[ProductRouting] markPaymentLinkPaid error for ref ${reference}:`, err.message);

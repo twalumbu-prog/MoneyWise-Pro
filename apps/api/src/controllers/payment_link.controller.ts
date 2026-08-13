@@ -3,6 +3,7 @@ import { randomBytes } from 'crypto';
 import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
+import { cashbookService } from '../services/cashbook.service';
 
 /**
  * One-time, single-use payment links. An admin generates a link pre-filled with a
@@ -202,6 +203,28 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
 
         if (error) throw error;
 
+        // Create an Accounts Receivable cashbook entry to represent the revenue
+        // earned but not yet collected. Status stays PENDING until the customer
+        // pays; at that point markPaymentLinkPaid() voids it and the Lenco INFLOW
+        // (account_type=MONEYWISE_WALLET) becomes the authoritative settled entry.
+        try {
+            await cashbookService.createEntry(organization_id, {
+                date: new Date().toISOString().split('T')[0],
+                description: `Invoice: ${customer_name.trim()} | INV-${token.slice(0, 8).toUpperCase()}`,
+                debit: amount,
+                credit: 0,
+                entry_type: 'INFLOW',
+                account_type: 'ACCOUNTS_RECEIVABLE',
+                status: 'PENDING',
+                wallet_id: walletId,
+                external_reference: `INV:${data.id}`,
+                invoice_link_id: data.id,
+            } as any);
+        } catch (arErr: any) {
+            // Non-fatal: the payment link was already created. Log and continue.
+            console.error('[PaymentLinks] AR entry creation failed (non-fatal):', arErr?.message);
+        }
+
         // Optional invoice email — non-fatal: the link is always returned so the
         // admin can copy/share it manually even if the email fails.
         let emailSent = false;
@@ -256,6 +279,16 @@ export const listPaymentLinks = async (req: any, res: Response): Promise<any> =>
             query = query.eq('product_id', req.query.product_id as string);
         }
 
+        // ?invoice=true  →  only multi-item invoice links (items is a non-empty JSON array)
+        if (req.query.invoice === 'true') {
+            query = (query as any).not('items', 'is', null);
+        }
+
+        // By default exclude archived links; pass ?archived=true to include them.
+        if (req.query.archived !== 'true') {
+            query = query.eq('is_archived', false);
+        }
+
         const { data, error } = await query;
         if (error) throw error;
         res.json(data);
@@ -302,9 +335,119 @@ export const deactivatePaymentLink = async (req: any, res: Response): Promise<an
             .single();
 
         if (error) throw error;
+
+        // Void the PENDING AR cashbook entry for this invoice (non-fatal).
+        const { error: voidErr } = await supabase
+            .from('cashbook_entries')
+            .update({ status: 'CANCELLED' })
+            .eq('organization_id', organization_id)
+            .eq('invoice_link_id', id)
+            .eq('status', 'PENDING');
+        if (voidErr) {
+            console.error(`[PaymentLinks] Failed to void AR entry on deactivate for ${id}:`, voidErr.message);
+        }
+
         res.json(data);
     } catch (error: any) {
         console.error('[PaymentLinks] Deactivate error:', error);
         res.status(500).json({ error: 'Failed to deactivate payment link', details: error.message });
+    }
+};
+
+/**
+ * Archive (or un-archive) an invoice link without cancelling it.
+ * Archived links are hidden from the inbox but remain active — the customer
+ * can still pay via their link.  PATCH body: { archived: boolean }
+ */
+export const archivePaymentLink = async (req: any, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = req.user.organization_id;
+        const role = req.user.role;
+
+        if (!organization_id) return res.status(400).json({ error: 'User organization context missing' });
+        if (role !== 'ADMIN') return res.status(403).json({ error: 'Only administrators can manage payment links' });
+
+        const archived = req.body.archived !== false; // default true (archive)
+
+        const { data: link, error: findError } = await supabase
+            .from('payment_links')
+            .select('organization_id')
+            .eq('id', id)
+            .single();
+
+        if (findError || !link) return res.status(404).json({ error: 'Payment link not found' });
+        if (link.organization_id !== organization_id) {
+            return res.status(403).json({ error: 'Permission denied: Link belongs to another organization' });
+        }
+
+        const { data, error } = await supabase
+            .from('payment_links')
+            .update({ is_archived: archived })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+        res.json(data);
+    } catch (error: any) {
+        console.error('[PaymentLinks] Archive error:', error);
+        res.status(500).json({ error: 'Failed to archive payment link', details: error.message });
+    }
+};
+
+/**
+ * Update editable fields on an invoice link: customer name, phone, and email.
+ * Items and total are immutable after creation (the customer already has the link).
+ */
+export const updatePaymentLink = async (req: any, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = req.user.organization_id;
+        const role = req.user.role;
+
+        if (!organization_id) return res.status(400).json({ error: 'User organization context missing' });
+        if (role !== 'ADMIN') return res.status(403).json({ error: 'Only administrators can update payment links' });
+
+        const { customer_name, customer_phone, customer_email } = req.body;
+        if (!customer_name?.trim()) return res.status(400).json({ error: 'Customer name is required' });
+        if (!customer_phone?.trim()) return res.status(400).json({ error: 'Customer phone is required' });
+
+        const { data: link, error: findError } = await supabase
+            .from('payment_links')
+            .select('organization_id, status, token, amount, id')
+            .eq('id', id)
+            .single();
+
+        if (findError || !link) return res.status(404).json({ error: 'Payment link not found' });
+        if (link.organization_id !== organization_id) {
+            return res.status(403).json({ error: 'Permission denied: Link belongs to another organization' });
+        }
+
+        const { data, error } = await supabase
+            .from('payment_links')
+            .update({
+                customer_name: customer_name.trim(),
+                customer_phone: customer_phone.trim(),
+                customer_email: customer_email ? customer_email.trim() : null,
+            })
+            .eq('id', id)
+            .select()
+            .single();
+
+        if (error) throw error;
+
+        // Keep the AR cashbook description in sync.
+        await supabase
+            .from('cashbook_entries')
+            .update({ description: `Invoice: ${customer_name.trim()} | INV-${link.token.slice(0, 8).toUpperCase()}` })
+            .eq('organization_id', organization_id)
+            .eq('invoice_link_id', id)
+            .eq('status', 'PENDING');
+
+        res.json(data);
+    } catch (error: any) {
+        console.error('[PaymentLinks] Update error:', error);
+        res.status(500).json({ error: 'Failed to update payment link', details: error.message });
     }
 };

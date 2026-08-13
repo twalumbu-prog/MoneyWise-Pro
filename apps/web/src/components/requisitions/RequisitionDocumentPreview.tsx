@@ -2,12 +2,12 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X, Printer } from 'lucide-react';
 import { Requisition } from '../../services/requisition.service';
-import { 
-    PurchaseRequisitionForm, 
-    CashDisbursalProof, 
-    ExpenseVarianceForm, 
-    AccountingTreatmentForm, 
-    QuickBooksSyncLog 
+import {
+    PurchaseRequisitionForm,
+    CashDisbursalProof,
+    ExpenseVarianceForm,
+    AccountingTreatmentForm,
+    QuickBooksSyncLog
 } from './RequisitionDocumentTemplates';
 
 interface RequisitionDocumentPreviewProps {
@@ -17,45 +17,40 @@ interface RequisitionDocumentPreviewProps {
     onClose: () => void;
 }
 
-const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({ 
-    type, 
-    title, 
-    requisition, 
-    onClose 
+const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
+    type,
+    title,
+    requisition,
+    onClose
 }) => {
-    
+
     const renderDocument = () => {
         if (type === 'all') {
             const status = requisition.status || 'DRAFT';
             return (
-                <div className="flex flex-col space-y-[4rem] print:space-y-0 bg-transparent">
-                    {/* PR Form */}
+                <div className="flex flex-col space-y-8 md:space-y-[4rem] print:space-y-0 bg-transparent">
                     {!['DRAFT', 'PENDING_APPROVAL'].includes(status) && (
-                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                        <div className="print-page bg-white shadow-xl shadow-black/8 md:shadow-2xl md:shadow-black/10 rounded-sm overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
                             <PurchaseRequisitionForm requisition={requisition} />
                         </div>
                     )}
-                    {/* POP Proof */}
                     {!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED'].includes(status) && (
-                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                        <div className="print-page bg-white shadow-xl shadow-black/8 md:shadow-2xl md:shadow-black/10 rounded-sm overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
                             <CashDisbursalProof requisition={requisition} />
                         </div>
                     )}
-                    {/* Expense Summary */}
                     {!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED', 'DISBURSED', 'EXPENSED'].includes(status) && (
-                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                        <div className="print-page bg-white shadow-xl shadow-black/8 md:shadow-2xl md:shadow-black/10 rounded-sm overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
                             <ExpenseVarianceForm requisition={requisition} />
                         </div>
                     )}
-                    {/* Accounting Treatment */}
                     {!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED', 'DISBURSED', 'EXPENSED', 'RECEIVED', 'CATEGORIZING'].includes(status) && (
-                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                        <div className="print-page bg-white shadow-xl shadow-black/8 md:shadow-2xl md:shadow-black/10 rounded-sm overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
                             <AccountingTreatmentForm requisition={requisition} />
                         </div>
                     )}
-                    {/* QB Sync */}
                     {['ACCOUNTED', 'COMPLETED'].includes(status) && (
-                        <div className="print-page bg-white shadow-2xl shadow-black/10 rounded-[4px] overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
+                        <div className="print-page bg-white shadow-xl shadow-black/8 md:shadow-2xl md:shadow-black/10 rounded-sm overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
                             <QuickBooksSyncLog requisition={requisition} />
                         </div>
                     )}
@@ -64,138 +59,96 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
         }
 
         switch (type) {
-            case 'pr_form':
-                return <PurchaseRequisitionForm requisition={requisition} />;
-            case 'pop_proof':
-                return <CashDisbursalProof requisition={requisition} />;
-            case 'expense_summary':
-                return <ExpenseVarianceForm requisition={requisition} />;
-            case 'accounting_treatment':
-                return <AccountingTreatmentForm requisition={requisition} />;
-            case 'qb_sync':
-                return <QuickBooksSyncLog requisition={requisition} />;
+            case 'pr_form':          return <PurchaseRequisitionForm requisition={requisition} />;
+            case 'pop_proof':        return <CashDisbursalProof requisition={requisition} />;
+            case 'expense_summary':  return <ExpenseVarianceForm requisition={requisition} />;
+            case 'accounting_treatment': return <AccountingTreatmentForm requisition={requisition} />;
+            case 'qb_sync':          return <QuickBooksSyncLog requisition={requisition} />;
             default:
-                return <div className="p-20 text-center font-bold text-gray-400">Preview not available for this document type.</div>;
+                return <div className="p-10 text-center font-bold text-gray-400">Preview not available.</div>;
         }
     };
 
-    const handlePrint = () => {
-        // Ensuring scroll is lifted to true top before print
-        window.print();
-    };
+    const handlePrint = () => window.print();
 
     const modalContent = (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 md:p-10 print:block print:relative print:inset-auto print:p-0">
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4 md:p-6 lg:p-10 print:block print:relative print:inset-auto print:p-0">
             {/* Backdrop */}
-            <div 
-                className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300"
+            <div
+                className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-300"
                 onClick={onClose}
             />
 
-            {/* Preview Container */}
-            <div className="relative bg-[#F5F5F7] w-full max-w-5xl h-full max-h-[95vh] rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-400 border border-white/20 print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:bg-white print:rounded-none print:block">
-                
-                {/* Modern Floating Header */}
-                <div className="absolute top-6 left-6 right-6 z-20 flex items-center justify-between px-6 py-3 bg-white/80 backdrop-blur-md rounded-2xl border border-white shadow-lg shadow-black/5">
-                    <div className="flex items-center space-x-4">
-                        <div className="w-10 h-10 rounded-xl bg-[#006AFF] flex items-center justify-center text-white shadow-xl shadow-blue-100">
-                           <Printer size={20} />
+            {/* Preview Container — full-screen sheet on mobile, floating card on sm+ */}
+            <div className="relative bg-[#F5F5F7] w-full sm:max-w-5xl h-[96vh] sm:h-full sm:max-h-[95vh] rounded-t-3xl sm:rounded-[32px] md:rounded-[40px] shadow-2xl overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-400 border border-white/20 print:h-auto print:max-h-none print:overflow-visible print:border-none print:shadow-none print:bg-white print:rounded-none print:block">
+
+                {/* ── Floating Header ──────────────────────────────────── */}
+                <div className="absolute top-3 sm:top-6 left-3 right-3 sm:left-6 sm:right-6 z-20 flex items-center justify-between gap-2 px-3 sm:px-5 py-2.5 sm:py-3 bg-white/85 backdrop-blur-md rounded-xl sm:rounded-2xl border border-white shadow-lg shadow-black/5">
+                    {/* Left: icon + title */}
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-[#006AFF] flex items-center justify-center text-white shadow-lg shadow-blue-200 flex-shrink-0">
+                           <Printer size={16} className="sm:hidden" />
+                           <Printer size={20} className="hidden sm:block" />
                         </div>
-                        <div>
-                            <h2 className="text-sm font-black text-gray-900 leading-none">{title}</h2>
-                            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Document Preview</p>
+                        <div className="min-w-0">
+                            <h2 className="text-xs sm:text-sm font-black text-gray-900 leading-none truncate">{title}</h2>
+                            <p className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-0.5 hidden xs:block">Document Preview</p>
                         </div>
                     </div>
 
-                    <div className="flex items-center space-x-3">
-                        <button 
+                    {/* Right: actions */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <button
                             onClick={handlePrint}
-                            className="h-10 px-5 bg-[#006AFF] text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center space-x-2"
+                            className="h-8 sm:h-10 px-3 sm:px-5 bg-[#006AFF] text-white rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black uppercase tracking-widest hover:bg-blue-600 transition-all flex items-center gap-1.5 sm:gap-2"
                         >
-                            <Printer size={16} />
-                            <span>Print / Save PDF</span>
+                            <Printer size={13} className="sm:hidden" />
+                            <Printer size={15} className="hidden sm:block" />
+                            <span className="hidden sm:inline">Print / Save PDF</span>
+                            <span className="sm:hidden">Print</span>
                         </button>
-                        <button 
+                        <button
                             onClick={onClose}
-                            className="w-10 h-10 bg-white text-gray-400 hover:text-gray-900 rounded-xl transition-all flex items-center justify-center border border-gray-100"
+                            className="w-8 h-8 sm:w-10 sm:h-10 bg-white text-gray-400 hover:text-gray-900 rounded-lg sm:rounded-xl transition-all flex items-center justify-center border border-gray-100 flex-shrink-0"
                         >
-                            <X size={20} />
+                            <X size={16} className="sm:hidden" />
+                            <X size={20} className="hidden sm:block" />
                         </button>
                     </div>
                 </div>
 
-                {/* Main Scrollable Area for Paper */}
-                <div className="flex-1 overflow-y-auto p-12 pt-32 pb-20 no-scrollbar print:overflow-visible print:h-auto print:flex-none print:p-0 print:block">
-                    {/* Centered Paper Layout */}
-                    <div className={`mx-auto max-w-[850px] ${type === 'all' ? '' : 'shadow-2xl shadow-black/10 rounded-[4px] bg-white overflow-hidden ring-1 ring-gray-900/5'} print:shadow-none print:w-full print:ring-0`}>
+                {/* ── Main Scrollable Content ───────────────────────────── */}
+                <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 sm:px-8 md:px-12 pt-20 sm:pt-28 md:pt-32 pb-6 sm:pb-12 md:pb-20 no-scrollbar print:overflow-visible print:h-auto print:flex-none print:p-0 print:block">
+                    <div className={`mx-auto max-w-[850px] ${type === 'all' ? '' : 'shadow-xl md:shadow-2xl shadow-black/8 md:shadow-black/10 rounded-sm bg-white overflow-hidden ring-1 ring-gray-900/5'} print:shadow-none print:w-full print:ring-0`}>
                         {renderDocument()}
                     </div>
                 </div>
 
-                {/* Mobile Bottom Bar (Implicit Print Action) */}
-                <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-[10px] font-bold text-gray-400 bg-white/40 backdrop-blur px-4 py-2 rounded-full border border-white/40">
+                {/* Subtle footer watermark — hidden on mobile to save space */}
+                <div className="hidden sm:flex absolute bottom-4 left-1/2 -translate-x-1/2 text-[10px] font-bold text-gray-400 bg-white/40 backdrop-blur px-4 py-2 rounded-full border border-white/40">
                     MoneyWise-Pro Document Management System
                 </div>
             </div>
 
-            {/* Print Injected Styles */}
+            {/* Print styles */}
             <style>{`
                 @media print {
-                    @page {
-                        size: auto;
-                        margin: 0.5cm;
-                    }
-                    body, html {
-                        height: max-content !important;
-                        overflow: visible !important;
-                        background: white !important;
-                    }
-                    /* Hide everything in root but keep the portal visible */
-                    #root {
-                        display: none !important;
-                    }
-                    body * {
-                        visibility: hidden;
-                    }
+                    @page { size: auto; margin: 0.5cm; }
+                    body, html { height: max-content !important; overflow: visible !important; background: white !important; }
+                    #root { display: none !important; }
+                    body * { visibility: hidden; }
                     .fixed.inset-0.z-\\[60\\] {
-                        position: absolute !important;
-                        left: 0 !important;
-                        top: 0 !important;
-                        padding: 0 !important;
-                        margin: 0 !important;
-                        height: auto !important;
-                        width: 100% !important;
-                        background: none !important;
-                        backdrop-filter: none !important;
-                        display: block !important;
-                        overflow: visible !important;
+                        position: absolute !important; left: 0 !important; top: 0 !important;
+                        padding: 0 !important; margin: 0 !important; height: auto !important;
+                        width: 100% !important; background: none !important;
+                        backdrop-filter: none !important; display: block !important; overflow: visible !important;
                     }
-                    .fixed.inset-0.z-\\[60\\] *, .print-override * {
-                        visibility: visible !important;
-                    }
-                    .print-page {
-                        page-break-after: always;
-                    }
-                    .print-page:last-child {
-                        page-break-after: auto;
-                    }
-                    .printable-document {
-                        box-shadow: none !important;
-                        border: none !important;
-                        width: 100% !important;
-                        max-width: 100% !important;
-                        margin: 0 !important;
-                        padding: 1cm !important;
-                    }
-                    .absolute {
-                        display: none !important;
-                    }
-                    .shadow-2xl {
-                        box-shadow: none !important;
-                    }
-                    .rounded-\\[4px\\] {
-                        border-radius: 0 !important;
-                    }
+                    .fixed.inset-0.z-\\[60\\] *, .print-override * { visibility: visible !important; }
+                    .print-page { page-break-after: always; }
+                    .print-page:last-child { page-break-after: auto; }
+                    .printable-document { box-shadow: none !important; border: none !important; width: 100% !important; max-width: 100% !important; margin: 0 !important; padding: 1cm !important; }
+                    .absolute { display: none !important; }
+                    .shadow-2xl, .shadow-xl { box-shadow: none !important; }
                 }
             `}</style>
         </div>
