@@ -8,7 +8,6 @@ import {
     Users,
     FileText,
     Share2,
-    BrainCircuit,
     User,
     GraduationCap,
     CreditCard
@@ -16,8 +15,6 @@ import {
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
 import { ChartOfAccounts } from '../components/settings/ChartOfAccounts';
-import { RuleManagement } from '../components/settings/RuleManagement';
-import { AIMetrics } from '../components/settings/AIMetrics';
 import { MyProfileSettings } from '../components/settings/MyProfileSettings';
 import { SubscriptionBilling } from '../components/settings/SubscriptionBilling';
 import { Layout } from '../components/Layout';
@@ -74,40 +71,35 @@ export const Settings: React.FC = () => {
                             </div>
 
                             {/* Tabs Row */}
-                            <div className="self-stretch flex justify-between items-center w-full overflow-x-auto custom-scrollbar flex-shrink-0">
-                                <div className="flex-1 h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-2.5 min-w-max">
+                            <div className="self-stretch flex-shrink-0 overflow-x-auto no-scrollbar">
+                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px] min-w-max">
                                     {[
                                         { id: 'general', label: 'General Settings', icon: <SettingsIcon className="w-2.5 h-2.5" /> },
-                                        { id: 'profile', label: 'My profile', icon: <User className="w-2.5 h-2.5" /> },
+                                        { id: 'profile', label: 'My Profile', icon: <User className="w-2.5 h-2.5" /> },
                                         { id: 'users', label: 'Team Members', icon: <Users className="w-2.5 h-2.5" /> },
                                         { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
-                                        { id: 'automation', label: 'AI & Automation', icon: <BrainCircuit className="w-2.5 h-2.5" /> },
                                         { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> }
                                     ].map(tab => (
                                         <button
                                             key={tab.id}
                                             onClick={() => handleTabChange(tab.id)}
-                                            className={`h-full px-3.5 rounded-lg flex justify-center items-center gap-2 transition-all ${
+                                            className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
                                                 activeTab === tab.id
-                                                    ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] text-gray-900 font-medium'
-                                                    : 'text-gray-600 font-normal hover:bg-white/50 hover:text-gray-900'
+                                                    ? 'font-bold bg-white text-[#111827] shadow-sm'
+                                                    : 'font-normal text-gray-500 hover:text-gray-700'
                                             }`}
                                         >
-                                            <div className="flex justify-start items-center gap-1.5">
-                                                {tab.icon}
-                                                <span className="text-center justify-center text-[11px] font-['DM_Sans'] leading-5">
-                                                    {tab.label}
-                                                </span>
-                                            </div>
+                                            {tab.icon}
+                                            {tab.label}
                                         </button>
                                     ))}
                                 </div>
                             </div>
 
                             {/* Main Content Area */}
-                            <div className="self-stretch flex-1 bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-start items-start overflow-y-auto w-full">
-                                <div className="w-full p-4 sm:p-6 flex-1 min-w-0">
+                            <div className={`self-stretch flex-1 bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-start items-start w-full ${activeTab === 'billing' ? 'overflow-hidden' : 'overflow-y-auto'}`}>
+                                <div className={`w-full p-4 sm:p-6 min-w-0 ${activeTab === 'billing' ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'flex-1'}`}>
                                     {/* Profile Tab */}
                                     {activeTab === 'profile' && <MyProfileSettings />}
 
@@ -191,17 +183,7 @@ export const Settings: React.FC = () => {
                                     {/* Subscription & Billing Tab */}
                                     {activeTab === 'billing' && <SubscriptionBilling />}
 
-                                    {/* AI & Automation Tab */}
-                                    {activeTab === 'automation' && (
-                                        <div className="space-y-12">
-                                            <div>
-                                                <AIMetrics />
-                                            </div>
-                                            <div className="border-t border-gray-100 pt-12">
-                                                <RuleManagement />
-                                            </div>
-                                        </div>
-                                    )}
+
                                 </div>
                             </div>
                         </div>

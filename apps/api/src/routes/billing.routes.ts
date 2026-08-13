@@ -6,6 +6,8 @@ import {
     downgradeToFree,
     generateInvoice,
     initiateInvoicePayment,
+    initiateInvoiceMobileMoneyPayment,
+    checkInvoiceMobileMoneyStatus,
     getInvoiceReceipt,
 } from '../controllers/billing.controller';
 
@@ -17,7 +19,9 @@ router.get('/subscription',               getSubscription);
 router.post('/upgrade',                   upgradeToPremium);
 router.post('/downgrade',                 downgradeToFree);
 router.post('/generate-invoice',          generateInvoice);
-router.post('/pay/:invoiceId',            initiateInvoicePayment);
-router.get('/invoice/:invoiceId/receipt', getInvoiceReceipt);
+router.post('/pay/:invoiceId',                         initiateInvoicePayment);
+router.post('/pay/:invoiceId/mobile-money',            initiateInvoiceMobileMoneyPayment);
+router.get('/pay/:invoiceId/mobile-money/status',      checkInvoiceMobileMoneyStatus);
+router.get('/invoice/:invoiceId/receipt',              getInvoiceReceipt);
 
 export default router;

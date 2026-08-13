@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-    CreditCard, Download, ArrowUpCircle,
-    ChevronRight, CheckCircle2, Clock, AlertCircle, RefreshCw, Zap
+    CreditCard, ArrowUpCircle,
+    ChevronRight, CheckCircle2, Clock, AlertCircle, RefreshCw, Zap, MoreVertical, FileText,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { InvoicePaymentModal } from './InvoicePaymentModal';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -97,45 +98,108 @@ function sourceLabel(s: string) {
 
 // ── Receipt download (client-side PDF via canvas/print) ───────────────────────
 
-async function downloadReceipt(invoice: Invoice) {
-    // Build a printable HTML receipt in a new window
-    const w = window.open('', '_blank', 'width=600,height=800');
+async function downloadInvoice(invoice: Invoice) {
+    const w = window.open('', '_blank', 'width=640,height=860');
     if (!w) return;
     const statusText = invoice.status === 'free' ? 'PAID (via Fee Credits)'
         : invoice.status === 'paid' ? 'PAID'
+        : invoice.status === 'pending' ? 'PENDING'
         : invoice.status.toUpperCase();
+    const isPaid = invoice.status === 'paid' || invoice.status === 'free';
+    const generatedOn = new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
     w.document.write(`
         <!DOCTYPE html><html><head>
-        <title>MoneyWise Receipt ${invoice.invoice_number}</title>
+        <title>Invoice ${invoice.invoice_number}</title>
         <style>
-            body { font-family: system-ui, sans-serif; padding: 48px; color: #111; }
-            .logo { font-size: 22px; font-weight: 900; letter-spacing: -1px; margin-bottom: 32px; }
-            .title { font-size: 14px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 24px; }
-            .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
-            .row .key { color: #666; }
-            .row .val { font-weight: 600; }
-            .total-row { display: flex; justify-content: space-between; padding: 14px 0; font-size: 16px; font-weight: 800; }
-            .status { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 11px; font-weight: 700;
-                      background: ${invoice.status === 'paid' || invoice.status === 'free' ? '#f0fdf4' : '#fef2f2'};
-                      color: ${invoice.status === 'paid' || invoice.status === 'free' ? '#166534' : '#991b1b'}; }
-            .footer { margin-top: 48px; font-size: 11px; color: #aaa; text-align: center; }
-            @media print { button { display: none; } }
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            body { font-family: system-ui, -apple-system, sans-serif; background: #fff; color: #111; padding: 56px 48px; max-width: 640px; margin: 0 auto; }
+            .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 40px; }
+            .brand { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; color: #00347C; }
+            .brand-sub { font-size: 11px; color: #888; margin-top: 2px; }
+            .invoice-label { text-align: right; }
+            .invoice-label .tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #888; }
+            .invoice-label .num { font-size: 18px; font-weight: 800; color: #111; margin-top: 2px; }
+            .status-pill { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 20px; font-size: 10px; font-weight: 700;
+                background: ${isPaid ? '#eff6ff' : '#fef9c3'};
+                color: ${isPaid ? '#1d4ed8' : '#854d0e'}; }
+            .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 0; margin-bottom: 36px; padding: 20px; background: #f8faff; border-radius: 12px; }
+            .meta-item { display: flex; flex-direction: column; gap: 2px; }
+            .meta-item .key { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
+            .meta-item .val { font-size: 13px; font-weight: 600; color: #111; }
+            .section-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: #888; margin-bottom: 12px; }
+            .line { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 13px; }
+            .line .desc { color: #444; }
+            .line .amt { font-weight: 600; color: #111; }
+            .line.credit .desc { color: #444; }
+            .line.credit .amt { color: #111; }
+            .divider { border: none; border-top: 1.5px solid #111; margin: 16px 0; }
+            .total-line { display: flex; justify-content: space-between; align-items: center; padding: 14px 0 0; font-size: 18px; font-weight: 800; }
+            .total-line .label { color: #111; }
+            .total-line .amt { color: #00347C; }
+            .footer { margin-top: 56px; padding-top: 20px; border-top: 1px solid #eee; font-size: 11px; color: #aaa; text-align: center; line-height: 1.6; }
+            .print-btn { margin-top: 32px; display: block; width: 100%; padding: 12px; background: #00347C; color: #fff; border: none; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+            @media print { .print-btn { display: none; } body { padding: 32px; } }
         </style>
         </head><body>
-        <div class="logo">MoneyWise</div>
-        <div class="title">Subscription Receipt</div>
-        <div class="row"><span class="key">Invoice No.</span><span class="val">${invoice.invoice_number}</span></div>
-        <div class="row"><span class="key">Period</span><span class="val">${formatShort(invoice.period_start)} – ${formatShort(invoice.period_end)}</span></div>
-        <div class="row"><span class="key">Due Date</span><span class="val">${formatDate(invoice.due_date)}</span></div>
-        <div class="row"><span class="key">Status</span><span><span class="status">${statusText}</span></span></div>
-        ${invoice.paid_at ? `<div class="row"><span class="key">Paid On</span><span class="val">${formatDate(invoice.paid_at)}</span></div>` : ''}
-        <div class="row"><span class="key">Plan</span><span class="val">MoneyWise Premium</span></div>
-        <div class="row"><span class="key">Base Price</span><span class="val">ZMW ${invoice.gross_zmw.toFixed(2)}</span></div>
-        ${invoice.credits_zmw > 0 ? `<div class="row"><span class="key">Fee Credits</span><span class="val" style="color:#16a34a">– ZMW ${invoice.credits_zmw.toFixed(2)}</span></div>` : ''}
-        <hr style="margin: 16px 0; border: none; border-top: 2px solid #111;" />
-        <div class="total-row"><span>Total Paid</span><span>ZMW ${invoice.net_zmw.toFixed(2)}</span></div>
-        <div class="footer">MoneyWise Pro · Powered by Blue Opus Software Technology<br/>This is an official subscription receipt.</div>
-        <br/><button onclick="window.print()">Print / Save as PDF</button>
+        <div class="header">
+            <div>
+                <div class="brand">MoneyWise</div>
+                <div class="brand-sub">Subscription Invoice</div>
+            </div>
+            <div class="invoice-label">
+                <div class="tag">Invoice</div>
+                <div class="num">${invoice.invoice_number}</div>
+                <span class="status-pill">${statusText}</span>
+            </div>
+        </div>
+
+        <div class="meta">
+            <div class="meta-item">
+                <span class="key">Billing Period</span>
+                <span class="val">${formatShort(invoice.period_start)} – ${formatShort(invoice.period_end)}</span>
+            </div>
+            <div class="meta-item">
+                <span class="key">Due Date</span>
+                <span class="val">${formatDate(invoice.due_date)}</span>
+            </div>
+            <div class="meta-item" style="margin-top:12px">
+                <span class="key">Plan</span>
+                <span class="val">MoneyWise Premium</span>
+            </div>
+            <div class="meta-item" style="margin-top:12px">
+                <span class="key">Generated On</span>
+                <span class="val">${generatedOn}</span>
+            </div>
+            ${invoice.paid_at ? `
+            <div class="meta-item" style="margin-top:12px">
+                <span class="key">Paid On</span>
+                <span class="val">${formatDate(invoice.paid_at)}</span>
+            </div>` : ''}
+        </div>
+
+        <div class="section-title">Billing Summary</div>
+
+        <div class="line">
+            <span class="desc">Monthly Subscription (Premium)</span>
+            <span class="amt">ZMW ${invoice.gross_zmw.toFixed(2)}</span>
+        </div>
+        ${invoice.credits_zmw > 0 ? `
+        <div class="line credit">
+            <span class="desc">Fee Credits Applied<br/><small style="font-size:10px;color:#888">Platform fees earned this period offset your subscription</small></span>
+            <span class="amt">– ZMW ${invoice.credits_zmw.toFixed(2)}</span>
+        </div>` : ''}
+
+        <hr class="divider" />
+        <div class="total-line">
+            <span class="label">Balance Due</span>
+            <span class="amt">ZMW ${invoice.net_zmw.toFixed(2)}</span>
+        </div>
+
+        <div class="footer">
+            MoneyWise Pro &nbsp;·&nbsp; Powered by Blue Opus Software Technology<br/>
+            This is an official subscription invoice. Keep for your records.
+        </div>
+        <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
         </body></html>
     `);
     w.document.close();
@@ -150,7 +214,9 @@ export const SubscriptionBilling: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [showCredits, setShowCredits] = useState(false);
+    const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null);
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -188,20 +254,6 @@ export const SubscriptionBilling: React.FC = () => {
         finally { setActionLoading(null); }
     };
 
-    const handlePayInvoice = async (invoiceId: string) => {
-        setActionLoading(`pay-${invoiceId}`);
-        try {
-            await apiFetch(`/billing/pay/${invoiceId}`, { method: 'POST' });
-            await load();
-        } catch (e: any) {
-            if (e.message.includes('Insufficient')) {
-                alert('Insufficient wallet balance. Please deposit funds into your MoneyWise wallet first, then try again.');
-            } else {
-                alert(e.message);
-            }
-        }
-        finally { setActionLoading(null); }
-    };
 
     if (loading) {
         return (
@@ -232,7 +284,8 @@ export const SubscriptionBilling: React.FC = () => {
     const nextPaymentDate = formatDate(subscription.current_period_end);
 
     return (
-        <div className="self-stretch p-5 rounded-2xl outline outline-[1.5px] outline-offset-[-1.5px] outline-zinc-100 flex flex-col gap-6">
+        <>
+        <div className="self-stretch flex-1 p-5 rounded-2xl outline outline-[1.5px] outline-offset-[-1.5px] outline-zinc-100 flex flex-col gap-6 min-h-0">
 
             {/* ── Section: Usage & Billing ───────────────────────────────────── */}
             <div className="flex flex-col gap-3">
@@ -296,9 +349,9 @@ export const SubscriptionBilling: React.FC = () => {
                                     </span>
                                     <span className="text-neutral-700 text-xs font-bold leading-4">{periodPct}%</span>
                                 </div>
-                                <div className="h-[3px] bg-gray-300 rounded-xl outline outline-1 outline-offset-[-1px] overflow-hidden">
+                                <div className="h-1.5 bg-[#E8EEF8] rounded-full overflow-hidden">
                                     <div
-                                        className="h-full bg-green-600 rounded-l-[60px] transition-all duration-500"
+                                        className="h-full bg-[#0058DB] rounded-full transition-all duration-500"
                                         style={{ width: `${periodPct}%` }}
                                     />
                                 </div>
@@ -310,13 +363,13 @@ export const SubscriptionBilling: React.FC = () => {
                                             <span className="text-neutral-400 text-[10px] font-normal">
                                                 Fee credits earned: ZMW {subscription.fee_credits_zmw.toFixed(2)} of ZMW 250
                                             </span>
-                                            <span className="text-[10px] font-semibold text-emerald-600">
+                                            <span className="text-[10px] font-semibold text-[#0058DB]">
                                                 –{creditsPct.toFixed(0)}%
                                             </span>
                                         </div>
-                                        <div className="h-[3px] bg-gray-200 rounded-xl overflow-hidden">
+                                        <div className="h-1.5 bg-[#E8EEF8] rounded-full overflow-hidden">
                                             <div
-                                                className="h-full bg-emerald-500 rounded-l-[60px] transition-all duration-500"
+                                                className="h-full bg-[#0058DB]/40 rounded-full transition-all duration-500"
                                                 style={{ width: `${creditsPct}%` }}
                                             />
                                         </div>
@@ -362,14 +415,14 @@ export const SubscriptionBilling: React.FC = () => {
                                     </span>
                                 </div>
                                 {subscription.fee_credits_zmw > 0 && (
-                                    <p className="text-[10px] text-emerald-600">
+                                    <p className="text-[10px] text-gray-500">
                                         ZMW {subscription.fee_credits_zmw.toFixed(2)} already covered by platform fees your customers paid this period.
                                     </p>
                                 )}
                                 {subscription.amountDue <= 0 && (
                                     <div className="flex items-center gap-1.5 mt-1">
-                                        <CheckCircle2 size={14} className="text-emerald-500" />
-                                        <span className="text-xs text-emerald-600 font-medium">
+                                        <CheckCircle2 size={14} className="text-gray-400" />
+                                        <span className="text-xs text-gray-600 font-medium">
                                             Subscription fully covered this month 🎉
                                         </span>
                                     </div>
@@ -388,7 +441,7 @@ export const SubscriptionBilling: React.FC = () => {
                     <div className="bg-white rounded-xl outline outline-1 outline-zinc-100 overflow-hidden">
                         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
                             <span className="text-sm font-semibold text-gray-800">Fee Credits This Period</span>
-                            <span className="text-xs text-emerald-600 font-bold">
+                            <span className="text-xs text-[#111827] font-bold">
                                 ZMW {credits.reduce((s, c) => s + c.amount_zmw, 0).toFixed(2)} total
                             </span>
                         </div>
@@ -400,7 +453,7 @@ export const SubscriptionBilling: React.FC = () => {
                                         <p className="text-[10px] text-gray-400 font-mono">{cr.reference}</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-sm font-semibold text-emerald-600">+ZMW {cr.amount_zmw.toFixed(2)}</p>
+                                        <p className="text-sm font-semibold text-[#111827]">+ZMW {cr.amount_zmw.toFixed(2)}</p>
                                         <p className="text-[10px] text-gray-400">{formatShort(cr.created_at)}</p>
                                     </div>
                                 </div>
@@ -414,10 +467,10 @@ export const SubscriptionBilling: React.FC = () => {
             </div>
 
             {/* ── Section: Invoices & Payments ───────────────────────────────── */}
-            <div className="flex flex-col gap-3">
-                <h2 className="text-black text-lg font-bold font-['Hanken_Grotesk'] leading-6">Invoices &amp; Payments</h2>
+            <div className="flex-1 flex flex-col gap-3 min-h-0">
+                <h2 className="text-black text-lg font-bold font-['Hanken_Grotesk'] leading-6 flex-shrink-0">Invoices &amp; Payments</h2>
 
-                <div className="bg-white rounded-xl outline outline-1 outline-zinc-100 overflow-hidden">
+                <div className="flex-1 bg-white rounded-xl outline outline-1 outline-zinc-100 overflow-hidden flex flex-col min-h-0">
                     {invoices.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-16 text-center">
                             <CreditCard size={28} className="text-gray-200 mb-3" />
@@ -436,7 +489,7 @@ export const SubscriptionBilling: React.FC = () => {
                                 <span className="w-28" />
                             </div>
                             {/* Invoice rows */}
-                            <div className="divide-y divide-gray-50">
+                            <div className="divide-y divide-gray-50 overflow-y-auto flex-1">
                                 {invoices.map(inv => (
                                     <div key={inv.id} className="px-4 py-3 flex items-center hover:bg-gray-50/50 transition-colors">
                                         <span className="w-44 text-xs text-black font-light">{formatShort(inv.created_at)}</span>
@@ -447,7 +500,7 @@ export const SubscriptionBilling: React.FC = () => {
                                         <div className="w-28">
                                             <p className="text-xs font-bold text-black">ZMW {inv.net_zmw.toFixed(2)}</p>
                                             {inv.credits_zmw > 0 && (
-                                                <p className="text-[9px] text-emerald-600">–{inv.credits_zmw.toFixed(2)} credits</p>
+                                                <p className="text-[9px] text-gray-500">–{inv.credits_zmw.toFixed(2)} credits</p>
                                             )}
                                         </div>
                                         <div className="w-24">
@@ -456,25 +509,39 @@ export const SubscriptionBilling: React.FC = () => {
                                         <div className="w-28 flex items-center justify-end gap-2">
                                             {inv.status === 'pending' && (
                                                 <button
-                                                    onClick={() => handlePayInvoice(inv.id)}
-                                                    disabled={actionLoading === `pay-${inv.id}`}
-                                                    className="px-2.5 py-1 bg-[#00347C] text-white rounded-md text-[9px] font-semibold hover:bg-[#002460] transition-colors disabled:opacity-60"
+                                                    onClick={() => setPayingInvoice(inv)}
+                                                    className="px-2.5 py-1 bg-[#00347C] text-white rounded-md text-[9px] font-semibold hover:bg-[#002460] transition-colors"
                                                 >
-                                                    {actionLoading === `pay-${inv.id}` ? 'Paying…' : 'Pay Now'}
+                                                    Pay Now
                                                 </button>
                                             )}
-                                            {(inv.status === 'paid' || inv.status === 'free') && (
+                                            {/* Three-dot menu */}
+                                            <div className="relative">
                                                 <button
-                                                    onClick={() => downloadReceipt(inv)}
-                                                    className="p-1.5 text-gray-400 hover:text-gray-700 transition-colors rounded-lg hover:bg-gray-100"
-                                                    title="Download receipt"
+                                                    onClick={() => setOpenMenuId(openMenuId === inv.id ? null : inv.id)}
+                                                    className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors rounded-lg hover:bg-gray-100"
                                                 >
-                                                    <Download size={13} />
+                                                    <MoreVertical size={14} />
                                                 </button>
-                                            )}
-                                            <button className="p-1.5 text-gray-300 hover:text-gray-500 transition-colors rounded-lg hover:bg-gray-100 rotate-90">
-                                                <ChevronRight size={14} />
-                                            </button>
+                                                {openMenuId === inv.id && (
+                                                    <>
+                                                        {/* Dismiss overlay */}
+                                                        <div
+                                                            className="fixed inset-0 z-10"
+                                                            onClick={() => setOpenMenuId(null)}
+                                                        />
+                                                        <div className="absolute right-0 top-8 z-20 w-44 bg-white rounded-xl shadow-lg border border-gray-100 py-1 overflow-hidden">
+                                                            <button
+                                                                onClick={() => { downloadInvoice(inv); setOpenMenuId(null); }}
+                                                                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-xs text-gray-700 hover:bg-gray-50 transition-colors"
+                                                            >
+                                                                <FileText size={13} className="text-gray-400" />
+                                                                Download Invoice
+                                                            </button>
+                                                        </div>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
@@ -483,22 +550,18 @@ export const SubscriptionBilling: React.FC = () => {
                     )}
                 </div>
             </div>
-
-            {/* ── How it works info box ──────────────────────────────────────── */}
-            <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100">
-                <div className="flex items-start gap-3">
-                    <Zap size={16} className="text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                        <p className="text-sm font-semibold text-[#00347C] mb-1">Dynamic Pricing — How it works</p>
-                        <p className="text-xs text-gray-600 leading-relaxed">
-                            Every time your customers make a payment through MoneyWise (catalogue, QuickPay, payment links, or direct deposits),
-                            a platform fee is earned. <strong>These fees are automatically credited toward your monthly subscription.</strong>{' '}
-                            If your customers generate enough activity to cover the full ZMW 250, your subscription for that month is completely free.
-                            Unused credits reset at the start of each billing period.
-                        </p>
-                    </div>
-                </div>
-            </div>
         </div>
+
+        {/* Payment method modal */}
+        {payingInvoice && (
+            <InvoicePaymentModal
+                invoiceId={payingInvoice.id}
+                invoiceNumber={payingInvoice.invoice_number}
+                amountDue={payingInvoice.net_zmw}
+                onClose={() => setPayingInvoice(null)}
+                onPaid={() => { setPayingInvoice(null); load(); }}
+            />
+        )}
+        </>
     );
 };

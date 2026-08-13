@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
+import { LencoService } from '../services/lenco.service';
 
 const SUBSCRIPTION_PRICE = 250; // K250/month
 
@@ -37,6 +38,46 @@ async function ensureSubscription(organizationId: string) {
     return data;
 }
 
+/**
+ * For premium orgs: ensure there is always a live pending invoice for the
+ * current billing period so the fee-credit reduction is visible immediately.
+ * Payment is collected in arrears — the due_date is the period end.
+ * Idempotent: does nothing if an invoice for this period already exists.
+ */
+async function ensureCurrentInvoice(sub: any): Promise<void> {
+    if (sub.plan_id !== 'premium') return;
+
+    const { data: existing } = await supabase
+        .from('subscription_invoices')
+        .select('id')
+        .eq('subscription_id', sub.id)
+        .eq('period_start', sub.current_period_start)
+        .maybeSingle();
+
+    if (existing) return;
+
+    const netAmount = Math.max(0, SUBSCRIPTION_PRICE - (sub.fee_credits_zmw || 0));
+    const invNum = invoiceNumber(sub.organization_id);
+
+    await supabase
+        .from('subscription_invoices')
+        .insert({
+            organization_id: sub.organization_id,
+            subscription_id: sub.id,
+            invoice_number: invNum,
+            period_start: sub.current_period_start,
+            period_end: sub.current_period_end,
+            gross_zmw: SUBSCRIPTION_PRICE,
+            credits_zmw: sub.fee_credits_zmw || 0,
+            net_zmw: netAmount,
+            // Payment is in arrears — due at end of the billing period
+            status: netAmount === 0 ? 'free' : 'pending',
+            due_date: sub.current_period_end,
+            paid_at: netAmount === 0 ? new Date().toISOString() : null,
+            paid_via: netAmount === 0 ? 'fee_credits' : null,
+        });
+}
+
 // ──────────────────────────────────────────────
 // GET /billing/subscription
 // ──────────────────────────────────────────────
@@ -45,6 +86,9 @@ export async function getSubscription(req: Request, res: Response) {
         const organizationId = (req as any).user?.organization_id;
         if (!organizationId) return res.status(400).json({ error: 'No organization found for this user' });
         const sub = await ensureSubscription(organizationId);
+
+        // Ensure a live invoice exists for this billing period (premium only)
+        await ensureCurrentInvoice(sub);
 
         const [planResult, creditsResult, invoicesResult] = await Promise.all([
             supabase.from('subscription_plans').select('*').eq('id', sub.plan_id).single(),
@@ -121,6 +165,9 @@ export async function upgradeToPremium(req: Request, res: Response) {
             .single();
 
         if (error) throw new Error(error.message);
+
+        // Immediately provision the invoice for this period (payment in arrears)
+        await ensureCurrentInvoice(data);
 
         captureEvent('subscription_upgraded', {
             feature: 'billing',
@@ -231,13 +278,24 @@ export async function recordFeeCredit(
             ` (total this period: K${newCredits.toFixed(2)} / K${SUBSCRIPTION_PRICE})`
         );
 
-        // If fully paid → void pending invoice for this period if any
-        if (newCredits >= SUBSCRIPTION_PRICE) {
-            await supabase
-                .from('subscription_invoices')
-                .update({ status: 'free', paid_at: new Date().toISOString(), paid_via: 'fee_credits' })
-                .eq('subscription_id', sub.id)
-                .eq('status', 'pending');
+        // Keep the live invoice in sync: update credits_zmw, net_zmw, and status
+        const newNet = Math.max(0, SUBSCRIPTION_PRICE - newCredits);
+        const fullyPaid = newCredits >= SUBSCRIPTION_PRICE;
+        await supabase
+            .from('subscription_invoices')
+            .update({
+                credits_zmw: newCredits,
+                net_zmw: newNet,
+                ...(fullyPaid ? {
+                    status: 'free',
+                    paid_at: new Date().toISOString(),
+                    paid_via: 'fee_credits',
+                } : {}),
+            })
+            .eq('subscription_id', sub.id)
+            .eq('status', 'pending');
+
+        if (fullyPaid) {
             console.log(`[Billing] Subscription fully paid via fee credits for org ${organizationId}`);
         }
     } catch (err: any) {
@@ -322,16 +380,19 @@ async function attemptWalletAutoDeduction(
     organizationId: string,
     subscriptionId: string,
     invoiceId: string,
-    amount: number
+    amount: number,
+    walletId?: string
 ): Promise<boolean> {
     try {
-        // Get the org's primary MONEYWISE_WALLET balance via cashbook_entries
-        const { data: balanceRows } = await supabase
+        // Get balance for the specified wallet (or all MONEYWISE_WALLET entries if no walletId)
+        let balanceQuery = supabase
             .from('cashbook_entries')
             .select('debit, credit')
             .eq('organization_id', organizationId)
             .eq('account_type', 'MONEYWISE_WALLET')
             .eq('is_deleted', false);
+        if (walletId) balanceQuery = balanceQuery.eq('wallet_id', walletId);
+        const { data: balanceRows } = await balanceQuery;
 
         const walletBalance = (balanceRows || []).reduce(
             (acc: number, r: any) => acc + (r.debit || 0) - (r.credit || 0), 0
@@ -357,6 +418,7 @@ async function attemptWalletAutoDeduction(
                 date: now.split('T')[0],
                 created_at: now,
                 reference_number: `SUB-${invoiceId.slice(0, 8).toUpperCase()}`,
+                ...(walletId ? { wallet_id: walletId } : {}),
             });
 
         if (entryErr) throw new Error(entryErr.message);
@@ -392,12 +454,14 @@ async function attemptWalletAutoDeduction(
 }
 
 // ──────────────────────────────────────────────
-// POST /billing/pay/:invoiceId  — pay from MoneyWise wallet (manual trigger)
+// POST /billing/pay/:invoiceId  — pay from a specific MoneyWise wallet
+// Body: { walletId?: string }  (defaults to the org's main wallet)
 // ──────────────────────────────────────────────
 export async function initiateInvoicePayment(req: Request, res: Response) {
     try {
         const organizationId = (req as any).user?.organization_id;
         const { invoiceId } = req.params;
+        const { walletId } = req.body || {};
 
         const { data: invoice, error: invErr } = await supabase
             .from('subscription_invoices')
@@ -410,7 +474,6 @@ export async function initiateInvoicePayment(req: Request, res: Response) {
         if (invoice.status !== 'pending') return res.status(400).json({ error: 'Invoice is already paid or voided' });
         if (invoice.net_zmw <= 0) return res.status(400).json({ error: 'Nothing to pay on this invoice' });
 
-        // Get the org's active subscription
         const { data: sub } = await supabase
             .from('organization_subscriptions')
             .select('id')
@@ -419,17 +482,22 @@ export async function initiateInvoicePayment(req: Request, res: Response) {
 
         if (!sub) return res.status(404).json({ error: 'Subscription not found' });
 
-        const paid = await attemptWalletAutoDeduction(organizationId, sub.id, invoiceId, invoice.net_zmw);
+        const paid = await attemptWalletAutoDeduction(organizationId, sub.id, invoiceId, invoice.net_zmw, walletId);
 
         if (!paid) {
-            // Get wallet balance for the error message
-            const { data: balanceRows } = await supabase
-                .from('cashbook_entries')
-                .select('debit, credit')
-                .eq('organization_id', organizationId)
-                .eq('account_type', 'MONEYWISE_WALLET')
-                .eq('is_deleted', false);
+            // Return current balance of the selected wallet so the frontend can show it
+            const walletFilter = walletId
+                ? supabase.from('cashbook_entries').select('debit, credit')
+                    .eq('organization_id', organizationId)
+                    .eq('account_type', 'MONEYWISE_WALLET')
+                    .eq('wallet_id', walletId)
+                    .eq('is_deleted', false)
+                : supabase.from('cashbook_entries').select('debit, credit')
+                    .eq('organization_id', organizationId)
+                    .eq('account_type', 'MONEYWISE_WALLET')
+                    .eq('is_deleted', false);
 
+            const { data: balanceRows } = await walletFilter;
             const walletBalance = (balanceRows || []).reduce(
                 (acc: number, r: any) => acc + (r.debit || 0) - (r.credit || 0), 0
             );
@@ -444,6 +512,154 @@ export async function initiateInvoicePayment(req: Request, res: Response) {
         res.json({ success: true, message: 'Payment processed from MoneyWise wallet' });
     } catch (err: any) {
         console.error('[Billing] initiateInvoicePayment error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+}
+
+// ──────────────────────────────────────────────
+// POST /billing/pay/:invoiceId/mobile-money
+// Body: { phone, operator }
+// Initiates a Lenco MoMo collection for the invoice amount.
+// ──────────────────────────────────────────────
+export async function initiateInvoiceMobileMoneyPayment(req: Request, res: Response) {
+    try {
+        const organizationId = (req as any).user?.organization_id;
+        if (!organizationId) return res.status(400).json({ error: 'No organization found for this user' });
+
+        const { invoiceId } = req.params;
+        const { phone, operator } = req.body || {};
+
+        if (!phone || !operator) {
+            return res.status(400).json({ error: 'phone and operator are required' });
+        }
+        if (!['airtel', 'mtn', 'zamtel', 'tnm'].includes(operator)) {
+            return res.status(400).json({ error: 'operator must be one of: airtel, mtn, zamtel, tnm' });
+        }
+
+        const { data: invoice, error: invErr } = await supabase
+            .from('subscription_invoices')
+            .select('*')
+            .eq('id', invoiceId)
+            .eq('organization_id', organizationId)
+            .single();
+
+        if (invErr || !invoice) return res.status(404).json({ error: 'Invoice not found' });
+        if (invoice.status !== 'pending') return res.status(400).json({ error: 'Invoice is already paid or voided' });
+        if (invoice.net_zmw <= 0) return res.status(400).json({ error: 'Nothing to pay on this invoice' });
+
+        // Get the org's Lenco secret key
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key')
+            .eq('id', organizationId)
+            .single();
+
+        const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+        const reference = `SUBPAY-MM-${invoiceId.replace(/-/g, '').slice(0, 12).toUpperCase()}`;
+
+        const collection = await LencoService.initiateMobileMoneyCollection({
+            amount: invoice.net_zmw,
+            reference,
+            phone,
+            operator: operator as 'airtel' | 'mtn' | 'zamtel' | 'tnm',
+        }, secretKey);
+
+        // Store the reference on the invoice so we can match it on confirmation
+        await supabase
+            .from('subscription_invoices')
+            .update({ lenco_reference: reference })
+            .eq('id', invoiceId);
+
+        captureEvent('subscription_momo_payment_initiated', {
+            feature: 'billing',
+            workflow_id: reference,
+            organization_id: organizationId,
+            user_id: (req as any).user?.id || 'unknown',
+            status: 'started',
+            amount: invoice.net_zmw,
+        });
+
+        res.json({ success: true, reference, collection });
+    } catch (err: any) {
+        console.error('[Billing] initiateInvoiceMobileMoneyPayment error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+}
+
+// ──────────────────────────────────────────────
+// GET /billing/pay/:invoiceId/mobile-money/status
+// Polls Lenco for the collection status and marks the invoice paid on success.
+// ──────────────────────────────────────────────
+export async function checkInvoiceMobileMoneyStatus(req: Request, res: Response) {
+    try {
+        const organizationId = (req as any).user?.organization_id;
+        if (!organizationId) return res.status(400).json({ error: 'No organization found for this user' });
+
+        const { invoiceId } = req.params;
+
+        const { data: invoice, error: invErr } = await supabase
+            .from('subscription_invoices')
+            .select('*, organization_subscriptions(id)')
+            .eq('id', invoiceId)
+            .eq('organization_id', organizationId)
+            .single();
+
+        if (invErr || !invoice) return res.status(404).json({ error: 'Invoice not found' });
+        if (!invoice.lenco_reference) return res.status(400).json({ error: 'No mobile money collection initiated for this invoice' });
+
+        // Already marked paid — return immediately
+        if (invoice.status === 'paid' || invoice.status === 'free') {
+            return res.json({ status: 'paid' });
+        }
+
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key')
+            .eq('id', organizationId)
+            .single();
+
+        const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+        const lencoStatus = await LencoService.getCollectionStatus(invoice.lenco_reference, secretKey);
+
+        const collectionStatus: string = lencoStatus?.status || 'pending';
+
+        if (collectionStatus === 'successful') {
+            const now = new Date().toISOString();
+            const subId = invoice.organization_subscriptions?.id;
+
+            // Mark invoice paid
+            await supabase
+                .from('subscription_invoices')
+                .update({ status: 'paid', paid_at: now, paid_via: 'mobile_money' })
+                .eq('id', invoiceId);
+
+            // Roll subscription period forward
+            if (subId) {
+                const nextStart = now.split('T')[0];
+                const nextEnd = new Date(new Date().setMonth(new Date().getMonth() + 1))
+                    .toISOString().split('T')[0];
+                await supabase
+                    .from('organization_subscriptions')
+                    .update({
+                        fee_credits_zmw: 0,
+                        current_period_start: nextStart,
+                        current_period_end: nextEnd,
+                        status: 'active',
+                        updated_at: now,
+                    })
+                    .eq('id', subId);
+            }
+
+            return res.json({ status: 'paid' });
+        }
+
+        if (collectionStatus === 'failed' || collectionStatus === 'cancelled') {
+            return res.json({ status: 'failed' });
+        }
+
+        res.json({ status: 'pending' });
+    } catch (err: any) {
+        console.error('[Billing] checkInvoiceMobileMoneyStatus error:', err.message);
         res.status(500).json({ error: err.message });
     }
 }
