@@ -23,8 +23,12 @@ import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusCon
 import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
 import { InflowInbox, inflowTitle, InflowRow } from '../components/InflowInbox';
+import { InvoiceInbox } from '../components/InvoiceInbox';
+import { InvoiceDetailModal } from '../components/InvoiceDetailModal';
+import { InvoiceEditModal } from '../components/InvoiceEditModal';
 import { cashbookService } from '../services/cashbook.service';
 import { payrollService } from '../services/payroll.service';
+import { paymentLinkService, PaymentLink, UpdateInvoiceLinkPayload } from '../services/product.service';
 import { useNewnessTracker } from '../hooks/useNewnessTracker';
 
 interface Requisition {
@@ -86,6 +90,10 @@ export const RequisitionList: React.FC = () => {
     const [selectedRequisition, setSelectedRequisition] = useState<RequisitionType | null>(null);
     // Outflows = requisitions (existing) · Inflows = money-in ledger entries (sales, deposits, cash inflows)
     const [inboxMode, setInboxMode] = useState<'outflows' | 'inflows'>('outflows');
+    // Within the Inflows view: cash payments vs. sent invoice links
+    const [inflowSubMode, setInflowSubMode] = useState<'cash' | 'invoices'>('cash');
+    const [selectedInvoice, setSelectedInvoice] = useState<PaymentLink | null>(null);
+    const [editingInvoice, setEditingInvoice] = useState<PaymentLink | null>(null);
     // Inflows are fetched up front too (not just when the tab is opened) so the
     // "new inflow" dot on the Inflows toggle is accurate even while viewing
     // Outflows; switching back to the tab refetches (e.g. after a sale).
@@ -128,6 +136,29 @@ export const RequisitionList: React.FC = () => {
         enabled: !!organizationId,
     });
     const inflowsLoading = inflowsFetching || !organizationId;
+
+    // Invoice links — payment links with a multi-item basket (sent to a customer for AR).
+    const {
+        data: invoices = [],
+        isLoading: invoicesInitialLoading,  // true only on the very first fetch (no cache yet)
+        isFetching: invoicesFetching,       // true on any background refetch — don't gate render on this
+        refetch: refetchInvoices,
+    } = useQuery<PaymentLink[]>({
+        queryKey: ['invoice-links', organizationId],
+        queryFn: () => paymentLinkService.listInvoiceLinks(),
+        // Requestors only see their payslips; invoice links are admin-only — the API
+        // returns an empty list for non-admins so no role guard is needed here.
+        enabled: !!organizationId,
+        // Keep data fresh for 60 s so tab switches don't trigger a network round-trip
+        // every single time. Explicit refresh (New Sale success, pull-to-refresh) bypasses
+        // this via refetch() / invalidateQueries().
+        staleTime: 60_000,
+    });
+    // Gate the loading spinner only on the initial fetch (no cached data yet).
+    // Using isFetching here would hide the list on every background refetch — the
+    // root cause of invoices "sometimes not showing" after a tab switch.
+    const invoicesLoading = invoicesInitialLoading || !organizationId;
+
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string[]>(['ALL']);
     const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false); // State for mobile action sheet
@@ -227,6 +258,36 @@ export const RequisitionList: React.FC = () => {
 
     const loadInflows = async () => {
         await refetchInflows();
+        await refetchInvoices();
+    };
+
+    const handleInvoiceEdit = (invoice: PaymentLink) => setEditingInvoice(invoice);
+
+    const handleInvoiceSave = async (id: string, payload: UpdateInvoiceLinkPayload) => {
+        await paymentLinkService.updateInvoiceLink(id, payload);
+        await refetchInvoices();
+    };
+
+    const handleInvoiceArchive = async (invoice: PaymentLink) => {
+        if (!window.confirm(`Archive invoice ${invoice.token.slice(0, 8).toUpperCase()}? It will be hidden from your inbox but the payment link remains active.`)) return;
+        try {
+            await paymentLinkService.archiveInvoiceLink(invoice.id);
+            await refetchInvoices();
+        } catch (err: any) {
+            alert(err?.response?.data?.error || 'Failed to archive invoice');
+        }
+    };
+
+    const handleInvoiceDelete = async (invoice: PaymentLink) => {
+        if (!window.confirm(`Delete invoice ${invoice.token.slice(0, 8).toUpperCase()}? This will deactivate the payment link and cannot be undone.`)) return;
+        try {
+            await paymentLinkService.deactivatePaymentLink(invoice.id);
+            await refetchInvoices();
+            // If the deleted invoice was open in the detail panel, close it
+            if (selectedInvoice?.id === invoice.id) setSelectedInvoice(null);
+        } catch (err: any) {
+            alert(err?.response?.data?.error || 'Failed to delete invoice');
+        }
     };
 
     useEffect(() => {
@@ -312,14 +373,33 @@ export const RequisitionList: React.FC = () => {
         });
     }, [filteredRequisitions, sortOrder]);
 
+    // Invoices: filter by customer name / token / phone / email, sorted by date.
+    const sortedInvoices = React.useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        const filtered = invoices.filter(inv =>
+            inv.customer_name.toLowerCase().includes(q) ||
+            inv.token.toLowerCase().includes(q) ||
+            (inv.customer_phone || '').toLowerCase().includes(q) ||
+            (inv.customer_email || '').toLowerCase().includes(q)
+        );
+        return filtered.sort((a, b) => {
+            const da = new Date(a.created_at || '').getTime();
+            const db = new Date(b.created_at || '').getTime();
+            return sortOrder === 'desc' ? db - da : da - db;
+        });
+    }, [invoices, searchQuery, sortOrder]);
+
     // Inflows: filter by the (cleaned) title or receipt number, then sort by date.
     const sortedInflows = React.useMemo(() => {
         const q = searchQuery.toLowerCase();
         // Only show inflows that actually went through. PENDING rows are unfinished
         // intents (e.g. a Lenco/POS checkout the customer never completed) — they
         // aren't real money yet, so they shouldn't clutter the inbox.
+        // Also exclude ACCOUNTS_RECEIVABLE entries — those are invoice AR trackers
+        // that live in the Invoices tab, not the Cash tab.
         const filtered = inflows.filter(row =>
             row.status !== 'PENDING' &&
+            row.account_type !== 'ACCOUNTS_RECEIVABLE' &&
             (inflowTitle(row.description).toLowerCase().includes(q) ||
             (row.reference_number || '').toLowerCase().includes(q))
         );
@@ -418,28 +498,28 @@ export const RequisitionList: React.FC = () => {
             label: 'New Salary Advance',
             description: 'Quick funds from your next payroll',
             icon: History,
-            iconColor: '#059669',
+            iconColor: '#0F172A',
             onSelect: () => setIsDesktopSalaryAdvanceOpen(true),
         },
         {
             label: 'New Staff Loan',
             description: 'Long-term loan with fixed 15% interest',
             icon: Plus,
-            iconColor: '#2563EB',
+            iconColor: '#0F172A',
             onSelect: () => setIsDesktopStaffLoanOpen(true),
         },
         {
             label: 'Invest',
             description: 'Grow your money with our partners',
-            icon: TrendingUp, // Need to import TrendingUp if not already or use another icon
-            iconColor: '#10B981',
-            onSelect: () => setIsInvestWizardOpen(true), // We'll just open the mobile one for now since there's no desktop version
+            icon: TrendingUp,
+            iconColor: '#0F172A',
+            onSelect: () => setIsInvestWizardOpen(true),
         },
         ...(!isRequestor ? [{
             label: 'New Payroll Requisition',
             description: 'Batch processing via spreadsheet upload',
             icon: Users,
-            iconColor: '#4F46E5',
+            iconColor: '#0F172A',
             onSelect: () => setIsDesktopPayrollOpen(true),
         }] : []),
     ];
@@ -642,6 +722,35 @@ export const RequisitionList: React.FC = () => {
                             onOpenFilters={() => setIsFilterSheetOpen(true)}
                             onRefresh={() => inboxMode === 'inflows' ? loadInflows() : loadRequisitions()}
                             hasActiveFilters={hasActiveDesktopFilters}
+                            leftContent={inboxMode === 'inflows' && !isRequestor ? (
+                                <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px]">
+                                    {([
+                                        { value: 'cash', label: 'Cash', count: sortedInflows.length },
+                                        { value: 'invoices', label: 'Invoices', count: sortedInvoices.length },
+                                    ] as const).map(tab => (
+                                        <button
+                                            key={tab.value}
+                                            onClick={() => setInflowSubMode(tab.value)}
+                                            className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                                                inflowSubMode === tab.value
+                                                    ? 'font-bold bg-white text-[#111827] shadow-sm'
+                                                    : 'font-normal text-gray-500 hover:text-gray-700'
+                                            }`}
+                                        >
+                                            {tab.label}
+                                            {tab.count > 0 && (
+                                                <span className={`px-1 rounded text-[9px] ${
+                                                    inflowSubMode === tab.value
+                                                        ? 'bg-[#E8EEF8] text-[#0058DB]'
+                                                        : 'bg-gray-200 text-gray-500'
+                                                }`}>
+                                                    {tab.count}
+                                                </span>
+                                            )}
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : undefined}
                         >
                             {inboxMode === 'outflows' ? (
                                 <>
@@ -690,22 +799,44 @@ export const RequisitionList: React.FC = () => {
                                 </>
                             ) : (
                                 <>
-                                    {inflowsLoading && inflows.length === 0 && (
-                                        <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
-                                            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
-                                            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
-                                        </div>
-                                    )}
-                                    {!inflowsLoading && sortedInflows.length === 0 && (
-                                        <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
-                                            <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-white mb-6 border border-gray-100">
-                                                <FileText className="h-10 w-10 text-gray-200" />
+                                    {/* Cash inflows */}
+                                    {inflowSubMode === 'cash' && (<>
+                                        {inflowsLoading && inflows.length === 0 && (
+                                            <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
+                                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
+                                                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
                                             </div>
-                                            <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
-                                            <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
-                                        </div>
-                                    )}
-                                    {sortedInflows.length > 0 && <InflowInbox inflows={sortedInflows} />}
+                                        )}
+                                        {!inflowsLoading && sortedInflows.length === 0 && (
+                                            <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
+                                                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-white mb-6 border border-gray-100">
+                                                    <FileText className="h-10 w-10 text-gray-200" />
+                                                </div>
+                                                <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                                                <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
+                                            </div>
+                                        )}
+                                        {sortedInflows.length > 0 && <InflowInbox inflows={sortedInflows} />}
+                                    </>)}
+
+                                    {/* Invoice inflows */}
+                                    {inflowSubMode === 'invoices' && (<>
+                                        {invoicesLoading && (
+                                            <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
+                                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0058DB] mb-6"></div>
+                                                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading invoices...</p>
+                                            </div>
+                                        )}
+                                        {!invoicesLoading && (
+                                            <InvoiceInbox
+                                                invoices={sortedInvoices}
+                                                onRowClick={setSelectedInvoice}
+                                                onEdit={handleInvoiceEdit}
+                                                onArchive={handleInvoiceArchive}
+                                                onDelete={handleInvoiceDelete}
+                                            />
+                                        )}
+                                    </>)}
                                 </>
                             )}
                         </InboxCard>
@@ -821,26 +952,57 @@ export const RequisitionList: React.FC = () => {
                     </>)}
 
                     {inboxMode === 'inflows' && (<>
-                        {inflowsLoading && inflows.length === 0 && (
-                            <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
-                                <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
-                                <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
+                        {/* Mobile Cash / Invoices sub-toggle */}
+                        {!isRequestor && (
+                            <div className="md:hidden px-5 pb-3">
+                                <SegmentedControl
+                                    variant="capsule"
+                                    value={inflowSubMode}
+                                    onChange={(v) => setInflowSubMode(v as 'cash' | 'invoices')}
+                                    options={[
+                                        {
+                                            value: 'cash',
+                                            label: (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    Cash
+                                                    <span className="text-[9px] opacity-60">({sortedInflows.length})</span>
+                                                </span>
+                                            ),
+                                        },
+                                        {
+                                            value: 'invoices',
+                                            label: (
+                                                <span className="inline-flex items-center gap-1.5">
+                                                    Invoices
+                                                    <span className="text-[9px] opacity-60">({sortedInvoices.length})</span>
+                                                </span>
+                                            ),
+                                        },
+                                    ]}
+                                />
                             </div>
                         )}
 
-                        {!inflowsLoading && sortedInflows.length === 0 && (
-                            <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
-                                <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
-                                    <FileText className="h-10 w-10 text-gray-200" />
+                        {/* Mobile: Cash inflows */}
+                        {inflowSubMode === 'cash' && (<>
+                            {inflowsLoading && inflows.length === 0 && (
+                                <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
+                                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-emerald-500 mb-6"></div>
+                                    <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading inflows...</p>
                                 </div>
-                                <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
-                                <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
-                            </div>
-                        )}
+                            )}
 
-                        {sortedInflows.length > 0 && (
-                            <>
-                                {/* Mobile Card View */}
+                            {!inflowsLoading && sortedInflows.length === 0 && (
+                                <div className="md:hidden bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
+                                    <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
+                                        <FileText className="h-10 w-10 text-gray-200" />
+                                    </div>
+                                    <h3 className="text-xl font-bold text-brand-navy">No inflows yet</h3>
+                                    <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
+                                </div>
+                            )}
+
+                            {sortedInflows.length > 0 && (
                                 <div className="md:hidden space-y-5 px-5">
                                     {groupInflowsByDate(sortedInflows).map((group) => (
                                         <div key={group.dateKey} className="space-y-2">
@@ -892,12 +1054,57 @@ export const RequisitionList: React.FC = () => {
                                         </div>
                                     ))}
                                 </div>
-                            </>
+                            )}
+                        </>)}
+
+                        {/* Mobile: Invoice inflows */}
+                        {inflowSubMode === 'invoices' && (
+                            <div className="md:hidden px-5 space-y-5">
+                                {invoicesLoading && invoices.length === 0 && (
+                                    <div className="bg-white shadow-sm border border-gray-100 rounded-[2.5rem] p-24 text-center">
+                                        <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0058DB] mb-6"></div>
+                                        <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading invoices...</p>
+                                    </div>
+                                )}
+                                {!invoicesLoading && sortedInvoices.length === 0 && (
+                                    <div className="bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
+                                        <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
+                                            <FileText className="h-10 w-10 text-gray-200" />
+                                        </div>
+                                        <h3 className="text-xl font-bold text-brand-navy">No invoices yet</h3>
+                                        <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Create an invoice from the New Sale flow to send a payment link.</p>
+                                    </div>
+                                )}
+                                {sortedInvoices.length > 0 && (
+                                    <div className="bg-white rounded-[20px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-gray-200">
+                                        <InvoiceInbox
+                                            invoices={sortedInvoices}
+                                            onRowClick={setSelectedInvoice}
+                                            onEdit={handleInvoiceEdit}
+                                            onArchive={handleInvoiceArchive}
+                                            onDelete={handleInvoiceDelete}
+                                        />
+                                    </div>
+                                )}
+                            </div>
                         )}
                     </>)}
                 </div>
             </div>
         </Layout>
+
+            <InvoiceDetailModal
+                invoice={selectedInvoice}
+                isOpen={!!selectedInvoice}
+                onClose={() => setSelectedInvoice(null)}
+            />
+
+            <InvoiceEditModal
+                invoice={editingInvoice}
+                isOpen={!!editingInvoice}
+                onClose={() => setEditingInvoice(null)}
+                onSave={handleInvoiceSave}
+            />
 
             <RequisitionModal
                 requisition={selectedRequisition}
@@ -1024,11 +1231,11 @@ export const RequisitionList: React.FC = () => {
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <History className="h-6 w-6 text-emerald-600" />
+                                <History className="h-6 w-6 text-brand-navy" />
                             </div>
                             <div>
                                 <div className="font-bold text-gray-900 text-base">New Salary Advance</div>
-                                <div className="text-xs text-emerald-600/70 font-medium">Quick funds from your next payroll</div>
+                                <div className="text-xs text-gray-500 font-medium">Quick funds from your next payroll</div>
                             </div>
                         </button>
 
@@ -1040,11 +1247,11 @@ export const RequisitionList: React.FC = () => {
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <Plus className="h-6 w-6 text-blue-600" />
+                                <Plus className="h-6 w-6 text-brand-navy" />
                             </div>
                             <div>
                                 <div className="font-bold text-gray-900 text-base">New Staff Loan</div>
-                                <div className="text-xs text-blue-600/70 font-medium">Long-term loan with fixed 15% interest</div>
+                                <div className="text-xs text-gray-500 font-medium">Long-term loan with fixed 15% interest</div>
                             </div>
                         </button>
                         
@@ -1056,11 +1263,11 @@ export const RequisitionList: React.FC = () => {
                             className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                         >
                             <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                <TrendingUp className="h-6 w-6 text-emerald-600" />
+                                <TrendingUp className="h-6 w-6 text-brand-navy" />
                             </div>
                             <div>
                                 <div className="font-bold text-gray-900 text-base">Invest</div>
-                                <div className="text-xs text-emerald-600/70 font-medium">Grow your money with our partners</div>
+                                <div className="text-xs text-gray-500 font-medium">Grow your money with our partners</div>
                             </div>
                         </button>
 
@@ -1073,11 +1280,11 @@ export const RequisitionList: React.FC = () => {
                                 className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
                             >
                                 <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
-                                    <FileText className="h-6 w-6 text-indigo-650" />
+                                    <FileText className="h-6 w-6 text-brand-navy" />
                                 </div>
                                 <div>
                                     <div className="font-bold text-gray-900 text-base">New Payroll Requisition</div>
-                                    <div className="text-xs text-indigo-600/70 font-medium">Batch processing via spreadsheet upload</div>
+                                    <div className="text-xs text-gray-500 font-medium">Batch processing via spreadsheet upload</div>
                                 </div>
                             </button>
                         )}
