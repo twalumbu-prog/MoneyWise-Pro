@@ -27,6 +27,7 @@ import {
     deleteRequisition,
     autoCompleteRequisition,
     sendAutoCategorizationReminder,
+    resolveRecipientName,
 } from '../controllers/requisition.controller';
 import { 
     disburseRequisition, 
@@ -91,6 +92,7 @@ router.post('/', createRequisition);
 router.post('/:id/mark-read', markRequisitionRead);
 router.get('/', getRequisitions);
 router.get('/:id', getRequisitionById);
+router.get('/:id/resolve-recipient', resolveRecipientName);
 router.put('/:id', updateRequisition);
 router.delete('/:id', deleteRequisition);
 

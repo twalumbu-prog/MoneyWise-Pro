@@ -671,10 +671,12 @@ async function handleTransferSuccessful(data: any) {
     try {
         await client.query('BEGIN');
 
-        // Update disbursement status
+        // Store Lenco's assigned transaction ID in its own column so we preserve
+        // both the stable reference (for re-querying Lenco) and the Lenco-assigned
+        // numeric ID that appears on the recipient's bank/mobile money statement.
         const result = await client.query(`
-            UPDATE disbursements 
-            SET external_reference = $1
+            UPDATE disbursements
+            SET lenco_transaction_id = $1
             WHERE external_reference = $2 OR id::text = $2
             RETURNING requisition_id
         `, [data.id, reference]);

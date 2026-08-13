@@ -385,6 +385,11 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
                 method: d.payment_method,
                 recipient_provider: d.recipient_bank_code,
                 recipient_value: d.recipient_account,
+                recipient_name: d.recipient_account_name || null,
+                // lenco_transaction_id is the numeric ref assigned by Lenco (visible on
+                // the recipient's bank/mobile-money statement). external_reference is our
+                // stable ref used to query Lenco's API — not shown to end-users.
+                lenco_transaction_id: d.lenco_transaction_id || null,
                 processed_by_name: d.cashier?.name || 'System Admin'
             }))
         };
@@ -2989,5 +2994,75 @@ export const deleteRequisition = async (req: AuthRequest, res: Response): Promis
     } catch (error: any) {
         console.error('[Delete Requisition] Error:', error);
         res.status(500).json({ error: 'Failed to delete requisition', details: error.message });
+    }
+};
+
+/**
+ * Resolve the verified name of a disbursement recipient via the Lenco API.
+ * Called by the frontend when recipient_name is missing from the disbursement record.
+ * GET /requisitions/:id/resolve-recipient
+ */
+export const resolveRecipientName = async (req: any, res: Response): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = req.user?.organization_id;
+        if (!organization_id) return res.status(400).json({ error: 'Missing org context' });
+
+        // Fetch the requisition's org key + disbursement details
+        const { data: reqData, error: reqErr } = await supabase
+            .from('requisitions')
+            .select('organization_id, disbursements(recipient_account, recipient_bank_code, recipient_account_name)')
+            .eq('id', id)
+            .single();
+
+        if (reqErr || !reqData) return res.status(404).json({ error: 'Requisition not found' });
+        if (reqData.organization_id !== organization_id) return res.status(403).json({ error: 'Forbidden' });
+
+        const disb = (reqData as any).disbursements?.[0];
+        if (!disb) return res.status(404).json({ error: 'No disbursement found' });
+
+        // If already stored, return immediately
+        if (disb.recipient_account_name) {
+            return res.json({ name: disb.recipient_account_name });
+        }
+
+        const account  = disb.recipient_account;
+        const bankCode = disb.recipient_bank_code;
+        if (!account || !bankCode) {
+            return res.status(422).json({ error: 'Insufficient disbursement data to resolve name' });
+        }
+
+        // Get org's Lenco secret key
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key')
+            .eq('id', organization_id)
+            .single();
+        const secretKey = org?.lenco_secret_key || undefined;
+
+        // Determine mobile vs bank and resolve
+        const operator = LencoService.resolveMobileOperator(account);
+        let resolvedName: string | null = null;
+
+        if (operator) {
+            const result = await LencoService.resolveMobileMoney(account, operator, secretKey);
+            resolvedName = result.accountName;
+        } else {
+            const result = await LencoService.resolveBankAccount(account, bankCode, secretKey);
+            resolvedName = result.accountName;
+        }
+
+        // Persist for next time
+        if (resolvedName) {
+            await supabase
+                .from('disbursements')
+                .update({ recipient_account_name: resolvedName })
+                .eq('id', disb.id);
+        }
+
+        res.json({ name: resolvedName || null });
+    } catch (err: any) {
+        console.error('[resolveRecipientName]', err?.message);
+        res.status(500).json({ error: 'Failed to resolve recipient name', details: err?.message });
     }
 };

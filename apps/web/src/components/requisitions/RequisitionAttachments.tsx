@@ -21,7 +21,7 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({ requisi
         },
         {
             id: 'pop_proof',
-            title: `Cash Officially disbursed${requisition.disbursements?.length ? ' by ' + (requisition.disbursements[0].processed_by_name || 'Finance') : ''}`,
+            title: `Proof of Payment${requisition.disbursements?.length ? ' — disbursed by ' + (requisition.disbursements[0].processed_by_name || 'Finance') : ''}`,
             isAvailable: !['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED'].includes(status),
             isCompleted: !['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED'].includes(status),
         },
