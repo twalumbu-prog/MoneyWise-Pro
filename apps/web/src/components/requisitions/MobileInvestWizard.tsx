@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, X, AlertCircle, Loader2, Landmark, TrendingUp, ChevronRight, Star, Users } from 'lucide-react';
+import { ArrowLeft, X, AlertCircle, Loader2, TrendingUp, ChevronRight, Star, Users } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -12,64 +12,193 @@ type Stage = 1 | 2 | 3 | 4;
 
 const INVEST_PROVIDERS = [
     {
-        id: 'lenco',
-        name: 'Lenco Capital',
-        description: 'High yield mutual funds and managed portfolios.',
-        icon: TrendingUp,
-        color: 'text-emerald-500',
-        bg: 'bg-emerald-50',
+        id: 'longhorn',
+        name: 'Longhorn Investment Associates',
+        description: 'High-yield equity funds and diversified capital portfolios.',
+        logo: '/invest-logos/longhorn.jpeg',
         products: [
-            { 
-                id: 'mutual', 
-                name: 'Equity Fund',
-                code: 'Lenco Inv Ltd. (LHE5)',
-                price: 'K478.0',
+            {
+                id: 'lh-fx',
+                name: 'Premium FX Fund',
+                code: 'Longhorn Inv Ltd. (LH-FX)',
+                price: 'K25,502.0',
                 priceUnit: '/unit',
-                ytdPerformance: 'K4,275 - (34%) YTD',
+                ytdPerformance: 'K8,670 - (34%) YTD',
                 reviews: '4.9 (320 Reviews)',
                 investors: '232,000 Investors',
-                description: 'A diversified mutual fund focusing on high-growth equities and stable government bonds. Managed by expert portfolio managers.',
-                expectedReturn: '12-15%', 
-                risk: 'Medium' 
-            }
-        ]
+                description: 'A premium foreign-exchange linked fund targeting high-growth currency markets. Actively managed by seasoned portfolio specialists for maximum returns.',
+                expectedReturn: '30-34%',
+                risk: 'Medium',
+            },
+            {
+                id: 'lh-eq',
+                name: 'Equity Growth Fund',
+                code: 'Longhorn Inv Ltd. (LH-EQ)',
+                price: 'K15,200.0',
+                priceUnit: '/unit',
+                ytdPerformance: 'K3,192 - (21%) YTD',
+                reviews: '4.8 (210 Reviews)',
+                investors: '180,000 Investors',
+                description: 'A diversified equity fund investing in top-performing regional and pan-African stocks for long-term capital appreciation.',
+                expectedReturn: '18-21%',
+                risk: 'Medium',
+            },
+            {
+                id: 'lh-mc',
+                name: 'Mixed Capital Fund',
+                code: 'Longhorn Inv Ltd. (LH-MC)',
+                price: 'K8,400.0',
+                priceUnit: '/unit',
+                ytdPerformance: 'K1,008 - (12%) YTD',
+                reviews: '4.7 (140 Reviews)',
+                investors: '95,000 Investors',
+                description: 'A balanced blend of equities, bonds and money-market instruments designed for steady, lower-volatility growth.',
+                expectedReturn: '10-12%',
+                risk: 'Low',
+            },
+        ],
     },
     {
-        id: 'stanbic',
-        name: 'Stanbic Bank',
-        description: 'Secure fixed deposits and government bonds.',
-        icon: Landmark,
-        color: 'text-blue-500',
-        bg: 'bg-blue-50',
+        id: 'hobbiton',
+        name: 'Hobbiton Investments',
+        description: 'Real estate trusts, agri-business and infrastructure funds.',
+        logo: '/invest-logos/hobbiton.png',
         products: [
-            { 
-                id: 'fixed', 
-                name: 'Fixed Deposit',
-                code: 'Stanbic Bank Ltd. (SB-FD)',
-                price: 'K1,000.0',
-                priceUnit: '/min. deposit',
-                ytdPerformance: 'K90 - (9%) YTD',
-                reviews: '4.7 (120 Reviews)',
-                investors: '150,000 Investors',
-                description: 'A secure fixed deposit offering guaranteed returns over a fixed period. Low risk and highly stable.',
-                expectedReturn: '9%', 
-                risk: 'Low' 
+            {
+                id: 'hb-re',
+                name: 'Real Estate Trust',
+                code: 'Hobbiton Inv. (HB-RE)',
+                price: 'K55,000.0',
+                priceUnit: '/unit',
+                ytdPerformance: 'K9,900 - (18%) YTD',
+                reviews: '4.8 (150 Reviews)',
+                investors: '85,000 Investors',
+                description: 'A real-estate investment trust (REIT) holding commercial and residential properties across Zambia, distributing quarterly rental income.',
+                expectedReturn: '16-18%',
+                risk: 'Low',
             },
-            { 
-                id: 'bonds', 
-                name: 'Gov Bonds',
-                code: 'Bank of Zambia (BOZ-GB)',
+            {
+                id: 'hb-ag',
+                name: 'Agri-Business Fund',
+                code: 'Hobbiton Inv. (HB-AG)',
+                price: 'K12,300.0',
+                priceUnit: '/unit',
+                ytdPerformance: 'K5,166 - (42%) YTD',
+                reviews: '4.9 (88 Reviews)',
+                investors: '42,000 Investors',
+                description: 'Invests in high-yield agricultural enterprises — crop farming, livestock and agri-processing — capitalising on Zambia\'s fertile land belt.',
+                expectedReturn: '38-42%',
+                risk: 'High',
+            },
+            {
+                id: 'hb-ib',
+                name: 'Infrastructure Bond',
+                code: 'Hobbiton Inv. (HB-IB)',
+                price: 'K9,800.0',
+                priceUnit: '/min. deposit',
+                ytdPerformance: 'K1,470 - (15%) YTD',
+                reviews: '4.6 (62 Reviews)',
+                investors: '28,000 Investors',
+                description: 'Government-backed infrastructure bonds financing roads, energy and water projects with guaranteed coupon payments.',
+                expectedReturn: '13-15%',
+                risk: 'Low',
+            },
+        ],
+    },
+    {
+        id: 'aflife',
+        name: 'Aflife Investments',
+        description: 'Life savings plans, education trusts and balanced growth funds.',
+        logo: '/invest-logos/aflife.png',
+        products: [
+            {
+                id: 'af-ls',
+                name: 'Life Savings Plan',
+                code: 'Aflife Inv. (AF-LSP)',
                 price: 'K5,000.0',
                 priceUnit: '/min. deposit',
                 ytdPerformance: 'K550 - (11%) YTD',
-                reviews: '4.8 (85 Reviews)',
-                investors: '45,000 Investors',
-                description: 'Government backed bonds providing secure and steady interest payments over 5 to 10 years.',
-                expectedReturn: '11%', 
-                risk: 'Low' 
-            }
-        ]
-    }
+                reviews: '4.7 (98 Reviews)',
+                investors: '41,000 Investors',
+                description: 'A long-term life-linked savings plan providing guaranteed growth plus life-cover benefits, ideal for retirement planning.',
+                expectedReturn: '9-11%',
+                risk: 'Low',
+            },
+            {
+                id: 'af-ed',
+                name: 'Education Trust Fund',
+                code: 'Aflife Inv. (AF-ETF)',
+                price: 'K7,500.0',
+                priceUnit: '/min. deposit',
+                ytdPerformance: 'K1,050 - (14%) YTD',
+                reviews: '4.8 (75 Reviews)',
+                investors: '31,000 Investors',
+                description: 'A dedicated trust fund accumulating education savings with tax-advantaged growth, payable at school-entry milestones.',
+                expectedReturn: '12-14%',
+                risk: 'Low',
+            },
+            {
+                id: 'af-bg',
+                name: 'Balanced Growth Fund',
+                code: 'Aflife Inv. (AF-BGF)',
+                price: 'K10,200.0',
+                priceUnit: '/unit',
+                ytdPerformance: 'K1,938 - (19%) YTD',
+                reviews: '4.7 (112 Reviews)',
+                investors: '55,000 Investors',
+                description: 'A medium-term balanced fund blending fixed-income securities with select equities for consistent, inflation-beating growth.',
+                expectedReturn: '16-19%',
+                risk: 'Medium',
+            },
+        ],
+    },
+    {
+        id: 'abc',
+        name: 'ABC Asset Management',
+        description: 'Money market, government bonds and diversified equity solutions.',
+        logo: '/invest-logos/abc.jpeg',
+        products: [
+            {
+                id: 'abc-mm',
+                name: 'Money Market Fund',
+                code: 'ABC Asset Mgmt. (ABC-MM)',
+                price: 'K3,200.0',
+                priceUnit: '/unit',
+                ytdPerformance: 'K288 - (9%) YTD',
+                reviews: '4.6 (212 Reviews)',
+                investors: '120,000 Investors',
+                description: 'A highly liquid money-market fund investing in short-term government securities and bank instruments for capital preservation.',
+                expectedReturn: '8-9%',
+                risk: 'Low',
+            },
+            {
+                id: 'abc-gb',
+                name: 'Government Bond Fund',
+                code: 'ABC Asset Mgmt. (ABC-GB)',
+                price: 'K18,750.0',
+                priceUnit: '/min. deposit',
+                ytdPerformance: 'K3,000 - (16%) YTD',
+                reviews: '4.7 (165 Reviews)',
+                investors: '78,000 Investors',
+                description: 'Invests exclusively in Zambian government treasury bills and bonds, providing secure and predictable coupon income.',
+                expectedReturn: '14-16%',
+                risk: 'Low',
+            },
+            {
+                id: 'abc-de',
+                name: 'Diversified Equity',
+                code: 'ABC Asset Mgmt. (ABC-DE)',
+                price: 'K22,400.0',
+                priceUnit: '/unit',
+                ytdPerformance: 'K6,272 - (28%) YTD',
+                reviews: '4.8 (190 Reviews)',
+                investors: '102,000 Investors',
+                description: 'A multi-sector equity portfolio spanning financial, consumer, energy and technology sectors across sub-Saharan Africa.',
+                expectedReturn: '24-28%',
+                risk: 'Medium',
+            },
+        ],
+    },
 ];
 
 export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, onClose }) => {
@@ -149,7 +278,13 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
 
     if (!isOpen) return null;
 
-    const title = stage === 3 || stage === 4 ? selectedProduct?.name || 'Invest' : 'Invest';
+    const title = stage === 1
+        ? 'Invest'
+        : stage === 2
+            ? selectedProvider?.name || 'Invest'
+            : stage === 3 || stage === 4
+                ? `${selectedProvider?.name ?? 'Invest'} — ${selectedProduct?.name ?? ''}`
+                : 'Invest';
 
     return (
         <div className="fixed inset-0 z-[80] bg-white flex flex-col font-['Figtree'] overflow-hidden">
@@ -187,12 +322,12 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                                     onClick={() => handleProceedProvider(provider.id)}
                                     className="w-full text-left bg-white border border-gray-100 rounded-2xl p-5 flex items-center gap-4 hover:border-emerald-200 hover:shadow-md transition-all active:scale-[0.98]"
                                 >
-                                    <div className={`w-12 h-12 rounded-xl ${provider.bg} ${provider.color} flex items-center justify-center shrink-0`}>
-                                        <provider.icon size={24} />
+                                    <div className="w-12 h-12 rounded-xl border border-gray-100 bg-white shadow-sm flex items-center justify-center shrink-0 overflow-hidden p-1">
+                                        <img src={provider.logo} alt={provider.name} className="w-full h-full object-contain" />
                                     </div>
-                                    <div className="flex-1">
-                                        <h3 className="font-bold text-gray-900">{provider.name}</h3>
-                                        <p className="text-xs text-gray-500 mt-0.5">{provider.description}</p>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-bold text-gray-900 truncate">{provider.name}</h3>
+                                        <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{provider.description}</p>
                                     </div>
                                     <ChevronRight size={20} className="text-gray-300" />
                                 </button>
@@ -256,10 +391,8 @@ export const MobileInvestWizard: React.FC<MobileInvestWizardProps> = ({ isOpen, 
                                 </div>
                             </div>
                             <div className="flex-1 px-8 py-4 inline-flex flex-col justify-center items-end gap-1">
-                                <div className="w-14 h-14 p-2.5 bg-white rounded-full shadow-[0px_1px_1px_0px_rgba(0,0,0,0.25)] outline outline-1 outline-offset-[-1px] outline-gray-300 flex flex-col justify-center items-center gap-2.5 overflow-hidden">
-                                    <div className={`w-8 h-8 rounded-full ${selectedProvider.bg} ${selectedProvider.color} flex items-center justify-center shrink-0`}>
-                                        <selectedProvider.icon size={16} />
-                                    </div>
+                                <div className="w-14 h-14 p-1.5 bg-white rounded-full shadow-[0px_1px_1px_0px_rgba(0,0,0,0.25)] outline outline-1 outline-offset-[-1px] outline-gray-300 flex items-center justify-center overflow-hidden">
+                                    <img src={selectedProvider.logo} alt={selectedProvider.name} className="w-full h-full object-contain rounded-full" />
                                 </div>
                             </div>
                         </div>

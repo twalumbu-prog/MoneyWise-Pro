@@ -3,6 +3,63 @@ import { Layout } from '../../components/Layout';
 import { Link } from 'react-router-dom';
 import { Search } from 'lucide-react';
 
+// ── Provider data ─────────────────────────────────────────────────────────────
+export const INVEST_PROVIDERS = [
+    {
+        id: 'longhorn',
+        name: 'Longhorn Investment Associates',
+        logo: '/invest-logos/longhorn.jpeg',
+        route: '/invest/company/longhorn',
+        reviews: '4.9 (320 Reviews)',
+        investors: '232k Investors',
+        products: [
+            { id: 'lh-1', name: 'Premium FX Fund',     price: 'K25,502.0', ytd: '34% YTD' },
+            { id: 'lh-2', name: 'Equity Growth Fund',  price: 'K15,200.0', ytd: '21% YTD' },
+            { id: 'lh-3', name: 'Mixed Capital Fund',  price: 'K8,400.0',  ytd: '12% YTD' },
+        ],
+    },
+    {
+        id: 'hobbiton',
+        name: 'Hobbiton Investments',
+        logo: '/invest-logos/hobbiton.png',
+        route: '/invest/company/hobbiton',
+        reviews: '4.8 (150 Reviews)',
+        investors: '85k Investors',
+        products: [
+            { id: 'hb-1', name: 'Real Estate Trust',  price: 'K55,000.0', ytd: '18% YTD' },
+            { id: 'hb-2', name: 'Agri-Business Fund', price: 'K12,300.0', ytd: '42% YTD' },
+            { id: 'hb-3', name: 'Infrastructure Bond', price: 'K9,800.0', ytd: '15% YTD' },
+        ],
+    },
+    {
+        id: 'aflife',
+        name: 'Aflife Investments',
+        logo: '/invest-logos/aflife.png',
+        route: '/invest/company/aflife',
+        reviews: '4.7 (98 Reviews)',
+        investors: '41k Investors',
+        products: [
+            { id: 'af-1', name: 'Life Savings Plan',    price: 'K5,000.0',  ytd: '11% YTD' },
+            { id: 'af-2', name: 'Education Trust Fund', price: 'K7,500.0',  ytd: '14% YTD' },
+            { id: 'af-3', name: 'Balanced Growth Fund', price: 'K10,200.0', ytd: '19% YTD' },
+        ],
+    },
+    {
+        id: 'abc',
+        name: 'ABC Asset Management',
+        logo: '/invest-logos/abc.jpeg',
+        route: '/invest/company/abc',
+        reviews: '4.6 (212 Reviews)',
+        investors: '120k Investors',
+        products: [
+            { id: 'abc-1', name: 'Money Market Fund',   price: 'K3,200.0',  ytd: '9% YTD'  },
+            { id: 'abc-2', name: 'Government Bond Fund',price: 'K18,750.0', ytd: '16% YTD' },
+            { id: 'abc-3', name: 'Diversified Equity',  price: 'K22,400.0', ytd: '28% YTD' },
+        ],
+    },
+];
+
+// ── InvestHome ────────────────────────────────────────────────────────────────
 export const InvestHome: React.FC = () => {
     return (
         <Layout noPadding={true} backgroundColor="bg-slate-100">
@@ -36,14 +93,14 @@ export const InvestHome: React.FC = () => {
 
                     {/* Main Content Area */}
                     <div className="w-full bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-8 min-h-[600px]">
-                        
+
                         {/* Search Bar */}
                         <div className="w-96 h-8">
                             <div className="h-full px-4 bg-neutral-100 rounded-full flex items-center gap-3">
                                 <Search className="w-4 h-4 text-gray-500" />
-                                <input 
-                                    type="text" 
-                                    placeholder="Search investment products or companies..." 
+                                <input
+                                    type="text"
+                                    placeholder="Search investment products or companies..."
                                     className="bg-transparent border-none outline-none w-full text-sm placeholder:text-gray-400"
                                 />
                             </div>
@@ -51,112 +108,66 @@ export const InvestHome: React.FC = () => {
 
                         {/* Companies List */}
                         <div className="flex flex-col gap-9">
-                            {/* Company 1 */}
-                            <div className="flex flex-col gap-4">
-                                <div className="flex justify-between items-center pb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-md border border-violet-100 shadow-sm flex items-center justify-center p-1">
-                                            <div className="text-red-500 font-bold text-xs">LHI</div>
+                            {INVEST_PROVIDERS.map(provider => (
+                                <div key={provider.id} className="flex flex-col gap-4">
+                                    {/* Company Header */}
+                                    <div className="flex justify-between items-center pb-3">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-8 h-8 rounded-md border border-violet-100 shadow-sm flex items-center justify-center overflow-hidden p-0.5">
+                                                <img
+                                                    src={provider.logo}
+                                                    alt={provider.name}
+                                                    className="w-full h-full object-contain"
+                                                />
+                                            </div>
+                                            <div className="text-black text-sm font-semibold font-['DM_Sans']">{provider.name}</div>
+                                            <div className="w-4 h-4 flex items-center justify-center text-blue-600">
+                                                <VerifiedIcon />
+                                            </div>
                                         </div>
-                                        <div className="text-black text-sm font-semibold font-['DM_Sans']">Long Horn Investments</div>
-                                        <div className="w-4 h-4 flex items-center justify-center text-blue-600">
-                                            <VerifiedIcon />
-                                        </div>
+                                        <Link to={provider.route} className="text-neutral-700 text-xs font-normal hover:underline">
+                                            See more &rarr;
+                                        </Link>
                                     </div>
-                                    <Link to="/invest/company/long-horn" className="text-neutral-700 text-xs font-normal hover:underline">
-                                        See more &rarr;
-                                    </Link>
-                                </div>
-                                <div className="flex gap-5 overflow-x-auto pb-4">
+
                                     {/* Product Cards */}
-                                    {[
-                                        { id: '1', name: 'Premium FX Fund', price: 'K25,502.0', ytd: '34% YTD', company: 'Longhorn Investment Capital Limited' },
-                                        { id: '2', name: 'Equity Fund', price: 'K15,200.0', ytd: '21% YTD', company: 'Longhorn Investment Capital Limited' },
-                                        { id: '3', name: 'Mixed Capital Fund', price: 'K8,400.0', ytd: '12% YTD', company: 'Longhorn Investment Capital Limited' }
-                                    ].map(product => (
-                                        <Link to={`/invest/product/${product.id}`} key={product.id} className="min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[#E8EEF8] flex flex-col justify-between hover:shadow-md transition-shadow cursor-pointer">
-                                            <div className="flex flex-col gap-3">
-                                                <div>
-                                                    <div className="text-black text-base font-medium font-['DM_Sans']">{product.name}</div>
-                                                    <div className="text-stone-500 text-[10px]">{product.company}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-black text-lg font-bold">{product.price}</div>
-                                                    <div className="text-green-600 text-xs font-bold flex items-center gap-1 mt-1">
-                                                        <TrendingUpIcon /> {product.ytd}
+                                    <div className="flex gap-5 overflow-x-auto pb-4">
+                                        {provider.products.map(product => (
+                                            <Link
+                                                to={`/invest/product/${product.id}`}
+                                                key={product.id}
+                                                className="min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[#E8EEF8] flex flex-col justify-between hover:shadow-md transition-shadow cursor-pointer"
+                                            >
+                                                <div className="flex flex-col gap-3">
+                                                    <div>
+                                                        <div className="text-black text-base font-medium font-['DM_Sans']">{product.name}</div>
+                                                        <div className="text-stone-500 text-[10px]">{provider.name}</div>
                                                     </div>
-                                                </div>
-                                                <div className="flex justify-between items-end mt-0.5 gap-8">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="text-black text-[10px] flex items-center gap-1">
-                                                            <StarIcon /> 4.9 (320 Reviews)
-                                                        </div>
-                                                        <div className="text-black text-[10px] flex items-center gap-1">
-                                                            <UsersIcon /> 232k Investors
+                                                    <div>
+                                                        <div className="text-black text-lg font-bold">{product.price}</div>
+                                                        <div className="text-green-600 text-xs font-bold flex items-center gap-1 mt-1">
+                                                            <TrendingUpIcon /> {product.ytd}
                                                         </div>
                                                     </div>
-                                                    <div className="w-8 h-8 bg-neutral-100 rounded-full flex items-center justify-center">
-                                                        &rarr;
+                                                    <div className="flex justify-between items-end mt-0.5 gap-8">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="text-black text-[10px] flex items-center gap-1">
+                                                                <StarIcon /> {provider.reviews}
+                                                            </div>
+                                                            <div className="text-black text-[10px] flex items-center gap-1">
+                                                                <UsersIcon /> {provider.investors}
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-8 h-8 bg-neutral-100 rounded-full flex items-center justify-center">
+                                                            &rarr;
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                        </Link>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Company 2 */}
-                            <div className="flex flex-col gap-4">
-                                <div className="flex justify-between items-center pb-3">
-                                    <div className="flex items-center gap-3">
-                                        <div className="w-8 h-8 rounded-md border border-violet-100 shadow-sm flex items-center justify-center p-1">
-                                            <div className="w-4 h-4 bg-green-600 rounded-full"></div>
-                                        </div>
-                                        <div className="text-black text-sm font-semibold font-['DM_Sans']">Hobbiton Investment Management</div>
-                                        <div className="w-4 h-4 flex items-center justify-center text-blue-600">
-                                            <VerifiedIcon />
-                                        </div>
+                                            </Link>
+                                        ))}
                                     </div>
-                                    <Link to="/invest/company/hobbiton" className="text-neutral-700 text-xs font-normal hover:underline">
-                                        See more &rarr;
-                                    </Link>
                                 </div>
-                                <div className="flex gap-5 overflow-x-auto pb-4">
-                                    {[
-                                        { id: '4', name: 'Real Estate Trust', price: 'K55,000.0', ytd: '18% YTD', company: 'Hobbiton Investment Management' },
-                                        { id: '5', name: 'Agri-Business Fund', price: 'K12,300.0', ytd: '42% YTD', company: 'Hobbiton Investment Management' }
-                                    ].map(product => (
-                                        <Link to={`/invest/product/${product.id}`} key={product.id} className="min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[#E8EEF8] flex flex-col justify-between hover:shadow-md transition-shadow cursor-pointer">
-                                            <div className="flex flex-col gap-3">
-                                                <div>
-                                                    <div className="text-black text-base font-medium font-['DM_Sans']">{product.name}</div>
-                                                    <div className="text-stone-500 text-[10px]">{product.company}</div>
-                                                </div>
-                                                <div>
-                                                    <div className="text-black text-lg font-bold">{product.price}</div>
-                                                    <div className="text-green-600 text-xs font-bold flex items-center gap-1 mt-1">
-                                                        <TrendingUpIcon /> {product.ytd}
-                                                    </div>
-                                                </div>
-                                                <div className="flex justify-between items-end mt-0.5 gap-8">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="text-black text-[10px] flex items-center gap-1">
-                                                            <StarIcon /> 4.8 (150 Reviews)
-                                                        </div>
-                                                        <div className="text-black text-[10px] flex items-center gap-1">
-                                                            <UsersIcon /> 85k Investors
-                                                        </div>
-                                                    </div>
-                                                    <div className="w-8 h-8 bg-neutral-100 rounded-full flex items-center justify-center">
-                                                        &rarr;
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </Link>
-                                    ))}
-                                </div>
-                            </div>
-
+                            ))}
                         </div>
                     </div>
                 </div>
@@ -165,6 +176,7 @@ export const InvestHome: React.FC = () => {
     );
 };
 
+// ── Shared icons ──────────────────────────────────────────────────────────────
 export const TrendingUpIcon = () => (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>

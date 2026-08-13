@@ -1,22 +1,25 @@
 import React, { useState } from 'react';
 import { Layout } from '../../components/Layout';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, MoreVertical } from 'lucide-react';
-import { StarIcon, UsersIcon, VerifiedIcon } from './InvestHome';
+import { StarIcon, UsersIcon, VerifiedIcon, INVEST_PROVIDERS } from './InvestHome';
 
 export const InvestProductDetail: React.FC = () => {
     const navigate = useNavigate();
-    // const { id } = useParams();
+    const { id } = useParams();
     const [isBuyModalOpen, setIsBuyModalOpen] = useState(false);
 
-    // Mock data
-    const companyCode = 'LHI';
-    const companyName = 'Long Horn Investments';
-    const productName = 'Longhorn Equity Fund';
-    const productSubName = 'Longhorn Inv Ltd. (LHE5)';
-    const price = 'K478.0';
-    const priceChange = 'K4,275 - (34%) YTD';
-    const currentTotal = '67,000';
+    // Resolve the product + provider from the shared data
+    const provider = INVEST_PROVIDERS.find(p => p.products.some(pr => pr.id === id)) ?? INVEST_PROVIDERS[0];
+    const product   = provider.products.find(pr => pr.id === id) ?? provider.products[0];
+
+    const companyName  = provider.name;
+    const companyLogo  = provider.logo;
+    const productName  = product.name;
+    const productSubName = `${provider.name} (${product.id.toUpperCase()})`;
+    const price        = product.price;
+    const priceChange  = `${product.ytd}`;
+    const currentTotal = product.price.replace('K', '').replace(',', '');
 
     return (
         <Layout noPadding={true} backgroundColor="bg-slate-100">
@@ -30,8 +33,8 @@ export const InvestProductDetail: React.FC = () => {
                                 <ChevronLeft className="w-5 h-5 text-black" />
                             </button>
                             <div className="flex items-center gap-2">
-                                <div className="w-7 h-7 rounded-md border border-violet-100 shadow-sm flex items-center justify-center p-1">
-                                    <div className="text-red-500 font-bold text-[10px]">{companyCode}</div>
+                                <div className="w-7 h-7 rounded-md border border-violet-100 shadow-sm flex items-center justify-center overflow-hidden p-0.5">
+                                    <img src={companyLogo} alt={companyName} className="w-full h-full object-contain" />
                                 </div>
                                 <div className="text-black text-xs font-medium font-['DM_Sans']">{companyName}</div>
                                 <div className="w-4 h-4 flex items-center justify-center text-blue-600">
