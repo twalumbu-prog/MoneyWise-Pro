@@ -91,3 +91,15 @@
     scrollbar-width: none;
   }
 }
+
+/*
+ * Custom checkbox: appearance-none strips the browser's native tick mark.
+ * Restore it as a crisp white SVG check when the box is ticked, so every
+ * row-select checkbox in the Inbox and Wallets tables renders consistently.
+ */
+input[type="checkbox"].appearance-none:checked {
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 16 16' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3.5 8.5l3 3 6-6' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+}
