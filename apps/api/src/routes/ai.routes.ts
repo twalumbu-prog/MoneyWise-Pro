@@ -3,6 +3,7 @@ import { requireAuth, requireRole, optionalAuth } from '../middleware/auth';
 import * as ruleController from '../controllers/rule.controller';
 import * as metricsController from '../controllers/metrics.controller';
 import * as aiController from '../controllers/ai.controller';
+import * as agentController from '../controllers/agent.controller';
 import {
     getFinancialHighlights,
     acknowledgeAchievements,
@@ -11,7 +12,16 @@ import {
 
 const router = Router();
 
-// Assistant & Intelligence
+// ── Agentic assistant (streaming, tool-calling, human-approved writes) ───────
+router.post('/agent/chat', requireAuth, agentController.agentChat);
+router.post('/agent/approve', requireAuth, agentController.agentApprove);
+router.get('/agent/models', requireAuth, agentController.listModels);
+router.get('/agent/threads', requireAuth, agentController.listThreads);
+router.get('/agent/threads/:id', requireAuth, agentController.getThread);
+router.delete('/agent/threads/:id', requireAuth, agentController.deleteThread);
+
+// Legacy non-streaming assistant. Kept so cached PWA bundles pointing at the
+// old endpoint keep working; the UI now calls /agent/chat.
 router.post('/assistant', requireAuth, aiController.assistantChat);
 
 // Financial Highlights — headline weekly figures, category breakdown and

@@ -41,6 +41,41 @@ function verifyTokenLocally(token: string): { id: string; email?: string; phone?
     };
 }
 
+/**
+ * Loads role + organization_id for an authenticated user.
+ *
+ * Distinguishes two cases the old inline version collapsed into one:
+ *   • `ok: false` — the lookup itself failed. The user's membership is unknown,
+ *     so the request must not proceed: continuing with organization_id
+ *     undefined makes every downstream controller report "User does not belong
+ *     to an organization", which is both wrong and, for any query that forgets
+ *     to scope, unsafe.
+ *   • `ok: true` with a null organization_id — the row exists and the user
+ *     genuinely has no org yet (freshly registered, pre-onboarding). That is a
+ *     valid state and must keep working.
+ *
+ * Retries once, mirroring the client-side lookup in AuthContext.tsx: this query
+ * races token refresh and brief Supabase blips, and a single failure was
+ * previously enough to break an otherwise healthy session.
+ */
+async function loadUserProfile(
+    userId: string
+): Promise<{ ok: true; profile: { role: string; organization_id: string | null } | null } | { ok: false }> {
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const { data, error } = await supabase
+            .from('users')
+            .select('role, organization_id')
+            .eq('id', userId)
+            .maybeSingle();
+
+        if (!error) return { ok: true, profile: data ?? null };
+
+        console.warn(`[Auth] Profile lookup failed for ${userId} (attempt ${attempt + 1}): ${error.message}`);
+        if (attempt === 0) await new Promise(resolve => setTimeout(resolve, 250));
+    }
+    return { ok: false };
+}
+
 export const requireAuth = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
     console.log(`[Auth] Incoming request: ${req.method} ${req.path}`);
@@ -87,17 +122,21 @@ export const requireAuth = async (req: any, res: any, next: any) => {
             }
 
             console.log(`[Auth] User authenticated locally: ${user.id}`);
-            const { data: profile, error: profileError } = await supabase
-                .from('users')
-                .select('role, organization_id')
-                .eq('id', user.id)
-                .single();
+            const lookup = await loadUserProfile(user.id);
 
-            if (profileError || !profile) {
+            if (!lookup.ok) {
+                // Retryable: the session is fine, we just couldn't read the
+                // profile. 503 tells the client that plainly instead of a 400
+                // claiming the user has no organization.
+                return res.status(503).json({
+                    error: 'Could not load your account context. Please try again.',
+                });
+            }
+            if (!lookup.profile) {
                 console.warn(`[Auth] User profile not found for ${user.id}. Tables might be out of sync.`);
             } else {
-                user.role = profile.role;
-                user.organization_id = profile.organization_id;
+                user.role = lookup.profile.role;
+                user.organization_id = lookup.profile.organization_id;
             }
 
             req.user = user;
@@ -149,20 +188,20 @@ export const requireAuth = async (req: any, res: any, next: any) => {
         console.log(`[Auth] User authenticated: ${user.id}`);
 
         // Fetch user profile (role, organization_id)
-        const { data: profile, error: profileError } = await supabase
-            .from('users')
-            .select('role, organization_id')
-            .eq('id', user.id)
-            .single();
+        const lookup = await loadUserProfile(user.id);
 
-        if (profileError || !profile) {
+        if (!lookup.ok) {
+            return res.status(503).json({
+                error: 'Could not load your account context. Please try again.',
+            });
+        }
+        if (!lookup.profile) {
             console.warn(`[Auth] User profile not found for ${user.id}. Tables might be out of sync.`);
-            // We don't block auth here, but organization_id will be missing.
-            // Downstream controllers should handle missing organization_id if strictly required.
+            // Not blocked: a user can legitimately exist without an organization
+            // before onboarding. Controllers requiring one still check.
         } else {
-            user.role = profile.role;
-            user.organization_id = profile.organization_id;
-            // console.log(`[Auth] Attached context: Role=${user.role}, Org=${user.organization_id}`);
+            user.role = lookup.profile.role;
+            user.organization_id = lookup.profile.organization_id;
         }
 
         req.user = user;

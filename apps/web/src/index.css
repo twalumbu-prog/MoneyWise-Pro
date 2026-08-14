@@ -82,6 +82,41 @@
   }
 }
 
+/* Rotating assistant status copy.
+   ONE class, carrying both animations. Two classes each setting the `animation`
+   shorthand cannot coexist — the later rule silently replaces the earlier one —
+   so the entry and idle motions live in a single declaration, and they animate
+   different properties (transform vs opacity) so neither cancels the other.
+   A solid colour with an opacity breath, not a background-clip gradient: the
+   gradient left the text transparent wherever the background wasn't painted,
+   which made the label unreadable for much of its cycle. */
+.status-live {
+  color: #6b7280;
+  animation:
+    status-rise 380ms ease-out,
+    status-breathe 2s ease-in-out infinite;
+}
+
+/* Entry: movement only, so it never fights the opacity breath. */
+@keyframes status-rise {
+  from { transform: translateY(3px); }
+  to   { transform: translateY(0); }
+}
+
+/* Never dips far enough to stop being legible. */
+@keyframes status-breathe {
+  0%, 100% { opacity: 0.6; }
+  50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-live {
+    animation: none;
+    opacity: 1;
+  }
+  .typing-dot { animation: none; opacity: 0.6; }
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
