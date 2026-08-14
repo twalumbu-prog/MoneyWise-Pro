@@ -77,6 +77,7 @@ export async function createScheduledItem(req: Request, res: Response) {
             title, amount, category, cadence,
             next_due_date, description,
             payment_method, recipient_account, recipient_bank_code, recipient_name,
+            pop_enabled, pop_method, pop_email,
         } = req.body;
 
         if (!title || !amount || !next_due_date) {
@@ -94,6 +95,9 @@ export async function createScheduledItem(req: Request, res: Response) {
                 recipient_account: recipient_account ?? null,
                 recipient_bank_code: recipient_bank_code ?? null,
                 recipient_name: recipient_name ?? null,
+                pop_enabled: pop_enabled === true,
+                pop_method: pop_enabled ? (pop_method ?? 'EMAIL') : null,
+                pop_email: pop_enabled ? (pop_email ?? null) : null,
             })
             .select()
             .single();
@@ -121,6 +125,7 @@ export async function updateScheduledItem(req: Request, res: Response) {
             'title', 'amount', 'category', 'cadence', 'next_due_date',
             'description', 'status',
             'payment_method', 'recipient_account', 'recipient_bank_code', 'recipient_name',
+            'pop_enabled', 'pop_method', 'pop_email',
         ];
         const updates: Record<string, any> = { updated_at: new Date().toISOString() };
         for (const key of allowed) {

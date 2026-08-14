@@ -33,6 +33,10 @@ export interface ScheduledItem {
     status: 'ACTIVE' | 'ARCHIVED';
     created_at: string;
     updated_at: string;
+    /** Proof-of-Payment auto-send settings */
+    pop_enabled?: boolean;
+    pop_method?: string | null;
+    pop_email?: string | null;
 }
 
 export interface ScheduledItemRun {
@@ -56,6 +60,9 @@ export interface CreateScheduledItemPayload {
     due_day?: number | null;
     next_due_date: string;
     description?: string;
+    pop_enabled?: boolean;
+    pop_method?: string | null;
+    pop_email?: string | null;
 }
 
 export const scheduleService = {

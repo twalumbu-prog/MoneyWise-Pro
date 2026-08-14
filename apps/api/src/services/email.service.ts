@@ -1,6 +1,20 @@
 import { Resend } from 'resend';
 import { supabase } from '../lib/supabase';
 import PDFDocument from 'pdfkit';
+import fs from 'fs';
+import path from 'path';
+
+// Lenco logo (JPEG — PDFKit's png-js can't handle the PNG's compression).
+// Source: apps/api/src/assets/lenco-logo.jpg, generated from the same base64
+// as RequisitionDocumentTemplates.tsx via: sips -s format jpeg lenco-logo.png
+let _lencoLogoBuffer: Buffer | null = null;
+function getLencoLogo(): Buffer | null {
+    if (_lencoLogoBuffer) return _lencoLogoBuffer;
+    try {
+        _lencoLogoBuffer = fs.readFileSync(path.join(__dirname, '../assets/lenco-logo.jpg'));
+    } catch { /* non-fatal — logo will be skipped */ }
+    return _lencoLogoBuffer;
+}
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 // Falling back to localhost in production would send email recipients on other
@@ -1011,6 +1025,355 @@ export const emailService = {
             subject: 'Reset your MoneyWise password',
             html: this.wrapTemplate(body),
         });
+    },
+
+    /**
+     * Send an automated Proof of Payment email for a completed scheduled run.
+     * Called from the Lenco transfer.successful webhook (electronic) and from
+     * the disbursement controller (cash), so the recipient gets confirmation
+     * the moment money actually moves.
+     *
+     * Includes a styled HTML email + a PDFKit-generated PDF receipt attachment.
+     */
+    async sendScheduledProofOfPayment(params: {
+        to: string;
+        orgName: string;
+        scheduleTitle: string;
+        amount: number;
+        recipientName: string | null;
+        recipientAccount: string | null;
+        paymentMethod: string | null;
+        txRef: string | null;
+        transactedAt: Date;
+    }) {
+        const { to, orgName, scheduleTitle, amount, recipientName, recipientAccount, paymentMethod, txRef, transactedAt } = params;
+        const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
+        const money = (n: number) => `K${Number(n).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}`;
+        const formattedDate = transactedAt.toLocaleString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric',
+            year: 'numeric', hour: 'numeric', minute: '2-digit',
+        });
+        const methodLabel = paymentMethod === 'MOBILE_MONEY' ? 'Mobile Money'
+            : paymentMethod === 'BANK_TRANSFER' ? 'Bank Transfer'
+            : paymentMethod === 'CASH' ? 'Cash' : 'Transfer';
+
+        const detailRow = (label: string, value: string, mono = false) => `
+            <tr>
+                <td style="padding:14px 22px;border-bottom:1px solid #F0F2F4;font-size:13px;color:#7A8189;font-weight:500;width:160px;white-space:nowrap;vertical-align:middle;">${label}</td>
+                <td style="padding:14px 22px 14px 0;border-bottom:1px solid #F0F2F4;font-size:${mono ? '12px' : '13px'};font-weight:700;vertical-align:middle;${mono ? "font-family:ui-monospace,'SF Mono',Menlo,monospace;color:#5C636B;" : ''}">${value}</td>
+            </tr>`;
+
+        const [whole, dec = '00'] = amount.toFixed(2).split('.');
+
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <meta name="viewport" content="width=device-width,initial-scale=1">
+                <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;900&display=swap" rel="stylesheet">
+            </head>
+            <body style="margin:0;background:#EAECEF;font-family:${FONT_STACK};color:#16181D;">
+                <div style="max-width:600px;margin:0 auto;padding:32px 16px;">
+                    <div style="background:#fff;border:1px solid #E2E5E9;border-radius:14px;overflow:hidden;box-shadow:0 30px 60px -30px rgba(22,24,29,.28);">
+
+                        <!-- Header -->
+                        <div style="padding:28px 40px 10px;text-align:center;">
+                            <div style="font-size:18px;font-weight:800;letter-spacing:-0.02em;">${orgName}</div>
+                            <div style="font-size:11px;color:#9AA0A7;margin-top:4px;letter-spacing:0.08em;text-transform:uppercase;font-weight:600;">Proof of Transfer</div>
+                        </div>
+
+                        <!-- Amount hero -->
+                        <div style="padding:24px 40px 28px;text-align:center;">
+                            <div style="display:inline-block;padding:6px 14px;background:#ECFDF5;border-radius:20px;font-size:12px;font-weight:700;color:#059669;margin-bottom:16px;">✓ Transfer Confirmed</div>
+                            <div style="font-size:58px;font-weight:900;letter-spacing:-0.035em;line-height:1;font-variant-numeric:tabular-nums;">
+                                K${Number(whole).toLocaleString()}<span style="font-size:30px;font-weight:800;color:#7A8189;">.${dec}</span>
+                            </div>
+                            <div style="font-size:14px;color:#5C636B;margin-top:10px;">${scheduleTitle}</div>
+                        </div>
+
+                        <!-- Detail table -->
+                        <div style="padding:0 40px 4px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
+                                   style="border:1px solid #EAECEF;border-radius:14px;border-collapse:separate;overflow:hidden;">
+                                ${recipientName ? detailRow('Recipient', recipientName) : ''}
+                                ${recipientAccount ? detailRow('Account / Phone', recipientAccount) : ''}
+                                ${detailRow('Method', methodLabel)}
+                                ${detailRow('Date', formattedDate)}
+                                ${txRef ? detailRow('Transaction Ref', txRef, true) : ''}
+                                ${detailRow('Amount', money(amount))}
+                            </table>
+                        </div>
+
+                        <!-- Footer note -->
+                        <div style="padding:26px 40px 30px;text-align:center;">
+                            <div style="font-size:11px;color:#9AA0A7;line-height:1.7;">
+                                This is an automated Proof of Transfer generated by <strong>MoneyWise Pro</strong>
+                                for the scheduled payment <em>${scheduleTitle}</em>.
+                                A PDF copy is attached for your records.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        // Generate PDF proof — non-fatal, HTML email still goes if this fails.
+        let pdfAttachment: { filename: string; content: string } | undefined;
+        try {
+            pdfAttachment = await this.generateProofOfPaymentPdf({
+                orgName, scheduleTitle, amount, recipientName, recipientAccount,
+                methodLabel, txRef, transactedAt,
+            });
+        } catch (pdfErr) {
+            console.error('[EmailService] PoP PDF generation failed — sending HTML-only:', pdfErr);
+        }
+
+        if (!process.env.RESEND_API_KEY) {
+            console.warn('[EmailService] RESEND_API_KEY not set — skipping PoP email.');
+            return;
+        }
+
+        const { error } = await resend.emails.send({
+            from: process.env.EMAIL_FROM || 'MoneyWise <notifications@resend.dev>',
+            to,
+            subject: `Proof of Transfer — ${money(amount)} · ${scheduleTitle}`,
+            html,
+            text: `Proof of Transfer\n\nAmount: ${money(amount)}\nSchedule: ${scheduleTitle}\n${recipientName ? `Recipient: ${recipientName}\n` : ''}${recipientAccount ? `Account: ${recipientAccount}\n` : ''}Method: ${methodLabel}\nDate: ${formattedDate}${txRef ? `\nRef: ${txRef}` : ''}\n\nGenerated by MoneyWise Pro.`,
+            ...(pdfAttachment ? { attachments: [pdfAttachment] } : {}),
+        });
+
+        if (error) {
+            console.error('[EmailService] Resend error sending PoP email:', error);
+            throw error;
+        }
+        console.log(`[EmailService] Proof of Payment email sent to ${to} for scheduled item "${scheduleTitle}" (K${amount})`);
+    },
+
+    /**
+     * PDFKit proof-of-payment — Lenco-style receipt matching the
+     * CashDisbursalProof component in RequisitionDocumentTemplates.tsx.
+     * Sections: logo header → amount → from → recipient details → disclaimer → footer.
+     */
+    async generateProofOfPaymentPdf(params: {
+        orgName: string;
+        scheduleTitle: string;
+        amount: number;
+        recipientName: string | null;
+        recipientAccount: string | null;
+        methodLabel: string;
+        txRef: string | null;
+        transactedAt: Date;
+    }): Promise<{ filename: string; content: string }> {
+        const { orgName, scheduleTitle, amount, recipientName, recipientAccount, methodLabel, txRef, transactedAt } = params;
+
+        // Lenco logo loaded from apps/api/src/assets/lenco-logo.png (binary PNG)
+        const _lencoLogo = getLencoLogo();
+
+        // ── Formatters ─────────────────────────────────────────────────────────
+        const amountStr = `ZMW ${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+        const formattedDate = transactedAt.toLocaleString('en-GB', {
+            year: 'numeric', month: 'long', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', hour12: true,
+        }).replace(',', ' @');
+
+        const DISCLAIMER =
+            'The transfer was successful and the beneficiary account was credited. However, this ' +
+            'transmission is subject to network providers wherein transactions may be delayed due to ' +
+            'interruption, incorrect data, or delay in transmission of transaction details. All ' +
+            'transactions will be verified and our normal checks will be applied.';
+
+        // ── Colours (match Lenco template) ─────────────────────────────────────
+        const PRIMARY = '#16181D';
+        const MUTED   = '#7A8189';
+        const DARK_MUTED = '#5C636B';
+        const BORDER  = '#F0F4F8';          // border-gray-100 equivalent
+        const GRAY100 = '#F3F4F6';
+        const EMERALD = '#059669';
+
+        // ── Layout constants ───────────────────────────────────────────────────
+        const L   = 56;                     // left margin
+        const W   = 483;                    // content width
+        const PAD = 24;                     // section vertical padding
+
+        const buffer = await new Promise<Buffer>((resolve, reject) => {
+            const doc = new PDFDocument({ margin: 0, size: 'A4', bufferPages: false });
+            const chunks: Buffer[] = [];
+            doc.on('data', (c: Buffer) => chunks.push(c));
+            doc.on('end',  () => resolve(Buffer.concat(chunks)));
+            doc.on('error', reject);
+
+            let y = 40;
+
+            const divider = () => {
+                doc.moveTo(L, y).lineTo(L + W, y).strokeColor(BORDER).lineWidth(0.5).stroke();
+                y += PAD;
+            };
+
+            // ── 1. HEADER — Lenco logo + title + date + method ────────────────
+            if (_lencoLogo) {
+                try { doc.image(_lencoLogo, L, y, { height: 24 }); } catch { /* skip */ }
+            }
+            y += 38;
+
+            if (txRef) {
+                doc.fontSize(8).font('Helvetica').fillColor(MUTED)
+                   .text('Transaction Ref: ', L, y, { continued: true })
+                   .font('Helvetica-Bold').fillColor(DARK_MUTED).text(txRef);
+                y += 14;
+            }
+
+            doc.fontSize(15).font('Helvetica-Bold').fillColor(PRIMARY).text('Proof of Transfer', L, y);
+            y += 20;
+            doc.fontSize(10).font('Helvetica').fillColor(MUTED).text(formattedDate, L, y);
+            y += 18;
+
+            // Method pill
+            const pillW = 120;
+            doc.roundedRect(L, y, pillW, 18, 9).fill(GRAY100);
+            doc.circle(L + 13, y + 9, 3).fill('#9CA3AF');
+            doc.fontSize(8).font('Helvetica-Bold').fillColor('#4B5563')
+               .text(methodLabel.toUpperCase(), L + 21, y + 5, { width: pillW - 25 });
+            y += 30;
+
+            divider();
+
+            // ── 2. AMOUNT ─────────────────────────────────────────────────────
+            doc.fontSize(8).font('Helvetica').fillColor(MUTED)
+               .text('AMOUNT DISBURSED', L, y, { characterSpacing: 0.6 });
+            y += 15;
+
+            doc.fontSize(26).font('Helvetica-Bold').fillColor(PRIMARY).text(amountStr, L, y);
+            y += 36;
+
+            doc.fontSize(10).font('Helvetica-Bold').fillColor(EMERALD).text('✓ Transfer Successful', L, y);
+            y += 24;
+
+            divider();
+
+            // ── 3. FROM ───────────────────────────────────────────────────────
+            doc.fontSize(8).font('Helvetica').fillColor(MUTED)
+               .text('FROM', L, y, { characterSpacing: 0.6 });
+            y += 15;
+            doc.fontSize(11).font('Helvetica-Bold').fillColor(PRIMARY)
+               .text(`${orgName} — MoneyWise Finance`, L, y, { width: W });
+            y += 24;
+
+            divider();
+
+            // ── 4. RECIPIENT'S DETAILS ────────────────────────────────────────
+            doc.fontSize(9).font('Helvetica-Bold').fillColor('#4B5563')
+               .text("RECIPIENT'S DETAILS", L, y, { characterSpacing: 0.5 });
+            y += 18;
+
+            const COL2_X = L + 185;
+            const COL2_W = W - 185;
+
+            const detailRow = (label: string, value: string) => {
+                const startY = y;
+                doc.fontSize(10.5).font('Helvetica').fillColor(MUTED)
+                   .text(label, L, startY, { width: 175 });
+                doc.fontSize(10.5).font('Helvetica-Bold').fillColor(PRIMARY)
+                   .text(value, COL2_X, startY, { width: COL2_W, align: 'right' });
+                y += 22;
+            };
+
+            detailRow('Name',            recipientName    || '—');
+            detailRow('Bank / Provider', methodLabel);
+            detailRow('Account Number',  recipientAccount || '—');
+            detailRow('Description',     scheduleTitle);
+            y += 6;
+
+            divider();
+
+            // ── 5. DISCLAIMER ─────────────────────────────────────────────────
+            // Draw a light-gray background band
+            const disclaimerTextOpts = { width: W };
+            const disclaimerH = doc.heightOfString(DISCLAIMER, disclaimerTextOpts);
+            const bandH = disclaimerH + 46; // top label + padding
+            doc.rect(0, y - PAD, 595, bandH + PAD).fill(GRAY100);
+
+            doc.fontSize(8).font('Helvetica-Bold').fillColor(MUTED)
+               .text('DISCLAIMER', L, y, { characterSpacing: 0.5 });
+            y += 14;
+            doc.fontSize(9).font('Helvetica').fillColor(MUTED).text(DISCLAIMER, L, y, disclaimerTextOpts);
+            y += disclaimerH + 20;
+
+            divider();
+
+            // ── 6. FOOTER ─────────────────────────────────────────────────────
+            doc.fontSize(9).font('Helvetica').fillColor(MUTED)
+               .text('Generated by ', L, y, { continued: true })
+               .font('Helvetica-Bold').fillColor(DARK_MUTED).text('MoneyWise Pro');
+            doc.fontSize(9).font('Helvetica').fillColor(MUTED)
+               .text('Page 1 of 1', L, y, { align: 'right', width: W });
+
+            doc.end();
+        });
+
+        const safeTitle = scheduleTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+        return {
+            filename: `proof-of-transfer-${safeTitle}-${transactedAt.getTime()}.pdf`,
+            content: buffer.toString('base64'),
+        };
+    },
+
+    /**
+     * Look up a requisition's scheduled item and, if pop_enabled, send the
+     * Proof of Payment email. Called from both the Lenco webhook (electronic
+     * transfers) and the disbursement controller (cash). Fire-and-forget —
+     * always non-fatal to the caller.
+     */
+    async maybeFireScheduledPoP(requisitionId: string, lencoTxRef: string | null = null) {
+        try {
+            // 1. Is this requisition linked to a scheduled run with PoP enabled?
+            const { data: run } = await supabase
+                .from('scheduled_item_runs')
+                .select('scheduled_item_id, scheduled_items(pop_enabled, pop_method, pop_email, title)')
+                .eq('requisition_id', requisitionId)
+                .maybeSingle();
+
+            const item = (run as any)?.scheduled_items;
+            if (!item?.pop_enabled || !item.pop_email) return;
+
+            // 2. Fetch the disbursement for amount + recipient details.
+            const { data: disb } = await supabase
+                .from('disbursements')
+                .select('total_prepared, payment_method, recipient_account, recipient_account_name, lenco_transaction_id, created_at, requisition_id, requisitions(organization_id)')
+                .eq('requisition_id', requisitionId)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (!disb) return;
+
+            // 3. Get org name.
+            const orgId = (disb as any).requisitions?.organization_id;
+            let orgName = 'Your Organization';
+            if (orgId) {
+                const { data: org } = await supabase
+                    .from('organizations')
+                    .select('name')
+                    .eq('id', orgId)
+                    .maybeSingle();
+                if (org?.name) orgName = org.name;
+            }
+
+            await this.sendScheduledProofOfPayment({
+                to: item.pop_email,
+                orgName,
+                scheduleTitle: item.title,
+                amount: Number(disb.total_prepared) || 0,
+                recipientName: (disb as any).recipient_account_name || null,
+                recipientAccount: (disb as any).recipient_account || null,
+                paymentMethod: (disb as any).payment_method || null,
+                txRef: lencoTxRef || (disb as any).lenco_transaction_id || null,
+                transactedAt: disb.created_at ? new Date(disb.created_at) : new Date(),
+            });
+        } catch (err) {
+            console.error('[EmailService] maybeFireScheduledPoP failed:', err);
+        }
     },
 
     /**

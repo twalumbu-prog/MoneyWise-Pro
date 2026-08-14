@@ -371,6 +371,16 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             console.error('[Notification Error] Failed to send CASH_DISBURSED email:', err)
         );
 
+        // 7. For cash disbursements, there is no Lenco webhook to confirm the
+        // transfer, so we fire the scheduled Proof of Payment email here directly.
+        // Electronic payments are covered by handleTransferSuccessful in the
+        // Lenco webhook controller (which has the confirmed txRef from Lenco).
+        if (!payment_method || payment_method === 'CASH') {
+            emailService.maybeFireScheduledPoP(id, null).catch(err =>
+                console.error('[Notification Error] Failed to send scheduled PoP email (cash):', err)
+            );
+        }
+
     } catch (error: any) {
         console.error('Error disbursing requisition:', error);
         res.status(500).json({ error: 'Failed to disburse requisition', details: error.message });

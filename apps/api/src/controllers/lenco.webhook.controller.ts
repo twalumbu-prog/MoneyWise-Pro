@@ -686,12 +686,18 @@ async function handleTransferSuccessful(data: any) {
             // We NO LONGER set status to 'COMPLETED' here.
             // It must remain 'DISBURSED' so the user can acknowledge receipt and reconcile.
             await client.query('COMMIT');
-            
+
             console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference}`);
-            
+
             // Trigger ledger finalization and withdrawal fee addition
             // The DB UNIQUE constraint prevents duplicates if polling already ran
             await cashbookService.finalizeWalletDisbursementLedger(requisitionId);
+
+            // If this requisition came from a scheduled item with PoP enabled,
+            // send the Proof of Payment email now that Lenco has confirmed the transfer.
+            emailService.maybeFireScheduledPoP(requisitionId, String(data.id || '')).catch(err =>
+                console.error('[Lenco Webhook] Failed to send scheduled PoP email:', err)
+            );
         } else {
             await client.query('COMMIT');
             console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference} but no matching disbursement found.`);

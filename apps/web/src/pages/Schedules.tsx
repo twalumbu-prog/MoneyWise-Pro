@@ -6,6 +6,7 @@ import {
     Plus, MoreVertical, Calendar, RotateCcw, FileText,
     ChevronLeft, ChevronRight, Receipt, CreditCard, TrendingUp,
     Landmark, Wallet, X, Check, Loader2, AlertCircle, Play, ArrowRight,
+    Mail, Send,
 } from 'lucide-react';
 import {
     scheduleService,
@@ -334,6 +335,11 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
     const [recipientName, setRecipientName]       = useState((initial as any)?.recipient_name ?? '');
     const [banks, setBanks]   = useState<any[]>([]);
     const [verify, setVerify] = useState<PaymentVerifyState>({ status: 'idle' });
+
+    // Proof-of-Payment auto-send
+    const [popEnabled, setPopEnabled] = useState<boolean>((initial as any)?.pop_enabled ?? false);
+    const [popEmail, setPopEmail]     = useState<string>((initial as any)?.pop_email ?? '');
+
     const [error, setError]   = useState('');
 
     useEffect(() => {
@@ -353,6 +359,8 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
         setError('');
         if (!title.trim()) return setError('Title is required.');
         if (!amount || amount <= 0) return setError('Amount must be greater than 0.');
+        if (popEnabled && !popEmail.trim()) return setError('Enter an email address for the Proof of Payment.');
+        if (popEnabled && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(popEmail.trim())) return setError('Enter a valid email address for the Proof of Payment.');
         try {
             await onSave({
                 title, amount, category, cadence,
@@ -364,6 +372,9 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                     recipient_bank_code: recipientBankCode,
                     recipient_name: recipientName,
                 } as any : {}),
+                pop_enabled: popEnabled,
+                pop_method: popEnabled ? 'EMAIL' : null,
+                pop_email: popEnabled ? popEmail.trim() : null,
             });
         } catch (err: any) {
             setError(err.message ?? 'Something went wrong.');
@@ -431,6 +442,69 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                             recipientName={recipientName}       setRecipientName={setRecipientName}
                             banks={banks} verify={verify} setVerify={setVerify} orgId={orgId}
                         />
+
+                        {/* ── Proof of Payment auto-send ───────────────────── */}
+                        <div className="pt-1 border-t border-gray-100 space-y-3">
+                            <div className="flex items-center justify-between pt-1">
+                                <div className="flex-1 min-w-0 pr-3">
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Proof of Payment</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        Automatically email a proof of transfer each time this schedule runs.
+                                    </p>
+                                </div>
+                                {/* iOS-style toggle */}
+                                <button
+                                    type="button"
+                                    onClick={() => setPopEnabled(v => !v)}
+                                    className={`relative flex-shrink-0 w-10 h-6 rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-400 ${
+                                        popEnabled ? 'bg-[#0058DB]' : 'bg-gray-300'
+                                    }`}
+                                    aria-pressed={popEnabled}
+                                    aria-label="Send proof of payment"
+                                >
+                                    <span
+                                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+                                            popEnabled ? 'translate-x-4' : 'translate-x-0'
+                                        }`}
+                                    />
+                                </button>
+                            </div>
+
+                            {popEnabled && (
+                                <div className="space-y-2">
+                                    {/* Method — email only for now */}
+                                    <div>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Delivery Method</p>
+                                        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#0058DB]/10 border border-[#0058DB]/20">
+                                            <Mail size={12} className="text-[#0058DB]" />
+                                            <span className="text-xs font-semibold text-[#0058DB]">Email</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Email address */}
+                                    <div>
+                                        <label className="block text-xs font-semibold text-gray-600 mb-1">
+                                            Recipient Email
+                                        </label>
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                                                <Send size={12} className="text-gray-400" />
+                                            </div>
+                                            <input
+                                                type="email"
+                                                value={popEmail}
+                                                onChange={e => setPopEmail(e.target.value)}
+                                                placeholder="e.g. supplier@example.com"
+                                                className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition"
+                                            />
+                                        </div>
+                                        <p className="text-[10px] text-gray-400 mt-1">
+                                            The proof of transfer PDF will be emailed here every time a payment executes.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         {error && (
                             <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 rounded-xl px-3 py-2">
@@ -508,6 +582,13 @@ const DetailPanel: React.FC<DetailPanelProps> = ({ item, onClose, onEdit, onRunN
                                 <span className="font-semibold">Recipient:</span> {rName}
                                 {rAccount  && <span className="ml-1 text-gray-400">· {rAccount}</span>}
                                 {payMethod && <span className="ml-1 text-gray-400">· {payMethod === 'MOBILE_MONEY' ? 'Mobile Money' : 'Bank Transfer'}</span>}
+                            </div>
+                        )}
+                        {(item as any).pop_enabled && (item as any).pop_email && (
+                            <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 rounded-xl text-[10px] text-[#0058DB]">
+                                <Mail size={10} className="flex-shrink-0" />
+                                <span className="font-semibold">Proof of Payment →</span>
+                                <span className="truncate">{(item as any).pop_email}</span>
                             </div>
                         )}
                         {item.description && <p className="text-xs text-gray-400 mt-2">{item.description}</p>}
