@@ -57,12 +57,24 @@ export const getNotificationsSummary = async (req: AuthRequest, res: any): Promi
             return res.status(400).json({ error: 'User does not belong to an organization' });
         }
 
+        // Parse optional wallets_since timestamp (ms epoch or ISO string) sent by
+        // the frontend so we can count only inflows that arrived after the user
+        // last visited /cashbook.
+        const walletsSinceRaw = req.query.wallets_since as string | undefined;
+        let walletsSinceDate: Date | null = null;
+        if (walletsSinceRaw) {
+            const ts = Number(walletsSinceRaw);
+            walletsSinceDate = !isNaN(ts) ? new Date(ts) : new Date(walletsSinceRaw);
+            if (isNaN(walletsSinceDate.getTime())) walletsSinceDate = null;
+        }
+
         const counts = {
             requisitions: 0,
             approvals: 0,
             vouchers: 0,
             disbursements: 0,
-            settings: 0
+            settings: 0,
+            wallets: 0,
         };
 
         // REQUESTOR checks
@@ -111,6 +123,20 @@ export const getNotificationsSummary = async (req: AuthRequest, res: any): Promi
                 .eq('organization_id', organization_id)
                 .eq('status', 'PENDING_APPROVAL');
             counts.settings = setCount || 0;
+        }
+
+        // Wallets badge: INFLOW COMPLETED entries since last /cashbook visit.
+        // Only meaningful when the caller supplies wallets_since; without it we
+        // return 0 so the badge stays hidden until the user has visited once.
+        if (walletsSinceDate && ['CASHIER', 'ACCOUNTANT', 'ADMIN'].includes(userRole)) {
+            const { count: walletsCount } = await supabase
+                .from('cashbook_entries')
+                .select('*', { count: 'exact', head: true })
+                .eq('organization_id', organization_id)
+                .eq('type', 'INFLOW')
+                .eq('status', 'COMPLETED')
+                .gt('created_at', walletsSinceDate.toISOString());
+            counts.wallets = walletsCount || 0;
         }
 
         res.json(counts);

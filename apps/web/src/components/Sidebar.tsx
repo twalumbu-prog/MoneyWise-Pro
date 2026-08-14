@@ -18,7 +18,7 @@ import {
     Landmark,
 } from 'lucide-react';
 import { WalletCardsIcon, AstroidIcon } from './icons/BrandIcons';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, NotificationCounts } from '../context/AuthContext';
 
 interface NavItem {
     label: string;
@@ -27,12 +27,28 @@ interface NavItem {
     isActive: (pathname: string, search: string) => boolean;
     /** No page built yet — rendered visible but inert, per the sidebar restructure plan. */
     disabled?: boolean;
+    /** Returns the badge count for this item given current notification counts. */
+    getBadge?: (counts: NotificationCounts) => number;
 }
 
 const GENERAL_ITEMS: NavItem[] = [
-    { label: 'Inbox', path: '/requisitions', icon: Inbox, isActive: (p) => p === '/requisitions' || p === '/' },
+    {
+        label: 'Inbox',
+        path: '/requisitions',
+        icon: Inbox,
+        isActive: (p) => p === '/requisitions' || p === '/',
+        // Sum all work-queue counts: new updates on own reqs + items awaiting
+        // action from the user's role (approvals, vouchers, disbursements).
+        getBadge: (c) => c.requisitions + c.approvals + c.disbursements + c.vouchers,
+    },
     { label: 'Schedules', path: '/schedules', icon: CalendarDays, isActive: (p) => p === '/schedules' },
-    { label: 'Wallets', path: '/cashbook', icon: WalletCardsIcon, isActive: (p) => p === '/cashbook' },
+    {
+        label: 'Wallets',
+        path: '/cashbook',
+        icon: WalletCardsIcon,
+        isActive: (p) => p === '/cashbook',
+        getBadge: (c) => c.wallets,
+    },
     { label: 'Reporting', path: '/reporting', icon: TrendingUp, isActive: (p) => p === '/reporting' },
     { label: 'Business Intelligence', path: '/intelligence', icon: AstroidIcon, isActive: (p) => p === '/intelligence' },
     { label: 'Audit', path: '/audit', icon: ShieldCheck, isActive: (p) => p === '/audit' },
@@ -43,7 +59,13 @@ const SUPPORT_ITEMS: NavItem[] = [
     { label: 'Apps', path: '/apps', icon: Grid3x3, isActive: (p) => p.startsWith('/apps') },
     { label: 'Integrations', path: '/settings?tab=integrations', icon: Share2, isActive: (p, s) => p === '/settings' && s.includes('tab=integrations') },
     { label: 'Customer Care & Help', path: '#', icon: HelpCircle, isActive: () => false, disabled: true },
-    { label: 'Settings', path: '/settings', icon: SettingsIcon, isActive: (p, s) => p === '/settings' && !s.includes('tab=integrations') },
+    {
+        label: 'Settings',
+        path: '/settings',
+        icon: SettingsIcon,
+        isActive: (p, s) => p === '/settings' && !s.includes('tab=integrations'),
+        getBadge: (c) => c.settings,
+    },
 ];
 
 const SERVICES_ITEMS: NavItem[] = [
@@ -54,12 +76,21 @@ const SERVICES_ITEMS: NavItem[] = [
 
 const COLLAPSE_KEY = 'moneywise:sidebarCollapsed';
 
-const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean }> = ({ item, active, collapsed }) => {
+const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean; badge?: number }> = ({ item, active, collapsed, badge }) => {
     const Icon = item.icon;
+    const showBadge = !!badge && badge > 0;
+    const badgeLabel = badge && badge > 9 ? '9+' : String(badge ?? 0);
 
     const content = (
         <>
-            <Icon size={15} className={active ? 'text-[#0058DB]' : 'text-gray-500'} />
+            {/* Icon — with a tiny dot overlay when collapsed */}
+            <span className="relative flex-shrink-0">
+                <Icon size={15} className={active ? 'text-[#0058DB]' : 'text-gray-500'} />
+                {collapsed && showBadge && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-[#006AFF] border border-[#F3F5FC]" />
+                )}
+            </span>
+
             {!collapsed && (
                 <span className={`truncate ${active ? 'font-semibold text-[#111827]' : 'font-medium text-gray-600'}`}>
                     {item.label}
@@ -67,6 +98,12 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
             )}
             {!collapsed && item.disabled && (
                 <span className="ml-auto text-[8px] font-bold text-gray-300 uppercase tracking-wider">Soon</span>
+            )}
+            {/* Numeric badge — expanded sidebar only */}
+            {!collapsed && showBadge && (
+                <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#006AFF] text-white text-[10px] font-bold leading-none flex items-center justify-center tabular-nums">
+                    {badgeLabel}
+                </span>
             )}
         </>
     );
@@ -97,7 +134,7 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
 export const Sidebar: React.FC = () => {
     const location = useLocation();
     const navigate = useNavigate();
-    const { signOut } = useAuth();
+    const { signOut, notificationCounts } = useAuth();
     const [collapsed, setCollapsed] = useState<boolean>(() => {
         try {
             return localStorage.getItem(COLLAPSE_KEY) === '1';
@@ -175,6 +212,7 @@ export const Sidebar: React.FC = () => {
                             item={item}
                             collapsed={collapsed}
                             active={item.isActive(location.pathname, location.search)}
+                            badge={item.getBadge ? item.getBadge(notificationCounts) : undefined}
                         />
                     ))}
                 </nav>
@@ -207,6 +245,7 @@ export const Sidebar: React.FC = () => {
                             item={item}
                             collapsed={collapsed}
                             active={item.isActive(location.pathname, location.search)}
+                            badge={item.getBadge ? item.getBadge(notificationCounts) : undefined}
                         />
                     ))}
                 </nav>

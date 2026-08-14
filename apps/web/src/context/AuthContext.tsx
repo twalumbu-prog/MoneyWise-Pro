@@ -32,6 +32,8 @@ export interface NotificationCounts {
     vouchers: number;
     disbursements: number;
     settings: number;
+    /** New INFLOW entries since the user last visited /cashbook. */
+    wallets: number;
 }
 
 interface AuthContextType {
@@ -79,12 +81,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const [userOrganizations, setUserOrganizations] = useState<any[]>([]);
     const [notificationCounts, setNotificationCounts] = useState<NotificationCounts>({
-        requisitions: 0, approvals: 0, vouchers: 0, disbursements: 0, settings: 0
+        requisitions: 0, approvals: 0, vouchers: 0, disbursements: 0, settings: 0, wallets: 0,
     });
 
     // Live session for interval callbacks: the 30s poll below closes over the
     // first render, so it must read the session through a ref, not state.
     const sessionRef = useRef<Session | null>(null);
+    // Tracks the current org so refreshNotifications can read the right
+    // localStorage wallets_since key even from inside the 5-min interval.
+    const orgIdRef = useRef<string | null>(null);
 
     const refreshNotifications = async () => {
         // Never poll signed-out — the login page and public payment pages mount
@@ -96,9 +101,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // refresh/retry. This runs on a 30s background interval, so a transient
             // 401 must NOT sign the user out — apiFetch only signs out when the
             // session is genuinely invalid, and otherwise throws (caught below).
-            const response = await apiFetch('/users/notifications');
+            let url = '/users/notifications';
+            const orgId = orgIdRef.current;
+            if (orgId) {
+                const walletsSince = localStorage.getItem(`moneywise:nav_wallets_since_${orgId}`);
+                if (walletsSince) {
+                    url = `/users/notifications?wallets_since=${encodeURIComponent(walletsSince)}`;
+                }
+            }
+            const response = await apiFetch(url);
             const data = await response.json();
-            setNotificationCounts(data);
+            setNotificationCounts({ wallets: 0, ...data });
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
         }
@@ -130,6 +143,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUserRole(userData.role);
                 setUserStatus(userData.status);
                 setUserName(userData.name);
+                orgIdRef.current = userData.organization_id;
                 setOrganizationId(userData.organization_id);
                 setOrganizationName(userData.organizations?.name || null);
                 const logo = userData.organizations?.logo_url || null;
@@ -400,6 +414,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const data = await response.json();
             setUserRole(data.user.role);
             setUserStatus(data.user.status);
+            orgIdRef.current = data.user.organization_id;
             setOrganizationId(data.user.organization_id);
             
             // Find name of switched organization
@@ -423,6 +438,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(null);
         setSession(null);
         setUserRole(null);
+        orgIdRef.current = null;
         setOrganizationId(null);
         setOrganizationName(null);
         setOrganizationLogoUrl(null);

@@ -279,8 +279,21 @@ const CashLedger: React.FC = () => {
     const [selectedTxnIds, setSelectedTxnIds] = useState<Set<string>>(new Set());
     const [isDesktopSearchOpen, setIsDesktopSearchOpen] = useState(false);
 
-    const { userRole, organizationName, organizationId } = useAuth();
+    const { userRole, organizationName, organizationId, refreshNotifications } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
+
+    // Stamp "wallets last visited" so the sidebar badge can clear after the
+    // user lands here. Do it per org so org-switches don't bleed into each other.
+    useEffect(() => {
+        if (!organizationId) return;
+        try {
+            localStorage.setItem(`moneywise:nav_wallets_since_${organizationId}`, String(Date.now()));
+        } catch {
+            /* localStorage unavailable — badge just won't clear */
+        }
+        refreshNotifications();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [organizationId]);
 
     // Mobile wallet-card carousel (snap-scroll) state
     const walletScrollRef = useRef<HTMLDivElement>(null);

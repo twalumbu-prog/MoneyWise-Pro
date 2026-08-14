@@ -229,8 +229,12 @@ export const RequisitionList: React.FC = () => {
 
     // "New since last visit" glow — one tracker per tab so an unread inflow
     // doesn't also light up outflow rows and vice versa.
-    const outflowsSeen = useNewnessTracker(organizationId ? `inbox_outflows_seen_${organizationId}` : null);
-    const inflowsSeen = useNewnessTracker(organizationId ? `inbox_inflows_seen_${organizationId}` : null);
+    // firstVisitLookbackMs = 0 so the cutoff seeds to "now" on the very first
+    // visit — only items that arrive AFTER the user has first opened this page
+    // will ever light up, preventing the "always blue dot" problem where items
+    // that predate the session appear perpetually new.
+    const outflowsSeen = useNewnessTracker(organizationId ? `inbox_outflows_seen_${organizationId}` : null, 18000, 0);
+    const inflowsSeen = useNewnessTracker(organizationId ? `inbox_inflows_seen_${organizationId}` : null, 18000, 0);
     const hasNewOutflow = requisitions.some(r => outflowsSeen.isNew(r.created_at));
     // Ignore unfinished PENDING intents — they're hidden from the list, so a dot
     // pointing at one would have nothing to show.
