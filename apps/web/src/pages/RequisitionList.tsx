@@ -141,7 +141,6 @@ export const RequisitionList: React.FC = () => {
     const {
         data: invoices = [],
         isLoading: invoicesInitialLoading,  // true only on the very first fetch (no cache yet)
-        isFetching: invoicesFetching,       // true on any background refetch — don't gate render on this
         refetch: refetchInvoices,
     } = useQuery<PaymentLink[]>({
         queryKey: ['invoice-links', organizationId],

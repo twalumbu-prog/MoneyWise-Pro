@@ -47,10 +47,8 @@ const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({ requisi
 
     // Icon column width is fixed at 28px on mobile, 32px on desktop.
     // The connector line is centred in this column.
-    const ICON_SIZE_MD = 32; // desktop
     const ICON_SIZE_SM = 28; // mobile
     const ICON_HALF_SM = ICON_SIZE_SM / 2;
-    const ICON_HALF_MD = ICON_SIZE_MD / 2;
 
     return (
         <div className="flex-1 overflow-y-auto bg-[#E6F2FE] p-4 sm:p-6 md:p-8">
