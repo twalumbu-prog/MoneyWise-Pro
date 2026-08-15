@@ -253,9 +253,14 @@ export const RunPayrollPage: React.FC = () => {
         }
     };
 
-    // Auto-populate all active staff into items on load
+    // Auto-populate all active staff into items on load.
+    // Wait for suggestedDeductions too — it's a separate query that often resolves
+    // after allStaff/config, and the `items.length > 0` guard prevents re-applying
+    // once items are seeded. If we seed before suggestions arrive the loan column
+    // stays zero for everyone. `undefined` means still loading; `{}` means loaded
+    // but no outstanding debts — both are valid, only undefined must block.
     useEffect(() => {
-        if (allStaff.length === 0 || !config || items.length > 0) return;
+        if (allStaff.length === 0 || !config || suggestedDeductions === undefined || items.length > 0) return;
 
         // Treat null/undefined status as ACTIVE — the createStaffMember API insert never
         // set a status on existing records, so older employees have status = null.
