@@ -12,6 +12,7 @@ import { handleCollectionSuccessful } from './lenco.webhook.controller';
 import { ensureWalletTransferConfirmed } from './disbursement.controller';
 import { RequisitionMessageService } from '../services/requisition_message.service';
 import { aiService } from '../services/ai/ai.service';
+import { resolveStaffFromFreeText } from '../lib/staffUserMatching';
 import { decisionRouter } from '../services/ai/decision.router';
 import { AuditService } from '../services/audit.service';
 
@@ -117,6 +118,26 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             department: department || null, // Ensure empty strings are handled as null
             wallet_id: wallet_id || walletId || null
         };
+
+        // LOAN/ADVANCE requests are filed by an accountant on the employee's
+        // behalf — the requestor is the filer, not the employee, so staff_name/
+        // employee_id/loan_amount are the only signal of who it's actually for.
+        // These were being accepted from the form and silently dropped before
+        // insert, which meant payroll's recovery ledger could never find them.
+        if (type === 'LOAN' || type === 'ADVANCE') {
+            insertData.staff_name = staff_name || null;
+            insertData.employee_id = employee_id || null;
+            insertData.loan_amount = loan_amount ?? null;
+
+            try {
+                insertData.payroll_staff_id = await resolveStaffFromFreeText(organization_id, {
+                    employeeId: employee_id,
+                    staffName: staff_name,
+                });
+            } catch (matchErr) {
+                console.error('[createRequisition] payroll_staff auto-match failed:', matchErr);
+            }
+        }
 
         // Feature detection: Check if payment columns exist in the database schema
         // This prevents 500 errors if the migration hasn't been applied yet.

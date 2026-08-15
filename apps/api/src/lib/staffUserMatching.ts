@@ -120,6 +120,42 @@ export async function matchUserToStaff(orgId: string, userId: string): Promise<s
     return target.id;
 }
 
+/**
+ * Resolve a free-text staff name / employee ID (as typed on a loan/advance
+ * requisition form) to a payroll_staff row. Tries employee_number first (the
+ * more reliable of the two free-text fields), then an exact full-name match
+ * — including the name with its two words swapped, since staff have been
+ * entered as both "First Last" and "Last First" on these forms. Only resolves
+ * when exactly one candidate matches; ambiguous input is left unmatched.
+ */
+export async function resolveStaffFromFreeText(
+    orgId: string,
+    opts: { employeeId?: string | null; staffName?: string | null }
+): Promise<string | null> {
+    const empId = norm(opts.employeeId);
+    const rawName = norm(opts.staffName);
+    if (!empId && !rawName) return null;
+
+    const { data: staff, error } = await supabase
+        .from('payroll_staff')
+        .select('id, employee_number, first_name, last_name')
+        .eq('organization_id', orgId);
+    if (error) throw error;
+    if (!staff || staff.length === 0) return null;
+
+    if (empId) {
+        const matches = staff.filter(s => norm(s.employee_number) === empId);
+        if (matches.length === 1) return matches[0].id;
+    }
+    if (rawName) {
+        const nameOf = (s: any) => norm(`${s.first_name} ${s.last_name}`);
+        const swappedOf = (s: any) => norm(`${s.last_name} ${s.first_name}`);
+        const matches = staff.filter(s => nameOf(s) === rawName || swappedOf(s) === rawName);
+        if (matches.length === 1) return matches[0].id;
+    }
+    return null;
+}
+
 /** Retroactive sweep: match every currently-unmatched payroll_staff row in an org. */
 export async function matchAllStaffInOrg(orgId: string): Promise<{ matched: number; total: number; matches: { staff_id: string; user_id: string }[] }> {
     const { data: unmatched, error } = await supabase

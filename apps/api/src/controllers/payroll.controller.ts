@@ -347,8 +347,15 @@ export const createPayrollRun = async (req: Request, res: Response) => {
 
 // ── Loan / advance recovery ──────────────────────────────────────────────────
 
-/** Statuses a loan or advance can sit in while it still owes money. */
-const RECOVERABLE_STATUSES = ['DISBURSED', 'RECEIVED'];
+/**
+ * Statuses a loan or advance can sit in while it still owes money. DISBURSED/
+ * RECEIVED cover the general expense pipeline; ACCOUNTED/CATEGORIZED/COMPLETED
+ * are the states a LOAN/ADVANCE requisition actually settles into once the
+ * payout is confirmed (CATEGORIZED vs COMPLETED just branches on whether
+ * QuickBooks is connected — see requisition.controller.ts) — money is out
+ * the door either way, which is what matters for recovery.
+ */
+const RECOVERABLE_STATUSES = ['DISBURSED', 'RECEIVED', 'ACCOUNTED', 'CATEGORIZED', 'COMPLETED'];
 
 /**
  * Total amount a loan or advance is expected to repay in full.
@@ -373,17 +380,33 @@ function totalOwed(r: any): number {
  * Load every still-owing loan/advance for an org, with how much has already
  * been recovered against each. Returns rows ordered oldest-first so recoveries
  * are allocated to the longest-standing debt first.
+ *
+ * `staff` rows are {id: payroll_staff.id, user_id}. A debt is matched to a
+ * staff member two ways: primarily via requisitions.payroll_staff_id (set
+ * when the requisition was filed by an accountant on the employee's behalf —
+ * the common case), falling back to requestor_id === payroll_staff.user_id
+ * (the employee filed it themselves). Every returned debt carries a resolved
+ * `staff_id` so callers never need to re-derive it.
  */
-async function loadOutstandingDebts(orgId: string, userIds: string[]) {
-    if (userIds.length === 0) return [];
+async function loadOutstandingDebts(orgId: string, staff: { id: string; user_id: string | null }[]) {
+    if (staff.length === 0) return [];
+
+    const staffIds = staff.map(s => s.id);
+    const userIds = staff.filter(s => s.user_id).map(s => s.user_id as string);
+    const byUserId = new Map(staff.filter(s => s.user_id).map(s => [s.user_id as string, s.id]));
+
+    const orFilter = [
+        `payroll_staff_id.in.(${staffIds.join(',')})`,
+        ...(userIds.length > 0 ? [`requestor_id.in.(${userIds.join(',')})`] : []),
+    ].join(',');
 
     const { data: reqs, error: reqErr } = await supabase
         .from('requisitions')
-        .select('id, requestor_id, type, status, created_at, monthly_deduction, repayment_period, interest_rate, loan_amount, actual_total, estimated_total')
+        .select('id, requestor_id, payroll_staff_id, type, status, created_at, monthly_deduction, repayment_period, interest_rate, loan_amount, actual_total, estimated_total')
         .eq('organization_id', orgId)
         .in('type', ['ADVANCE', 'LOAN'])
         .in('status', RECOVERABLE_STATUSES)
-        .in('requestor_id', userIds)
+        .or(orFilter)
         .order('created_at', { ascending: true });
     if (reqErr) throw reqErr;
     if (!reqs || reqs.length === 0) return [];
@@ -398,14 +421,16 @@ async function loadOutstandingDebts(orgId: string, userIds: string[]) {
         const mine = (recoveries ?? []).filter(x => x.requisition_id === r.id);
         const recovered = mine.reduce((s, x) => s + Number(x.amount), 0);
         const owed = totalOwed(r);
+        const staff_id = r.payroll_staff_id || (r.requestor_id ? byUserId.get(r.requestor_id) : undefined) || null;
         return {
             ...r,
+            staff_id,
             owed,
             recovered,
             outstanding: Math.max(0, parseFloat((owed - recovered).toFixed(2))),
             recoveredPeriods: mine.map(x => `${x.period_year}-${x.period_month}`),
         };
-    });
+    }).filter(d => d.staff_id); // shouldn't happen given the OR filter, but keep the ledger's guarantee that every debt is attributable
 }
 
 /**
@@ -431,12 +456,11 @@ async function recordLoanRecoveries(orgId: string, run: any, runItems: any[]) {
         .from('payroll_staff')
         .select('id, user_id')
         .eq('organization_id', orgId)
-        .in('id', withDeductions.map(i => i.staff_id))
-        .not('user_id', 'is', null);
+        .in('id', withDeductions.map(i => i.staff_id));
     if (staffErr) throw staffErr;
     if (!staff || staff.length === 0) return { recovered: 0, settled: 0 };
 
-    const debts = await loadOutstandingDebts(orgId, staff.map(s => s.user_id));
+    const debts = await loadOutstandingDebts(orgId, staff);
     if (debts.length === 0) return { recovered: 0, settled: 0 };
 
     const rows: any[] = [];
@@ -447,7 +471,7 @@ async function recordLoanRecoveries(orgId: string, run: any, runItems: any[]) {
         if (!member) continue;
 
         // Oldest debt first, so the longest-standing balance clears first
-        const theirs = debts.filter(d => d.requestor_id === member.user_id && d.outstanding > 0);
+        const theirs = debts.filter(d => d.staff_id === member.id && d.outstanding > 0);
         let remaining = Number(item.loans);
 
         for (const debt of theirs) {
@@ -785,12 +809,11 @@ export const getSuggestedDeductions = async (req: Request, res: Response) => {
             .from('payroll_staff')
             .select('id, user_id')
             .eq('organization_id', orgId)
-            .not('user_id', 'is', null)
             .eq('is_archived', false);
         if (staffErr) throw staffErr;
         if (!staffData || staffData.length === 0) return res.json({});
 
-        const debts = await loadOutstandingDebts(orgId, staffData.map(s => s.user_id));
+        const debts = await loadOutstandingDebts(orgId, staffData);
 
         const periodKey = month && year ? `${year}-${month}` : null;
         const suggestions: Record<string, { loans: number; advances: number }> = {};
@@ -799,7 +822,7 @@ export const getSuggestedDeductions = async (req: Request, res: Response) => {
             let loans = 0;
             let advances = 0;
 
-            for (const debt of debts.filter(d => d.requestor_id === staff.user_id)) {
+            for (const debt of debts.filter(d => d.staff_id === staff.id)) {
                 if (debt.outstanding <= 0.005) continue;
                 // Already recovered for this period — don't suggest it twice
                 if (periodKey && debt.recoveredPeriods.includes(periodKey)) continue;

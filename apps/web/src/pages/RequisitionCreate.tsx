@@ -5,6 +5,7 @@ import { Plus, Trash2, AlertTriangle, Clock, Download, Edit3, Check, X, Loader2 
 import { requisitionService } from '../services/requisition.service';
 import { lencoService } from '../services/lenco.service';
 import { departmentService } from '../services/department.service';
+import { payrollService, StaffMember } from '../services/payroll.service';
 import { useAuth } from '../context/AuthContext';
 import * as XLSX from 'xlsx';
 import posthog from '../lib/posthog';
@@ -35,8 +36,26 @@ export const RequisitionCreate: React.FC = () => {
     // Loan & Advance specific fields
     const [staffName, setStaffName] = useState('');
     const [employeeId, setEmployeeId] = useState('');
+    const [payrollStaffId, setPayrollStaffId] = useState('');
     const [amount, setAmount] = useState<number>(0);
     const [repaymentPeriod, setRepaymentPeriod] = useState<number>(1);
+
+    // Staff roster for LOAN/ADVANCE — picking from this instead of free-typing
+    // the name means the recovery ledger can always find the debt later; a
+    // typo'd or reordered free-text name (this used to be pure text entry)
+    // has no reliable way to be matched back to a payroll_staff record.
+    const [staffOptions, setStaffOptions] = useState<StaffMember[]>([]);
+    React.useEffect(() => {
+        if (reqType !== 'LOAN' && reqType !== 'ADVANCE') return;
+        payrollService.listStaff().then(setStaffOptions).catch(() => setStaffOptions([]));
+    }, [reqType]);
+
+    const selectStaff = (id: string) => {
+        setPayrollStaffId(id);
+        const s = staffOptions.find(x => x.id === id);
+        setStaffName(s ? `${s.first_name} ${s.last_name}` : '');
+        setEmployeeId(s?.employee_number || '');
+    };
 
     const DEFAULT_DEPARTMENTS = [
         'Finance', 'Admin', 'HR', 'IT',
@@ -482,6 +501,7 @@ export const RequisitionCreate: React.FC = () => {
             } else {
                 payload.staff_name = staffName;
                 payload.employee_id = employeeId;
+                payload.payroll_staff_id = payrollStaffId || null;
 
                 if (reqType === 'LOAN') {
                     payload.loan_amount = Number(amount);
@@ -1027,25 +1047,32 @@ export const RequisitionCreate: React.FC = () => {
                     {(reqType === 'LOAN' || reqType === 'ADVANCE') && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="col-span-1 md:col-span-2">
-                                <label className="block text-sm font-medium text-gray-700">Staff Member Name</label>
-                                <input
-                                    type="text"
+                                <label className="block text-sm font-medium text-gray-700">Staff Member</label>
+                                <select
                                     required
-                                    value={staffName}
-                                    onChange={(e) => setStaffName(e.target.value)}
+                                    value={payrollStaffId}
+                                    onChange={(e) => selectStaff(e.target.value)}
                                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                                    placeholder="Enter full name"
-                                />
+                                >
+                                    <option value="">Select a staff member…</option>
+                                    {staffOptions.map(s => (
+                                        <option key={s.id} value={s.id}>
+                                            {s.first_name} {s.last_name}{s.employee_number ? ` (${s.employee_number})` : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                                {staffOptions.length === 0 && (
+                                    <p className="mt-1 text-xs text-amber-600">No staff found — add them in Payroll → Staff first.</p>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-gray-700">Employee ID</label>
                                 <input
                                     type="text"
-                                    required
+                                    readOnly
                                     value={employeeId}
-                                    onChange={(e) => setEmployeeId(e.target.value)}
-                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm px-3 py-2 border"
-                                    placeholder="EMP-001"
+                                    className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm sm:text-sm px-3 py-2 border text-gray-600"
+                                    placeholder="Auto-filled from selection"
                                 />
                             </div>
                             <div>
