@@ -17,7 +17,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ChevronDown, Search } from 'lucide-react';
-import { getBankColor, getBankInitials, getBankLogoUrl } from '../utils/bankLogos';
+import { getBankColor, getBankInitials, getBankLogoUrls } from '../utils/bankLogos';
 
 // ── Logo avatar ────────────────────────────────────────────────────────────
 
@@ -27,8 +27,8 @@ interface BankAvatarProps {
 }
 
 export const BankAvatar: React.FC<BankAvatarProps> = ({ name, size = 28 }) => {
-    const [logoFailed, setLogoFailed] = useState(false);
-    const url = getBankLogoUrl(name);
+    const urls = getBankLogoUrls(name);
+    const [urlIndex, setUrlIndex] = useState(0);
 
     const style: React.CSSProperties = {
         width:  size,
@@ -41,20 +41,20 @@ export const BankAvatar: React.FC<BankAvatarProps> = ({ name, size = 28 }) => {
         justifyContent: 'center',
     };
 
-    if (url && !logoFailed) {
+    if (urls.length > 0 && urlIndex < urls.length) {
         return (
             <div style={style} className="bg-white border border-gray-100 shadow-sm">
                 <img
-                    src={url}
+                    src={urls[urlIndex]}
                     alt={name}
                     style={{ width: size - 4, height: size - 4, objectFit: 'contain' }}
-                    onError={() => setLogoFailed(true)}
+                    onError={() => setUrlIndex(i => i + 1)}
                 />
             </div>
         );
     }
 
-    // Coloured initials badge
+    // Coloured initials badge (all URLs exhausted or bank unrecognised)
     const color = getBankColor(name);
     const initials = getBankInitials(name);
     const fontSize = size <= 20 ? 7 : size <= 28 ? 9 : 11;
