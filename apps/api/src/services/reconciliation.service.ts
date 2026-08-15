@@ -788,6 +788,7 @@ export async function healMissingPlatformFees(orgId: string, opts: { apply?: boo
                 date: fee.date,
                 debit: 0,
                 credit: fee.lencoAmount,
+                balance_after: 0, // placeholder — overwritten by recalculate_cashbook_balances below
                 description: `${fee.description} [auto-healed — unposted MoneyWise platform-fee sweep, verified unabsorbed against Lenco]`,
                 external_reference: lencoId,
                 reference_number: null,
