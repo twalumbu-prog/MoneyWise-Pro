@@ -289,6 +289,8 @@ export const createPayrollRun = async (req: Request, res: Response) => {
                 payment_method: item.payment_method || 'BANK',
                 pay_source: item.pay_source || null,
                 destination_method: item.destination_method || null,
+                allowance_breakdown: item.allowance_breakdown || {},
+                deduction_breakdown: item.deduction_breakdown || {},
                 bank_name: item.bank_name || null,
                 bank_account_number: item.bank_account_number || null,
                 mobile_money_number: item.mobile_money_number || null,
