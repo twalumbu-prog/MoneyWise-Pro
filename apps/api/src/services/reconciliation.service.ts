@@ -701,3 +701,138 @@ export async function getOrgReconciliationDetail(orgId: string): Promise<OrgReco
     if (!org) return null;
     return buildOrgDetail(org);
 }
+
+// ---------------------------------------------------------------------------
+// Self-healing: genuinely-unposted platform-fee sweeps
+// ---------------------------------------------------------------------------
+
+export interface FeeHealResult {
+    orgId: string;
+    posted: Array<{ lencoId: string; date: string; amount: number; description: string }>;
+    totalPosted: number;
+    skippedAlreadyPosted: number;
+}
+
+/**
+ * Twalumbu 2026-08-15 root cause: the periodic sync (lenco.controller.ts) always
+ * skips posting a "Split payment"/"Split-Inflow Payment" debit, TRUSTING that the
+ * originating collection was booked net (see CashInflowModal's `targetNet / 0.99`
+ * gross-up) and already absorbs it. That trust was never verified — when Lenco's
+ * sub-account split-payment config stopped sweeping some collections (confirmed via
+ * a clean 2026-08-01 boundary in Twalumbu's history), the debit still fired but had
+ * nothing to absorb it, and the sync silently dropped K868.11 with no trace.
+ *
+ * This closes the gap class permanently, independent of WHY the assumption breaks
+ * (an external Lenco config change, a lost pending intent, a race — doesn't matter):
+ * reuse the reconciliation engine's own matching (the same logic verified by hand for
+ * the retrospective fix) to find fee debits with NO absorbing same-day net-booked
+ * inflow, and post them as an EXPENSE instead of dropping them. Idempotent via
+ * `external_reference = <lenco transaction id>` — safe to run repeatedly/on a cron.
+ *
+ * Deliberately does NOT touch net-booked inflows with no matching fee yet (the
+ * "timing lag" case) — a missing fee might still land later, and adjusting those
+ * pre-emptively risks the same kind of unverified assumption this function exists
+ * to eliminate on the other side.
+ */
+export async function healMissingPlatformFees(orgId: string, opts: { apply?: boolean } = {}): Promise<FeeHealResult> {
+    const apply = opts.apply !== false;
+    const empty: FeeHealResult = { orgId, posted: [], totalPosted: 0, skippedAlreadyPosted: 0 };
+
+    const detail = await getOrgReconciliationDetail(orgId);
+    if (!detail) return empty;
+
+    const txns = detail.transactions;
+    const feeRows = txns.filter(t => t.matchStatus === 'LENCO_ONLY' && t.category === 'PLATFORM_FEE' && t.direction === 'outflow' && t.lencoId);
+    const netBooked = txns.filter(t => t.matchStatus === 'MATCHED' && t.direction === 'inflow' && (t.difference ?? 0) < -0.01);
+
+    // Greedy 1:1 same-day, same-magnitude pairing — mirrors the manual matching used
+    // for the verified retrospective fix.
+    const feeFree = new Map<ReconTxnRow, boolean>(feeRows.map(f => [f, true]));
+    for (const inflow of netBooked) {
+        const target = Math.abs(inflow.difference);
+        const match = feeRows.find(f => feeFree.get(f) && f.date === inflow.date && Math.abs((f.lencoAmount ?? 0) - target) < 0.5);
+        if (match) feeFree.set(match, false);
+    }
+    const genuinelyMissing = feeRows.filter(f => feeFree.get(f));
+    if (!genuinelyMissing.length) return empty;
+
+    const { data: mainWallet } = await supabase
+        .from('organization_wallets')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('is_main', true)
+        .maybeSingle();
+    if (!mainWallet) return empty;
+
+    const posted: FeeHealResult['posted'] = [];
+    let skipped = 0;
+    let earliestDate: string | null = null;
+
+    for (const fee of genuinelyMissing) {
+        const lencoId = fee.lencoId as string;
+        const { data: existing } = await supabase
+            .from('cashbook_entries')
+            .select('id')
+            .eq('organization_id', orgId)
+            .eq('external_reference', lencoId)
+            .maybeSingle();
+        if (existing) { skipped++; continue; }
+
+        if (apply) {
+            const { error } = await supabase.from('cashbook_entries').insert({
+                organization_id: orgId,
+                wallet_id: mainWallet.id,
+                account_type: 'MONEYWISE_WALLET',
+                entry_type: 'EXPENSE',
+                status: 'COMPLETED',
+                date: fee.date,
+                debit: 0,
+                credit: fee.lencoAmount,
+                description: `${fee.description} [auto-healed — unposted MoneyWise platform-fee sweep, verified unabsorbed against Lenco]`,
+                external_reference: lencoId,
+                reference_number: null,
+            } as any);
+            if (error) {
+                console.error(`[FeeHeal] Failed to post ${lencoId} for org ${orgId}:`, error.message);
+                continue;
+            }
+        }
+
+        posted.push({ lencoId, date: fee.date, amount: fee.lencoAmount ?? 0, description: fee.description });
+        if (!earliestDate || fee.date < earliestDate) earliestDate = fee.date;
+    }
+
+    if (apply && earliestDate && posted.length) {
+        const { error: rpcErr } = await supabase.rpc('recalculate_cashbook_balances', {
+            p_organization_id: orgId,
+            p_target_date: earliestDate,
+            p_target_created_at: `${earliestDate}T00:00:00Z`,
+            p_account_type: 'MONEYWISE_WALLET',
+            p_wallet_id: mainWallet.id,
+        });
+        if (rpcErr) console.error(`[FeeHeal] Balance recalc failed for org ${orgId}:`, rpcErr.message);
+    }
+
+    return {
+        orgId,
+        posted,
+        totalPosted: round2(posted.reduce((s, p) => s + p.amount, 0)),
+        skippedAlreadyPosted: skipped,
+    };
+}
+
+/** Runs healMissingPlatformFees for every linked org — the cron entry point. */
+export async function healMissingPlatformFeesForAllOrgs(): Promise<FeeHealResult[]> {
+    const orgs = await fetchOrgRows();
+    const linked = orgs.filter(o => o.lenco_subaccount_id);
+    const results: FeeHealResult[] = [];
+    for (const org of linked) {
+        try {
+            const r = await healMissingPlatformFees(org.id);
+            if (r.posted.length) results.push(r);
+        } catch (err: any) {
+            console.error(`[FeeHeal] org ${org.id} failed:`, err?.message || err);
+        }
+    }
+    return results;
+}

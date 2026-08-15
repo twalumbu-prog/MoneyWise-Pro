@@ -2,6 +2,8 @@ import {
     getReconciliationOverview,
     getQuickOverview,
     getOrgReconciliationDetail,
+    healMissingPlatformFees,
+    healMissingPlatformFeesForAllOrgs,
     RECON_TOLERANCE,
 } from '../services/reconciliation.service';
 
@@ -56,5 +58,41 @@ export const getOrgReconciliation = async (req: any, res: any) => {
     } catch (err: any) {
         console.error('[AdminRecon] org detail failed:', err?.message || err);
         res.status(500).json({ error: 'Failed to build org reconciliation', details: err?.message });
+    }
+};
+
+/**
+ * POST /admin/reconciliation/:orgId/heal-platform-fees?dryRun=1
+ * Posts any genuinely-unposted MoneyWise platform-fee sweep for this org as an
+ * EXPENSE entry (see healMissingPlatformFees for the root cause). Idempotent —
+ * safe to call repeatedly. dryRun=1 reports what WOULD be posted without writing.
+ */
+export const healOrgPlatformFees = async (req: any, res: any) => {
+    try {
+        const { orgId } = req.params;
+        const apply = !(req.query?.dryRun === '1' || req.query?.dryRun === 'true');
+        const result = await healMissingPlatformFees(orgId, { apply });
+        res.json({ ...result, applied: apply });
+    } catch (err: any) {
+        console.error('[AdminRecon] heal-platform-fees failed:', err?.message || err);
+        res.status(500).json({ error: 'Failed to heal platform fees', details: err?.message });
+    }
+};
+
+/**
+ * POST /admin/reconciliation/heal-platform-fees
+ * Cron entry point — runs the same healing pass across every Lenco-linked org.
+ * Called on a schedule (see supabase/migrations/*_setup_fee_heal_cron.sql) so a
+ * gap like Twalumbu's K868.11 (2026-08-15) can never again sit undetected for
+ * two months — this closes it automatically within one cron cycle of appearing.
+ */
+export const healAllOrgsPlatformFees = async (_req: any, res: any) => {
+    try {
+        const results = await healMissingPlatformFeesForAllOrgs();
+        const totalPosted = results.reduce((s, r) => s + r.totalPosted, 0);
+        res.json({ orgsWithHealing: results.length, totalPosted: Math.round(totalPosted * 100) / 100, results });
+    } catch (err: any) {
+        console.error('[AdminRecon] heal-all failed:', err?.message || err);
+        res.status(500).json({ error: 'Failed to heal platform fees across orgs', details: err?.message });
     }
 };

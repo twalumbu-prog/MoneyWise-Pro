@@ -160,7 +160,16 @@ const CashInflowModal: React.FC<CashInflowModalProps> = ({
         }
 
         const targetNet = Number(walletAmount);
-        const payableGross = targetNet / 0.99;
+        // Previously grossed up by /0.99, assuming Lenco always deducts 1% on
+        // collection. That stopped being true for direct deposits at some point
+        // (confirmed via reconciliation 2026-08-15 — a clean cutover around
+        // 2026-08-01 after which zero deposits had any fee swept) — grossing up on a
+        // deduction that may not happen just overcharges the payer. Charge exactly
+        // what the org asked for; the webhook now books whatever Lenco actually
+        // confirms was received (see lenco.webhook.controller.ts), and any real fee
+        // that does land gets caught and posted separately by the reconciliation
+        // engine's self-healing pass (healMissingPlatformFees) — never guessed here.
+        const payableGross = targetNet;
         const depositStartedAt = Date.now();
 
         let ref = currentReference;

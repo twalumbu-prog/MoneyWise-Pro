@@ -5,6 +5,8 @@ import {
     whoami,
     getReconciliationList,
     getOrgReconciliation,
+    healOrgPlatformFees,
+    healAllOrgsPlatformFees,
 } from '../controllers/admin.reconciliation.controller';
 import {
     listWalletPool,
@@ -32,6 +34,8 @@ router.use(requireAuth, requireSuperAdmin);
 router.get('/me', whoami);
 router.get('/reconciliation', getReconciliationList);
 router.get('/reconciliation/:orgId', getOrgReconciliation);
+router.post('/reconciliation/heal-platform-fees', healAllOrgsPlatformFees);
+router.post('/reconciliation/:orgId/heal-platform-fees', healOrgPlatformFees);
 
 // Wallet pool provisioning (pre-created Lenco accounts linked during onboarding)
 router.get('/wallet-pool', listWalletPool);

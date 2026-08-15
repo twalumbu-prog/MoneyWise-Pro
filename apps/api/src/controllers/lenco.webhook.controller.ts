@@ -497,14 +497,22 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             const isPublicSale = (reference && reference.endsWith('-PUB')) ||
                                 (actualNarration && (actualNarration.startsWith('Sale:') || actualNarration.startsWith('Revenue:')));
 
-            // Always use the stored net amount from the pending intent when available —
-            // this covers both internal (CashInflowModal) and public deposits, where the
-            // intent debit is always set to the net subtotal before fees.
-            const inflowAmount = pendingEntry?.debit
-                ? Number(pendingEntry.debit)
-                : isPublicSale
-                    ? parseFloat(amount) * 0.975
-                    : parseFloat(amount);
+            // Public sales/payment links: use the pending intent's net subtotal when
+            // available (their fee IS actually swept below, verified working), else the
+            // 0.975 estimate. Everything else (CashInflowModal wallet deposits and any
+            // other direct collection) books the amount Lenco just confirmed, in full —
+            // NOT a pre-set intent amount. That pre-set amount used to assume a 1% fee
+            // would always be deducted; that assumption silently broke for direct
+            // deposits at some point (confirmed via reconciliation 2026-08-15 — a clean
+            // cutover after which zero deposits had any fee swept), and trusting it kept
+            // booking less than what actually arrived with nothing to reconcile against.
+            // Booking the confirmed amount here can never lose money; if Lenco genuinely
+            // does deduct a fee on some future collection, that debit still shows up on
+            // its own and gets caught + posted by the reconciliation engine's self-healing
+            // pass (healMissingPlatformFees) rather than being guessed at intent time.
+            const inflowAmount = isPublicSale
+                ? (pendingEntry?.debit ? Number(pendingEntry.debit) : parseFloat(amount) * 0.975)
+                : parseFloat(amount);
 
             // 1. Log the Inflow — finalize the intent IN PLACE when one exists.
             // (Delete-then-recreate destroyed the intent when the recreate failed.)
