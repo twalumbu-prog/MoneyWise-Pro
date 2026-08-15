@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
+import { matchStaffMember } from '../lib/staffUserMatching';
 
 const adminOnly = (req: Request, res: Response): boolean => {
     const role = (req as any).user.role;
@@ -101,6 +102,20 @@ export const createStaffMember = async (req: Request, res: Response) => {
             .select()
             .single();
         if (error) throw error;
+
+        // Auto-link to a team member (by email, then exact name) so any
+        // salary advance / loan they later raise as a team member is
+        // recognised by payroll. Non-fatal — matching failure shouldn't
+        // block staff creation.
+        if (!data.user_id) {
+            try {
+                const matchedUserId = await matchStaffMember(orgId, data.id);
+                if (matchedUserId) data.user_id = matchedUserId;
+            } catch (matchErr) {
+                console.error('[createStaffMember] auto-match failed:', matchErr);
+            }
+        }
+
         res.status(201).json(data);
     } catch (err: any) {
         res.status(500).json({ error: err.message });

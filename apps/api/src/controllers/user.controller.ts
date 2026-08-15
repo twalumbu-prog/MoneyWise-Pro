@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
 import { emailService } from '../services/email.service';
+import { matchUserToStaff } from '../lib/staffUserMatching';
 
 const INVITE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
@@ -239,6 +240,15 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
                 throw uoError;
             }
 
+            // Try to link this team member to an unmatched payroll_staff row
+            // (by email, then exact name) so any salary advance/loan they've
+            // already raised is recognised by payroll. Non-fatal.
+            try {
+                await matchUserToStaff(organization_id, targetUserId);
+            } catch (matchErr) {
+                console.error('[CreateUser] staff auto-match failed:', matchErr);
+            }
+
             // This path links an already-registered account directly — there's no
             // password to set, so sendTeamInvite doesn't apply. Without a notification
             // here, the person was silently added to a new org with zero email at all.
@@ -355,6 +365,15 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
         if (uoError) {
             console.error('[CreateUser] user_organizations upsert failed:', uoError);
             throw uoError;
+        }
+
+        // Try to link this invitee to an unmatched payroll_staff row (by email,
+        // then exact name) so any salary advance/loan they've already raised is
+        // recognised by payroll once they accept. Non-fatal.
+        try {
+            await matchUserToStaff(organization_id, authData.user.id);
+        } catch (matchErr) {
+            console.error('[CreateUser] staff auto-match failed:', matchErr);
         }
 
         // 3. Deliver the invite ourselves via Resend (non-fatal: the invite/user record
