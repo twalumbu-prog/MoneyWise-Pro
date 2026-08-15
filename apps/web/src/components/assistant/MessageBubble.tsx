@@ -12,7 +12,7 @@ import ReactMarkdown from 'react-markdown';
 // the component overrides below never fire. Models emit them regularly, even
 // though render_table is the preferred path for real data.
 import remarkGfm from 'remark-gfm';
-import { Check, Copy, Sparkles } from 'lucide-react';
+import { Check, Copy } from 'lucide-react';
 import type { Widget } from '../../lib/agentClient';
 import { WidgetRenderer } from './widgets/WidgetRenderer';
 import { Step, ToolTimeline } from './ToolTimeline';
@@ -95,11 +95,7 @@ export const MessageBubble: React.FC<{ message: ChatMessage; children?: React.Re
     }
 
     return (
-        <div className="flex gap-3">
-            <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full border border-gray-100 bg-white shadow-sm">
-                <Sparkles size={13} className="text-[#006AFF]" />
-            </div>
-
+        <div className="flex">
             <div className="min-w-0 flex-1">
                 <ThinkingTrace
                     content={message.thinking ?? ''}

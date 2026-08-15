@@ -9,7 +9,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { History, PenSquare, Trash2 } from 'lucide-react';
+import { ArrowLeft, History, PenSquare, Trash2 } from 'lucide-react';
 import {
     agentClient, AgentEvent, AssistantModel, Proposal, ThreadSummary, Widget,
 } from '../../lib/agentClient';
@@ -36,7 +36,18 @@ const SUGGESTIONS = [
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-export const AssistantChat: React.FC = () => {
+const NEW_CHAT_TITLE = 'New chat';
+
+interface Props {
+    /**
+     * Fires whenever the chat moves between the hero screen and an active
+     * conversation, so the page shell can hide its own tab bar in favour of
+     * this component's own top bar while a conversation is showing.
+     */
+    onChatStateChange?: (inChat: boolean) => void;
+}
+
+export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
     const [busy, setBusy] = useState(false);
@@ -46,6 +57,10 @@ export const AssistantChat: React.FC = () => {
     const [pending, setPending] = useState<PendingApproval | null>(null);
     const [threads, setThreads] = useState<ThreadSummary[]>([]);
     const [historyOpen, setHistoryOpen] = useState(false);
+    // Distinct from `messages.length > 0`: the back button drops into the hero
+    // view without discarding the conversation, so it can be resumed from History.
+    const [viewMode, setViewMode] = useState<'hero' | 'chat'>('hero');
+    const [title, setTitle] = useState(NEW_CHAT_TITLE);
 
     const abortRef = useRef<AbortController | null>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
@@ -70,6 +85,17 @@ export const AssistantChat: React.FC = () => {
     }, []);
 
     useEffect(() => { refreshThreads(); }, [refreshThreads]);
+
+    // Tell the page shell to hide its own tab bar while a conversation is open.
+    useEffect(() => { onChatStateChange?.(viewMode === 'chat'); }, [viewMode, onChatStateChange]);
+
+    // Once the backend has named the thread, swap "New chat" for the real
+    // title — the `title-fade-in` class is retriggered by the `key` change.
+    useEffect(() => {
+        if (!threadId) return;
+        const match = threads.find(t => t.id === threadId);
+        if (match && match.title && match.title !== title) setTitle(match.title);
+    }, [threads, threadId]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // ── Scrolling ────────────────────────────────────────────────────────────
 
@@ -166,6 +192,7 @@ export const AssistantChat: React.FC = () => {
         setInput('');
         setPending(null);
         setBusy(true);
+        setViewMode('chat');
         stickToBottom.current = true;
 
         setMessages(prev => [
@@ -233,13 +260,20 @@ export const AssistantChat: React.FC = () => {
         setBusy(false);
         setInput('');
         setHistoryOpen(false);
+        setViewMode('hero');
+        setTitle(NEW_CHAT_TITLE);
     };
+
+    /** Drops back to the hero screen without discarding the conversation. */
+    const goBack = () => setViewMode('hero');
 
     const openThread = async (id: string) => {
         setHistoryOpen(false);
         try {
             const data = await agentClient.thread(id);
             setThreadId(data.threadId);
+            setViewMode('chat');
+            setTitle(threads.find(t => t.id === id)?.title ?? NEW_CHAT_TITLE);
             if (data.model) setModel(data.model);
             setMessages(
                 data.messages.map(m => ({
@@ -281,70 +315,106 @@ export const AssistantChat: React.FC = () => {
     };
 
     const empty = messages.length === 0;
+    const inChat = viewMode === 'chat';
+
+    /** History dropdown + New button, grouped — reused by both header layouts. */
+    const historyAndNew = (
+        <div className="flex items-center gap-1 rounded-full bg-gray-50/80 p-0.5">
+            <div className="relative">
+                <button
+                    onClick={() => { setHistoryOpen(v => !v); refreshThreads(); }}
+                    className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold text-gray-400 transition-colors hover:bg-white hover:text-gray-600 hover:shadow-sm"
+                >
+                    <History size={14} />
+                    <span className="hidden sm:inline">History</span>
+                </button>
+
+                {historyOpen && (
+                    <div className="absolute right-0 top-full z-50 mt-1 w-[290px] overflow-hidden rounded-2xl border border-gray-100 bg-white p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
+                        {threads.length === 0 ? (
+                            <p className="px-3 py-6 text-center text-[12px] font-medium text-gray-400">
+                                No past conversations yet.
+                            </p>
+                        ) : (
+                            <div className="max-h-[380px] overflow-y-auto">
+                                {threads.map(t => (
+                                    <div
+                                        key={t.id}
+                                        onClick={() => openThread(t.id)}
+                                        className={`group flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 transition-colors ${
+                                            t.id === threadId ? 'bg-blue-50/60' : 'hover:bg-gray-50'
+                                        }`}
+                                    >
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block truncate text-[13px] font-bold text-brand-navy">{t.title}</span>
+                                            <span className="block text-[11px] font-medium text-gray-400">
+                                                {new Date(t.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                            </span>
+                                        </span>
+                                        <button
+                                            onClick={e => removeThread(t.id, e)}
+                                            className="flex-shrink-0 rounded-lg p-1.5 text-gray-300 opacity-0 transition-all hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
+                                            title="Delete conversation"
+                                        >
+                                            <Trash2 size={13} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <button
+                onClick={startNew}
+                disabled={empty && !threadId}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold text-gray-400 transition-colors hover:bg-white hover:text-gray-600 hover:shadow-sm disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:shadow-none"
+            >
+                <PenSquare size={14} />
+                <span className="hidden sm:inline">New</span>
+            </button>
+        </div>
+    );
 
     // ── Render ───────────────────────────────────────────────────────────────
 
     return (
         <div className="flex h-full min-h-0 flex-1 flex-col">
-            {/* Header. Sits in flow, so nothing overlaps the panel corner. */}
-            <header className="flex flex-shrink-0 items-center justify-end gap-1 px-4 pb-2 pt-1 md:px-6">
-                <div className="relative">
+            {/*
+              Two header layouts share the same slot. The hero layout (no
+              conversation open yet) just needs History/New in the corner — the
+              page shell's own tab bar is still visible above it. Once a
+              conversation is open, this becomes the page's entire top bar: a
+              back button replaces the tabs, and the middle carries the
+              conversation's title so the tab row isn't needed at all.
+            */}
+            {inChat ? (
+                <header className="flex flex-shrink-0 items-center justify-between gap-2 px-4 pb-2 pt-4 md:px-6">
                     <button
-                        onClick={() => { setHistoryOpen(v => !v); refreshThreads(); }}
-                        className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600"
+                        onClick={goBack}
+                        title="Back"
+                        className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-700"
                     >
-                        <History size={14} />
-                        <span className="hidden sm:inline">History</span>
+                        <ArrowLeft size={18} />
                     </button>
 
-                    {historyOpen && (
-                        <div className="absolute right-0 top-full z-50 mt-1 w-[290px] overflow-hidden rounded-2xl border border-gray-100 bg-white p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
-                            {threads.length === 0 ? (
-                                <p className="px-3 py-6 text-center text-[12px] font-medium text-gray-400">
-                                    No past conversations yet.
-                                </p>
-                            ) : (
-                                <div className="max-h-[380px] overflow-y-auto">
-                                    {threads.map(t => (
-                                        <div
-                                            key={t.id}
-                                            onClick={() => openThread(t.id)}
-                                            className={`group flex cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 transition-colors ${
-                                                t.id === threadId ? 'bg-blue-50/60' : 'hover:bg-gray-50'
-                                            }`}
-                                        >
-                                            <span className="min-w-0 flex-1">
-                                                <span className="block truncate text-[13px] font-bold text-brand-navy">{t.title}</span>
-                                                <span className="block text-[11px] font-medium text-gray-400">
-                                                    {new Date(t.updated_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
-                                                </span>
-                                            </span>
-                                            <button
-                                                onClick={e => removeThread(t.id, e)}
-                                                className="flex-shrink-0 rounded-lg p-1.5 text-gray-300 opacity-0 transition-all hover:bg-rose-50 hover:text-rose-500 group-hover:opacity-100"
-                                                title="Delete conversation"
-                                            >
-                                                <Trash2 size={13} />
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
-                </div>
+                    <span
+                        key={title}
+                        className="title-fade-in min-w-0 truncate text-[14px] font-black text-brand-navy md:text-[15px]"
+                    >
+                        {title}
+                    </span>
 
-                <button
-                    onClick={startNew}
-                    disabled={empty && !threadId}
-                    className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-bold text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 disabled:opacity-40 disabled:hover:bg-transparent"
-                >
-                    <PenSquare size={14} />
-                    <span className="hidden sm:inline">New</span>
-                </button>
-            </header>
+                    {historyAndNew}
+                </header>
+            ) : (
+                <header className="flex flex-shrink-0 items-center justify-end gap-1 px-4 pb-2 pt-1 md:px-6">
+                    {historyAndNew}
+                </header>
+            )}
 
-            {empty ? (
+            {viewMode === 'hero' ? (
                 /* Hero state — the composer is the same component, just centred. */
                 <div className="flex flex-1 flex-col items-center justify-start px-5 pb-10 pt-10">
                     <div className="w-full max-w-2xl">

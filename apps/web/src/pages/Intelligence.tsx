@@ -13,6 +13,10 @@ const TABS: Array<{ id: TabType; label: string }> = [
 
 export const Intelligence: React.FC = () => {
     const [activeTab, setActiveTab] = useState<TabType>('assistant');
+    // While a conversation is open, AssistantChat renders its own top bar
+    // (back button + title) in place of this shared tab row.
+    const [assistantInChat, setAssistantInChat] = useState(false);
+    const showTabs = !(activeTab === 'assistant' && assistantInChat);
 
     return (
         <Layout backgroundColor="bg-white" noPadding={true}>
@@ -22,25 +26,27 @@ export const Intelligence: React.FC = () => {
               composer off-screen.
             */}
             <div className="flex min-h-[calc(100vh-120px)] flex-1 flex-col overflow-hidden bg-white md:m-4 md:min-h-0 md:h-[calc(100%-2rem)] md:rounded-[20px]">
-                <div className="flex flex-shrink-0 justify-center px-4 pb-3 pt-5 md:pt-6">
-                    <div className="no-scrollbar relative z-20 flex w-full items-center overflow-x-auto rounded-2xl border border-gray-100/50 bg-gray-50/80 p-1 shadow-sm md:w-auto">
-                        {TABS.map(tab => (
-                            <button
-                                key={tab.id}
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2.5 text-[11px] font-black transition-all md:flex-none md:px-8 md:text-[13px] ${
-                                    activeTab === tab.id
-                                        ? 'bg-white text-brand-navy shadow-sm'
-                                        : 'text-gray-400 hover:text-gray-600'
-                                }`}
-                            >
-                                {tab.label}
-                            </button>
-                        ))}
+                {showTabs && (
+                    <div className="flex flex-shrink-0 justify-center px-4 pb-3 pt-5 md:pt-6">
+                        <div className="no-scrollbar relative z-20 flex w-full items-center overflow-x-auto rounded-2xl border border-gray-100/50 bg-gray-50/80 p-1 shadow-sm md:w-auto">
+                            {TABS.map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2.5 text-[11px] font-black transition-all md:flex-none md:px-8 md:text-[13px] ${
+                                        activeTab === tab.id
+                                            ? 'bg-white text-brand-navy shadow-sm'
+                                            : 'text-gray-400 hover:text-gray-600'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
 
-                {activeTab === 'assistant' && <AssistantChat />}
+                {activeTab === 'assistant' && <AssistantChat onChatStateChange={setAssistantInChat} />}
 
                 {activeTab === 'insights' && (
                     <Placeholder

@@ -117,6 +117,22 @@
   .typing-dot { animation: none; opacity: 0.6; }
 }
 
+/* Conversation title in the chat top bar: "New chat" is swapped for the real
+   summary once it arrives, keyed so React remounts the span and replays this
+   fade — a plain re-render would just snap the text with no transition. */
+.title-fade-in {
+  animation: title-fade-in 420ms ease-out;
+}
+
+@keyframes title-fade-in {
+  from { opacity: 0; transform: translateY(2px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .title-fade-in { animation: none; }
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;

@@ -329,6 +329,153 @@ export const createPayrollRun = async (req: Request, res: Response) => {
     }
 };
 
+// ── Loan / advance recovery ──────────────────────────────────────────────────
+
+/** Statuses a loan or advance can sit in while it still owes money. */
+const RECOVERABLE_STATUSES = ['DISBURSED', 'RECEIVED'];
+
+/**
+ * Total amount a loan or advance is expected to repay in full.
+ * For a loan this is the instalment schedule (or principal plus interest);
+ * for an advance it is simply the amount advanced.
+ */
+function totalOwed(r: any): number {
+    if (r.type === 'LOAN') {
+        const monthly = Number(r.monthly_deduction) || 0;
+        const periods = Number(r.repayment_period) || 0;
+        if (monthly > 0 && periods > 0) return monthly * periods;
+
+        const principal = Number(r.loan_amount) || Number(r.actual_total) || Number(r.estimated_total) || 0;
+        const rate = Number(r.interest_rate) || 0;
+        return principal * (1 + rate / 100);
+    }
+    // ADVANCE — recovered at face value
+    return Number(r.actual_total) || Number(r.estimated_total) || Number(r.loan_amount) || 0;
+}
+
+/**
+ * Load every still-owing loan/advance for an org, with how much has already
+ * been recovered against each. Returns rows ordered oldest-first so recoveries
+ * are allocated to the longest-standing debt first.
+ */
+async function loadOutstandingDebts(orgId: string, userIds: string[]) {
+    if (userIds.length === 0) return [];
+
+    const { data: reqs, error: reqErr } = await supabase
+        .from('requisitions')
+        .select('id, requestor_id, type, status, created_at, monthly_deduction, repayment_period, interest_rate, loan_amount, actual_total, estimated_total')
+        .eq('organization_id', orgId)
+        .in('type', ['ADVANCE', 'LOAN'])
+        .in('status', RECOVERABLE_STATUSES)
+        .in('requestor_id', userIds)
+        .order('created_at', { ascending: true });
+    if (reqErr) throw reqErr;
+    if (!reqs || reqs.length === 0) return [];
+
+    const { data: recoveries, error: recErr } = await supabase
+        .from('payroll_loan_recoveries')
+        .select('requisition_id, amount, period_month, period_year')
+        .in('requisition_id', reqs.map(r => r.id));
+    if (recErr) throw recErr;
+
+    return reqs.map(r => {
+        const mine = (recoveries ?? []).filter(x => x.requisition_id === r.id);
+        const recovered = mine.reduce((s, x) => s + Number(x.amount), 0);
+        const owed = totalOwed(r);
+        return {
+            ...r,
+            owed,
+            recovered,
+            outstanding: Math.max(0, parseFloat((owed - recovered).toFixed(2))),
+            recoveredPeriods: mine.map(x => `${x.period_year}-${x.period_month}`),
+        };
+    });
+}
+
+/**
+ * The instalment to recover from a debt this period — never more than what is
+ * still outstanding, so the final instalment tapers to the exact balance.
+ */
+function installmentFor(debt: { monthly_deduction: any; outstanding: number }): number {
+    const monthly = Number(debt.monthly_deduction) || 0;
+    const target = monthly > 0 ? monthly : debt.outstanding;
+    return parseFloat(Math.min(target, debt.outstanding).toFixed(2));
+}
+
+/**
+ * Post the loan/advance recoveries a payroll run collected, then settle any
+ * debt whose balance has reached zero. Each staff member's total `loans`
+ * deduction is allocated across their outstanding debts, oldest first.
+ */
+async function recordLoanRecoveries(orgId: string, run: any, runItems: any[]) {
+    const withDeductions = runItems.filter(i => Number(i.loans) > 0 && i.staff_id);
+    if (withDeductions.length === 0) return { recovered: 0, settled: 0 };
+
+    const { data: staff, error: staffErr } = await supabase
+        .from('payroll_staff')
+        .select('id, user_id')
+        .eq('organization_id', orgId)
+        .in('id', withDeductions.map(i => i.staff_id))
+        .not('user_id', 'is', null);
+    if (staffErr) throw staffErr;
+    if (!staff || staff.length === 0) return { recovered: 0, settled: 0 };
+
+    const debts = await loadOutstandingDebts(orgId, staff.map(s => s.user_id));
+    if (debts.length === 0) return { recovered: 0, settled: 0 };
+
+    const rows: any[] = [];
+    const settledIds: string[] = [];
+
+    for (const item of withDeductions) {
+        const member = staff.find(s => s.id === item.staff_id);
+        if (!member) continue;
+
+        // Oldest debt first, so the longest-standing balance clears first
+        const theirs = debts.filter(d => d.requestor_id === member.user_id && d.outstanding > 0);
+        let remaining = Number(item.loans);
+
+        for (const debt of theirs) {
+            if (remaining <= 0.005) break;
+            const take = parseFloat(Math.min(remaining, debt.outstanding).toFixed(2));
+            if (take <= 0) continue;
+
+            rows.push({
+                organization_id: orgId,
+                requisition_id: debt.id,
+                payroll_run_id: run.id,
+                staff_id: item.staff_id,
+                amount: take,
+                period_month: run.period_month,
+                period_year: run.period_year,
+            });
+
+            debt.outstanding = parseFloat((debt.outstanding - take).toFixed(2));
+            remaining = parseFloat((remaining - take).toFixed(2));
+
+            if (debt.outstanding <= 0.005) settledIds.push(debt.id);
+        }
+    }
+
+    if (rows.length > 0) {
+        // Idempotent: the (requisition_id, payroll_run_id) unique constraint
+        // means re-approving the same run cannot double-recover an instalment.
+        const { error: insErr } = await supabase
+            .from('payroll_loan_recoveries')
+            .upsert(rows, { onConflict: 'requisition_id,payroll_run_id', ignoreDuplicates: true });
+        if (insErr) throw insErr;
+    }
+
+    if (settledIds.length > 0) {
+        const { error: setErr } = await supabase
+            .from('requisitions')
+            .update({ status: 'SETTLED' })
+            .in('id', settledIds);
+        if (setErr) throw setErr;
+    }
+
+    return { recovered: rows.length, settled: settledIds.length };
+}
+
 // Human-readable label for a pay_source value
 function paySourceLabel(paySource: string): string {
     if (paySource.startsWith('wallet:')) return 'MoneyWise Wallet';
@@ -400,7 +547,6 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             const srcLabel = paySourceLabel(paySource);
             const electronic = isElectronicWallet(paySource);
             const groupNet = groupItems.reduce((s: number, i: any) => s + Number(i.net_pay), 0);
-            const groupGross = groupItems.reduce((s: number, i: any) => s + Number(i.gross_pay), 0);
 
             const reqTitle = `${run.period_label} — ${srcLabel} (${groupItems.length} employee${groupItems.length !== 1 ? 's' : ''})`;
 
@@ -409,14 +555,16 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
                 ? paySource.replace('wallet:', '')
                 : null;
 
-            // Insert requisition header
+            // Insert requisition header.
+            // AUTHORISED (not "APPROVED") — the requisitions status check
+            // constraint has no APPROVED member.
             const { data: req_, error: reqErr } = await supabase
                 .from('requisitions')
                 .insert({
                     organization_id: orgId,
                     requestor_id: userId,
                     type: 'PAYROLL',
-                    status: electronic ? 'APPROVED' : 'APPROVED',
+                    status: 'AUTHORISED',
                     description: reqTitle,
                     estimated_total: parseFloat(groupNet.toFixed(2)),
                     actual_total: parseFloat(groupNet.toFixed(2)),
@@ -424,9 +572,6 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
                     pay_from_wallet_id: walletId,
                     payroll_run_id: id,
                     department: 'Payroll',
-                    notes: `Auto-generated on approval of payroll run ${run.period_label}. Source: ${srcLabel}.`,
-                    approved_by: userId,
-                    approved_at: new Date().toISOString(),
                 })
                 .select()
                 .single();
@@ -470,7 +615,10 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
             createdRequisitions.push({ requisition_id: req_.id, pay_source: paySource, label: srcLabel, employee_count: groupItems.length, net_total: groupNet });
         }
 
-        // 5. Mark the payroll run as CLEARED
+        // 5. Post loan/advance recoveries and settle any cleared debts
+        const recovery = await recordLoanRecoveries(orgId, run, runItems);
+
+        // 6. Mark the payroll run as CLEARED
         const { data: updatedRun, error: updateErr } = await supabase
             .from('payroll_runs')
             .update({
@@ -488,6 +636,7 @@ export const approvePayrollRun = async (req: Request, res: Response) => {
         res.json({
             run: updatedRun,
             requisitions: createdRequisitions,
+            loan_recovery: recovery,
         });
     } catch (err: any) {
         console.error('[approvePayrollRun]', err);
@@ -600,51 +749,63 @@ export const upsertPayrollConfig = async (req: Request, res: Response) => {
 
 // ── Requisition Sync ─────────────────────────────────────────────────────────
 
+/**
+ * What each staff member should have deducted this period for outstanding
+ * loans and salary advances.
+ *
+ * Keyed by payroll_staff.id. Amounts are capped at the remaining balance
+ * (derived from the recovery ledger), so a debt tapers to its exact final
+ * instalment and then stops — rather than re-deducting forever. A debt already
+ * recovered for the requested period returns zero so re-opening the wizard for
+ * the same month cannot double-charge.
+ */
 export const getSuggestedDeductions = async (req: Request, res: Response) => {
     try {
         const orgId = (req as any).user.organization_id;
+        const month = Number(req.query.month) || null;
+        const year = Number(req.query.year) || null;
+
         const { data: staffData, error: staffErr } = await supabase
             .from('payroll_staff')
             .select('id, user_id')
             .eq('organization_id', orgId)
             .not('user_id', 'is', null)
             .eq('is_archived', false);
-
         if (staffErr) throw staffErr;
         if (!staffData || staffData.length === 0) return res.json({});
 
-        const userIds = staffData.map(s => s.user_id);
+        const debts = await loadOutstandingDebts(orgId, staffData.map(s => s.user_id));
 
-        const { data: reqData, error: reqErr } = await supabase
-            .from('requisitions')
-            .select('requestor_id, type, monthly_deduction, loan_amount, actual_total, estimated_total')
-            .eq('organization_id', orgId)
-            .in('type', ['ADVANCE', 'LOAN'])
-            .in('status', ['DISBURSED', 'RECEIVED'])
-            .in('requestor_id', userIds);
+        const periodKey = month && year ? `${year}-${month}` : null;
+        const suggestions: Record<string, { loans: number; advances: number }> = {};
 
-        if (reqErr) throw reqErr;
-
-        const suggestions: Record<string, { loans: number, advances: number }> = {};
-        staffData.forEach(staff => {
-            const userReqs = (reqData || []).filter(r => r.requestor_id === staff.user_id);
+        for (const staff of staffData) {
             let loans = 0;
             let advances = 0;
-            userReqs.forEach(r => {
-                const deduction = Number(r.monthly_deduction) || 0;
-                if (r.type === 'LOAN') loans += deduction;
-                if (r.type === 'ADVANCE') {
-                    if (deduction > 0) advances += deduction;
-                    else advances += (Number(r.actual_total) || Number(r.estimated_total) || Number(r.loan_amount) || 0);
-                }
-            });
-            if (loans > 0 || advances > 0) {
-                suggestions[staff.id] = { loans, advances };
+
+            for (const debt of debts.filter(d => d.requestor_id === staff.user_id)) {
+                if (debt.outstanding <= 0.005) continue;
+                // Already recovered for this period — don't suggest it twice
+                if (periodKey && debt.recoveredPeriods.includes(periodKey)) continue;
+
+                const amount = installmentFor(debt);
+                if (amount <= 0) continue;
+
+                if (debt.type === 'LOAN') loans += amount;
+                else advances += amount;
             }
-        });
+
+            if (loans > 0 || advances > 0) {
+                suggestions[staff.id] = {
+                    loans: parseFloat(loans.toFixed(2)),
+                    advances: parseFloat(advances.toFixed(2)),
+                };
+            }
+        }
 
         res.json(suggestions);
     } catch (err: any) {
+        console.error('[getSuggestedDeductions]', err);
         res.status(500).json({ error: err.message });
     }
 };
