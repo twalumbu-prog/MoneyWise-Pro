@@ -68,6 +68,8 @@ export interface OrgReconSummary {
     reconciliationPct: number | null;
     error?: string;
     lastCheckedAt: string;
+    /** Set whenever the transaction-level fetch may be incomplete (see fetchAllLencoTransactions). The closing balance itself is unaffected — it always comes from the live balance endpoint directly — but the transaction-level Matched/MoneyWise-only/Lenco-only drill-down may be missing older rows. */
+    lencoFetchDiagnostics?: LencoFetchDiagnostics;
 }
 
 interface MoneyWiseTotals {
@@ -192,8 +194,23 @@ function applyGross(sorted: LencoTxn[]): void {
     }
 }
 
-async function fetchAllLencoTransactions(accountId: string, secretKey?: string): Promise<LencoTxn[]> {
+export interface LencoFetchDiagnostics {
+    pagesFetched: number;
+    /** Lenco's own reported last page, when the API exposes it — null if never seen. */
+    declaredLastPage: number | null;
+    /** True if we stopped at MAX_LENCO_PAGES without Lenco itself signalling the list was exhausted — the transaction-level view (and only that view; the live balance is unaffected) may be missing older transactions. */
+    hitPageCapWithoutConfirmedEnd: boolean;
+}
+
+async function fetchAllLencoTransactions(
+    accountId: string,
+    secretKey?: string
+): Promise<{ txns: LencoTxn[]; diagnostics: LencoFetchDiagnostics }> {
     const all: LencoTxn[] = [];
+    let pagesFetched = 0;
+    let declaredLastPage: number | null = null;
+    let confirmedEnd = false;
+
     for (let page = 1; page <= MAX_LENCO_PAGES; page++) {
         const resp: any = await LencoService.getAccountTransactions(accountId, { page }, secretKey);
         const batch: any[] = Array.isArray(resp?.data)
@@ -203,17 +220,28 @@ async function fetchAllLencoTransactions(accountId: string, secretKey?: string):
                 : Array.isArray(resp)
                     ? resp
                     : [];
-        if (batch.length === 0) break;
+        pagesFetched = page;
+        if (batch.length === 0) { confirmedEnd = true; break; }
         for (const t of batch) all.push(normalizeLencoTxn(t));
 
         const meta = resp?.meta || resp?.data?.meta;
         const lastPage = meta?.pagination?.lastPage ?? meta?.lastPage;
-        if (typeof lastPage === 'number' && page >= lastPage) break;
+        if (typeof lastPage === 'number') {
+            declaredLastPage = lastPage;
+            if (page >= lastPage) { confirmedEnd = true; break; }
+        }
     }
     // Oldest-first so running-balance deltas are correct.
     all.sort((a, b) => new Date(a.datetime || 0).getTime() - new Date(b.datetime || 0).getTime());
     applyGross(all);
-    return all;
+    return {
+        txns: all,
+        diagnostics: {
+            pagesFetched,
+            declaredLastPage,
+            hitPageCapWithoutConfirmedEnd: pagesFetched >= MAX_LENCO_PAGES && !confirmedEnd,
+        },
+    };
 }
 
 function lencoTotalsFromTxns(txns: LencoTxn[], availableBalance: number): LencoTotals {
@@ -347,7 +375,7 @@ async function buildOrgSummary(org: OrgRow): Promise<OrgReconSummary> {
     const availableBalance = n(balanceData?.availableBalance ?? balanceData?.balance);
 
     try {
-        const txns = await fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey);
+        const { txns, diagnostics } = await fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey);
         const lenco = lencoTotalsFromTxns(txns, availableBalance);
 
         const closingSection = section(mw.closing, lenco.closing);
@@ -355,6 +383,7 @@ async function buildOrgSummary(org: OrgRow): Promise<OrgReconSummary> {
         base.outflows = section(mw.outflow, lenco.outflow);
         base.closing = closingSection;
         base.fees = { bankFees: lenco.bankFees, platformFees: lenco.platformFees };
+        base.lencoFetchDiagnostics = diagnostics;
 
         const { status, pct } = classify(closingSection);
         base.status = status;
@@ -457,10 +486,11 @@ async function buildOrgDetail(org: OrgRow): Promise<OrgReconDetail> {
             .eq('account_type', 'MONEYWISE_WALLET')
             .order('date', { ascending: false });
 
-        const [txns, collectionsRef] = await Promise.all([
+        const [{ txns, diagnostics }, collectionsRef] = await Promise.all([
             fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey),
             fetchCollectionsRefMap(secretKey),
         ]);
+        summary.lencoFetchDiagnostics = diagnostics;
 
         const entryByRef = new Map<string, any>();
         for (const e of entries ?? []) {

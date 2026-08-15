@@ -5,6 +5,7 @@ import { lencoService } from '../../services/lenco.service';
 import { userService, UserProfile } from '../../services/user.service';
 import { useAuth } from '../../context/AuthContext';
 import { X, ChevronRight, Loader2, CheckCircle2, AlertCircle, CreditCard, Smartphone } from 'lucide-react';
+import BankSelect from '../BankSelect';
 
 interface Props {
     onClose: () => void;
@@ -403,19 +404,13 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
                                     <div className="px-4 pb-4 flex flex-col gap-3 border-t border-gray-100 pt-3">
                                         <div>
                                             <label className={LABEL}>Bank</label>
-                                            <select
-                                                className={SELECT}
+                                            <BankSelect
+                                                banks={banks.length > 0 ? banks : ['Zanaco','Standard Chartered','FNB Zambia','Stanbic Bank','Atlas Mara','Absa Bank Zambia','First Capital Bank','Access Bank'].map(b => ({ id: b, name: b }))}
                                                 value={bankId}
-                                                onChange={e => { setBankId(e.target.value); setBankResolvedName(''); setBankResolveError(''); }}
-                                            >
-                                                <option value="">Select bank</option>
-                                                {banks.length > 0
-                                                    ? banks.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)
-                                                    : ['Zanaco','Standard Chartered','FNB Zambia','Stanbic Bank','Atlas Mara','Absa Bank Zambia','First Capital Bank','Access Bank'].map(b => (
-                                                        <option key={b} value={b}>{b}</option>
-                                                    ))
-                                                }
-                                            </select>
+                                                onChange={v => { setBankId(v); setBankResolvedName(''); setBankResolveError(''); }}
+                                                className={INPUT}
+                                                placeholder="Select bank"
+                                            />
                                         </div>
                                         <div>
                                             <label className={LABEL}>Account Number</label>

@@ -4,6 +4,7 @@ import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
 import { useAuth } from '../../context/AuthContext';
 import * as XLSX from 'xlsx';
+import BankSelect from '../BankSelect';
 
 interface DesktopPayrollWorkspaceProps {
     onClose: () => void;
@@ -587,16 +588,14 @@ export const DesktopPayrollWorkspace: React.FC<DesktopPayrollWorkspaceProps> = (
                                                                         <option value="ZAMTEL">Zamtel</option>
                                                                     </select>
                                                                 ) : (
-                                                                    <select
+                                                                    <BankSelect
+                                                                        banks={banks}
                                                                         value={editBankCode}
-                                                                        onChange={e => setEditBankCode(e.target.value)}
-                                                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold bg-white focus:border-emerald-500 focus:outline-none"
-                                                                    >
-                                                                        <option value="">Select Bank</option>
-                                                                        {banks.map(b => (
-                                                                            <option key={b.id || b.code} value={b.id || b.code}>{b.name}</option>
-                                                                        ))}
-                                                                    </select>
+                                                                        onChange={setEditBankCode}
+                                                                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-xs font-semibold bg-white"
+                                                                        placeholder="Select Bank"
+                                                                        compact
+                                                                    />
                                                                 )}
                                                             </div>
                                                         </div>

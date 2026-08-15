@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
 import WalletSelect from '../WalletSelect';
+import BankSelect from '../BankSelect';
 
 type WorkspaceTab = 'pay' | 'buy' | 'order';
 type Stage = 1 | 2 | 3 | 4 | 5;
@@ -662,12 +663,13 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                                     <div className="space-y-4">
                                         <div className="space-y-1.5">
                                             <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 ml-1">Bank</label>
-                                            <select value={bankId} onChange={e => setBankId(e.target.value)} className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] transition-all">
-                                                <option value="">Select Bank</option>
-                                                {banks.map(bank => (
-                                                    <option key={bank.id} value={bank.id}>{bank.name}</option>
-                                                ))}
-                                            </select>
+                                            <BankSelect
+                                                banks={banks}
+                                                value={bankId}
+                                                onChange={setBankId}
+                                                className="w-full h-12 bg-white border border-gray-200 rounded-xl px-4 text-sm text-gray-900 focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF]"
+                                                placeholder="Select Bank"
+                                            />
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 ml-1">Account Number</label>

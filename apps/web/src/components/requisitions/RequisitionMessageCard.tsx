@@ -10,6 +10,7 @@ import { integrationService } from '../../services/integration.service';
 import { useAuth } from '../../context/AuthContext';
 import heic2any from 'heic2any';
 import WalletSelect from '../WalletSelect';
+import BankSelect from '../BankSelect';
 
 interface RequisitionMessageCardProps {
     message: RequisitionMessage;
@@ -1021,16 +1022,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                             className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none"
                                                                         />
                                                                         {editPayrollMethod === 'BANK' ? (
-                                                                            <select 
-                                                                                value={editPayrollBankCode} 
-                                                                                onChange={(e) => setEditPayrollBankCode(e.target.value)} 
+                                                                            <BankSelect
+                                                                                banks={banks}
+                                                                                value={editPayrollBankCode}
+                                                                                onChange={setEditPayrollBankCode}
                                                                                 className="w-full px-1.5 py-1 text-xs border border-gray-200 rounded bg-white focus:outline-none"
-                                                                            >
-                                                                                <option value="">Select Bank</option>
-                                                                                {banks.map((b) => (
-                                                                                    <option key={b.id || b.code} value={b.id || b.code}>{b.name}</option>
-                                                                                ))}
-                                                                            </select>
+                                                                                placeholder="Select Bank"
+                                                                                compact
+                                                                            />
                                                                         ) : (
                                                                             <select 
                                                                                 value={editPayrollBankCode} 
@@ -1945,23 +1944,18 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                     </label>
 
                                                                     {paymentType === 'BANK' && (
-                                                                        <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                            <select 
+                                                                        <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                            <BankSelect
+                                                                                banks={banks}
                                                                                 value={recipientProvider || ''}
-                                                                                onChange={(e) => {
-                                                                                    setRecipientProvider(e.target.value);
+                                                                                onChange={(v) => {
+                                                                                    setRecipientProvider(v);
                                                                                     setLookupName(null);
                                                                                 }}
-                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm group-hover:border-gray-200 appearance-none cursor-pointer"
-                                                                            >
-                                                                                <option value="" disabled>{isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}</option>
-                                                                                {banks.map((bank) => (
-                                                                                    <option key={bank.id} value={bank.id}>{bank.name}</option>
-                                                                                ))}
-                                                                            </select>
-                                                                            <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                                                                                <ChevronDown size={18} />
-                                                                            </div>
+                                                                                className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-[#006AFF]/20 transition-all shadow-sm"
+                                                                                placeholder={isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}
+                                                                                loading={isFetchingBanks}
+                                                                            />
                                                                         </div>
                                                                     )}
                                                                     <div className="relative group">
@@ -3446,20 +3440,15 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                              {excessPaymentType === 'MOBILE_MONEY' ? 'Recipient Number' : 'Bank & Account Details'}
                                                          </label>
                                                          {excessPaymentType === 'BANK' && (
-                                                             <div className="relative group animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                 <select
+                                                             <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                                                                 <BankSelect
+                                                                     banks={banks}
                                                                      value={excessProvider || ''}
-                                                                     onChange={(e) => { setExcessProvider(e.target.value); setExcessLookupName(null); }}
-                                                                     className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-orange-200 transition-all shadow-sm appearance-none cursor-pointer"
-                                                                 >
-                                                                     <option value="" disabled>{isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}</option>
-                                                                     {banks.map((bank: any) => (
-                                                                         <option key={bank.id} value={bank.id}>{bank.name}</option>
-                                                                     ))}
-                                                                 </select>
-                                                                 <div className="absolute right-7 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                                                                     <ChevronDown size={18} />
-                                                                 </div>
+                                                                     onChange={(v) => { setExcessProvider(v); setExcessLookupName(null); }}
+                                                                     className="w-full h-14 px-8 bg-white border border-gray-100 rounded-full text-[15px] font-bold text-gray-900 focus:outline-none focus:border-orange-200 transition-all shadow-sm"
+                                                                     placeholder={isFetchingBanks ? 'Loading banks...' : 'Select Destination Bank'}
+                                                                     loading={isFetchingBanks}
+                                                                 />
                                                              </div>
                                                          )}
                                                          <div className="relative group">

@@ -9,6 +9,7 @@ import { useAuth } from '../../context/AuthContext';
 import { apiFetch } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
 import WalletSelect from '../WalletSelect';
+import BankSelect from '../BankSelect';
 
 interface LineItem {
     id: string;
@@ -698,16 +699,13 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                                         <>
                                             <div className="space-y-1.5">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Bank</label>
-                                                <select
+                                                <BankSelect
+                                                    banks={banks}
                                                     value={bankId}
-                                                    onChange={e => setBankId(e.target.value)}
-                                                    className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy focus:outline-none focus:ring-2 focus:ring-[#006AFF]/10 focus:bg-white transition-all appearance-none"
-                                                >
-                                                    <option value="">Select Bank</option>
-                                                    {banks.map(bank => (
-                                                        <option key={bank.id} value={bank.id}>{bank.name}</option>
-                                                    ))}
-                                                </select>
+                                                    onChange={setBankId}
+                                                    className="w-full h-14 bg-gray-50 border border-gray-100 rounded-2xl px-5 text-brand-navy focus:ring-2 focus:ring-[#006AFF]/10"
+                                                    placeholder="Select Bank"
+                                                />
                                             </div>
                                             <div className="space-y-1.5">
                                                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">Account Number</label>
