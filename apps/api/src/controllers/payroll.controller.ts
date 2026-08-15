@@ -86,6 +86,7 @@ export const createStaffMember = async (req: Request, res: Response) => {
                 email: body.email || null,
                 department: body.department || null,
                 position: body.position || null,
+                status: body.status || 'ACTIVE',
                 basic_pay: body.basic_pay ?? 0,
                 allowances: body.allowances ?? [],
                 deductions: body.deductions ?? [],

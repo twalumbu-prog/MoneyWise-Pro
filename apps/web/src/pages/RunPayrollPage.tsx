@@ -257,7 +257,9 @@ export const RunPayrollPage: React.FC = () => {
     useEffect(() => {
         if (allStaff.length === 0 || !config || items.length > 0) return;
 
-        const initialItems = allStaff.filter(s => s.status === 'ACTIVE').map(s => {
+        // Treat null/undefined status as ACTIVE — the createStaffMember API insert never
+        // set a status on existing records, so older employees have status = null.
+        const initialItems = allStaff.filter(s => !s.status || s.status === 'ACTIVE').map(s => {
             const hasBank = !!(s.bank_account_number?.trim());
             const defaultDest: 'BANK' | 'MOBILE_MONEY' =
                 s.payment_method === 'MOBILE_MONEY' ? 'MOBILE_MONEY' :
