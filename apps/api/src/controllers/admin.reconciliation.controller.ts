@@ -2,6 +2,7 @@ import {
     getReconciliationOverview,
     getQuickOverview,
     getOrgReconciliationDetail,
+    getRawLencoTransactions,
     healMissingPlatformFees,
     healMissingPlatformFeesForAllOrgs,
     RECON_TOLERANCE,
@@ -58,6 +59,24 @@ export const getOrgReconciliation = async (req: any, res: any) => {
     } catch (err: any) {
         console.error('[AdminRecon] org detail failed:', err?.message || err);
         res.status(500).json({ error: 'Failed to build org reconciliation', details: err?.message });
+    }
+};
+
+/**
+ * GET /admin/reconciliation/:orgId/raw-lenco-txns
+ * Unfiltered, uncategorized dump of every Lenco transaction for this org — for a
+ * from-first-principles penny-by-penny balance reconstruction, independent of any
+ * matching/classification logic elsewhere in this file.
+ */
+export const getRawLencoTxns = async (req: any, res: any) => {
+    try {
+        const { orgId } = req.params;
+        const result = await getRawLencoTransactions(orgId);
+        if (!result) return res.status(404).json({ error: 'Organization not found or not linked to Lenco' });
+        res.json(result);
+    } catch (err: any) {
+        console.error('[AdminRecon] raw-lenco-txns failed:', err?.message || err);
+        res.status(500).json({ error: 'Failed to fetch raw Lenco transactions', details: err?.message });
     }
 };
 

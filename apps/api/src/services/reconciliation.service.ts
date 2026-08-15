@@ -702,6 +702,24 @@ export async function getOrgReconciliationDetail(orgId: string): Promise<OrgReco
     return buildOrgDetail(org);
 }
 
+/**
+ * Raw, unfiltered, uncategorized dump of every Lenco transaction for this org's
+ * sub-account, in the exact oldest-first order used to derive `applyGross` — for
+ * a from-first-principles, penny-by-penny balance reconstruction. No skipping, no
+ * classification, no gross adjustment beyond what's already been computed. This is
+ * the ground truth every other figure in this file is built from.
+ */
+export async function getRawLencoTransactions(orgId: string): Promise<{ availableBalance: number; txns: LencoTxn[] } | null> {
+    const orgs = await fetchOrgRows();
+    const org = orgs.find((o) => o.id === orgId);
+    if (!org || !org.lenco_subaccount_id) return null;
+    const secretKey = org.lenco_secret_key || undefined;
+    const balanceData: any = await LencoService.getAccountBalance(org.lenco_subaccount_id, secretKey);
+    const availableBalance = n(balanceData?.availableBalance ?? balanceData?.balance);
+    const { txns } = await fetchAllLencoTransactions(org.lenco_subaccount_id, secretKey);
+    return { availableBalance, txns };
+}
+
 // ---------------------------------------------------------------------------
 // Self-healing: genuinely-unposted platform-fee sweeps
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import {
     whoami,
     getReconciliationList,
     getOrgReconciliation,
+    getRawLencoTxns,
     healOrgPlatformFees,
     healAllOrgsPlatformFees,
 } from '../controllers/admin.reconciliation.controller';
@@ -34,6 +35,7 @@ router.use(requireAuth, requireSuperAdmin);
 router.get('/me', whoami);
 router.get('/reconciliation', getReconciliationList);
 router.get('/reconciliation/:orgId', getOrgReconciliation);
+router.get('/reconciliation/:orgId/raw-lenco-txns', getRawLencoTxns);
 router.post('/reconciliation/heal-platform-fees', healAllOrgsPlatformFees);
 router.post('/reconciliation/:orgId/heal-platform-fees', healOrgPlatformFees);
 
