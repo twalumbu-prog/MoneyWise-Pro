@@ -41,7 +41,25 @@ const TOLERANCE = 0.005;
 const CODE_RECEIVABLE = 'QB-MF-AR';
 const CODE_COLLECTIONS = 'QB-MF-CASH';
 const CODE_MANUAL_COLLECTIONS = 'QB-MF-MANUAL';
+// Channel-specific manual collection accounts — see ledger.service.ts for the
+// routing side. Master Fees' `payment_method` field carries real channel
+// granularity (confirmed live: Blue Opus Academy has 'bank', 'mobile_money'
+// AND 'manual' side by side), so we split manually-recorded payments by
+// channel instead of dumping them all into one undifferentiated bucket.
+const CODE_MANUAL_COLLECTIONS_BANK = 'QB-MF-MANUAL-BANK';
+const CODE_MANUAL_COLLECTIONS_MOBILE = 'QB-MF-MANUAL-MOBILE';
+const CODE_MANUAL_COLLECTIONS_OTHER = 'QB-MF-MANUAL-OTHER';
 const CODE_GENERIC_INCOME = 'QB-MF-INC-GENERAL';
+
+/** Normalize Master Fees' `payment_method` into one of our three accounting channels. */
+type ManualChannel = 'BANK' | 'MOBILE' | 'OTHER';
+function classifyManualChannel(paymentMethod?: string): ManualChannel {
+    const pm = String(paymentMethod || '').toLowerCase();
+    if (pm.includes('bank')) return 'BANK';
+    if (pm.includes('mobile') || pm.includes('airtel') || pm.includes('mtn') || pm.includes('momo')) return 'MOBILE';
+    return 'OTHER'; // 'manual', 'cash', or anything unrecognised
+}
+const manualChannelLabel = (c: ManualChannel) => c === 'BANK' ? 'Bank' : c === 'MOBILE' ? 'Mobile Money' : 'Cash/Other';
 const codeForCategory = (categoryId: string) =>
     `QB-MF-INC-${String(categoryId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24).toUpperCase()}`;
 
@@ -60,6 +78,10 @@ export interface MasterFeesConfig {
     schoolName?: string;
     lastSyncedAt?: string;
     lastSyncError?: string | null;
+    /** True when the most recent sync hit Master Fees' undocumented 1000-row
+     *  API cap — see MF_ROW_CAP. Persisted so the "connected" status banner can
+     *  keep showing the warning even outside the moment of the sync itself. */
+    lastSyncTruncated?: boolean;
 }
 
 interface MFStudent {
@@ -250,8 +272,18 @@ async function getManualCollectionsAccount(organizationId: string): Promise<stri
         name: 'Master Fees Manual Collections',
         type: 'ASSET',
         subtype: 'Bank',
-        description: 'School fee payments recorded manually in Master Fees (not processed through Lenco) — e.g. cash, bank or Airtel Money entered by staff.',
+        description: 'School fee payments recorded manually in Master Fees (not processed through Lenco) — e.g. cash, bank or Airtel Money entered by staff. Legacy bucket for rows synced before per-channel accounts existed.',
     });
+}
+
+/** Channel-specific manual collections account (Bank / Mobile Money / Cash-Other). */
+async function getManualCollectionsAccountForChannel(organizationId: string, channel: ManualChannel): Promise<string> {
+    const spec = {
+        BANK: { code: CODE_MANUAL_COLLECTIONS_BANK, name: 'Master Fees Manual Collections — Bank', description: 'School fee payments recorded manually in Master Fees via bank deposit/transfer.' },
+        MOBILE: { code: CODE_MANUAL_COLLECTIONS_MOBILE, name: 'Master Fees Manual Collections — Mobile Money', description: 'School fee payments recorded manually in Master Fees via mobile money (Airtel/MTN).' },
+        OTHER: { code: CODE_MANUAL_COLLECTIONS_OTHER, name: 'Master Fees Manual Collections — Cash/Other', description: 'School fee payments recorded manually in Master Fees with no specific bank/mobile channel given (cash, or unclassified).' },
+    }[channel];
+    return getOrCreateAccount(organizationId, { ...spec, type: 'ASSET', subtype: 'Bank' });
 }
 
 /**
@@ -530,9 +562,11 @@ async function postPayment(
     // row in place and re-derive its journal. Lenco payments cannot be edited at
     // source (they are gateway-authoritative), so we only handle this for manual ones.
     if (!unchanged && prior?.cashbook_entry_id && !isLencoProcessed(txn)) {
+        const channel = classifyManualChannel(txn.payment_method);
+        await getManualCollectionsAccountForChannel(organizationId, channel);
         await supabase
             .from('cashbook_entries')
-            .update({ debit: amount })
+            .update({ debit: amount, mf_payment_channel: channel })
             .eq('id', prior.cashbook_entry_id);
         await ledgerService.repostForCashbookEntry(prior.cashbook_entry_id);
         const { data: ce } = await supabase
@@ -562,7 +596,7 @@ async function postPayment(
         const desiredType = isLencoProcessed(txn) ? 'MASTERFEES' : 'MASTERFEES_MANUAL';
         const { data: ce } = await supabase
             .from('cashbook_entries')
-            .select('account_type, date, created_at')
+            .select('account_type, date, created_at, mf_payment_channel')
             .eq('id', prior!.cashbook_entry_id)
             .maybeSingle();
         if (ce && (ce.account_type === 'MASTERFEES' || ce.account_type === 'MASTERFEES_MANUAL') && ce.account_type !== desiredType) {
@@ -577,6 +611,14 @@ async function postPayment(
             // journal, not cashbook_entries.balance_after. Recompute both in full.
             await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, oldType);
             await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, desiredType);
+        } else if (ce && ce.account_type === 'MASTERFEES_MANUAL' && !isLencoProcessed(txn) && !ce.mf_payment_channel) {
+            // Bucket already correct, but this row predates per-channel routing —
+            // tag and repost it (in place, same account_type) so it moves off the
+            // generic collections account onto its own channel-specific one.
+            const channel = classifyManualChannel(txn.payment_method);
+            await getManualCollectionsAccountForChannel(organizationId, channel);
+            await supabase.from('cashbook_entries').update({ mf_payment_channel: channel }).eq('id', prior!.cashbook_entry_id);
+            await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
         }
         return 'skipped';
     }
@@ -598,8 +640,9 @@ async function postPayment(
     // always needs posting ourselves, regardless of the org's Lenco mode —
     // "shared vs separate" is a Lenco-account concept and doesn't apply here.
     if (!isLencoProcessed(txn)) {
-        await getManualCollectionsAccount(organizationId); // ensure the contra-resolvable account exists
-        const manualLabel = `Master Fees Manual Payment ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
+        const channel = classifyManualChannel(txn.payment_method);
+        await getManualCollectionsAccountForChannel(organizationId, channel); // ensure the contra-resolvable account exists
+        const manualLabel = `Master Fees Manual Payment (${manualChannelLabel(channel)}) ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
         const entry = await cashbookService.createEntry(organizationId, {
             date: dateOnly(txn.completed_at),
             description: manualLabel,
@@ -610,6 +653,7 @@ async function postPayment(
             account_type: 'MASTERFEES_MANUAL',
             account_id: receivableId,
             external_reference: txn.reference || txn.transaction_id,
+            mf_payment_channel: channel,
             skip_inflow_notification: needsBackfill,
         } as any);
         await upsertRecord(organizationId, integrationId, {
@@ -713,10 +757,24 @@ export async function detectLencoMode(organizationId: string, client: MasterFees
 // ─────────────────────────────────────────────────────────────────────────────
 // Sync orchestration
 // ─────────────────────────────────────────────────────────────────────────────
+// Master Fees' invoices/transactions/ledger endpoints silently cap at exactly
+// 1000 rows and ignore every pagination param we've tried (page, limit, offset,
+// term, year — confirmed live: identical 1000-row response regardless). There is
+// no way to fetch beyond this from our side; it's a hard API limitation. When a
+// school's true record count exceeds it, whichever rows don't fit the response
+// are silently dropped — observed live on Twalumbu Education Centre, where Term 2
+// alone fills 790 of the 1000 slots, at real risk of crowding out older/other
+// terms as the year progresses. We can only detect and surface this, not fix it.
+const MF_ROW_CAP = 1000;
+
 export interface SyncSummary {
     invoices: { posted: number; skipped: number; voided: number };
     payments: { posted: number; reclassified: number; deferred: number; skipped: number };
     errors: string[];
+    /** True when invoices and/or transactions hit Master Fees' undocumented
+     *  1000-row cap this sync — some records (likely older/other terms) may be
+     *  missing from MoneyWise's books until Master Fees adds real pagination. */
+    truncated: boolean;
 }
 
 export async function syncMasterfees(organizationId: string): Promise<SyncSummary> {
@@ -729,6 +787,7 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
         invoices: { posted: 0, skipped: 0, voided: 0 },
         payments: { posted: 0, reclassified: 0, deferred: 0, skipped: 0 },
         errors: [],
+        truncated: false,
     };
 
     // Ensure the receivable account is provisioned + cached in config.
@@ -751,7 +810,12 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
 
     // Invoices FIRST (they create the receivable that payments clear).
     try {
-        for (const inv of await client.getInvoices()) {
+        const invoices = await client.getInvoices();
+        if (invoices.length >= MF_ROW_CAP) {
+            summary.truncated = true;
+            summary.errors.push(`invoices: Master Fees returned the maximum ${MF_ROW_CAP} records — this is a hard cap on their API with no pagination support, so some invoices (likely from older/other terms) may be missing from your books. This needs to be fixed on Master Fees' side.`);
+        }
+        for (const inv of invoices) {
             try {
                 const r = await postInvoice(organizationId, integration.id, config, inv, categoriesByName);
                 summary.invoices[r]++;
@@ -765,7 +829,12 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
 
     // Payments SECOND.
     try {
-        for (const txn of await client.getTransactions()) {
+        const transactions = await client.getTransactions();
+        if (transactions.length >= MF_ROW_CAP) {
+            summary.truncated = true;
+            summary.errors.push(`transactions: Master Fees returned the maximum ${MF_ROW_CAP} records — this is a hard cap on their API with no pagination support, so some payments (likely from older/other terms) may be missing from your books. This needs to be fixed on Master Fees' side.`);
+        }
+        for (const txn of transactions) {
             try {
                 const r = await postPayment(organizationId, integration.id, config, txn);
                 summary.payments[r]++;
@@ -780,6 +849,7 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
     await patchConfig(organizationId, {
         lastSyncedAt: new Date().toISOString(),
         lastSyncError: summary.errors.length ? summary.errors.slice(0, 3).join('; ') : null,
+        lastSyncTruncated: summary.truncated,
     });
 
     void broadcastInvalidate(organizationId, [

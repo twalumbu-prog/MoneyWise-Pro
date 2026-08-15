@@ -83,6 +83,7 @@ export interface MasterFeesStatus {
     categoryMap?: Record<string, { accountId: string; name: string }>;
     lastSyncedAt?: string;
     lastSyncError?: string | null;
+    lastSyncTruncated?: boolean;
 }
 
 export interface MasterFeesCategory {

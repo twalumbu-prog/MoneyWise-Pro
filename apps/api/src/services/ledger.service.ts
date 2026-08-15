@@ -36,8 +36,18 @@ const CODE_UNCATEGORISED_ASSET = 'QB-1';
 // MoneyWise wallet (see services/masterfees.service.ts) land here.
 const CODE_MASTERFEES_COLLECTIONS = 'QB-MF-CASH';
 // Master Fees payments entered manually (staff-recorded, no Lenco/processor
-// involved — cash, bank or Airtel Money typed in by hand) land here instead.
+// involved) land here when we can't determine which channel collected them —
+// i.e. pre-existing rows synced before per-channel routing existed.
 const CODE_MASTERFEES_MANUAL_COLLECTIONS = 'QB-MF-MANUAL';
+// Channel-specific manual collection accounts, keyed by the `mf_payment_channel`
+// tag masterfees.service.ts derives from Master Fees' own `payment_method` field
+// (which does carry real channel granularity — 'bank' | 'mobile_money' | 'manual'
+// observed live). Lets the accounts payable/receivable view — and the balance
+// sheet — show exactly which channel staff recorded each manual fee payment
+// into, instead of one undifferentiated bucket.
+const CODE_MASTERFEES_MANUAL_BANK = 'QB-MF-MANUAL-BANK';
+const CODE_MASTERFEES_MANUAL_MOBILE = 'QB-MF-MANUAL-MOBILE';
+const CODE_MASTERFEES_MANUAL_OTHER = 'QB-MF-MANUAL-OTHER';
 const CODE_OPENING_BALANCE_EQUITY = 'QB-76';
 const CODE_SUSPENSE = 'QB-SUSPENSE';
 
@@ -56,6 +66,7 @@ interface CashbookRow {
     entry_type: string | null;
     status: string | null;
     created_by: string | null;
+    mf_payment_channel: string | null;
 }
 
 async function getAccountIdByCode(orgId: string, code: string): Promise<string | null> {
@@ -146,7 +157,15 @@ async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
     }
 
     if (ce.account_type === 'MASTERFEES_MANUAL') {
-        return (await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_COLLECTIONS))
+        // Route to the channel-specific collections account when we know which
+        // channel recorded the payment (BANK / MOBILE / OTHER); fall back to the
+        // single generic account for rows synced before this existed.
+        const channelCode = ce.mf_payment_channel === 'BANK' ? CODE_MASTERFEES_MANUAL_BANK
+            : ce.mf_payment_channel === 'MOBILE' ? CODE_MASTERFEES_MANUAL_MOBILE
+            : ce.mf_payment_channel === 'OTHER' ? CODE_MASTERFEES_MANUAL_OTHER
+            : null;
+        return (channelCode && await getAccountIdByCode(orgId, channelCode))
+            ?? (await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_COLLECTIONS))
             ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
@@ -200,7 +219,7 @@ export const ledgerService = {
     async repostForCashbookEntry(entryId: string): Promise<void> {
         const { data: ce } = await supabase
             .from('cashbook_entries')
-            .select('id, organization_id, date, description, reference_number, debit, credit, account_type, wallet_id, account_id, requisition_id, entry_type, status, created_by')
+            .select('id, organization_id, date, description, reference_number, debit, credit, account_type, wallet_id, account_id, requisition_id, entry_type, status, created_by, mf_payment_channel')
             .eq('id', entryId)
             .maybeSingle();
 

@@ -42,7 +42,37 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
     const [savingCat, setSavingCat] = useState<string | null>(null);
     const [reconcile, setReconcile] = useState<{ moneywiseReceivable: number; masterfeesOutstanding: number; difference: number; studentsWithBalance: number } | null>(null);
 
+    // Silent background refresh indicator — separate from the manual "Sync now"
+    // button's `syncing` state so opening this page doesn't look like the user
+    // clicked something.
+    const [autoSyncing, setAutoSyncing] = useState(false);
+
     useEffect(() => { load(); }, []);
+
+    // Auto-sync-on-open: the background cron now runs every minute (down from
+    // 5), but if the admin opens this page in between cycles, pull fresh data
+    // immediately rather than making them wait for the next tick or click
+    // "Sync now" themselves. Throttled to once per ~55s of staleness so
+    // repeated navigation to this tab doesn't hammer Master Fees' API.
+    const maybeAutoSync = async (s: MasterFeesStatus) => {
+        if (!s.connected) return;
+        const lastSync = s.lastSyncedAt ? new Date(s.lastSyncedAt).getTime() : 0;
+        const staleMs = Date.now() - lastSync;
+        if (staleMs < 55_000) return; // fresh enough — the cron will catch it
+        try {
+            setAutoSyncing(true);
+            await masterFeesService.sync();
+            const fresh = await masterFeesService.getStatus();
+            setStatus(fresh);
+            if (fresh.connected) await loadConnectedData();
+        } catch {
+            // Silent — this is a background convenience refresh, not a user
+            // action. Any real problem still surfaces via lastSyncError on the
+            // next explicit "Sync now" or the next cron tick.
+        } finally {
+            setAutoSyncing(false);
+        }
+    };
 
     const load = async () => {
         try {
@@ -50,6 +80,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
             const s = await masterFeesService.getStatus();
             setStatus(s);
             if (s.connected) await loadConnectedData();
+            void maybeAutoSync(s);
         } catch (err: any) {
             setError(err.message || 'Failed to load Master Fees status');
         } finally {
@@ -313,10 +344,22 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                     {status?.connected && (
                         <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm text-gray-500">
                             <div><span className="font-medium text-gray-700">School:</span> {status.schoolName || status.schoolId}</div>
-                            <div>
+                            <div className="flex items-center gap-2">
                                 <span className="font-medium text-gray-700">Last Sync:</span>{' '}
                                 {status.lastSyncedAt ? new Date(status.lastSyncedAt).toLocaleString() : 'Never'}
+                                {autoSyncing && <RefreshCw className="h-3.5 w-3.5 animate-spin text-brand-green" />}
                             </div>
+                            {status.lastSyncTruncated && (
+                                <div className="sm:col-span-2 flex items-start bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-700">
+                                    <AlertCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
+                                    <span>
+                                        <strong>Master Fees hit its 1,000-record API limit this sync.</strong> Their invoices/transactions
+                                        endpoints cap at 1,000 rows with no pagination support, so some records — most likely from
+                                        older or other terms — may be missing from your books. This can only be fixed by Master Fees
+                                        adding real pagination on their end; we've flagged it to their team.
+                                    </span>
+                                </div>
+                            )}
                             {status.lastSyncError && (
                                 <div className="sm:col-span-2 text-amber-600">
                                     <span className="font-medium">Last sync warning:</span> {status.lastSyncError}

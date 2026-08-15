@@ -261,6 +261,7 @@ export const getMasterFeesStatus = async (req: AuthRequest, res: Response) => {
             categoryMap: safe.categoryMap || {},
             lastSyncedAt: safe.lastSyncedAt,
             lastSyncError: safe.lastSyncError,
+            lastSyncTruncated: !!safe.lastSyncTruncated,
         });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
