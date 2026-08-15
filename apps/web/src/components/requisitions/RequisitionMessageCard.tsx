@@ -163,6 +163,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     const [isProcessing, setIsProcessing] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
     const [disburseError, setDisburseError] = useState<string | null>(null);
+    // "Paid 18 of 33 employees — continuing…" while a batch payroll runs across
+    // several API calls, so a long run never looks like a stall or a failure.
+    const [payrollProgress, setPayrollProgress] = useState<string | null>(null);
     const [disburseStatusMsg, setDisburseStatusMsg] = useState<string | null>(null);
 
     // Wallets & Subwallets State
@@ -1426,20 +1429,52 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
 
                 const isFullyDisbursed = pendingItems.length === 0;
 
+                // A large batch cannot finish in one API call (the server pays as many
+                // employees as its 30s budget allows, then hands back IN_PROGRESS), so
+                // drive it to completion here instead of showing the user a half-done
+                // result they might read as a failure. Continuing is idempotent server
+                // side: only employees with no payout on record are ever paid.
                 const handleDisbursePayroll = async () => {
                     setIsProcessing(true);
                     setDisburseError(null);
+                    setPayrollProgress(null);
                     try {
-                        const result = await requisitionService.disbursePayroll(requisitionData.id);
-                        if (result.failedCount > 0) {
-                            setDisburseError(`Payroll batch partially processed. Succeeded: ${result.successfulCount}, Failed: ${result.failedCount}. Please check employee account details for failures and try again.`);
+                        let paid = 0;
+                        let result: any = null;
+
+                        for (let pass = 0; pass < 20; pass++) {
+                            result = await requisitionService.disbursePayroll(requisitionData.id);
+                            paid += Number(result.successfulCount || 0);
+
+                            if (result.status !== 'IN_PROGRESS') break;
+
+                            setPayrollProgress(`Paid ${paid} of ${paid + Number(result.pendingCount || 0)} employees — continuing…`);
+                            await new Promise(r => setTimeout(r, 1500));
+                        }
+
+                        if (result?.failedCount > 0) {
+                            const names = (result.failedItems || []).map((f: any) => f.name).join(', ');
+                            setDisburseError(
+                                `${paid} employee${paid === 1 ? '' : 's'} were paid successfully. ` +
+                                `${result.failedCount} could not be paid${names ? ` (${names})` : ''} — ` +
+                                `their money has NOT left the wallet. Check those account details and continue; ` +
+                                `nobody who has already been paid will be paid again.`
+                            );
                         } else {
                             setIsSuccess(true);
                         }
                         if (onAction) onAction('REFRESH');
                     } catch (err: any) {
-                        setDisburseError(err.message || 'Payroll disbursal failed');
+                        // A network error / timeout says nothing about whether the payouts
+                        // went through, and telling the user it failed invites a duplicate
+                        // run. Refresh and let the (authoritative) disbursement records speak.
+                        setDisburseError(
+                            (err.message || 'Payroll disbursal was interrupted') +
+                            '. Payouts already sent are safe and will not be repeated — refreshing to show the current state.'
+                        );
+                        if (onAction) onAction('REFRESH');
                     } finally {
+                        setPayrollProgress(null);
                         setIsProcessing(false);
                     }
                 };
@@ -1512,6 +1547,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                 {disburseError && (
                                     <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-100 text-red-700 text-xs font-medium">
                                         {disburseError}
+                                    </div>
+                                )}
+
+                                {payrollProgress && (
+                                    <div className="mb-6 p-4 rounded-2xl bg-blue-50 border border-blue-100 text-[#006AFF] text-xs font-medium">
+                                        {payrollProgress}
                                     </div>
                                 )}
 

@@ -203,6 +203,60 @@ export const cashbookService = {
     },
 
     /**
+     * Insert MANY ledger rows for the same account/wallet in one shot.
+     *
+     * createEntry runs a full balance-recalculation RPC per row. That is fine for a
+     * single write but pathological for a batch: a 33-employee payroll paid 33
+     * recalcs over the whole wallet history, which alone blew past the API's 30s
+     * function ceiling and left the batch half-written (Twalumbu, 2026-07-30 —
+     * 1 of 33 rows persisted, the other 32 payouts turned into orphan ledger
+     * entries when the Lenco sync later re-imported them).
+     *
+     * One insert + ONE recalc at the end produces identical balances in a fraction
+     * of the time. Rows must share organization/account_type/wallet_id; balances are
+     * recalculated from the earliest row inserted.
+     */
+    async createEntriesBulk(
+        organizationId: string,
+        entries: Array<Omit<CashbookEntry, 'id' | 'balance_after'>>
+    ): Promise<CashbookEntry[]> {
+        if (entries.length === 0) return [];
+
+        const accountType = entries[0].account_type || 'CASH';
+        const walletId = (entries[0] as any).wallet_id || null;
+
+        const { data, error } = await supabase
+            .from('cashbook_entries')
+            .insert(entries.map(e => ({
+                ...e,
+                organization_id: organizationId,
+                account_type: e.account_type || accountType,
+                wallet_id: (e as any).wallet_id ?? walletId,
+                balance_after: 0
+            })))
+            .select();
+
+        if (error) throw new Error(`Failed to create cashbook entries: ${error.message}`);
+
+        const rows = data ?? [];
+        if (rows.length === 0) return [];
+
+        // Recalculate once, from the earliest inserted row's logical position.
+        const earliest = rows.reduce((a: any, b: any) =>
+            (a.date < b.date || (a.date === b.date && a.created_at <= b.created_at)) ? a : b);
+        await this.recalculateBalancesFrom(organizationId, earliest.date, earliest.created_at, accountType, walletId);
+
+        for (const row of rows) postJournalAsync(row.id, organizationId);
+
+        void broadcastInvalidate(organizationId, [
+            'cashbook-overview', 'cashbook-entries', 'cashbook-balance',
+            'external-balances', 'cashbook-recent', 'inflows', 'wallets',
+        ]);
+
+        return rows as CashbookEntry[];
+    },
+
+    /**
      * Finalize a PENDING wallet-deposit intent IN PLACE (no delete-then-recreate).
      *
      * The legacy finalize flow deleted the intent row and inserted a fresh entry; if

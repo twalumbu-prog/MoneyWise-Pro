@@ -142,8 +142,12 @@ export class LencoService {
                 narration: payout.narration
             };
 
+            // Bounded so one slow payout cannot eat a whole batch's time budget. A
+            // timeout here does NOT mean the transfer failed — callers must re-check
+            // by reference before reporting a failure to the user.
             const response = await axios.post(`${this.BASE_URL}/transfers/mobile-money`, body, {
-                headers: this.getHeaders(secretKey)
+                headers: this.getHeaders(secretKey),
+                timeout: 20000
             });
             return response.data.data;
         } catch (error: any) {
@@ -173,8 +177,10 @@ export class LencoService {
                 narration: payout.narration
             };
 
+            // See createMobileMoneyPayout: a timeout is not a failed transfer.
             const response = await axios.post(`${this.BASE_URL}/transfers/bank-account`, body, {
-                headers: this.getHeaders(secretKey)
+                headers: this.getHeaders(secretKey),
+                timeout: 20000
             });
             return response.data.data;
         } catch (error: any) {

@@ -1978,6 +1978,85 @@ async function buildSaleFinalization(orgId: string, reference: string): Promise<
     };
 }
 
+/**
+ * Last line of defence before a bank debit is logged as a standalone expense.
+ *
+ * Batch payroll pays each employee individually, and Lenco's transaction list carries
+ * no client reference, so none of the reference-based matchers above can pair those
+ * debits with the requisition that ordered them. Normally that is fine: the disbursal
+ * flow has already written a matching ledger row and the amount+date adopter finds it.
+ * But if that flow was interrupted (function timeout, deploy, crash), the rows are
+ * missing — and the sync would then log 32 anonymous "Payroll for Linda Kaunda /
+ * 2621104496" expenses that belong to no requisition, are categorised nowhere, and
+ * make the batch's ledger line disagree with its own breakdown (Twalumbu, 2026-07-30).
+ *
+ * So before creating an orphan, look for a payout we DID record for this org at this
+ * amount and date whose ledger row never got written, and write it properly: linked to
+ * its requisition, tagged with the payout reference, stamped with the bank txn id.
+ *
+ * Returns true when the debit was logged this way.
+ */
+async function linkDebitToRecordedPayout(
+    orgId: string,
+    walletId: string | null,
+    txn: any,
+    txnGross: number,
+    txnDate: string,
+    txnId: string
+): Promise<boolean> {
+    // Payouts recorded for this org on this date, on PAYROLL requisitions (the batch
+    // shape this repairs; single disbursements carry their own bundled ledger row).
+    const { data: candidates } = await supabase
+        .from('disbursements')
+        .select('id, requisition_id, total_prepared, payment_method, external_reference, recipient_account_name, cashier_id, requisitions!inner(organization_id, type)')
+        .eq('organization_id', orgId)
+        .eq('requisitions.organization_id', orgId)
+        .eq('requisitions.type', 'PAYROLL')
+        .gte('issued_at', `${txnDate}T00:00:00Z`)
+        .lte('issued_at', `${txnDate}T23:59:59Z`);
+
+    if (!candidates || candidates.length === 0) return false;
+
+    const match = candidates.find((d: any) => {
+        if (!d.external_reference) return false;
+        const paid = Number(d.total_prepared);
+        const gross = Math.round((paid + LencoService.calculatePayoutFee(paid, d.payment_method || 'BANK')) * 100) / 100;
+        return Math.abs(gross - txnGross) <= 0.01;
+    });
+
+    if (!match) return false;
+
+    // Already has its ledger row? Then this debit is a different payment of the same
+    // size — leave it to the caller to log normally rather than double-linking.
+    const { data: alreadyLogged } = await supabase
+        .from('cashbook_entries')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('reference_number', match.external_reference)
+        .limit(1)
+        .maybeSingle();
+
+    if (alreadyLogged) return false;
+
+    await cashbookService.createEntry(orgId, {
+        entry_type: 'DISBURSEMENT',
+        description: `Payroll for ${match.recipient_account_name || 'employee'} — Requisition #${String(match.requisition_id).slice(0, 8)}`,
+        debit: 0,
+        credit: txnGross,
+        date: (txn.datetime || new Date().toISOString()).split('T')[0],
+        requisition_id: match.requisition_id,
+        created_by: match.cashier_id || null,
+        status: 'DISBURSED',
+        account_type: 'MONEYWISE_WALLET',
+        wallet_id: walletId,
+        reference_number: match.external_reference,
+        external_reference: txnId
+    } as any);
+
+    console.log(`[Lenco Sync] Debit ${txnId} linked to payroll requisition ${String(match.requisition_id).slice(0, 8)} (${match.recipient_account_name}) instead of being logged as an orphan expense.`);
+    return true;
+}
+
 async function completeSalesForReference(orgId: string, reference: string): Promise<void> {
     const { error } = await supabase
         .from('product_sales')
@@ -2147,14 +2226,43 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
             // transaction. For debits this is amount + bank fee (the balance drops by more than
             // the stated amount); for credits it equals the credited amount. The wallet ledger
             // mirrors the bank, so outflows are logged at this gross figure.
+            //
+            // The delta is only trustworthy when THIS transaction is genuinely the one
+            // that followed its neighbour in the balance chain. A batch payout issues
+            // dozens of transfers within the same second, and Lenco settles them in a
+            // different order than it timestamps them — so sorting by `datetime` can
+            // straddle the wrong pair and produce nonsense: a 33-employee payroll
+            // (Twalumbu, 2026-07-30) logged one employee at K6,549.46, another at
+            // K6,192.17 and a third at MINUS K3,778. The total came out right, which is
+            // exactly why it went unnoticed, but every per-employee figure was wrong.
+            //
+            // So: accept the balance delta only when it looks like "amount + a bank fee",
+            // and otherwise fall back to the published fee tariff for that amount.
+            const MAX_PLAUSIBLE_FEE = 60;
             for (let i = 0; i < txns.length; i++) {
                 const prevBal = i > 0 && txns[i - 1].balance != null ? parseFloat(txns[i - 1].balance) : null;
                 const curBal = txns[i].balance != null ? parseFloat(txns[i].balance) : null;
                 const amt = parseFloat(txns[i].amount || '0');
                 const isDebit = (txns[i].type || '').toLowerCase() === 'debit';
-                txns[i]._gross = (isDebit && prevBal != null && curBal != null)
+
+                if (!isDebit) {
+                    txns[i]._gross = amt;
+                    continue;
+                }
+
+                const delta = (prevBal != null && curBal != null)
                     ? Math.round((prevBal - curBal) * 100) / 100
-                    : amt;
+                    : null;
+                const impliedFee = delta != null ? Math.round((delta - amt) * 100) / 100 : null;
+
+                if (impliedFee != null && impliedFee >= 0 && impliedFee <= MAX_PLAUSIBLE_FEE) {
+                    txns[i]._gross = delta as number;
+                } else {
+                    if (delta != null) {
+                        console.warn(`[Lenco Sync] Implausible balance delta for debit ${txns[i].id} (amount ${amt}, delta ${delta}) — settlement order differs from timestamp order. Falling back to the fee tariff.`);
+                    }
+                    txns[i]._gross = Math.round((amt + LencoService.calculatePayoutFee(amt, 'BANK')) * 100) / 100;
+                }
             }
 
             // Build a lookup map of all disbursements for this org to pair matching transactions
@@ -2626,6 +2734,8 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                 .from('cashbook_entries')
                                 .update({ external_reference: txnId })
                                 .eq('id', adoptable.id);
+                        } else if (await linkDebitToRecordedPayout(orgId, walletId, txn, txnGross, txnDate, txnId)) {
+                            // Logged against the requisition that paid it — see the helper.
                         } else {
                             // Genuinely new direct outflow -> log at gross so the wallet mirrors Lenco.
                             await cashbookService.createEntry(orgId, {

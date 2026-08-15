@@ -1373,6 +1373,125 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
     }
 };
 
+// How long a single invocation may spend initiating payouts. The Vercel function
+// ceiling is 30s (apps/api/vercel.json); the remainder pays for the ledger write,
+// the fee line item and the response.
+const PAYOUT_BUDGET_MS = 18_000;
+
+/** Employee line items on a payroll requisition that still have no payout recorded. */
+async function countOutstandingPayrollItems(requisitionId: string): Promise<number> {
+    const [{ data: items }, { data: disbs }] = await Promise.all([
+        supabase.from('line_items').select('id, description').eq('requisition_id', requisitionId).eq('is_valid', true),
+        supabase.from('disbursements').select('line_item_id').eq('requisition_id', requisitionId),
+    ]);
+
+    const paid = new Set((disbs || []).map((d: any) => d.line_item_id).filter(Boolean));
+    return (items || []).filter((i: any) => {
+        const d = (i.description || '').toLowerCase();
+        if (d.includes('withdrawal fee') || d.includes('transaction charges')) return false;
+        return !paid.has(i.id);
+    }).length;
+}
+
+/**
+ * Give every recorded payroll payout its own ledger row, and only the ones missing it.
+ *
+ * One row per employee at GROSS (net + payout fee) in the wallet, carrying the
+ * requisition_id so the ledger UI folds them back into a single expandable
+ * "Payroll Processing" line, and the payout's client reference in reference_number
+ * so this is safe to call repeatedly. external_reference stays NULL: the Lenco sync
+ * adopts each row by amount+date and stamps the real bank transaction id on it, which
+ * is what keeps the wallet reconciling 1:1 instead of double-counting.
+ *
+ * Split out of the disbursal flow because it must also run on a resumed batch and on
+ * a batch whose first invocation was killed before it got this far — writing the rows
+ * one createEntry at a time (each triggering a full balance recalculation) is what
+ * made that phase slow enough to be killed in the first place.
+ *
+ * Returns the number of rows written.
+ */
+async function writeMissingPayrollLedgerRows(
+    requisitionId: string,
+    organizationId: string,
+    cashierId: string
+): Promise<number> {
+    const { data: allDisbursements } = await supabase
+        .from('disbursements')
+        .select('total_prepared, payment_method, external_reference, recipient_account_name, issued_at')
+        .eq('requisition_id', requisitionId);
+
+    if (!allDisbursements || allDisbursements.length === 0) return 0;
+
+    const { data: existingRows } = await supabase
+        .from('cashbook_entries')
+        .select('id, date, created_at, reference_number')
+        .eq('requisition_id', requisitionId)
+        .eq('entry_type', 'DISBURSEMENT');
+
+    // Legacy: a requisition already carrying an old-style consolidated row (no
+    // reference_number) keeps being updated in place — don't mix the two shapes.
+    const legacyConsolidated = (existingRows || []).find((r: any) => !r.reference_number);
+    if (legacyConsolidated) {
+        const total = allDisbursements.reduce((sum: number, d: any) => {
+            const paid = Number(d.total_prepared);
+            return sum + paid + LencoService.calculatePayoutFee(paid, d.payment_method || 'BANK');
+        }, 0);
+
+        await supabase
+            .from('cashbook_entries')
+            .update({
+                credit: Math.round(total * 100) / 100,
+                // NB: cashbook_entries has no updated_at column — including one makes
+                // PostgREST reject the whole update.
+                description: `Batch Payroll payout for Requisition #${requisitionId.slice(0, 8)} (${allDisbursements.length} employees)`
+            })
+            .eq('id', legacyConsolidated.id);
+
+        await cashbookService.recalculateBalancesFrom(
+            organizationId,
+            legacyConsolidated.date,
+            legacyConsolidated.created_at,
+            'MONEYWISE_WALLET'
+        );
+        return 0;
+    }
+
+    const loggedRefs = new Set((existingRows || []).map((r: any) => r.reference_number).filter(Boolean));
+
+    const { data: mainWallet } = await supabase
+        .from('organization_wallets')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('is_main', true)
+        .maybeSingle();
+
+    const rows = allDisbursements
+        .filter((d: any) => d.external_reference && !loggedRefs.has(d.external_reference))
+        .map((d: any) => {
+            const paid = Number(d.total_prepared);
+            const fee = LencoService.calculatePayoutFee(paid, d.payment_method || 'BANK');
+            return {
+                entry_type: 'DISBURSEMENT',
+                description: `Payroll for ${d.recipient_account_name || 'employee'} — Requisition #${requisitionId.slice(0, 8)}`,
+                debit: 0,
+                credit: Math.round((paid + fee) * 100) / 100,
+                date: (d.issued_at || new Date().toISOString()).split('T')[0],
+                requisition_id: requisitionId,
+                created_by: cashierId,
+                status: 'DISBURSED',
+                account_type: 'MONEYWISE_WALLET',
+                wallet_id: mainWallet?.id || null,
+                reference_number: d.external_reference,
+                external_reference: null // REQUIRED null — the sync adopts by amount+date, then tags the Lenco txn id
+            };
+        });
+
+    if (rows.length === 0) return 0;
+
+    await cashbookService.createEntriesBulk(organizationId, rows as any);
+    return rows.length;
+}
+
 /**
  * Disburse batch payroll requisition via MoneyWise wallet (Lenco)
  */
@@ -1417,13 +1536,71 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
             .eq('organization_id', organizationId)
             .select('*');
 
-        if (lockError || !lockResult || lockResult.length === 0) {
-            return res.status(400).json({ 
-                error: 'Requisition cannot be disbursed. It may have already been processed, is not in AUTHORISED status, is not of type PAYROLL, or does not belong to your organization.' 
-            });
-        }
+        let requisition = (!lockError && lockResult && lockResult.length > 0) ? lockResult[0] : null;
+        const isResume = requisition === null;
 
-        const requisition = lockResult[0];
+        // RESUME PATH ─────────────────────────────────────────────────────────
+        // A big batch cannot always finish inside the API's 30s function ceiling, so
+        // this endpoint is designed to be called again to pick up where it stopped.
+        // The lock above only fires on the first (AUTHORISED) call; a continuation
+        // arrives while the requisition already sits at RECEIVED. Re-entry is allowed
+        // only when valid employee line items still have no disbursement row — an
+        // already-complete batch can never be re-paid this way, and every individual
+        // payout is additionally guarded by its own disbursement/Lenco-reference check.
+        if (!requisition) {
+            const { data: current } = await supabase
+                .from('requisitions')
+                .select('*')
+                .eq('id', id)
+                .eq('type', 'PAYROLL')
+                .eq('organization_id', organizationId)
+                .maybeSingle();
+
+            if (!current || current.status !== 'RECEIVED') {
+                return res.status(400).json({
+                    error: 'Requisition cannot be disbursed. It may have already been processed, is not in AUTHORISED status, is not of type PAYROLL, or does not belong to your organization.'
+                });
+            }
+
+            const outstanding = await countOutstandingPayrollItems(id);
+            if (outstanding === 0) {
+                // Nothing left to pay. Repair any ledger rows a killed run never wrote
+                // and report success rather than an error the user cannot act on.
+                const healed = await writeMissingPayrollLedgerRows(id, organizationId, cashier_id);
+                return res.json({
+                    message: 'Payroll already fully disbursed.',
+                    status: 'COMPLETE',
+                    successfulCount: 0,
+                    failedCount: 0,
+                    pendingCount: 0,
+                    alreadyComplete: true,
+                    ledgerRowsRepaired: healed
+                });
+            }
+
+            // Guard against a second browser tab (or an impatient double-click) racing
+            // the run that is still in flight: a payout logged seconds ago means another
+            // invocation is mid-batch.
+            const { data: recent } = await supabase
+                .from('disbursements')
+                .select('issued_at')
+                .eq('requisition_id', id)
+                .order('issued_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            if (recent?.issued_at && Date.now() - new Date(recent.issued_at).getTime() < 45_000) {
+                return res.status(409).json({
+                    error: 'This payroll batch is still being processed. Please wait a few seconds before continuing.',
+                    status: 'IN_PROGRESS'
+                });
+            }
+
+            requisition = current;
+            // Keep paying out of the wallet the first pass debited.
+            if (requisition.wallet_id) finalWalletId = requisition.wallet_id;
+        }
+        void requisition;
 
         // 2. Fetch Lenco keys
         const { data: org } = await supabase
@@ -1437,8 +1614,7 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
         const subaccountId = org?.lenco_subaccount_id || '';
 
         if (!testMode && (!subaccountId || !secretKey)) {
-            // Revert status to AUTHORISED on failure
-            await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+            if (!isResume) await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
             return res.status(400).json({ error: 'Organization is not properly configured for MoneyWise Wallet payouts.' });
         }
 
@@ -1450,35 +1626,61 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
             .eq('is_valid', true);
 
         if (itemsError || !lineItems || lineItems.length === 0) {
-            await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+            if (!isResume) await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
             return res.status(400).json({ error: 'No valid line items found to disburse' });
         }
 
-        // Validate the selected wallet has enough balance to cover the full payroll payout
+        // Every payout already on record for this requisition, fetched once. Used both
+        // for the balance check (only unpaid employees still need funding) and as the
+        // per-employee idempotency guard inside the loop — a resumed batch must never
+        // pay the same person twice.
+        const { data: priorDisbursements } = await supabase
+            .from('disbursements')
+            .select('id, line_item_id, external_reference')
+            .eq('requisition_id', id);
+        const disbByLineItem = new Map<string, any>(
+            (priorDisbursements || []).filter((d: any) => d.line_item_id).map((d: any) => [d.line_item_id, d])
+        );
+
+        const isEmployeeItem = (item: any) =>
+            !item.description.toLowerCase().includes('withdrawal fee') &&
+            !item.description.toLowerCase().includes('transaction charges');
+
+        // Validate the selected wallet still covers everything left to pay
         if (finalWalletId) {
-            const totalPayrollAmount = lineItems
-                .filter((item: any) => !item.description.toLowerCase().includes('withdrawal fee') && !item.description.toLowerCase().includes('transaction charges'))
+            const outstandingAmount = lineItems
+                .filter((item: any) => isEmployeeItem(item) && !disbByLineItem.has(item.id))
                 .reduce((sum: number, item: any) => {
                     const amt = Number(item.estimated_amount);
                     return sum + amt + LencoService.calculatePayoutFee(amt, item.payment_method || 'BANK');
                 }, 0);
 
             const walletBalance = await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', finalWalletId);
-            if (walletBalance < totalPayrollAmount) {
-                await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
+            if (walletBalance < outstandingAmount) {
+                if (!isResume) await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
                 return res.status(400).json({
-                    error: `Insufficient wallet balance. This wallet has K${walletBalance.toFixed(2)} available, but the payroll payout requires K${totalPayrollAmount.toFixed(2)}.`
+                    error: `Insufficient wallet balance. This wallet has K${walletBalance.toFixed(2)} available, but the payroll payout requires K${outstandingAmount.toFixed(2)}.`
                 });
             }
         }
 
         const successfulDisbursements: Array<{ item: any; amount: number; fee: number; reference: string }> = [];
         const failedDisbursements: Array<{ item: any; error: string }> = [];
+        const deferredItems: any[] = [];
 
-        // 4. Process each employee payout
+        // 4. Process each employee payout, inside a wall-clock budget.
+        //
+        // Each payout is one or two sequential Lenco HTTP calls (~0.8s), so a 33-employee
+        // batch needs ~26s — more than the whole function is allowed to live. Stopping
+        // cleanly BEFORE the ceiling lets us persist the ledger, answer the client
+        // honestly ("18 of 33 paid, continuing"), and be called again for the rest.
+        // Running past it meant the process was killed mid-write: the caller saw a
+        // network error for money that had genuinely left (Twalumbu, 2026-07-30).
+        const PAYOUT_DEADLINE = Date.now() + PAYOUT_BUDGET_MS;
+
         for (const item of lineItems) {
             // Skip withdrawal fee items if they already exist
-            if (item.description.toLowerCase().includes('withdrawal fee') || item.description.toLowerCase().includes('transaction charges')) {
+            if (!isEmployeeItem(item)) {
                 continue;
             }
 
@@ -1487,11 +1689,7 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
             const stableRef = `P-${id.slice(0, 8)}-${item.id.slice(0, 8)}`;
 
             // Check if disbursement already exists for this line item (idempotency check)
-            const { data: existingDisb } = await supabase
-                .from('disbursements')
-                .select('*')
-                .eq('line_item_id', item.id)
-                .maybeSingle();
+            const existingDisb = disbByLineItem.get(item.id);
 
             if (existingDisb) {
                 console.log(`[Payroll Disbursal] Disbursement already exists for line item ${item.id}. skipping.`);
@@ -1501,6 +1699,13 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                     fee,
                     reference: existingDisb.external_reference || ''
                 });
+                continue;
+            }
+
+            // Out of time — hand the rest back to the next invocation rather than
+            // starting a payout we may not live long enough to record.
+            if (Date.now() > PAYOUT_DEADLINE) {
+                deferredItems.push(item);
                 continue;
             }
 
@@ -1582,17 +1787,55 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
 
                 successfulDisbursements.push({ item, amount, fee, reference: lencoReference });
             } catch (err: any) {
-                console.error(`[Payroll Disbursal Failed] Employee: ${item.employee_name}, Error:`, err);
-                failedDisbursements.push({ item, error: err.message || 'Payout failed' });
+                // NEVER call a payout failed on the strength of our own error alone.
+                // A timeout, a dropped connection or a 5xx from the gateway says nothing
+                // about whether Lenco accepted the transfer — and telling a user their
+                // staff were not paid when the money has actually left is the worst
+                // possible lie: it invites a "try again" that pays everyone twice.
+                // The client reference is deterministic, so ask Lenco who is right.
+                let confirmed: any = null;
+                if (!testMode) {
+                    try {
+                        confirmed = await LencoService.getTransferStatus(stableRef, secretKey);
+                    } catch (verifyErr: any) {
+                        console.error(`[Payroll Disbursal] Post-failure verification unavailable for ${stableRef}:`, verifyErr.message);
+                    }
+                }
+
+                if (confirmed && confirmed.status !== 'failed') {
+                    console.warn(`[Payroll Disbursal] ${item.employee_name}: local error "${err.message}" but Lenco reports ${confirmed.status} for ${stableRef} — recording as paid.`);
+                    await supabase.from('disbursements').insert({
+                        requisition_id: id,
+                        line_item_id: item.id,
+                        cashier_id,
+                        organization_id: organizationId,
+                        payment_method: item.payment_method,
+                        total_prepared: amount,
+                        recipient_account: item.recipient_account,
+                        recipient_bank_code: item.recipient_bank_code,
+                        recipient_account_name: item.verified_name || item.employee_name,
+                        external_reference: confirmed.reference || stableRef,
+                        issued_at: new Date().toISOString()
+                    });
+                    await supabase
+                        .from('line_items')
+                        .update({ actual_amount: amount, updated_at: new Date().toISOString() })
+                        .eq('id', item.id);
+                    successfulDisbursements.push({ item, amount, fee, reference: confirmed.reference || stableRef });
+                } else {
+                    console.error(`[Payroll Disbursal Failed] Employee: ${item.employee_name}, Error:`, err);
+                    failedDisbursements.push({ item, error: err.message || 'Payout failed' });
+                }
             }
         }
 
-        // If all payouts failed and none succeeded, revert status and return error
+        // If nothing has ever been paid on this requisition and everything we attempted
+        // failed, release the lock so the batch can be retried from scratch.
         if (successfulDisbursements.length === 0 && failedDisbursements.length > 0) {
             await supabase.from('requisitions').update({ status: 'AUTHORISED' }).eq('id', id);
-            return res.status(400).json({ 
-                error: 'All payouts failed to process.', 
-                details: failedDisbursements.map(f => `${f.item.employee_name}: ${f.error}`).join(', ') 
+            return res.status(400).json({
+                error: 'All payouts failed to process.',
+                details: failedDisbursements.map(f => `${f.item.employee_name}: ${f.error}`).join(', ')
             });
         }
 
@@ -1608,86 +1851,8 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
 
         const totalAmountPaid = allDisbursements.reduce((sum, d) => sum + Number(d.total_prepared), 0);
         const totalFees = allDisbursements.reduce((sum, d) => sum + LencoService.calculatePayoutFee(Number(d.total_prepared), d.payment_method || 'BANK'), 0);
-        const totalDeduction = totalAmountPaid + totalFees;
 
-        // ─── Ledger: ONE CHILD ROW PER EMPLOYEE (requisition-style consolidated view) ───
-        // Previously this block wrote a single consolidated DISBURSEMENT row. The Lenco
-        // sync could never match that row (24 small bank debits vs one big ledger
-        // credit), so it mirrored every payout AGAIN as individual rows — a guaranteed
-        // double-count (Twalumbu K71,354.03, fixed 2026-07-11).
-        //
-        // Now: one row per successful payout, at GROSS (amount + payout fee), in the
-        // MAIN wallet, with external_reference NULL. The sync's adopt-by-amount matcher
-        // ("ADOPT an existing unlinked outflow" in lenco.controller.ts) tags each row
-        // with its real Lenco txn id within ~5 min — every sub-line reconciles 1:1
-        // against the bank, nothing duplicates. The UI groups rows sharing a
-        // requisition_id into one expandable consolidated line.
-        //
-        // Idempotency: each child stores its payout's Lenco client reference in
-        // reference_number; retries skip refs already logged.
-        const { data: existingRows } = await supabase
-            .from('cashbook_entries')
-            .select('id, date, created_at, reference_number')
-            .eq('requisition_id', id)
-            .eq('entry_type', 'DISBURSEMENT');
-
-        // Legacy: a requisition already carrying an old-style consolidated row (no
-        // reference_number) keeps being updated in place — don't mix the two shapes.
-        const legacyConsolidated = (existingRows || []).find((r: any) => !r.reference_number);
-
-        if (legacyConsolidated) {
-            const ledgerDescription = `Batch Payroll payout for Requisition #${id.slice(0, 8)} (${allDisbursements.length} employees)`;
-            await supabase
-                .from('cashbook_entries')
-                .update({
-                    credit: totalDeduction,
-                    description: ledgerDescription,
-                    updated_at: new Date().toISOString()
-                })
-                .eq('id', legacyConsolidated.id);
-
-            // Recalculate balances starting from this entry's date
-            await cashbookService.recalculateBalancesFrom(
-                organizationId,
-                legacyConsolidated.date,
-                legacyConsolidated.created_at,
-                'MONEYWISE_WALLET'
-            );
-        } else {
-            const { data: mainWallet } = await supabase
-                .from('organization_wallets')
-                .select('id')
-                .eq('organization_id', organizationId)
-                .eq('is_main', true)
-                .maybeSingle();
-
-            const loggedRefs = new Set((existingRows || []).map((r: any) => r.reference_number).filter(Boolean));
-
-            for (const d of allDisbursements) {
-                const payoutRef = (d as any).external_reference;
-                if (!payoutRef || loggedRefs.has(payoutRef)) continue;
-
-                const paid = Number(d.total_prepared);
-                const fee = LencoService.calculatePayoutFee(paid, d.payment_method || 'BANK');
-                const gross = Math.round((paid + fee) * 100) / 100;
-
-                await cashbookService.createEntry(organizationId, {
-                    entry_type: 'DISBURSEMENT',
-                    description: `Payroll for ${(d as any).recipient_account_name || 'employee'} — Requisition #${id.slice(0, 8)}`,
-                    debit: 0,
-                    credit: gross,
-                    date: new Date().toISOString().split('T')[0],
-                    requisition_id: id,
-                    created_by: cashier_id,
-                    status: 'DISBURSED',
-                    account_type: 'MONEYWISE_WALLET',
-                    wallet_id: mainWallet?.id || null,
-                    reference_number: payoutRef,
-                    external_reference: null // REQUIRED null — the sync adopts by amount+date, then tags the Lenco txn id
-                } as any);
-                loggedRefs.add(payoutRef);
-            }
-        }
+        await writeMissingPayrollLedgerRows(id, organizationId, cashier_id);
 
         // Record or update single withdrawal fee line item if fees > 0
         const chargesAccountId = await cashbookService.getOrCreateTransactionChargesAccount(organizationId);
@@ -1736,21 +1901,28 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
             updated_at: new Date().toISOString()
         }).eq('id', id);
 
-        if (failedDisbursements.length > 0) {
-            // Some payouts failed, revert requisition status back to AUTHORISED so they can retry
-            await supabase
-                .from('requisitions')
-                .update({ 
-                    status: 'AUTHORISED', 
-                    updated_at: new Date().toISOString() 
-                })
-                .eq('id', id);
+        // Employees still waiting: either we ran out of time, or their payout errored.
+        // In BOTH cases money has already left for everyone else, so the requisition
+        // stays RECEIVED — reverting it to AUTHORISED used to advertise a "retry" of a
+        // batch that was mostly paid. Continuing is safe and idempotent: the resume
+        // path only touches line items with no disbursement of their own.
+        if (deferredItems.length > 0) {
+            return res.json({
+                message: `Paid ${successfulDisbursements.length} of ${successfulDisbursements.length + deferredItems.length + failedDisbursements.length} employees so far. Continuing with the rest.`,
+                status: 'IN_PROGRESS',
+                successfulCount: successfulDisbursements.length,
+                failedCount: failedDisbursements.length,
+                pendingCount: deferredItems.length,
+                failedItems: failedDisbursements.map(f => ({ name: f.item.employee_name, error: f.error }))
+            });
+        }
 
+        if (failedDisbursements.length > 0) {
             // Send notification message for partial success
             await RequisitionMessageService.createMessage({
                 requisitionId: id,
                 userId: cashier_id,
-                content: `Payroll payout partially completed. Succeeded: ${successfulDisbursements.length} employees. Failed: ${failedDisbursements.length} employees. Requisition remains AUTHORISED for retry.`,
+                content: `Payroll payout partially completed. Paid: ${successfulDisbursements.length} employees. Could not be paid: ${failedDisbursements.length} employees — only these remain outstanding and can be retried; nobody is paid twice.`,
                 type: 'SYSTEM',
                 metadata: {
                     stage: 'DISBURSAL_PARTIAL',
@@ -1760,10 +1932,13 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                 }
             });
 
-            return res.json({ 
-                message: 'Payroll partially disbursed. Some payouts failed. Requisition remains in AUTHORISED status.', 
-                successfulCount: successfulDisbursements.length, 
-                failedCount: failedDisbursements.length 
+            return res.json({
+                message: `Paid ${successfulDisbursements.length} employees. ${failedDisbursements.length} could not be paid and remain outstanding.`,
+                status: 'PARTIAL',
+                successfulCount: successfulDisbursements.length,
+                failedCount: failedDisbursements.length,
+                pendingCount: 0,
+                failedItems: failedDisbursements.map(f => ({ name: f.item.employee_name, error: f.error }))
             });
         } else {
             // All payouts succeeded! Send full success message
@@ -1784,10 +1959,12 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                 console.error('[AI Review] Auto-trigger failed after payroll disbursal:', err)
             );
 
-            return res.json({ 
-                message: 'Payroll disbursed successfully', 
-                successfulCount: successfulDisbursements.length, 
-                failedCount: failedDisbursements.length 
+            return res.json({
+                message: 'Payroll disbursed successfully',
+                status: 'COMPLETE',
+                successfulCount: successfulDisbursements.length,
+                failedCount: failedDisbursements.length,
+                pendingCount: 0
             });
         }
 
