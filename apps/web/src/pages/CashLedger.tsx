@@ -76,7 +76,7 @@ const SearchableAccountSelect: React.FC<{
     );
 
     return (
-        <div className="relative w-full max-w-[280px]" ref={dropdownRef}>
+        <div className="relative w-full" ref={dropdownRef}>
             <div 
                 onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
                 className={`flex items-center justify-between px-3 py-2 bg-gray-50/50 border rounded-xl cursor-pointer transition-all text-xs font-medium
@@ -2327,6 +2327,37 @@ Status: VERIFIED`;
                                                 <span className="text-[11px] font-bold text-gray-900 font-mono truncate max-w-[180px]">{entry.external_reference}</span>
                                             </div>
                                         )}
+                                        {/* Payment destination — from disbursement */}
+                                        {disbursement?.payment_method && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>
+                                                <span className="text-[11px] font-bold text-gray-900">
+                                                    {disbursement.payment_method === 'MOBILE_MONEY' ? 'Mobile Money'
+                                                     : disbursement.payment_method === 'BANK_TRANSFER' ? 'Bank Transfer'
+                                                     : disbursement.payment_method}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {(disbursement?.recipient_name || disbursement?.recipient_account_name) && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">Recipient Name</span>
+                                                <span className="text-[11px] font-bold text-gray-900">{disbursement.recipient_name || disbursement.recipient_account_name}</span>
+                                            </div>
+                                        )}
+                                        {disbursement?.recipient_account && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">
+                                                    {disbursement.payment_method === 'MOBILE_MONEY' ? 'Phone Number' : 'Account Number'}
+                                                </span>
+                                                <span className="text-[11px] font-bold text-gray-900 font-mono">{disbursement.recipient_account}</span>
+                                            </div>
+                                        )}
+                                        {disbursement?.recipient_bank_code && disbursement?.payment_method !== 'MOBILE_MONEY' && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">Bank Code</span>
+                                                <span className="text-[11px] font-bold text-gray-900">{disbursement.recipient_bank_code}</span>
+                                            </div>
+                                        )}
                                         <div className="flex items-center justify-between px-3.5 py-2.5">
                                             <span className="text-[11px] font-semibold text-gray-500">Account Type</span>
                                             <span className="text-[11px] font-bold text-gray-900">{entry.account_type?.replace(/_/g, ' ')}</span>
@@ -2364,28 +2395,28 @@ Status: VERIFIED`;
                                 {entry.requisition_id && (
                                     <div className="px-5 py-4 border-b border-gray-50">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Financial Summary</p>
-                                        <div className="grid grid-cols-2 gap-2.5">
-                                            <div className="bg-gray-50 rounded-xl p-3">
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Disbursed</span>
-                                                <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(totalPrepared)}</span>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="bg-gray-50 rounded-xl p-2.5">
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block leading-tight">Disbursed</span>
+                                                <span className="text-[13px] font-extrabold text-slate-800 block mt-1 leading-none">{formatCurrency(totalPrepared)}</span>
                                             </div>
-                                            <div className="bg-gray-50 rounded-xl p-3">
-                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Expenditure</span>
-                                                <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(actualExpenditure)}</span>
+                                            <div className="bg-gray-50 rounded-xl p-2.5">
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block leading-tight">Expenditure</span>
+                                                <span className="text-[13px] font-extrabold text-slate-800 block mt-1 leading-none">{formatCurrency(actualExpenditure)}</span>
                                             </div>
-                                            {confirmedChange > 0 && (
-                                                <div className="bg-emerald-50 rounded-xl p-3">
-                                                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Change Returned</span>
-                                                    <span className="text-sm font-extrabold text-emerald-600 block mt-0.5">{formatCurrency(confirmedChange)}</span>
-                                                </div>
-                                            )}
-                                            <div className={`rounded-xl p-3 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50' : 'bg-gray-50'}`}>
-                                                <span className={`text-[9px] font-bold uppercase tracking-wider ${Math.abs(discrepancy) > 0.01 ? 'text-rose-500' : 'text-gray-400'}`}>Discrepancy</span>
-                                                <span className={`text-sm font-extrabold block mt-0.5 ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                            <div className={`rounded-xl p-2.5 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50' : 'bg-gray-50'}`}>
+                                                <span className={`text-[9px] font-bold uppercase tracking-wider block leading-tight ${Math.abs(discrepancy) > 0.01 ? 'text-rose-500' : 'text-gray-400'}`}>Discrepancy</span>
+                                                <span className={`text-[13px] font-extrabold block mt-1 leading-none ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-slate-800'}`}>
                                                     {formatCurrency(discrepancy)}
                                                 </span>
                                             </div>
                                         </div>
+                                        {confirmedChange > 0 && (
+                                            <div className="mt-2 flex items-center justify-between bg-emerald-50 rounded-xl px-3 py-2">
+                                                <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Change Returned</span>
+                                                <span className="text-[13px] font-extrabold text-emerald-600">{formatCurrency(confirmedChange)}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -2395,7 +2426,7 @@ Status: VERIFIED`;
                                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Line Items & Categorization</p>
                                         <div className="flex flex-col gap-2">
                                             {items.map((item: any, idx: number) => (
-                                                <div key={item.id || idx} className="bg-gray-50 rounded-2xl p-3.5 flex flex-col gap-2">
+                                                <div key={item.id || idx} className="bg-white border border-gray-100 shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2">
                                                     <div className="flex justify-between items-start">
                                                         <div className="flex-1 min-w-0 pr-2">
                                                             <p className="text-[11px] font-semibold text-slate-800 leading-tight">{item.description}</p>
