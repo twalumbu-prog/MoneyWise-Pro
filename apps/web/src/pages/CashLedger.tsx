@@ -2380,15 +2380,18 @@ Status: VERIFIED`;
                                             const recipientName = disbursement?.recipient_account_name || req.recipient_name || disbursement?.recipient_name;
                                             const recipientAccount = disbursement?.recipient_account || req.recipient_account;
                                             const bankCode = disbursement?.recipient_bank_code || req.recipient_bank_code;
-                                            let payMethod = req.payment_method || disbursement?.payment_method;
-                                            // Older disbursements never recorded payment_method explicitly — the
-                                            // bank_code itself distinguishes a mobile operator (mtn/airtel/zamtel)
-                                            // from an actual bank code, so infer from that when it's missing.
+                                            // req.payment_method carries the actual destination channel
+                                            // (MOBILE_MONEY / BANK_TRANSFER) when it was recorded at requisition
+                                            // time. disbursement.payment_method is a DIFFERENT field — it records
+                                            // the SOURCE wallet/account the cash was drawn from (e.g.
+                                            // 'MONEYWISE_WALLET'), not where it went, so it's never used for the
+                                            // channel label. The bank_code itself distinguishes a mobile operator
+                                            // (mtn/airtel/zamtel) from a real bank code, which is the most
+                                            // reliable channel signal we actually have at payout time.
                                             const MOBILE_OPERATORS = ['mtn', 'airtel', 'zamtel'];
-                                            if (!payMethod && bankCode && MOBILE_OPERATORS.includes(String(bankCode).toLowerCase())) {
-                                                payMethod = 'MOBILE_MONEY';
-                                            }
-                                            const isMobile = payMethod === 'MOBILE_MONEY';
+                                            const bankCodeIsMobile = !!bankCode && MOBILE_OPERATORS.includes(String(bankCode).toLowerCase());
+                                            const payMethod = req.payment_method || (bankCodeIsMobile ? 'MOBILE_MONEY' : null);
+                                            const isMobile = payMethod === 'MOBILE_MONEY' || bankCodeIsMobile;
                                             const methodLabel = isMobile ? 'Mobile Money'
                                                 : payMethod === 'BANK_TRANSFER' ? 'Bank Transfer'
                                                 : payMethod === 'WALLET' ? 'MoneyWise Wallet'
