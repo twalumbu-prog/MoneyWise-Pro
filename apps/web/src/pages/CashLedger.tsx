@@ -2365,37 +2365,51 @@ Status: VERIFIED`;
                                                 </>
                                             );
                                         })()}
-                                                                                {/* Payment destination — from disbursement */}
-                                        {disbursement?.payment_method && (
-                                            <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>
-                                                <span className="text-[11px] font-bold text-gray-900">
-                                                    {disbursement.payment_method === 'MOBILE_MONEY' ? 'Mobile Money'
-                                                     : disbursement.payment_method === 'BANK_TRANSFER' ? 'Bank Transfer'
-                                                     : disbursement.payment_method}
-                                                </span>
-                                            </div>
-                                        )}
-                                        {(disbursement?.recipient_name || disbursement?.recipient_account_name) && (
-                                            <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">Recipient Name</span>
-                                                <span className="text-[11px] font-bold text-gray-900">{disbursement.recipient_name || disbursement.recipient_account_name}</span>
-                                            </div>
-                                        )}
-                                        {disbursement?.recipient_account && (
-                                            <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">
-                                                    {disbursement.payment_method === 'MOBILE_MONEY' ? 'Phone Number' : 'Account Number'}
-                                                </span>
-                                                <span className="text-[11px] font-bold text-gray-900 font-mono">{disbursement.recipient_account}</span>
-                                            </div>
-                                        )}
-                                        {disbursement?.recipient_bank_code && disbursement?.payment_method !== 'MOBILE_MONEY' && (
-                                            <div className="flex items-center justify-between px-3.5 py-2.5">
-                                                <span className="text-[11px] font-semibold text-gray-500">Bank Code</span>
-                                                <span className="text-[11px] font-bold text-gray-900">{disbursement.recipient_bank_code}</span>
-                                            </div>
-                                        )}
+                                        {/* Payment destination — payment_method + recipient on requisitions; account/bank on disbursement row */}
+                                        {isOutflow && (() => {
+                                            // payment_method and recipient_name live on the requisition; the
+                                            // disbursement row carries the verified account/bank code used at payout.
+                                            const payMethod = req.payment_method || disbursement?.payment_method;
+                                            const recipientName = disbursement?.recipient_account_name || req.recipient_name || disbursement?.recipient_name;
+                                            const recipientAccount = disbursement?.recipient_account || req.recipient_account;
+                                            const bankCode = disbursement?.recipient_bank_code || req.recipient_bank_code;
+                                            const isMobile = payMethod === 'MOBILE_MONEY';
+                                            const methodLabel = isMobile ? 'Mobile Money'
+                                                : payMethod === 'BANK_TRANSFER' ? 'Bank Transfer'
+                                                : payMethod === 'WALLET' ? 'MoneyWise Wallet'
+                                                : payMethod || null;
+                                            if (!methodLabel && !recipientName && !recipientAccount) return null;
+                                            return (
+                                                <>
+                                                    {methodLabel && (
+                                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                            <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>
+                                                            <span className="text-[11px] font-bold text-gray-900">{methodLabel}</span>
+                                                        </div>
+                                                    )}
+                                                    {recipientName && (
+                                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                            <span className="text-[11px] font-semibold text-gray-500">Recipient Name</span>
+                                                            <span className="text-[11px] font-bold text-gray-900">{recipientName}</span>
+                                                        </div>
+                                                    )}
+                                                    {recipientAccount && (
+                                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                            <span className="text-[11px] font-semibold text-gray-500">
+                                                                {isMobile ? 'Phone Number' : 'Account Number'}
+                                                            </span>
+                                                            <span className="text-[11px] font-bold text-gray-900 font-mono">{recipientAccount}</span>
+                                                        </div>
+                                                    )}
+                                                    {bankCode && !isMobile && (
+                                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                            <span className="text-[11px] font-semibold text-gray-500">Bank Code</span>
+                                                            <span className="text-[11px] font-bold text-gray-900">{bankCode}</span>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                         <div className="flex items-center justify-between px-3.5 py-2.5">
                                             <span className="text-[11px] font-semibold text-gray-500">Account Type</span>
                                             <span className="text-[11px] font-bold text-gray-900">{entry.account_type?.replace(/_/g, ' ')}</span>

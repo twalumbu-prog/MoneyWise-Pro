@@ -634,6 +634,8 @@ export const cashbookService = {
                 *,
                 requisitions!requisition_id (
                     id, reference_number, status, description, type, department,
+                    actual_total,
+                    payment_method, recipient_name, recipient_account, recipient_bank_code,
                     requestor:users!requestor_id(name),
                     line_items (
                         id, description, quantity, unit_price, estimated_amount, actual_amount, account_id,
@@ -641,10 +643,12 @@ export const cashbookService = {
                         accounts ( id, code, name, category )
                     ),
                     disbursements (
-                        id, total_prepared, actual_change_amount, confirmed_change_amount, change_submission_method, confirmed_at
+                        id, total_prepared, actual_change_amount, confirmed_change_amount, change_submission_method, confirmed_at,
+                        recipient_account, recipient_bank_code, recipient_account_name
                     ),
                     qb_sync_status, qb_sync_error
                 ),
+                accounts!account_id ( id, code, name ),
                 users!created_by(name)
             `)
             .eq('organization_id', organizationId)
