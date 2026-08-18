@@ -271,6 +271,15 @@ const CashLedger: React.FC = () => {
     const [shareWalletId, setShareWalletId] = useState<string | null>(null);
     const [verifyingEntryId, setVerifyingEntryId] = useState<string | null>(null);
     const [generatingReceiptId, setGeneratingReceiptId] = useState<string | null>(null);
+    // Detail panel section collapse: Transaction Info hidden by default, others shown.
+    const [panelSections, setPanelSections] = useState({
+        transactionInfo: false,
+        financialSummary: true,
+        lineItems: true,
+        accounting: true,
+    });
+    const togglePanelSection = (key: keyof typeof panelSections) =>
+        setPanelSections(prev => ({ ...prev, [key]: !prev[key] }));
     const [showPendingIntents, setShowPendingIntents] = useState(false);
     // Desktop transactions table row selection — visual only for now, no bulk actions wired yet.
     const [selectedTxnIds, setSelectedTxnIds] = useState<Set<string>>(new Set());
@@ -1476,7 +1485,12 @@ Status: VERIFIED`;
                                                 className={`px-5 py-[22px] flex items-start justify-between active:bg-gray-50 transition-colors ${
                                                     selectedEntry?.id === entry.id ? 'bg-slate-50/50' : ''
                                                 }`}
-                                                onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && setSelectedEntry(entry)}
+                                                onClick={() => {
+                                                    if (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') {
+                                                        setSelectedEntry(entry);
+                                                        setPanelSections({ transactionInfo: false, financialSummary: true, lineItems: true, accounting: true });
+                                                    }
+                                                }}
                                             >
                                                 {/* Left Side: Description + Flag + Ref */}
                                                 <div className="flex-1 mr-4">
@@ -1828,7 +1842,7 @@ Status: VERIFIED`;
                                             <React.Fragment key={entry.id}>
                                                 <tr
                                                     className={`group cursor-pointer transition-colors border-b border-[#E8EEF8]/40 ${selectedEntry?.id === entry.id ? 'bg-[#F3F5FC]' : 'hover:bg-gray-50/70'}`}
-                                                    onClick={() => setSelectedEntry(entry)}
+                                                    onClick={() => { setSelectedEntry(entry); setPanelSections({ transactionInfo: false, financialSummary: true, lineItems: true, accounting: true }); }}
                                                 >
                                                     <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
                                                         <input
@@ -2295,8 +2309,17 @@ Status: VERIFIED`;
                             <div className="flex-1 overflow-y-auto">
 
                                 {/* Section: Transaction Info */}
-                                <div className="px-5 py-4 border-b border-gray-50">
-                                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Transaction Info</p>
+                                <div className="px-5 border-b border-gray-50">
+                                    <button
+                                        type="button"
+                                        onClick={() => togglePanelSection('transactionInfo')}
+                                        className="w-full flex items-center justify-between py-4"
+                                    >
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Transaction Info</p>
+                                        <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.transactionInfo ? 'rotate-180' : ''}`} />
+                                    </button>
+                                    {panelSections.transactionInfo && (
+                                    <div className="pb-4">
                                     <div className="bg-gray-50 rounded-2xl divide-y divide-gray-100 overflow-hidden">
                                         {refNum && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
@@ -2458,12 +2481,23 @@ Status: VERIFIED`;
                                             </div>
                                         )}
                                     </div>
+                                    </div>
+                                    )}
                                 </div>
 
                                 {/* Section: Amounts summary (requisition only) */}
                                 {entry.requisition_id && (
-                                    <div className="px-5 py-4 border-b border-gray-50">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Financial Summary</p>
+                                    <div className="px-5 border-b border-gray-50">
+                                        <button
+                                            type="button"
+                                            onClick={() => togglePanelSection('financialSummary')}
+                                            className="w-full flex items-center justify-between py-4"
+                                        >
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Financial Summary</p>
+                                            <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.financialSummary ? 'rotate-180' : ''}`} />
+                                        </button>
+                                    {panelSections.financialSummary && (
+                                    <div className="pb-4">
                                         <div className="grid grid-cols-3 gap-2">
                                             <div className="bg-gray-50 rounded-xl p-2.5">
                                                 <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider block leading-tight">Disbursed</span>
@@ -2487,13 +2521,24 @@ Status: VERIFIED`;
                                             </div>
                                         )}
                                     </div>
+                                    )}
+                                    </div>
                                 )}
 
                                 {/* Section: Line Items / Categorization */}
                                 {entry.requisition_id && items.length > 0 && (
-                                    <div className="px-5 py-4 border-b border-gray-50">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Line Items & Categorization</p>
-                                        <div className="flex flex-col gap-2">
+                                    <div className="px-5 border-b border-gray-50">
+                                        <button
+                                            type="button"
+                                            onClick={() => togglePanelSection('lineItems')}
+                                            className="w-full flex items-center justify-between py-4"
+                                        >
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Line Items & Categorization</p>
+                                            <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.lineItems ? 'rotate-180' : ''}`} />
+                                        </button>
+                                    {panelSections.lineItems && (
+                                    <div className="pb-4">
+                                    <div className="flex flex-col gap-2">
                                             {items.map((item: any, idx: number) => (
                                                 <div key={item.id || idx} className="bg-white border border-gray-100 shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2">
                                                     <div className="flex justify-between items-start">
@@ -2518,13 +2563,24 @@ Status: VERIFIED`;
                                             ))}
                                         </div>
                                     </div>
+                                    )}
+                                    </div>
                                 )}
 
                                 {/* Section: Accounting (inflow / standalone disbursement) */}
                                 {(entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ||
                                   ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) && (
-                                    <div className="px-5 py-4 border-b border-gray-50">
-                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Accounting Treatment</p>
+                                    <div className="px-5 border-b border-gray-50">
+                                        <button
+                                            type="button"
+                                            onClick={() => togglePanelSection('accounting')}
+                                            className="w-full flex items-center justify-between py-4"
+                                        >
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">Accounting Treatment</p>
+                                            <ChevronDown size={13} className={`text-gray-400 transition-transform duration-200 ${panelSections.accounting ? 'rotate-180' : ''}`} />
+                                        </button>
+                                    {panelSections.accounting && (
+                                    <div className="pb-4">
                                         <div className="bg-white border border-gray-100 shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2.5">
                                             {/* Description + Amount row */}
                                             <div className="flex justify-between items-start">
@@ -2590,6 +2646,8 @@ Status: VERIFIED`;
                                                 placeholder={entry.entry_type === 'INFLOW' ? 'Select Credit Account…' : 'Select Debit Account…'}
                                             />
                                         </div>
+                                    </div>
+                                    )}
                                     </div>
                                 )}
                             </div>
