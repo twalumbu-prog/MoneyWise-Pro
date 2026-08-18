@@ -2327,6 +2327,35 @@ Status: VERIFIED`;
                                                 <span className="text-[11px] font-bold text-gray-900 font-mono truncate max-w-[180px]">{entry.external_reference}</span>
                                             </div>
                                         )}
+                                        {/* Inflow-specific: parse payer name from description ("… — Payer Name") and show channel */}
+                                        {entry.entry_type === 'INFLOW' && (() => {
+                                            const payerName = entry.description?.includes(' — ')
+                                                ? entry.description.split(' — ').pop()?.split(' | Ref:')[0]?.trim()
+                                                : null;
+                                            const ch = entry.mf_payment_channel || '';
+                                            const methodLabel = ch.startsWith('BANK:')
+                                                ? `Bank Transfer (${ch.replace('BANK:', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())})`
+                                                : ch === 'BANK' ? 'Bank Transfer'
+                                                : ch === 'MOBILE' ? 'Mobile Money'
+                                                : ch === 'OTHER' ? 'Cash / Other'
+                                                : ch || null;
+                                            return (
+                                                <>
+                                                    {payerName && (
+                                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                            <span className="text-[11px] font-semibold text-gray-500">Depositor Name</span>
+                                                            <span className="text-[11px] font-bold text-gray-900">{payerName}</span>
+                                                        </div>
+                                                    )}
+                                                    {methodLabel && (
+                                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                            <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>
+                                                            <span className="text-[11px] font-bold text-gray-900">{methodLabel}</span>
+                                                        </div>
+                                                    )}
+                                                </>
+                                            );
+                                        })()}
                                         {/* Payment destination — from disbursement */}
                                         {disbursement?.payment_method && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
@@ -2456,60 +2485,70 @@ Status: VERIFIED`;
                                   ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) && (
                                     <div className="px-5 py-4 border-b border-gray-50">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Accounting Treatment</p>
-                                        <div className="flex flex-col gap-2.5">
-                                            {entry.status === 'UNACCOUNTED' && (
-                                                <div>
-                                                    <p className="text-[10px] font-semibold text-gray-500 mb-1">Narration</p>
-                                                    <div className="flex gap-2">
-                                                        <input
-                                                            type="text"
-                                                            value={editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0]}
-                                                            onChange={(e) => setEditingNarration({ ...editingNarration, [entry.id]: e.target.value })}
-                                                            placeholder="Enter transaction narration…"
-                                                            className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#006AFF] outline-none text-[12px] font-semibold text-gray-800"
-                                                            onClick={e => e.stopPropagation()}
-                                                        />
-                                                        <button
-                                                            type="button"
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
-                                                                if (!desc.trim()) { alert('Narration cannot be empty.'); return; }
-                                                                let finalDesc = desc;
-                                                                if (entry.description.includes(' | Ref:')) {
-                                                                    finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
-                                                                }
-                                                                await handleAccountAndNarrate(entry.id, finalDesc, entry.account_id);
-                                                            }}
-                                                            className="px-3 py-2 bg-brand-navy text-white rounded-xl text-[10px] font-bold uppercase tracking-widest"
-                                                        >
-                                                            Save
-                                                        </button>
-                                                    </div>
+                                        <div className="bg-white border border-gray-100 shadow-[0px_2px_6px_0px_rgba(0,0,0,0.06)] rounded-2xl p-3.5 flex flex-col gap-2.5">
+                                            {/* Description + Amount row */}
+                                            <div className="flex justify-between items-start">
+                                                <div className="flex-1 min-w-0 pr-2">
+                                                    {entry.status === 'UNACCOUNTED' ? (
+                                                        <div className="flex gap-2">
+                                                            <input
+                                                                type="text"
+                                                                value={editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0]}
+                                                                onChange={(e) => setEditingNarration({ ...editingNarration, [entry.id]: e.target.value })}
+                                                                placeholder="Enter narration / purpose…"
+                                                                className="flex-1 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#006AFF] outline-none text-[11px] font-semibold text-gray-800"
+                                                                onClick={e => e.stopPropagation()}
+                                                            />
+                                                            <button
+                                                                type="button"
+                                                                onClick={async (e) => {
+                                                                    e.stopPropagation();
+                                                                    const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
+                                                                    if (!desc.trim()) { alert('Narration cannot be empty.'); return; }
+                                                                    let finalDesc = desc;
+                                                                    if (entry.description.includes(' | Ref:')) {
+                                                                        finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
+                                                                    }
+                                                                    await handleAccountAndNarrate(entry.id, finalDesc, entry.account_id);
+                                                                }}
+                                                                className="flex-shrink-0 px-3 py-1.5 bg-brand-navy text-white rounded-xl text-[10px] font-bold uppercase tracking-widest"
+                                                            >
+                                                                Save
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <>
+                                                            <p className="text-[11px] font-semibold text-slate-800 leading-tight truncate">
+                                                                {entry.description.split(' | Ref:')[0]}
+                                                            </p>
+                                                            <p className="text-[10px] text-gray-400 mt-0.5">
+                                                                {entry.entry_type === 'INFLOW' ? 'Credit entry' : 'Debit entry'}
+                                                            </p>
+                                                        </>
+                                                    )}
                                                 </div>
-                                            )}
-                                            <div>
-                                                <p className="text-[10px] font-semibold text-gray-500 mb-1.5">
-                                                    {entry.entry_type === 'INFLOW' ? 'Credit Account' : 'Debit Account'}
-                                                </p>
-                                                <SearchableAccountSelect
-                                                    value={entry.account_id || ''}
-                                                    options={accounts}
-                                                    onChange={(val) => {
-                                                        if (entry.status === 'UNACCOUNTED') {
-                                                            const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
-                                                            let finalDesc = desc;
-                                                            if (entry.description.includes(' | Ref:')) {
-                                                                finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
-                                                            }
-                                                            handleAccountAndNarrate(entry.id, finalDesc, val);
-                                                        } else {
-                                                            handleLedgerAccountChange(entry.id, val);
-                                                        }
-                                                    }}
-                                                    placeholder={entry.entry_type === 'INFLOW' ? 'Select Credit Account…' : 'Select Debit Account…'}
-                                                />
+                                                <div className="text-right flex-shrink-0">
+                                                    <p className="text-[11px] font-black text-slate-800">{formatCurrency(entry.debit || entry.credit)}</p>
+                                                </div>
                                             </div>
+                                            {/* Account select */}
+                                            <SearchableAccountSelect
+                                                value={entry.account_id || ''}
+                                                options={accounts}
+                                                onChange={(val) => {
+                                                    if (entry.status === 'UNACCOUNTED') {
+                                                        const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
+                                                        let finalDesc = desc;
+                                                        if (entry.description.includes(' | Ref:')) {
+                                                            finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
+                                                        }
+                                                        handleAccountAndNarrate(entry.id, finalDesc, val);
+                                                    } else {
+                                                        handleLedgerAccountChange(entry.id, val);
+                                                    }
+                                                }}
+                                                placeholder={entry.entry_type === 'INFLOW' ? 'Select Credit Account…' : 'Select Debit Account…'}
+                                            />
                                         </div>
                                     </div>
                                 )}
