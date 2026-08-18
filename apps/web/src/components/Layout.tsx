@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Settings, LogOut, Menu, TrendingUp, Navigation, User } from 'lucide-react';
+import { Settings, LogOut, Menu, TrendingUp, Navigation, User, CalendarDays } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { DesktopHeader } from './DesktopHeader';
 import { WalletCardsIcon, AstroidIcon } from './icons/BrandIcons';
@@ -26,6 +26,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
 
     const isRequestor = userRole === 'REQUESTOR';
     const activeOrgs = userOrganizations.filter((uo: any) => uo.status === 'ACTIVE');
+    const isInboxPage = location.pathname === '/' || location.pathname === '/requisitions';
+    const isSchedulesPage = location.pathname === '/schedules';
 
     const getPageTitle = () => {
         if (title) return title;
@@ -65,16 +67,51 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             {/* Mobile Header */}
             <div className="md:hidden sticky top-0 z-20">
                 <div className={`${backgroundColor} px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80`}>
-                    <h1 className="font-advercase text-3xl font-normal text-black">
-                        {getPageTitle()}
-                    </h1>
-                    <button
-                        type="button"
-                        onClick={() => setIsProfileOpen(!isProfileOpen)}
-                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm active:scale-95 transition-all"
-                    >
-                        <User size={20} />
-                    </button>
+                    {/* Back button for Schedules page, title for all others */}
+                    {isSchedulesPage ? (
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => navigate(-1)}
+                                aria-label="Go back"
+                                className="flex items-center justify-center text-gray-500 active:opacity-50 transition-opacity"
+                            >
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M15 18l-6-6 6-6" />
+                                </svg>
+                            </button>
+                            <h1 className="font-advercase text-3xl font-normal text-black">
+                                {getPageTitle()}
+                            </h1>
+                        </div>
+                    ) : (
+                        <h1 className="font-advercase text-3xl font-normal text-black">
+                            {getPageTitle()}
+                        </h1>
+                    )}
+
+                    {/* Right-side actions — hidden on Schedules */}
+                    {!isSchedulesPage && (
+                        <div className="flex items-center gap-2">
+                            {isInboxPage && (
+                                <button
+                                    type="button"
+                                    onClick={() => navigate('/schedules')}
+                                    aria-label="Schedules"
+                                    className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm active:scale-95 transition-all"
+                                >
+                                    <CalendarDays size={20} />
+                                </button>
+                            )}
+                            <button
+                                type="button"
+                                onClick={() => setIsProfileOpen(!isProfileOpen)}
+                                className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm active:scale-95 transition-all"
+                            >
+                                <User size={20} />
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 {/* Profile Overlay */}
@@ -163,15 +200,25 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                 )}
             </div>
 
-            {/* Main Content Area */}
-            <main className={`flex-1 overflow-x-hidden overflow-y-auto pb-28 md:pb-0 md:min-h-0 ${isRequestor ? 'h-screen md:h-auto' : 'h-[calc(100vh-60px)] md:h-auto'}`}>
-                <div className={noPadding ? 'w-full h-full' : 'max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8'}>
+            {/* Main Content Area
+                On the mobile Schedules page we flip to a flex-column/overflow-hidden
+                chain so children can use flex-1 min-h-0 all the way down and the
+                card truly fills the remaining viewport without a scroll container
+                breaking the height chain. */}
+            <main className={`flex-1 overflow-x-hidden md:pb-0 md:min-h-0 md:overflow-y-auto
+                ${isSchedulesPage
+                    ? 'flex flex-col overflow-hidden pb-0'
+                    : `overflow-y-auto ${isRequestor ? 'h-screen md:h-auto' : 'h-[calc(100vh-60px)] md:h-auto'} pb-28`
+                }`}>
+                <div className={noPadding
+                    ? `w-full ${isSchedulesPage ? 'flex-1 min-h-0 flex flex-col' : 'h-full'}`
+                    : 'max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8'}>
                     {children}
                 </div>
             </main>
 
-            {/* Mobile Bottom Navigation Bar */}
-            <div className="md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+            {/* Mobile Bottom Navigation Bar — hidden on full-screen pages like Schedules */}
+            <div className={`md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)] ${isSchedulesPage ? 'hidden' : ''}`}>
                 {[
                     { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
                     { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook', hide: isRequestor },

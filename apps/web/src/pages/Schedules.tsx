@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
@@ -16,6 +16,7 @@ import {
     ScheduleCadence,
     CreateScheduledItemPayload,
 } from '../services/schedule.service';
+import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { lencoService } from '../services/lenco.service';
 import { useAuth } from '../context/AuthContext';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday } from 'date-fns';
@@ -750,6 +751,225 @@ const ItemMenu: React.FC<{ onEdit: () => void; onArchive: () => void; onDelete: 
     );
 };
 
+// ── Mobile Schedules (self-contained so it can own its own refs/state) ────────
+
+interface MobileSchedulesProps {
+    view: 'list' | 'calendar';
+    setView: (v: 'list' | 'calendar') => void;
+    activeCategory: 'ALL' | ScheduleCategory;
+    setActiveCategory: (v: 'ALL' | ScheduleCategory) => void;
+    filterTabs: { key: string; label: string }[];
+    counts: Record<string, number>;
+    allItems: ScheduledItem[];
+    items: ScheduledItem[];
+    isLoading: boolean;
+    setDetailItem: (item: ScheduledItem) => void;
+    setEditItem: (item: ScheduledItem | null) => void;
+    setShowAddModal: (v: boolean) => void;
+    handleArchive: (item: ScheduledItem) => void;
+    handleDelete: (item: ScheduledItem) => void;
+}
+
+const MobileSchedules: React.FC<MobileSchedulesProps> = ({
+    view, setView,
+    activeCategory, setActiveCategory,
+    filterTabs, counts,
+    allItems, items, isLoading,
+    setDetailItem, setEditItem, setShowAddModal,
+    handleArchive, handleDelete,
+}) => {
+    const tabsRef = useRef<HTMLDivElement>(null);
+    const [fadeState, setFadeState] = useState({ left: false, right: false });
+
+    const updateFades = useCallback(() => {
+        const el = tabsRef.current;
+        if (!el) return;
+        const canScrollLeft  = el.scrollLeft > 2;
+        const canScrollRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 2;
+        setFadeState({ left: canScrollLeft, right: canScrollRight });
+    }, []);
+
+    // Recalculate whenever tabs or counts change (different tabs may widen/narrow the strip)
+    useLayoutEffect(() => { updateFades(); }, [filterTabs, counts, updateFades]);
+
+    // ── Sliding highlight for the category tabs (mirrors SegmentedControl's
+    //    behaviour, but adapted to a horizontally-scrollable strip) ──────────
+    const catBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+    const [catRect, setCatRect] = useState({ left: 0, top: 0, width: 0, height: 0 });
+    const [catReady, setCatReady] = useState(false);
+
+    const measureCatHighlight = useCallback(() => {
+        const btn = catBtnRefs.current[activeCategory];
+        if (btn) {
+            setCatRect({ left: btn.offsetLeft, top: btn.offsetTop, width: btn.offsetWidth, height: btn.offsetHeight });
+        }
+    }, [activeCategory]);
+
+    useLayoutEffect(() => {
+        measureCatHighlight();
+        const raf = requestAnimationFrame(measureCatHighlight);
+        return () => cancelAnimationFrame(raf);
+    }, [measureCatHighlight, filterTabs, counts]);
+
+    useEffect(() => {
+        const raf = requestAnimationFrame(() => setCatReady(true));
+        return () => cancelAnimationFrame(raf);
+    }, []);
+
+    // Keep the active tab (and its highlight) scrolled into view when it changes.
+    useEffect(() => {
+        const btn = catBtnRefs.current[activeCategory];
+        btn?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }, [activeCategory]);
+
+    return (
+        <div className="md:hidden flex-1 min-h-0 flex flex-col px-4 pb-4">
+            {/* View toggle pill — animated sliding highlight */}
+            <SegmentedControl
+                variant="capsule"
+                className="flex-shrink-0 mb-3"
+                options={[
+                    {
+                        value: 'list',
+                        label: (
+                            <span className="inline-flex items-center justify-center gap-1.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#6B7280]">
+                                    <path d="M3 5h.01"/><path d="M3 12h.01"/><path d="M3 19h.01"/>
+                                    <path d="M8 5h13"/><path d="M8 12h13"/><path d="M8 19h13"/>
+                                </svg>
+                                <span>List View</span>
+                            </span>
+                        ),
+                    },
+                    {
+                        value: 'calendar',
+                        label: (
+                            <span className="inline-flex items-center justify-center gap-1.5">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#6B7280]">
+                                    <path d="M8 2v3"/><path d="M16 2v3"/>
+                                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                                    <path d="M3 9h18"/>
+                                    <path d="M8 13h.01"/><path d="M12 13h.01"/><path d="M16 13h.01"/>
+                                    <path d="M8 17h.01"/><path d="M12 17h.01"/><path d="M16 17h.01"/>
+                                </svg>
+                                <span>Calendar View</span>
+                            </span>
+                        ),
+                    },
+                ]}
+                value={view}
+                onChange={(v) => setView(v as 'list' | 'calendar')}
+            />
+
+            {/* Card — fills remaining space */}
+            <div className="flex-1 min-h-0 bg-white rounded-[20px] shadow-[0px_2px_6px_0px_rgba(0,0,0,0.15)] p-3.5 flex flex-col gap-3 overflow-hidden">
+
+                {/* Category tabs — sliding highlight + scroll-aware edge fades */}
+                <div className="flex-shrink-0 relative">
+                    <div
+                        ref={tabsRef}
+                        onScroll={updateFades}
+                        className="relative flex items-center gap-1 bg-slate-100 rounded-[10px] p-1 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                    >
+                        {/* Sliding highlight pill */}
+                        <div
+                            aria-hidden
+                            className="absolute z-0 pointer-events-none bg-white shadow rounded-lg"
+                            style={{
+                                left: catRect.left,
+                                top: catRect.top,
+                                width: catRect.width,
+                                height: catRect.height,
+                                transition: catReady
+                                    ? 'left 300ms cubic-bezier(0.22, 1, 0.36, 1), width 300ms cubic-bezier(0.22, 1, 0.36, 1), top 300ms cubic-bezier(0.22, 1, 0.36, 1)'
+                                    : 'none',
+                            }}
+                        />
+                        {filterTabs.map(tab => {
+                            const isActive = activeCategory === tab.key;
+                            const count = (counts as any)[tab.key];
+                            return (
+                                <button key={tab.key} type="button"
+                                    ref={(node) => { catBtnRefs.current[tab.key] = node; }}
+                                    onClick={() => setActiveCategory(tab.key as any)}
+                                    className={`relative z-10 flex items-center gap-1 px-3.5 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-colors duration-200 flex-shrink-0 ${
+                                        isActive ? 'text-gray-900 font-bold' : 'text-gray-500'
+                                    }`}>
+                                    {tab.label}
+                                    {count !== undefined && count > 0 && (
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full transition-colors duration-200 ${isActive ? 'bg-[#0058DB] text-white' : 'bg-gray-200 text-gray-500'}`}>
+                                            {count}
+                                        </span>
+                                    )}
+                                </button>
+                            );
+                        })}
+                    </div>
+                    {/* Edge fades — only shown when there's content to scroll toward */}
+                    <div className={`pointer-events-none absolute inset-y-0 left-0 w-6 rounded-l-[10px] bg-gradient-to-r from-slate-100 to-transparent transition-opacity duration-150 ${fadeState.left ? 'opacity-100' : 'opacity-0'}`} />
+                    <div className={`pointer-events-none absolute inset-y-0 right-0 w-6 rounded-r-[10px] bg-gradient-to-l from-slate-100 to-transparent transition-opacity duration-150 ${fadeState.right ? 'opacity-100' : 'opacity-0'}`} />
+                </div>
+
+                {/* Scrollable content — slides in from the direction of the selected view/category tab */}
+                <AnimatedTabContent
+                    tabKey={`${view}-${activeCategory}`}
+                    index={view === 'calendar' ? 999 : filterTabs.findIndex(t => t.key === activeCategory)}
+                    className="flex-1 min-h-0 overflow-y-auto"
+                >
+                    {view === 'calendar' ? (
+                        <CalendarView items={allItems} />
+                    ) : isLoading ? (
+                        <div className="flex justify-center items-center py-16">
+                            <Loader2 size={22} className="animate-spin text-gray-300" />
+                        </div>
+                    ) : items.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-14 text-center">
+                            <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center mb-3">
+                                <Calendar size={20} className="text-blue-400" />
+                            </div>
+                            <p className="text-sm font-bold text-gray-800 mb-1">No scheduled items</p>
+                            <p className="text-xs text-gray-400">Tap + to add a recurring bill or subscription.</p>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col">
+                            {items.map((item, idx) => (
+                                <div key={item.id}
+                                    className={`flex items-center gap-3 py-3 cursor-pointer ${idx < items.length - 1 ? 'border-b border-gray-100' : ''}`}
+                                    onClick={() => setDetailItem(item)}>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-sm font-medium text-gray-900 truncate">{item.title}</p>
+                                        <div className="flex items-center gap-3 mt-0.5">
+                                            <span className="flex items-center gap-1 text-[10px] text-gray-500"><RotateCcw size={10} /> {cadenceLabel(item.cadence)}</span>
+                                            <span className="flex items-center gap-1 text-[10px] text-gray-500"><Calendar size={10} /> Due {formatDueDate(item.next_due_date)}</span>
+                                        </div>
+                                        <span className={`inline-flex mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded-full ${CATEGORY_COLORS[item.category]}`}>{categoryLabel(item.category)}</span>
+                                    </div>
+                                    <p className="text-sm font-bold text-black flex-shrink-0">{formatCurrency(item.amount)}</p>
+                                    <div onClick={e => e.stopPropagation()}>
+                                        <ItemMenu
+                                            onEdit={() => { setEditItem(item); setShowAddModal(true); }}
+                                            onArchive={() => handleArchive(item)}
+                                            onDelete={() => handleDelete(item)}
+                                        />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </AnimatedTabContent>
+            </div>
+
+            {/* FAB */}
+            <button type="button"
+                onClick={() => { setEditItem(null); setShowAddModal(true); }}
+                className="fixed bottom-8 right-5 z-30 w-14 h-14 bg-blue-700 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
+                aria-label="Add to Schedule">
+                <Plus size={26} className="text-white" />
+            </button>
+        </div>
+    );
+};
+
 // ── Main Page ─────────────────────────────────────────────────────────────────
 
 export const Schedules: React.FC = () => {
@@ -842,7 +1062,7 @@ export const Schedules: React.FC = () => {
     ];
 
     return (
-        <Layout noPadding title="Schedules">
+        <Layout noPadding title="Schedules" backgroundColor="bg-gray-50">
             {/* ── Desktop ── */}
             <div className="hidden md:flex flex-col h-full md:px-4 md:pb-4">
                 {/* View-toggle tabs — no border */}
@@ -947,11 +1167,16 @@ export const Schedules: React.FC = () => {
             </div>
 
             {/* ── Mobile ── */}
-            <div className="md:hidden flex flex-col items-center justify-center py-20 px-6 text-center">
-                <Calendar size={32} className="text-blue-400 mb-3" />
-                <p className="text-sm font-bold text-gray-800 mb-1">Schedules</p>
-                <p className="text-xs text-gray-400">Open on desktop to manage your scheduled payments.</p>
-            </div>
+            <MobileSchedules
+                view={view} setView={setView}
+                activeCategory={activeCategory} setActiveCategory={setActiveCategory}
+                filterTabs={filterTabs} counts={counts}
+                allItems={allItems} items={items} isLoading={isLoading}
+                setDetailItem={setDetailItem}
+                setEditItem={setEditItem} setShowAddModal={setShowAddModal}
+                handleArchive={handleArchive} handleDelete={handleDelete}
+            />
+
 
             {showAddModal && (
                 <ScheduleModal
