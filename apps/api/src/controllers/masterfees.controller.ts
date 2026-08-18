@@ -391,11 +391,21 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
     // entire request and starve — or blow past the timeout ahead of — the rest.
     const GLOBAL_BUDGET_MS = 38_000;
     try {
+        // Oldest-synced-first (never-synced orgs first via nullsFirst). Without this,
+        // the query has no stable ordering guarantee and whichever org happens to
+        // come back first can perpetually consume the whole per-request budget,
+        // starving every other org indefinitely — confirmed live, 2026-08-18: one
+        // org's sync ran to completion of its own internal deadline every single
+        // tick while a different (larger) org never got a turn at all across many
+        // consecutive minutes. Prioritizing the org that's gone longest without a
+        // successful sync makes progress fair across ticks even when no single org
+        // fits in one request's budget.
         const { data: rows, error } = await supabase
             .from('integrations')
             .select('organization_id')
             .eq('provider', PROVIDER)
-            .not('organization_id', 'is', null);
+            .not('organization_id', 'is', null)
+            .order('config->>lastSyncedAt', { ascending: true, nullsFirst: true });
         if (error) throw error;
 
         const results: any[] = [];
