@@ -516,25 +516,44 @@ async function upsertRecord(organizationId: string, integrationId: string, rec: 
 // ─────────────────────────────────────────────────────────────────────────────
 const VOID_STATUSES = new Set(['void', 'voided', 'cancelled', 'canceled', 'deleted', 'draft']);
 
+type PriorInvoiceRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null };
+type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null };
+
+/**
+ * Batch-preload every already-synced record of a given type for an org into a
+ * single lookup map. Used instead of a per-row `.maybeSingle()` idempotency
+ * check — for an org with thousands of already-synced rows, checking each one
+ * individually is thousands of sequential DB round trips per sync, which is
+ * what blew every sync past Vercel's function timeout (confirmed live on
+ * Twalumbu: ~2,600 rows/sync, stuck for over a week because every invocation
+ * died mid-loop before completing a single pass). One bulk query + in-memory
+ * lookup makes a no-op pass over already-synced data effectively free.
+ */
+async function loadPriorRecords<T>(organizationId: string, recordType: 'INVOICE' | 'PAYMENT', columns: string): Promise<Map<string, T>> {
+    const map = new Map<string, T>();
+    const { data } = await supabase
+        .from('masterfees_records')
+        .select(`mf_id, ${columns}`)
+        .eq('organization_id', organizationId)
+        .eq('record_type', recordType);
+    for (const row of data || []) map.set((row as any).mf_id, row as any);
+    return map;
+}
+
 async function postInvoice(
     organizationId: string,
     integrationId: string,
     config: MasterFeesConfig,
     invoice: MFInvoice,
-    categoriesByName: Map<string, MFFeeCategory>
+    categoriesByName: Map<string, MFFeeCategory>,
+    priorMap: Map<string, PriorInvoiceRecord>
 ): Promise<'posted' | 'skipped' | 'voided'> {
     const total = num(invoice.total_amount);
     const studentName = invoice.student?.full_name || [invoice.student?.first_name, invoice.student?.last_name].filter(Boolean).join(' ');
     const voided = VOID_STATUSES.has(String(invoice.status || '').toLowerCase());
 
     // Idempotency: skip when nothing material changed since last sync.
-    const { data: prior } = await supabase
-        .from('masterfees_records')
-        .select('amount, mf_status, journal_entry_id')
-        .eq('organization_id', organizationId)
-        .eq('record_type', 'INVOICE')
-        .eq('mf_id', invoice.invoice_id)
-        .maybeSingle();
+    const prior = priorMap.get(invoice.invoice_id);
     if (prior && Math.abs(num(prior.amount) - total) < TOLERANCE && (prior.mf_status || '') === (invoice.status || '') && !!prior.journal_entry_id === !voided) {
         return 'skipped';
     }
@@ -643,7 +662,8 @@ async function postPayment(
     organizationId: string,
     integrationId: string,
     config: MasterFeesConfig,
-    txn: MFTransaction
+    txn: MFTransaction,
+    priorMap: Map<string, PriorPaymentRecord>
 ): Promise<'posted' | 'reclassified' | 'deferred' | 'skipped'> {
     const amount = num(txn.amount);
     if (amount <= 0) return 'skipped';
@@ -651,13 +671,7 @@ async function postPayment(
     const status = String(txn.status || '').toLowerCase();
     if (status && !['completed', 'complete', 'success', 'successful', 'paid'].includes(status)) return 'skipped';
 
-    const { data: prior } = await supabase
-        .from('masterfees_records')
-        .select('amount, mf_status, journal_entry_id, cashbook_entry_id')
-        .eq('organization_id', organizationId)
-        .eq('record_type', 'PAYMENT')
-        .eq('mf_id', txn.transaction_id)
-        .maybeSingle();
+    const prior = priorMap.get(txn.transaction_id);
     const unchanged = prior && Math.abs(num(prior.amount) - amount) < TOLERANCE;
 
     // Manual payment amount was edited in Master Fees — update the existing cashbook
@@ -883,7 +897,17 @@ export interface SyncSummary {
     truncated: boolean;
 }
 
-export async function syncMasterfees(organizationId: string): Promise<SyncSummary> {
+/**
+ * @param deadline  Wall-clock time (ms since epoch) past which this call should
+ *   stop starting new work and return, leaving the rest for the next cron tick.
+ *   Each already-posted record is committed immediately (not batched in one
+ *   transaction), so stopping early is safe — nothing is left half-written, and
+ *   the batch-preloaded priorMap makes the next tick's re-pass over already-done
+ *   rows cheap. Defaults to 35s from now, leaving headroom under Vercel's
+ *   45s function timeout for the fee-category + invoice/transaction fetches
+ *   that happen before either loop starts.
+ */
+export async function syncMasterfees(organizationId: string, deadline: number = Date.now() + 35_000): Promise<SyncSummary> {
     const integration = await getMasterFeesIntegration(organizationId);
     if (!integration) throw new Error('Master Fees is not connected for this organization.');
     const config = integration.config;
@@ -914,6 +938,8 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
         summary.errors.push(`fee-categories: ${err.message}`);
     }
 
+    let deferredByBudget = false;
+
     // Invoices FIRST (they create the receivable that payments clear).
     try {
         const invoices = await client.getInvoices();
@@ -921,9 +947,13 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
             summary.truncated = true;
             summary.errors.push(`invoices: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more invoices than we fetched this sync. Contact us if this persists.`);
         }
+        // Batch-preload idempotency state for ALL invoices in one query instead of
+        // one row-by-row round trip per invoice — see loadPriorRecords doc comment.
+        const priorMap = await loadPriorRecords<PriorInvoiceRecord>(organizationId, 'INVOICE', 'amount, mf_status, journal_entry_id');
         for (const inv of invoices) {
+            if (Date.now() > deadline) { deferredByBudget = true; break; }
             try {
-                const r = await postInvoice(organizationId, integration.id, config, inv, categoriesByName);
+                const r = await postInvoice(organizationId, integration.id, config, inv, categoriesByName, priorMap);
                 summary.invoices[r]++;
             } catch (err: any) {
                 summary.errors.push(`invoice ${inv.invoice_id}: ${err.message}`);
@@ -934,26 +964,39 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
     }
 
     // Payments SECOND.
-    try {
-        const transactions = await client.getTransactions();
-        if (transactions.length >= MF_ROW_CAP) {
-            summary.truncated = true;
-            summary.errors.push(`transactions: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more transactions than we fetched this sync. Contact us if this persists.`);
-        }
-        for (const txn of transactions) {
-            try {
-                const r = await postPayment(organizationId, integration.id, config, txn);
-                summary.payments[r]++;
-            } catch (err: any) {
-                summary.errors.push(`payment ${txn.transaction_id}: ${err.message}`);
+    if (Date.now() <= deadline) {
+        try {
+            const transactions = await client.getTransactions();
+            if (transactions.length >= MF_ROW_CAP) {
+                summary.truncated = true;
+                summary.errors.push(`transactions: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more transactions than we fetched this sync. Contact us if this persists.`);
             }
+            const priorMap = await loadPriorRecords<PriorPaymentRecord>(organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id');
+            for (const txn of transactions) {
+                if (Date.now() > deadline) { deferredByBudget = true; break; }
+                try {
+                    const r = await postPayment(organizationId, integration.id, config, txn, priorMap);
+                    summary.payments[r]++;
+                } catch (err: any) {
+                    summary.errors.push(`payment ${txn.transaction_id}: ${err.message}`);
+                }
+            }
+        } catch (err: any) {
+            summary.errors.push(`transactions: ${err.message}`);
         }
-    } catch (err: any) {
-        summary.errors.push(`transactions: ${err.message}`);
+    } else {
+        deferredByBudget = true;
+    }
+
+    if (deferredByBudget) {
+        summary.errors.push('Time budget reached — remaining records deferred to the next sync cycle (runs every minute; large backlogs catch up over several cycles).');
     }
 
     await patchConfig(organizationId, {
-        lastSyncedAt: new Date().toISOString(),
+        // Only mark fully caught-up when this pass wasn't cut short by the time
+        // budget — a deferred pass still made real progress (each posted record
+        // committed immediately) but hasn't reached the end of the feed yet.
+        lastSyncedAt: deferredByBudget ? config.lastSyncedAt : new Date().toISOString(),
         lastSyncError: summary.errors.length ? summary.errors.slice(0, 3).join('; ') : null,
         lastSyncTruncated: summary.truncated,
     });

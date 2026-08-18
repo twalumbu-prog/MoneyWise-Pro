@@ -383,7 +383,13 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
     }
 
     const START = Date.now();
-    const BUDGET_MS = 20_000;
+    // Vercel's function maxDuration is 45s (vercel.json). Leave headroom for the
+    // request/response overhead and stop starting new orgs — and stop a single
+    // org's own work — well before that hard cutoff. Each org's syncMasterfees
+    // call gets a per-org deadline derived from the remaining global budget, so
+    // one large org (many invoices needing real posting) can't consume the
+    // entire request and starve — or blow past the timeout ahead of — the rest.
+    const GLOBAL_BUDGET_MS = 38_000;
     try {
         const { data: rows, error } = await supabase
             .from('integrations')
@@ -394,12 +400,14 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
 
         const results: any[] = [];
         for (const row of rows || []) {
-            if (Date.now() - START > BUDGET_MS) {
+            const elapsed = Date.now() - START;
+            if (elapsed > GLOBAL_BUDGET_MS) {
                 console.warn(`[MasterFees Sync] Time budget exceeded — deferring ${(rows!.length) - results.length} org(s).`);
                 break;
             }
             try {
-                const summary = await syncMasterfees(row.organization_id);
+                const perOrgDeadline = START + GLOBAL_BUDGET_MS;
+                const summary = await syncMasterfees(row.organization_id, perOrgDeadline);
                 results.push({ organizationId: row.organization_id, success: true, summary });
             } catch (err: any) {
                 results.push({ organizationId: row.organization_id, success: false, error: err.message });
