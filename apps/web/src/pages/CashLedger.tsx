@@ -17,7 +17,6 @@ import {
     ChevronDown,
     Loader2,
     AlertCircle,
-    Info,
     CheckCircle2,
     Clock,
     RotateCcw,
@@ -2617,9 +2616,8 @@ Status: VERIFIED`;
                                                 } as any);
                                             }
                                         }}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                                        className="w-full h-10 px-3 flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-stone-900 rounded-lg text-xs font-normal text-black transition-colors"
                                     >
-                                        <Info size={13} />
                                         View Full Details
                                     </button>
                                 )}
@@ -2659,9 +2657,9 @@ Status: VERIFIED`;
                                     <button
                                         type="button"
                                         onClick={() => handlePostToQB(req, entry)}
-                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#006AFF] hover:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                                        className="w-full h-10 px-3 flex items-center justify-center gap-2 bg-black hover:bg-zinc-800 rounded-lg text-xs font-bold text-white transition-colors"
                                     >
-                                        <RefreshCw size={13} />
+                                        <RefreshCw size={12} className="text-white" />
                                         Post to QuickBooks
                                     </button>
                                 )}
@@ -2677,13 +2675,13 @@ Status: VERIFIED`;
                                             if (!entry.account_id) { alert('Please select an accounting account first'); return; }
                                             handlePostLedgerToQB(entry);
                                         }}
-                                        className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${
+                                        className={`w-full h-10 px-3 flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-colors ${
                                             entry.account_id
-                                                ? 'bg-[#006AFF] hover:bg-[#0052CC] text-white'
+                                                ? 'bg-black hover:bg-zinc-800 text-white'
                                                 : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                                         }`}
                                     >
-                                        <RefreshCw size={13} />
+                                        <RefreshCw size={12} className={entry.account_id ? 'text-white' : 'text-gray-400'} />
                                         Post to QuickBooks
                                     </button>
                                 )}
