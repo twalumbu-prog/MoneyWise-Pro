@@ -13,7 +13,6 @@ import {
     X,
     Search,
     ArrowDownUp,
-    Coins,
     ChevronRight,
     ChevronDown,
     Loader2,
@@ -24,7 +23,6 @@ import {
     RotateCcw,
     Check,
     RefreshCw,
-    AlertTriangle,
     Download,
     Flag,
     Link2,
@@ -226,7 +224,7 @@ const renderMobileStatusIcon = (status: string) => {
 
 const CashLedger: React.FC = () => {
     const navigate = useNavigate();
-    const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+    const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
     const [postingReview, setPostingReview] = useState<{
         type: 'INFLOW' | 'REQUISITION';
         data: any;
@@ -463,14 +461,6 @@ const CashLedger: React.FC = () => {
             alert('Failed to generate export. Please try again.');
         }
     };
-
-    const toggleRow = (id: string) => {
-        setExpandedRows(prev => ({
-            ...prev,
-            [id]: !prev[id]
-        }));
-    };
-
 
     const handleBulkClassify = async () => {
         if (unclassifiedCount === 0) {
@@ -723,186 +713,6 @@ const CashLedger: React.FC = () => {
         }
         return 'text-[#006AFF] fill-[#006AFF]/10';
     };
-
-    const renderMobileBreakdown = (entry: CashbookEntry) => {
-        if (entry.requisition_id) {
-            const req: any = entry.requisitions || {};
-            const items = req.line_items || [];
-            const disbursement = req.disbursements?.[0];
-
-            const actualExpenditure = items.length > 0
-                ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
-                : Number(req.actual_total ?? 0);
-
-            const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
-            const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
-            const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
-
-            return (
-                <div className="flex flex-col gap-5 text-left">
-                    {/* Action Buttons */}
-                    <div className="flex flex-wrap gap-2.5">
-                        <button 
-                            onClick={async (e) => {
-                                e.stopPropagation();
-                                const requisitionId = entry.requisition_id || req.id;
-                                // Fetch the full requisition so the modal matches the inbox view.
-                                setIsRequisitionModalOpen(true);
-                                try {
-                                    const fullReq = await requisitionService.getById(requisitionId);
-                                    setSelectedRequisition(fullReq as any);
-                                } catch (err) {
-                                    console.error('Failed to fetch requisition details:', err);
-                                    setSelectedRequisition({
-                                        id: req.id,
-                                        reference_number: req.reference_number || 'N/A',
-                                        description: req.description || entry.description,
-                                        status: req.status || 'COMPLETED',
-                                        total_amount: req.actual_total || entry.debit || entry.credit || 0
-                                    } as any);
-                                }
-                            }}
-                            className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-slate-900 active:bg-slate-800 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
-                        >
-                            <Info size={12} className="mr-1.5" />
-                            Details
-                        </button>
-                        
-                        {(req.status === 'EXPENSED' || req.status === 'DISBURSED' || req.status === 'RECEIVED') && (
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    const allItemsHaveAccount = items.every((item: any) => !!item.account_id);
-                                    if (!allItemsHaveAccount) {
-                                        alert('Please categorize all line items before approving');
-                                        return;
-                                    }
-                                    handleApproveCategorization(req.id);
-                                }}
-                                className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
-                            >
-                                <CheckCircle2 size={12} className="mr-1.5" />
-                                Approve
-                            </button>
-                        )}
-                        
-                        {(req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED') && req.qb_sync_status !== 'SUCCESS' && (
-                            <button 
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handlePostToQB(req, entry);
-                                }}
-                                className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-[#006AFF] active:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
-                            >
-                                <RefreshCw size={12} className="mr-1.5" />
-                                QuickBooks
-                            </button>
-                        )}
-
-                        {req.qb_sync_status === 'SUCCESS' && (
-                            <div className="flex-1 min-w-[120px] flex items-center justify-center py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[11px] font-bold uppercase tracking-wider">
-                                <CheckCircle2 size={12} className="mr-1.5" />
-                                Synced
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Summary Metrics */}
-                    <div className="grid grid-cols-2 gap-3">
-                        <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-2xs">
-                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Disbursed</span>
-                            <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(totalPrepared)}</span>
-                        </div>
-                        <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-2xs">
-                            <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Expenditure</span>
-                            <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(actualExpenditure)}</span>
-                        </div>
-                        {confirmedChange > 0 && (
-                            <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-2xs">
-                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Change Returned</span>
-                                <span className="text-sm font-extrabold text-emerald-600 block mt-0.5">{formatCurrency(confirmedChange)}</span>
-                            </div>
-                        )}
-                        <div className={`border rounded-xl p-3 shadow-2xs ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50/50 border-rose-100 text-rose-600' : 'bg-white border-gray-100 text-slate-800'}`}>
-                            <span className="text-[9px] font-bold uppercase tracking-wider opacity-60">Discrepancy</span>
-                            <span className="text-sm font-extrabold block mt-0.5">{formatCurrency(discrepancy)}</span>
-                        </div>
-                    </div>
-
-                    {/* Categorization Section */}
-                    {items.length > 0 && (
-                        <div className="flex flex-col gap-3">
-                            <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Categorization</span>
-                            <div className="flex flex-col gap-2 bg-white border border-gray-100 rounded-2xl p-3.5">
-                                {items.map((item: any, idx: number) => (
-                                    <div key={item.id || idx} className="flex flex-col gap-2 pb-3 border-b border-gray-50 last:border-b-0">
-                                        <div className="flex justify-between items-start">
-                                            <span className="text-xs font-semibold text-slate-700">{item.description}</span>
-                                            <span className="text-xs font-bold text-slate-800">{formatCurrency(item.actual_amount ?? item.estimated_amount)}</span>
-                                        </div>
-                                        <div className="w-full">
-                                            <SearchableAccountSelect 
-                                                value={item.account_id || ''} 
-                                                options={accounts} 
-                                                onChange={(val) => handleAccountChange(item.id, val)}
-                                                placeholder="Select category..."
-                                              />
-                                          </div>
-                                      </div>
-                                  ))}
-                              </div>
-                          </div>
-                      )}
-                  </div>
-              );
-          }
-
-          if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) {
-              return (
-                  <div className="flex flex-col gap-4 text-left">
-                      <div className="flex flex-col gap-1.5">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Accounting Account</span>
-                          <div className="w-full bg-white rounded-xl">
-                              <SearchableAccountSelect 
-                                  value={entry.account_id || ''} 
-                                  options={accounts} 
-                                  onChange={(val) => handleLedgerAccountChange(entry.id, val)}
-                                  placeholder="Select category..."
-                              />
-                          </div>
-                      </div>
-                      {entry.qb_sync_status !== 'SUCCESS' ? (
-                          <button 
-                              onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (!entry.account_id) {
-                                      alert('Please select an accounting account first');
-                                      return;
-                                  }
-                                  handlePostLedgerToQB(entry);
-                              }}
-                              disabled={!entry.account_id}
-                              className={`w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center ${
-                                  entry.account_id 
-                                      ? 'bg-[#006AFF] text-white active:bg-blue-700' 
-                                      : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                              }`}
-                          >
-                              <RefreshCw size={12} className="mr-1.5" />
-                              Post to QuickBooks
-                          </button>
-                      ) : (
-                          <div className="w-full py-3 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center justify-center">
-                              <CheckCircle2 size={12} className="mr-1.5" />
-                              Posted to QuickBooks
-                          </div>
-                      )}
-                  </div>
-              );
-          }
-
-          return null;
-      };
 
     const getResolvedStatus = (entry: CashbookEntry): string => {
         if (entry.entry_type === 'CLOSING_BALANCE') return 'CLOSED';
@@ -1239,421 +1049,6 @@ Status: VERIFIED`;
         } finally {
             setGeneratingReceiptId(null);
         }
-    };
-
-    const renderBreakdown = (entry: CashbookEntry) => {
-        // Case 1: Requisition Breakdown (Expenses)
-        // Gate on requisition_id only so the breakdown (and the "View Full Details"
-        // button) still render even if the requisitions join wasn't populated for
-        // this entry. `req` is defaulted so downstream optional access can't crash.
-        if (entry.requisition_id) {
-            const req: any = entry.requisitions || {};
-            const items = req.line_items || [];
-            const disbursement = req.disbursements?.[0];
-
-            const actualExpenditure = items.length > 0
-                ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
-                : Number(req.actual_total ?? 0);
-
-            const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
-            const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
-
-            const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
-            const expectedChange = totalPrepared - actualExpenditure;
-
-            const handleViewDetails = async (entry: any) => {
-                const requisitionId = entry.requisition_id || entry.requisitions?.id;
-
-                if (!requisitionId) {
-                    console.warn('No requisition ID found for this entry');
-                    return;
-                }
-
-                // Fetch the full requisition (same source the inbox uses) so the modal
-                // shows complete, consistent data instead of a thin partial object.
-                setIsRequisitionModalOpen(true);
-                try {
-                    const fullReq = await requisitionService.getById(requisitionId);
-                    setSelectedRequisition(fullReq as any);
-                } catch (err) {
-                    console.error('Failed to fetch requisition details:', err);
-                    setSelectedRequisition({
-                        id: requisitionId,
-                        reference_number: entry.requisitions?.reference_number || 'N/A',
-                        description: entry.requisitions?.description || entry.description,
-                        status: entry.requisitions?.status || 'COMPLETED',
-                        total_amount: entry.requisitions?.actual_total || entry.debit || entry.credit || 0
-                    } as any);
-                }
-            };
-
-            return (
-                <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-100">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <button 
-                                onClick={async (e) => {
-                                    e.stopPropagation();
-                                    handleViewDetails(entry);
-                                }}
-                                className="flex items-center px-5 py-2.5 bg-brand-navy hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
-                            >
-                                <Info size={14} className="mr-2" />
-                                View Full Details
-                            </button>
-                            
-                            {(req.status === 'EXPENSED' || req.status === 'DISBURSED' || req.status === 'RECEIVED') && (
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        const allItemsHaveAccount = items.every((item: any) => !!item.account_id);
-                                        if (!allItemsHaveAccount) {
-                                            alert('Please categorize all line items before approving');
-                                            return;
-                                        }
-                                        handleApproveCategorization(req.id);
-                                    }}
-                                    className="flex items-center px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
-                                >
-                                    <CheckCircle2 size={14} className="mr-2" />
-                                    Approve Categorization
-                                </button>
-                            )}
-                            
-                            {(req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED') && req.qb_sync_status !== 'SUCCESS' && (
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        handlePostToQB(req, entry);
-                                    }}
-                                    className="flex items-center px-5 py-2.5 bg-[#006AFF] hover:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest"
-                                >
-                                    <RefreshCw size={14} className="mr-2" />
-                                    Post to QuickBooks
-                                </button>
-                            )}
-
-                            {req.qb_sync_status === 'SUCCESS' && (
-                                <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-emerald-100/50">
-                                    <CheckCircle2 size={14} className="mr-2" />
-                                    Posted to QuickBooks
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-6">
-                            <div className="flex flex-col items-end">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Reference</span>
-                                <span className="text-[13px] font-bold text-brand-navy">{req.reference_number || 'N/A'}</span>
-                            </div>
-                            <div className="flex flex-col items-end">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
-                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                    req.status === 'ACCOUNTED'
-                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
-                                        : req.status === 'COMPLETED' || req.status === 'CATEGORIZED'
-                                        ? 'bg-blue-50 text-blue-600 border border-blue-100'
-                                        : 'bg-amber-50 text-amber-600 border border-amber-100'
-                                }`}>
-                                    {req.status === 'CATEGORIZED' ? 'COMPLETED' : req.status}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Main Breakdown Table */}
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)]">
-                        <table className="breakdown-table-modern table-fixed">
-                            <thead>
-                                <tr>
-                                    <th className="text-left w-[30%]">Description</th>
-                                    <th className="text-left w-[30%]">Accounting Treatment</th>
-                                    <th className="text-center w-[10%]">Qty</th>
-                                    <th className="text-right w-[15%]">Expected Total</th>
-                                    <th className="text-right w-[15%]">Actual Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {/* Disbursement Row */}
-                                <tr className="summary-row cash-distributed bg-slate-50/50">
-                                    <td className="font-bold flex items-center">
-                                        <div className="w-6 h-6 rounded-full bg-slate-200 flex items-center justify-center mr-3">
-                                            <Coins size={12} className="text-slate-600" />
-                                        </div>
-                                        Actual Cash Disbursed
-                                    </td>
-                                    <td className="text-center">-</td>
-                                    <td className="text-right">-</td>
-                                    <td className="text-right font-black text-brand-navy text-[14px]">{formatCurrency(totalPrepared)}</td>
-                                </tr>
-                                
-                                {/* Itemized Expenses */}
-                                {items.map((item: any, idx: number) => (
-                                    <tr key={item.id || idx} className="hover:bg-gray-50/50 transition-colors">
-                                        <td className="pl-6 py-4">
-                                            <div className="flex flex-col">
-                                                <span className="text-[13px] font-semibold text-gray-800">{item.description}</span>
-                                                <span className="text-[10px] text-gray-400">Line Item #{idx + 1}</span>
-                                            </div>
-                                        </td>
-                                        <td className="py-4">
-                                            <SearchableAccountSelect 
-                                                value={item.account_id || ''} 
-                                                options={accounts} 
-                                                onChange={(val) => handleAccountChange(item.id, val)}
-                                                placeholder="Categorize expense..."
-                                            />
-                                        </td>
-                                        <td className="text-center text-gray-600 font-medium">{item.quantity || 1}</td>
-                                        <td className="text-right text-gray-400 text-[13px]">{formatCurrency(item.estimated_amount)}</td>
-                                        <td className="text-right font-black text-gray-900 text-[14px]">{formatCurrency(item.actual_amount ?? item.estimated_amount)}</td>
-                                    </tr>
-                                ))}
-
-                                {/* Excess Change Row (if any) */}
-                                {confirmedChange > 0 && (
-                                    <tr className="summary-row change-returned">
-                                        <td className="font-bold flex items-center">
-                                            <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center mr-3">
-                                                <RotateCcw size={12} className="text-emerald-600" />
-                                            </div>
-                                            Excess Cash Returned
-                                        </td>
-                                        <td className="text-center">-</td>
-                                        <td className="text-right">{formatCurrency(expectedChange)}</td>
-                                        <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
-                                    </tr>
-                                )}
-                                
-                                <tr className="summary-row expenditure-row border-t border-gray-100 bg-slate-50/30">
-                                    <td className="font-bold flex items-center pl-4 py-4">
-                                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center mr-3">
-                                            <Receipt size={12} className="text-slate-500" />
-                                        </div>
-                                        Total Actual Expenditure
-                                    </td>
-                                    <td className="text-center">-</td>
-                                    <td className="text-right">-</td>
-                                    <td className="text-right font-black text-gray-900 text-[14px]">{formatCurrency(actualExpenditure)}</td>
-                                </tr>
-
-                                {/* Change Rows */}
-                                <tr className="summary-row border-t border-gray-50">
-                                    <td className="text-gray-500 font-medium pl-6">Expected Change</td>
-                                    <td className="text-center">-</td>
-                                    <td className="text-right">-</td>
-                                    <td className="text-right font-bold text-gray-500">{formatCurrency(expectedChange)}</td>
-                                </tr>
-
-                                <tr className="summary-row">
-                                    <td className="text-gray-800 font-bold flex items-center pl-6">
-                                        <Check size={14} className="text-emerald-500 mr-2" />
-                                        Actual Change Returned
-                                    </td>
-                                    <td className="text-center">-</td>
-                                    <td className="text-right">-</td>
-                                    <td className="text-right font-black text-emerald-600 text-[14px]">{formatCurrency(confirmedChange)}</td>
-                                </tr>
-
-                                {/* Variance Row */}
-                                <tr className={`summary-row border-t-2 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50/50' : 'bg-gray-50/30'}`}>
-                                    <td className="font-black flex items-center pl-4 py-4">
-                                        <div className={`w-6 h-6 rounded-full flex items-center justify-center mr-3 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-100' : 'bg-gray-100'}`}>
-                                            <AlertTriangle size={12} className={Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'} />
-                                        </div>
-                                        Cash Discrepancy
-                                    </td>
-                                    <td className="text-center">-</td>
-                                    <td className="text-right">-</td>
-                                    <td className={`text-right font-black text-[15px] ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-gray-400'}`}>
-                                        {formatCurrency(discrepancy)}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-        }
-
-        // Case 2: Inflow, Adjustment, or Non-Requisition Disbursement
-        if (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' || ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) {
-
-            return (
-                <div className="details-content redesign animate-in fade-in slide-in-from-top-2 duration-300">
-                    <div className="flex flex-wrap items-center justify-between gap-4 mb-8 pb-6 border-b border-gray-100">
-                        <div className="flex flex-wrap items-center gap-4">
-                            {entry.status === 'PENDING' ? (
-                                <button 
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        handleVerifyPendingInflow(entry);
-                                    }}
-                                    disabled={verifyingEntryId === entry.id}
-                                    className="flex items-center px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest disabled:opacity-50"
-                                >
-                                    {verifyingEntryId === entry.id ? (
-                                        <>
-                                            <Loader2 size={14} className="mr-2 animate-spin" />
-                                            Checking Gateway...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <RefreshCw size={14} className="mr-2" />
-                                            Verify Transaction
-                                        </>
-                                    )}
-                                </button>
-                            ) : entry.qb_sync_status !== 'SUCCESS' ? (
-                                <button 
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (!entry.account_id) {
-                                            alert('Please select an accounting account first');
-                                            return;
-                                        }
-                                        handlePostLedgerToQB(entry);
-                                    }}
-                                    disabled={!entry.account_id}
-                                    className={`flex items-center px-5 py-2.5 rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest ${
-                                        entry.account_id 
-                                            ? 'bg-[#006AFF] hover:bg-[#0052CC] text-white' 
-                                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                    }`}
-                                >
-                                    <RefreshCw size={14} className="mr-2" />
-                                    Post to QuickBooks
-                                </button>
-                            ) : (
-                                <div className="flex items-center px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[11px] font-bold uppercase tracking-widest border border-emerald-100/50">
-                                    <CheckCircle2 size={14} className="mr-2" />
-                                    Posted to QuickBooks
-                                </div>
-                            )}
-
-                            {(entry.status === 'COMPLETED' || entry.status === 'ACCOUNTED') && 
-                             entry.entry_type === 'INFLOW' && 
-                             (entry.description?.startsWith('Sale:') || entry.description?.includes('Sale: Products') || entry.description?.includes('Revenue: Products')) && (
-                                <button 
-                                    onClick={async (e) => {
-                                        e.stopPropagation();
-                                        handleDownloadReceipt(entry.id);
-                                    }}
-                                    disabled={generatingReceiptId === entry.id}
-                                    className="flex items-center px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-bold transition-all shadow-sm active:scale-95 uppercase tracking-widest disabled:opacity-50"
-                                >
-                                    {generatingReceiptId === entry.id ? (
-                                        <>
-                                            <Loader2 size={14} className="mr-2 animate-spin" />
-                                            Generating PDF...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Download size={14} className="mr-2" />
-                                            Download Receipt
-                                        </>
-                                    )}
-                                </button>
-                            )}
-                        </div>
-
-                        <div className="flex items-center gap-6">
-                            <div className="flex flex-col items-end">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Type</span>
-                                <span className="text-[13px] font-bold text-brand-navy">{entry.entry_type}</span>
-                            </div>
-                            <div className="flex flex-col items-end">
-                                <span className="text-[9px] font-black text-gray-400 uppercase tracking-[0.2em] mb-1">Status</span>
-                                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
-                                    entry.status === 'ACCOUNTED' || entry.qb_sync_status === 'SUCCESS'
-                                        ? 'bg-emerald-50 text-emerald-600 border border-emerald-100' 
-                                        : entry.status === 'COMPLETED'
-                                            ? 'bg-blue-50 text-[#006AFF] border border-blue-100'
-                                            : 'bg-amber-50 text-amber-600 border border-amber-100'
-                                }`}>
-                                    {entry.status === 'ACCOUNTED' || entry.qb_sync_status === 'SUCCESS' ? 'ACCOUNTED' : entry.status || 'PENDING'}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-2xl border border-gray-100 shadow-[0_2px_12px_-4px_rgba(0,0,0,0.04)]">
-                        <table className="breakdown-table-modern table-fixed">
-                            <thead>
-                                <tr>
-                                    <th className="text-left w-[40%]">Description</th>
-                                    <th className="text-left w-[40%]">Accounting Account</th>
-                                    <th className="text-right w-[20%]">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="pl-6 py-4">
-                                        <div className="flex flex-col">
-                                            {entry.status === 'UNACCOUNTED' ? (
-                                                <div className="flex items-center gap-2">
-                                                    <input
-                                                        type="text"
-                                                        value={editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0]}
-                                                        onChange={(e) => setEditingNarration({ ...editingNarration, [entry.id]: e.target.value })}
-                                                        placeholder="Enter transaction narration / purpose..."
-                                                        className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#006AFF] outline-none text-[13px] font-semibold text-gray-800"
-                                                    />
-                                                    <button
-                                                        onClick={async (e) => {
-                                                            e.stopPropagation();
-                                                            const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
-                                                            if (!desc.trim()) {
-                                                                alert('Narration cannot be empty.');
-                                                                return;
-                                                            }
-                                                            let finalDesc = desc;
-                                                            if (entry.description.includes(' | Ref:')) {
-                                                                finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
-                                                            }
-                                                            await handleAccountAndNarrate(entry.id, finalDesc, entry.account_id);
-                                                        }}
-                                                        className="px-4 py-2 bg-brand-navy hover:bg-slate-800 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest active:scale-95 transition-all shadow-sm flex-shrink-0"
-                                                    >
-                                                        Save
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <span className="text-[13px] font-semibold text-gray-800">{entry.description}</span>
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="py-4">
-                                        <SearchableAccountSelect 
-                                            value={entry.account_id || ''} 
-                                            options={accounts} 
-                                            onChange={(val) => {
-                                                if (entry.status === 'UNACCOUNTED') {
-                                                    const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
-                                                    let finalDesc = desc;
-                                                    if (entry.description.includes(' | Ref:')) {
-                                                        finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
-                                                    }
-                                                    handleAccountAndNarrate(entry.id, finalDesc, val);
-                                                } else {
-                                                    handleLedgerAccountChange(entry.id, val);
-                                                }
-                                            }}
-                                            placeholder={entry.entry_type === 'INFLOW' ? "Select Credit Account..." : "Select Debit Account..."}
-                                        />
-                                    </td>
-                                    <td className="text-right font-black text-gray-900 text-[14px] pr-6">
-                                        {formatCurrency(entry.debit || entry.credit)}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            );
-        }
-
-        return null;
     };
 
     if (loading && entries.length === 0) {
@@ -2080,9 +1475,9 @@ Status: VERIFIED`;
                                         <React.Fragment key={entry.id}>
                                             <div
                                                 className={`px-5 py-[22px] flex items-start justify-between active:bg-gray-50 transition-colors ${
-                                                    expandedRows[entry.id] ? 'bg-slate-50/50' : ''
+                                                    selectedEntry?.id === entry.id ? 'bg-slate-50/50' : ''
                                                 }`}
-                                                onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && toggleRow(entry.id)}
+                                                onClick={() => (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && setSelectedEntry(entry)}
                                             >
                                                 {/* Left Side: Description + Flag + Ref */}
                                                 <div className="flex-1 mr-4">
@@ -2144,12 +1539,7 @@ Status: VERIFIED`;
                                                 </div>
                                             </div>
                                             
-                                            {/* Mobile Breakdown Drawer */}
-                                            {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
-                                                <div className="bg-slate-50/45 border-t border-slate-50 px-5 py-5 animate-in fade-in slide-in-from-top-2 duration-200">
-                                                    {renderMobileBreakdown(entry)}
-                                                </div>
-                                            )}
+                                            {/* Detail is now shown in the side panel — no inline accordion */}
                                         </React.Fragment>
                                     );
                                 })}
@@ -2438,8 +1828,8 @@ Status: VERIFIED`;
                                         {group.entries.map((entry) => (
                                             <React.Fragment key={entry.id}>
                                                 <tr
-                                                    className={`group cursor-pointer transition-colors border-b border-[#E8EEF8]/40 ${expandedRows[entry.id] ? 'bg-[#F3F5FC]' : 'hover:bg-gray-50/70'}`}
-                                                    onClick={() => toggleRow(entry.id)}
+                                                    className={`group cursor-pointer transition-colors border-b border-[#E8EEF8]/40 ${selectedEntry?.id === entry.id ? 'bg-[#F3F5FC]' : 'hover:bg-gray-50/70'}`}
+                                                    onClick={() => setSelectedEntry(entry)}
                                                 >
                                                     <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
                                                         <input
@@ -2486,19 +1876,11 @@ Status: VERIFIED`;
                                                     </td>
                                                     <td className="py-3.5 px-3 text-center">
                                                         {(entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
-                                                            <ChevronRight size={14} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${expandedRows[entry.id] ? 'rotate-90' : ''}`} strokeWidth={2.5} />
+                                                            <ChevronRight size={14} className={`text-gray-300 group-hover:text-gray-400 transition-transform ${selectedEntry?.id === entry.id ? 'text-[#006AFF]' : ''}`} strokeWidth={2.5} />
                                                         )}
                                                     </td>
                                                 </tr>
-                                                {expandedRows[entry.id] && (entry.requisition_id || entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE' || entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && (
-                                                    <tr className="bg-[#F3F5FC]/60">
-                                                        <td colSpan={7} className="p-0">
-                                                            <div className="animate-in fade-in slide-in-from-top-2 duration-300">
-                                                                {renderBreakdown(entry)}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                )}
+                                                {/* Detail is now shown in the side panel — no inline accordion */}
                                             </React.Fragment>
                                         ))}
                                     </React.Fragment>
@@ -2819,6 +2201,410 @@ Status: VERIFIED`;
                     navigate(`/sales/new?mode=link&wallet=${wid}`);
                 } : undefined}
             />
+            {/* ── Transaction Detail Side Panel ─────────────────────────────────── */}
+            {selectedEntry && (() => {
+                const entry = selectedEntry;
+                const isOutflow = entry.credit > 0;
+                const amount = isOutflow ? entry.credit : entry.debit;
+                const req: any = entry.requisitions || {};
+                const items: any[] = req.line_items || [];
+                const disbursement = req.disbursements?.[0];
+                const rawDescription = req.description || entry.description || '';
+                const displayDescription = rawDescription.split(' | Ref:')[0];
+                const refNum = entry.reference_number || req.reference_number || entry.requisition_id?.slice(0, 8);
+
+                const actualExpenditure = items.length > 0
+                    ? items.reduce((acc: number, item: any) => acc + Number(item.actual_amount ?? item.estimated_amount ?? 0), 0)
+                    : Number(req.actual_total ?? 0);
+                const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
+                const totalPrepared = Number(disbursement?.total_prepared || entry.credit || 0);
+                const discrepancy = totalPrepared - actualExpenditure - confirmedChange;
+
+                // Resolved status for display
+                const resolvedStatus = (() => {
+                    if (entry.entry_type === 'CLOSING_BALANCE') return 'CLOSED';
+                    if (entry.entry_type === 'OPENING_BALANCE') return 'OPENING';
+                    if (entry.requisitions) {
+                        return (entry.requisitions.qb_sync_status === 'SUCCESS' || entry.requisitions.status === 'ACCOUNTED')
+                            ? 'ACCOUNTED' : entry.requisitions.status;
+                    }
+                    return (entry.qb_sync_status === 'SUCCESS' || entry.status === 'ACCOUNTED')
+                        ? 'ACCOUNTED' : (entry.status || 'PENDING');
+                })();
+
+                const statusBadge = (s: string) => {
+                    const map: Record<string, string> = {
+                        ACCOUNTED:   'bg-emerald-50 text-emerald-600 border border-emerald-100',
+                        COMPLETED:   'bg-blue-50 text-[#006AFF] border border-blue-100',
+                        CATEGORIZED: 'bg-blue-50 text-[#006AFF] border border-blue-100',
+                        EXPENSED:    'bg-amber-50 text-amber-600 border border-amber-100',
+                        DISBURSED:   'bg-amber-50 text-amber-600 border border-amber-100',
+                        PENDING:     'bg-amber-50 text-amber-600 border border-amber-100',
+                        UNACCOUNTED: 'bg-rose-50 text-rose-600 border border-rose-100',
+                        RECEIVED:    'bg-amber-50 text-amber-600 border border-amber-100',
+                    };
+                    return map[s] || 'bg-gray-100 text-gray-600';
+                };
+
+                const entryTypeLabel: Record<string, string> = {
+                    INFLOW:          'Inflow',
+                    DISBURSEMENT:    'Disbursement',
+                    EXPENSE:         'Expense',
+                    ADJUSTMENT:      'Adjustment',
+                    RETURN:          'Return',
+                    OPENING_BALANCE: 'Opening Balance',
+                    CLOSING_BALANCE: 'Closing Balance',
+                };
+
+                return (
+                    <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedEntry(null)}>
+                        {/* Backdrop */}
+                        <div className="absolute inset-0 bg-black/20 backdrop-blur-[2px]" />
+
+                        {/* Panel */}
+                        <div
+                            className="relative w-full max-w-md h-full bg-white shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-300"
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* ── Header ───────────────────────────────────────────── */}
+                            <div className="px-5 pt-5 pb-4 border-b border-gray-100 flex-shrink-0">
+                                <div className="flex items-start justify-between mb-3">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 uppercase tracking-wide">
+                                            {entryTypeLabel[entry.entry_type] || entry.entry_type}
+                                        </span>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusBadge(resolvedStatus)} uppercase tracking-wide`}>
+                                            {resolvedStatus === 'CATEGORIZED' ? 'COMPLETED' : resolvedStatus}
+                                        </span>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedEntry(null)}
+                                        className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition flex-shrink-0"
+                                    >
+                                        <X size={16} />
+                                    </button>
+                                </div>
+                                <h2 className="text-sm font-bold text-gray-900 leading-snug pr-2">{displayDescription}</h2>
+                                <p className={`text-2xl font-black mt-1 ${isOutflow ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                    {isOutflow ? '-' : '+'}{formatCurrency(amount)}
+                                </p>
+                                <p className="text-[11px] text-gray-400 font-medium mt-0.5">{formatDateSlash(entry.date)}</p>
+                            </div>
+
+                            {/* ── Scrollable body ───────────────────────────────────── */}
+                            <div className="flex-1 overflow-y-auto">
+
+                                {/* Section: Transaction Info */}
+                                <div className="px-5 py-4 border-b border-gray-50">
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Transaction Info</p>
+                                    <div className="bg-gray-50 rounded-2xl divide-y divide-gray-100 overflow-hidden">
+                                        {refNum && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">Reference</span>
+                                                <span className="text-[11px] font-bold text-gray-900 font-mono">{refNum}</span>
+                                            </div>
+                                        )}
+                                        {(req.requestor?.name || entry.users?.name) && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">
+                                                    {entry.requisition_id ? 'Requestor' : 'Created By'}
+                                                </span>
+                                                <span className="text-[11px] font-bold text-gray-900">
+                                                    {req.requestor?.name || entry.users?.name}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {req.department && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">Department</span>
+                                                <span className="text-[11px] font-bold text-gray-900">{req.department}</span>
+                                            </div>
+                                        )}
+                                        {entry.external_reference && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">External Ref</span>
+                                                <span className="text-[11px] font-bold text-gray-900 font-mono truncate max-w-[180px]">{entry.external_reference}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                            <span className="text-[11px] font-semibold text-gray-500">Account Type</span>
+                                            <span className="text-[11px] font-bold text-gray-900">{entry.account_type?.replace(/_/g, ' ')}</span>
+                                        </div>
+                                        {entry.accounts && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">Accounting Account</span>
+                                                <span className="text-[11px] font-bold text-gray-900">{entry.accounts.code} · {entry.accounts.name}</span>
+                                            </div>
+                                        )}
+                                        {entry.qb_sync_status && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">QuickBooks</span>
+                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                    entry.qb_sync_status === 'SUCCESS' ? 'bg-emerald-100 text-emerald-700' :
+                                                    entry.qb_sync_status === 'FAILED'  ? 'bg-rose-100 text-rose-700' :
+                                                    'bg-gray-100 text-gray-600'
+                                                }`}>
+                                                    {entry.qb_sync_status}
+                                                </span>
+                                            </div>
+                                        )}
+                                        {req.audit_score !== undefined && (
+                                            <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                <span className="text-[11px] font-semibold text-gray-500">Audit Score</span>
+                                                <span className={`text-[11px] font-bold ${req.audit_score < 70 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                                    {req.audit_score}%
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Section: Amounts summary (requisition only) */}
+                                {entry.requisition_id && (
+                                    <div className="px-5 py-4 border-b border-gray-50">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Financial Summary</p>
+                                        <div className="grid grid-cols-2 gap-2.5">
+                                            <div className="bg-gray-50 rounded-xl p-3">
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Disbursed</span>
+                                                <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(totalPrepared)}</span>
+                                            </div>
+                                            <div className="bg-gray-50 rounded-xl p-3">
+                                                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Expenditure</span>
+                                                <span className="text-sm font-extrabold text-slate-800 block mt-0.5">{formatCurrency(actualExpenditure)}</span>
+                                            </div>
+                                            {confirmedChange > 0 && (
+                                                <div className="bg-emerald-50 rounded-xl p-3">
+                                                    <span className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Change Returned</span>
+                                                    <span className="text-sm font-extrabold text-emerald-600 block mt-0.5">{formatCurrency(confirmedChange)}</span>
+                                                </div>
+                                            )}
+                                            <div className={`rounded-xl p-3 ${Math.abs(discrepancy) > 0.01 ? 'bg-rose-50' : 'bg-gray-50'}`}>
+                                                <span className={`text-[9px] font-bold uppercase tracking-wider ${Math.abs(discrepancy) > 0.01 ? 'text-rose-500' : 'text-gray-400'}`}>Discrepancy</span>
+                                                <span className={`text-sm font-extrabold block mt-0.5 ${Math.abs(discrepancy) > 0.01 ? 'text-rose-600' : 'text-slate-800'}`}>
+                                                    {formatCurrency(discrepancy)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Section: Line Items / Categorization */}
+                                {entry.requisition_id && items.length > 0 && (
+                                    <div className="px-5 py-4 border-b border-gray-50">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Line Items & Categorization</p>
+                                        <div className="flex flex-col gap-2">
+                                            {items.map((item: any, idx: number) => (
+                                                <div key={item.id || idx} className="bg-gray-50 rounded-2xl p-3.5 flex flex-col gap-2">
+                                                    <div className="flex justify-between items-start">
+                                                        <div className="flex-1 min-w-0 pr-2">
+                                                            <p className="text-[11px] font-semibold text-slate-800 leading-tight">{item.description}</p>
+                                                            <p className="text-[10px] text-gray-400 mt-0.5">Line Item #{idx + 1} · Qty {item.quantity || 1}</p>
+                                                        </div>
+                                                        <div className="text-right flex-shrink-0">
+                                                            <p className="text-[11px] font-black text-slate-800">{formatCurrency(item.actual_amount ?? item.estimated_amount)}</p>
+                                                            {item.actual_amount !== undefined && item.actual_amount !== item.estimated_amount && (
+                                                                <p className="text-[10px] text-gray-400 line-through">{formatCurrency(item.estimated_amount)}</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                    <SearchableAccountSelect
+                                                        value={item.account_id || ''}
+                                                        options={accounts}
+                                                        onChange={(val) => handleAccountChange(item.id, val)}
+                                                        placeholder="Categorize expense…"
+                                                    />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Section: Accounting (inflow / standalone disbursement) */}
+                                {(entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ||
+                                  ((entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && !entry.requisition_id)) && (
+                                    <div className="px-5 py-4 border-b border-gray-50">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Accounting Treatment</p>
+                                        <div className="flex flex-col gap-2.5">
+                                            {entry.status === 'UNACCOUNTED' && (
+                                                <div>
+                                                    <p className="text-[10px] font-semibold text-gray-500 mb-1">Narration</p>
+                                                    <div className="flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0]}
+                                                            onChange={(e) => setEditingNarration({ ...editingNarration, [entry.id]: e.target.value })}
+                                                            placeholder="Enter transaction narration…"
+                                                            className="flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-xl focus:border-[#006AFF] outline-none text-[12px] font-semibold text-gray-800"
+                                                            onClick={e => e.stopPropagation()}
+                                                        />
+                                                        <button
+                                                            type="button"
+                                                            onClick={async (e) => {
+                                                                e.stopPropagation();
+                                                                const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
+                                                                if (!desc.trim()) { alert('Narration cannot be empty.'); return; }
+                                                                let finalDesc = desc;
+                                                                if (entry.description.includes(' | Ref:')) {
+                                                                    finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
+                                                                }
+                                                                await handleAccountAndNarrate(entry.id, finalDesc, entry.account_id);
+                                                            }}
+                                                            className="px-3 py-2 bg-brand-navy text-white rounded-xl text-[10px] font-bold uppercase tracking-widest"
+                                                        >
+                                                            Save
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div>
+                                                <p className="text-[10px] font-semibold text-gray-500 mb-1.5">
+                                                    {entry.entry_type === 'INFLOW' ? 'Credit Account' : 'Debit Account'}
+                                                </p>
+                                                <SearchableAccountSelect
+                                                    value={entry.account_id || ''}
+                                                    options={accounts}
+                                                    onChange={(val) => {
+                                                        if (entry.status === 'UNACCOUNTED') {
+                                                            const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
+                                                            let finalDesc = desc;
+                                                            if (entry.description.includes(' | Ref:')) {
+                                                                finalDesc = `${desc} | Ref:${entry.description.split(' | Ref:')[1]}`;
+                                                            }
+                                                            handleAccountAndNarrate(entry.id, finalDesc, val);
+                                                        } else {
+                                                            handleLedgerAccountChange(entry.id, val);
+                                                        }
+                                                    }}
+                                                    placeholder={entry.entry_type === 'INFLOW' ? 'Select Credit Account…' : 'Select Debit Account…'}
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ── Sticky Action Footer ──────────────────────────────── */}
+                            <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4 bg-white flex flex-col gap-2.5">
+                                {/* View full requisition */}
+                                {entry.requisition_id && (
+                                    <button
+                                        type="button"
+                                        onClick={async () => {
+                                            const requisitionId = entry.requisition_id!;
+                                            setIsRequisitionModalOpen(true);
+                                            try {
+                                                const fullReq = await requisitionService.getById(requisitionId);
+                                                setSelectedRequisition(fullReq as any);
+                                            } catch {
+                                                setSelectedRequisition({
+                                                    id: req.id,
+                                                    reference_number: req.reference_number || 'N/A',
+                                                    description: req.description || entry.description,
+                                                    status: req.status || 'COMPLETED',
+                                                    total_amount: req.actual_total || entry.debit || entry.credit || 0,
+                                                } as any);
+                                            }
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-900 hover:bg-slate-800 active:bg-slate-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                                    >
+                                        <Info size={13} />
+                                        View Full Details
+                                    </button>
+                                )}
+
+                                {/* Verify pending inflow */}
+                                {(entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && entry.status === 'PENDING' && (
+                                    <button
+                                        type="button"
+                                        disabled={verifyingEntryId === entry.id}
+                                        onClick={() => handleVerifyPendingInflow(entry)}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                                    >
+                                        {verifyingEntryId === entry.id
+                                            ? <><Loader2 size={13} className="animate-spin" />Checking Gateway…</>
+                                            : <><RefreshCw size={13} />Verify Transaction</>}
+                                    </button>
+                                )}
+
+                                {/* Approve categorization */}
+                                {(req.status === 'EXPENSED' || req.status === 'DISBURSED' || req.status === 'RECEIVED') && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const allHaveAccount = items.every((item: any) => !!item.account_id);
+                                            if (!allHaveAccount) { alert('Please categorize all line items before approving'); return; }
+                                            handleApproveCategorization(req.id);
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                                    >
+                                        <CheckCircle2 size={13} />
+                                        Approve Categorization
+                                    </button>
+                                )}
+
+                                {/* Post to QuickBooks — requisition */}
+                                {entry.requisition_id && (req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED') && req.qb_sync_status !== 'SUCCESS' && (
+                                    <button
+                                        type="button"
+                                        onClick={() => handlePostToQB(req, entry)}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-[#006AFF] hover:bg-[#0052CC] text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all"
+                                    >
+                                        <RefreshCw size={13} />
+                                        Post to QuickBooks
+                                    </button>
+                                )}
+
+                                {/* Post to QuickBooks — ledger entry */}
+                                {!entry.requisition_id && entry.status !== 'PENDING' && entry.qb_sync_status !== 'SUCCESS' &&
+                                 (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ||
+                                  entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && (
+                                    <button
+                                        type="button"
+                                        disabled={!entry.account_id}
+                                        onClick={() => {
+                                            if (!entry.account_id) { alert('Please select an accounting account first'); return; }
+                                            handlePostLedgerToQB(entry);
+                                        }}
+                                        className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all ${
+                                            entry.account_id
+                                                ? 'bg-[#006AFF] hover:bg-[#0052CC] text-white'
+                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                        }`}
+                                    >
+                                        <RefreshCw size={13} />
+                                        Post to QuickBooks
+                                    </button>
+                                )}
+
+                                {/* Already synced badge */}
+                                {(req.qb_sync_status === 'SUCCESS' || (!entry.requisition_id && entry.qb_sync_status === 'SUCCESS')) && (
+                                    <div className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[11px] font-bold uppercase tracking-widest">
+                                        <CheckCircle2 size={13} />
+                                        Posted to QuickBooks
+                                    </div>
+                                )}
+
+                                {/* Download receipt (product sales) */}
+                                {(entry.status === 'COMPLETED' || entry.status === 'ACCOUNTED') &&
+                                 entry.entry_type === 'INFLOW' &&
+                                 (entry.description?.startsWith('Sale:') || entry.description?.includes('Sale: Products') || entry.description?.includes('Revenue: Products')) && (
+                                    <button
+                                        type="button"
+                                        disabled={generatingReceiptId === entry.id}
+                                        onClick={() => handleDownloadReceipt(entry.id)}
+                                        className="w-full flex items-center justify-center gap-2 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                                    >
+                                        {generatingReceiptId === entry.id
+                                            ? <><Loader2 size={13} className="animate-spin" />Generating PDF…</>
+                                            : <><Download size={13} />Download Receipt</>}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </Layout>
     );
 };
