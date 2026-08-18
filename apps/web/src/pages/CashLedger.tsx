@@ -2286,7 +2286,7 @@ Status: VERIFIED`;
                                     </button>
                                 </div>
                                 <h2 className="text-sm font-bold text-gray-900 leading-snug pr-2">{displayDescription}</h2>
-                                <p className={`text-2xl font-black mt-1 ${isOutflow ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                <p className={`text-2xl font-black mt-1 ${isOutflow ? 'text-rose-600' : 'text-gray-900'}`}>
                                     {isOutflow ? '-' : '+'}{formatCurrency(amount)}
                                 </p>
                                 <p className="text-[11px] text-gray-400 font-medium mt-0.5">{formatDateSlash(entry.date)}</p>
@@ -2327,11 +2327,14 @@ Status: VERIFIED`;
                                                 <span className="text-[11px] font-bold text-gray-900 font-mono truncate max-w-[180px]">{entry.external_reference}</span>
                                             </div>
                                         )}
-                                        {/* Inflow-specific: parse payer name from description ("… — Payer Name") and show channel */}
+                                        {/* Inflow-specific: show sender name/phone (from structured fields, fallback to description parse) + channel */}
                                         {entry.entry_type === 'INFLOW' && (() => {
-                                            const payerName = entry.description?.includes(' — ')
-                                                ? entry.description.split(' — ').pop()?.split(' | Ref:')[0]?.trim()
-                                                : null;
+                                            // Prefer the structured sender_name field; fall back to parsing description "… — Name"
+                                            const payerName = (entry as any).sender_name
+                                                || (entry.description?.includes(' — ')
+                                                    ? entry.description.split(' — ').pop()?.split(' | Ref:')[0]?.trim()
+                                                    : null);
+                                            const payerPhone = (entry as any).sender_phone || null;
                                             const ch = entry.mf_payment_channel || '';
                                             const methodLabel = ch.startsWith('BANK:')
                                                 ? `Bank Transfer (${ch.replace('BANK:', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())})`
@@ -2347,6 +2350,12 @@ Status: VERIFIED`;
                                                             <span className="text-[11px] font-bold text-gray-900">{payerName}</span>
                                                         </div>
                                                     )}
+                                                    {payerPhone && (
+                                                        <div className="flex items-center justify-between px-3.5 py-2.5">
+                                                            <span className="text-[11px] font-semibold text-gray-500">Phone / Account</span>
+                                                            <span className="text-[11px] font-bold text-gray-900 font-mono">{payerPhone}</span>
+                                                        </div>
+                                                    )}
                                                     {methodLabel && (
                                                         <div className="flex items-center justify-between px-3.5 py-2.5">
                                                             <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>
@@ -2356,7 +2365,7 @@ Status: VERIFIED`;
                                                 </>
                                             );
                                         })()}
-                                        {/* Payment destination — from disbursement */}
+                                                                                {/* Payment destination — from disbursement */}
                                         {disbursement?.payment_method && (
                                             <div className="flex items-center justify-between px-3.5 py-2.5">
                                                 <span className="text-[11px] font-semibold text-gray-500">Payment Method</span>

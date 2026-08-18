@@ -824,6 +824,7 @@ async function postPayment(
             external_reference: txn.reference || txn.transaction_id,
             mf_payment_channel: channel.key,
             skip_inflow_notification: needsBackfill,
+            sender_name: studentName || null,
         } as any);
         await upsertRecord(organizationId, integrationId, {
             record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
@@ -891,6 +892,7 @@ async function postPayment(
         // GL, invisibly) is not new money arriving — don't re-notify admins about
         // history. Genuinely new payments still get the normal "New Inflow" email.
         skip_inflow_notification: needsBackfill,
+        sender_name: studentName || null,
     } as any);
     await upsertRecord(organizationId, integrationId, {
         record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,

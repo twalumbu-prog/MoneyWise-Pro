@@ -380,7 +380,9 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
                 // Mapped income account is deterministic → ACCOUNTED so the AI sweep
                 // leaves it alone; otherwise COMPLETED for later classification.
                 status: g.income ? 'ACCOUNTED' : 'COMPLETED',
-                external_reference: i === 0 ? reference : `${reference}::g${i + 1}`
+                external_reference: i === 0 ? reference : `${reference}::g${i + 1}`,
+                sender_name: customerName || null,
+                sender_phone: customerPhone || null,
             } as any);
             created.push(entry);
         }

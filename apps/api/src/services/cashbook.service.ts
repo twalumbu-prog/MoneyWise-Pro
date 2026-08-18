@@ -58,6 +58,9 @@ export interface CashbookEntry {
     qb_deposit_id?: string;
     wallet_id?: string;
     external_reference?: string | null;
+    sender_name?: string | null;
+    sender_phone?: string | null;
+    mf_payment_channel?: string;
 }
 
 export const cashbookService = {
@@ -283,6 +286,10 @@ export const cashbookService = {
             // sending a dedicated one (e.g. the payment-link/product-sale "Payment
             // Received" email).
             skipInflowNotification?: boolean;
+            // Sender identity — captured at payment time so the Inbox Inflows panel
+            // can show who made the deposit without relying on description parsing.
+            sender_name?: string | null;
+            sender_phone?: string | null;
         }
     ): Promise<CashbookEntry> {
         const { data: intent, error: intentError } = await supabase
@@ -322,7 +329,9 @@ export const cashbookService = {
                 status: 'COMPLETED',
                 external_reference: externalReference,
                 reference_number: refNum,
-                date: newDate
+                date: newDate,
+                ...(opts.sender_name  != null ? { sender_name:  opts.sender_name  } : {}),
+                ...(opts.sender_phone != null ? { sender_phone: opts.sender_phone } : {}),
             })
             .eq('id', intentId)
             .eq('status', 'PENDING') // guard against concurrent finalization
@@ -585,7 +594,9 @@ export const cashbookService = {
             credit: 0,
             date: data.date || new Date().toISOString().split('T')[0],
             created_by: userId,
-            account_type: data.accountType || 'CASH'
+            account_type: data.accountType || 'CASH',
+            sender_name: data.personName || null,
+            sender_phone: data.contactDetails || null,
         });
 
         // 2. Create inflow metadata

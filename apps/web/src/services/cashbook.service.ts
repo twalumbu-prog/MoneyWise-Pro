@@ -53,6 +53,8 @@ export interface CashbookEntry {
     };
     users?: { name: string };
     mf_payment_channel?: string;
+    sender_name?: string;
+    sender_phone?: string;
 }
 
 export interface CashbookSummary {

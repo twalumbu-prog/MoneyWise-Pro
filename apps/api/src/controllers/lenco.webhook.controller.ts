@@ -297,6 +297,18 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
     }
 
     const { reference, amount, currency, narration, description, meta, metadata } = data;
+    // Attempt to extract sender identity from the Lenco webhook payload.
+    // Lenco may surface this under different keys depending on the channel.
+    const lencoSenderName: string | null =
+        data.sender_name || data.senderName ||
+        meta?.sender_name || meta?.senderName || meta?.payer_name || meta?.payerName ||
+        metadata?.sender_name || metadata?.senderName || metadata?.payer_name || metadata?.payerName ||
+        null;
+    const lencoSenderPhone: string | null =
+        data.sender_phone || data.senderPhone ||
+        meta?.sender_phone || meta?.senderPhone || meta?.payer_phone || meta?.payerPhone ||
+        metadata?.sender_phone || metadata?.senderPhone || metadata?.payer_phone || metadata?.payerPhone ||
+        null;
     const accountId = data.accountId || data.account_id;
     
     let organizationId = forcedOrganizationId;
@@ -526,7 +538,9 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                     debit: inflowAmount,
                     externalReference: reference,
                     date: new Date().toISOString().split('T')[0],
-                    skipInflowNotification: isPublicSale
+                    skipInflowNotification: isPublicSale,
+                    sender_name: lencoSenderName,
+                    sender_phone: lencoSenderPhone,
                 });
             } else {
                 newEntry = await cashbookService.createEntry(organizationId, {
@@ -539,8 +553,32 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                     status: 'UNACCOUNTED',
                     wallet_id: walletId,
                     external_reference: reference || null,
-                    skip_inflow_notification: isPublicSale
+                    skip_inflow_notification: isPublicSale,
+                    sender_name: lencoSenderName,
+                    sender_phone: lencoSenderPhone,
                 } as any);
+            }
+
+            // 1b. For payment links / public sales: enrich sender info from payment_links if
+            //     Lenco didn't surface it in the webhook payload.
+            if (isPublicSale && newEntry?.id && (!lencoSenderName || !lencoSenderPhone) && reference) {
+                try {
+                    const { data: pl } = await supabase
+                        .from('payment_links')
+                        .select('customer_name, customer_phone')
+                        .eq('reference', reference)
+                        .maybeSingle();
+                    if (pl && (pl.customer_name || pl.customer_phone)) {
+                        const patch: Record<string, string> = {};
+                        if (!lencoSenderName  && pl.customer_name)  patch.sender_name  = pl.customer_name;
+                        if (!lencoSenderPhone && pl.customer_phone) patch.sender_phone = pl.customer_phone;
+                        if (Object.keys(patch).length > 0) {
+                            await supabase.from('cashbook_entries').update(patch).eq('id', newEntry.id);
+                        }
+                    }
+                } catch (enrichErr) {
+                    console.error('[Lenco Webhook] Non-fatal: failed to enrich sender info from payment_links:', enrichErr);
+                }
             }
 
             // 2. Auto-classify via rule engine (org-scoped rules take priority)
