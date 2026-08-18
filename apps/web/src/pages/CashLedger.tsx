@@ -2596,33 +2596,87 @@ Status: VERIFIED`;
 
                             {/* ── Sticky Action Footer ──────────────────────────────── */}
                             <div className="flex-shrink-0 border-t border-gray-100 px-5 py-4 bg-white flex flex-col gap-2.5">
-                                {/* View full requisition */}
-                                {entry.requisition_id && (
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            const requisitionId = entry.requisition_id!;
-                                            setIsRequisitionModalOpen(true);
-                                            try {
-                                                const fullReq = await requisitionService.getById(requisitionId);
-                                                setSelectedRequisition(fullReq as any);
-                                            } catch {
-                                                setSelectedRequisition({
-                                                    id: req.id,
-                                                    reference_number: req.reference_number || 'N/A',
-                                                    description: req.description || entry.description,
-                                                    status: req.status || 'COMPLETED',
-                                                    total_amount: req.actual_total || entry.debit || entry.credit || 0,
-                                                } as any);
-                                            }
-                                        }}
-                                        className="w-full h-10 px-3 flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-stone-900 rounded-lg text-xs font-normal text-black transition-colors"
-                                    >
-                                        View Full Details
-                                    </button>
+
+                                {/* ── Primary actions row: View Details (left) + Post to QB (right) ── */}
+                                {(entry.requisition_id ||
+                                  (!entry.requisition_id && entry.status !== 'PENDING' &&
+                                   entry.qb_sync_status !== 'SUCCESS' &&
+                                   (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ||
+                                    entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE')) ||
+                                  req.qb_sync_status === 'SUCCESS' ||
+                                  (!entry.requisition_id && entry.qb_sync_status === 'SUCCESS')) && (
+                                    <div className="flex gap-2.5">
+                                        {/* View Full Details — left */}
+                                        {entry.requisition_id && (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    const requisitionId = entry.requisition_id!;
+                                                    setIsRequisitionModalOpen(true);
+                                                    try {
+                                                        const fullReq = await requisitionService.getById(requisitionId);
+                                                        setSelectedRequisition(fullReq as any);
+                                                    } catch {
+                                                        setSelectedRequisition({
+                                                            id: req.id,
+                                                            reference_number: req.reference_number || 'N/A',
+                                                            description: req.description || entry.description,
+                                                            status: req.status || 'COMPLETED',
+                                                            total_amount: req.actual_total || entry.debit || entry.credit || 0,
+                                                        } as any);
+                                                    }
+                                                }}
+                                                className="flex-1 h-10 px-3 flex items-center justify-center gap-2 bg-white hover:bg-gray-50 border border-stone-900 rounded-lg text-xs font-normal text-black transition-colors"
+                                            >
+                                                View Full Details
+                                            </button>
+                                        )}
+
+                                        {/* Post to QuickBooks — requisition (right) */}
+                                        {entry.requisition_id && (req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED') && req.qb_sync_status !== 'SUCCESS' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => handlePostToQB(req, entry)}
+                                                className="flex-1 h-10 px-3 flex items-center justify-center gap-2 bg-black hover:bg-zinc-800 rounded-lg text-xs font-bold text-white transition-colors"
+                                            >
+                                                <RefreshCw size={12} className="text-white" />
+                                                Post to QuickBooks
+                                            </button>
+                                        )}
+
+                                        {/* Post to QuickBooks — standalone ledger entry (right / full-width when no View Details) */}
+                                        {!entry.requisition_id && entry.status !== 'PENDING' && entry.qb_sync_status !== 'SUCCESS' &&
+                                         (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ||
+                                          entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && (
+                                            <button
+                                                type="button"
+                                                disabled={!entry.account_id}
+                                                onClick={() => {
+                                                    if (!entry.account_id) { alert('Please select an accounting account first'); return; }
+                                                    handlePostLedgerToQB(entry);
+                                                }}
+                                                className={`flex-1 h-10 px-3 flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-colors ${
+                                                    entry.account_id
+                                                        ? 'bg-black hover:bg-zinc-800 text-white'
+                                                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                                }`}
+                                            >
+                                                <RefreshCw size={12} className={entry.account_id ? 'text-white' : 'text-gray-400'} />
+                                                Post to QuickBooks
+                                            </button>
+                                        )}
+
+                                        {/* Already synced badge — occupies the right slot */}
+                                        {(req.qb_sync_status === 'SUCCESS' || (!entry.requisition_id && entry.qb_sync_status === 'SUCCESS')) && (
+                                            <div className="flex-1 h-10 flex items-center justify-center gap-2 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-xs font-bold">
+                                                <CheckCircle2 size={13} />
+                                                Posted to QuickBooks
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
 
-                                {/* Verify pending inflow */}
+                                {/* Verify pending inflow — full width, contextual */}
                                 {(entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT') && entry.status === 'PENDING' && (
                                     <button
                                         type="button"
@@ -2636,7 +2690,7 @@ Status: VERIFIED`;
                                     </button>
                                 )}
 
-                                {/* Approve categorization */}
+                                {/* Approve categorization — full width, contextual */}
                                 {(req.status === 'EXPENSED' || req.status === 'DISBURSED' || req.status === 'RECEIVED') && (
                                     <button
                                         type="button"
@@ -2652,49 +2706,7 @@ Status: VERIFIED`;
                                     </button>
                                 )}
 
-                                {/* Post to QuickBooks — requisition */}
-                                {entry.requisition_id && (req.status === 'ACCOUNTED' || req.status === 'COMPLETED' || req.status === 'CATEGORIZED') && req.qb_sync_status !== 'SUCCESS' && (
-                                    <button
-                                        type="button"
-                                        onClick={() => handlePostToQB(req, entry)}
-                                        className="w-full h-10 px-3 flex items-center justify-center gap-2 bg-black hover:bg-zinc-800 rounded-lg text-xs font-bold text-white transition-colors"
-                                    >
-                                        <RefreshCw size={12} className="text-white" />
-                                        Post to QuickBooks
-                                    </button>
-                                )}
-
-                                {/* Post to QuickBooks — ledger entry */}
-                                {!entry.requisition_id && entry.status !== 'PENDING' && entry.qb_sync_status !== 'SUCCESS' &&
-                                 (entry.entry_type === 'INFLOW' || entry.entry_type === 'ADJUSTMENT' ||
-                                  entry.entry_type === 'DISBURSEMENT' || entry.entry_type === 'EXPENSE') && (
-                                    <button
-                                        type="button"
-                                        disabled={!entry.account_id}
-                                        onClick={() => {
-                                            if (!entry.account_id) { alert('Please select an accounting account first'); return; }
-                                            handlePostLedgerToQB(entry);
-                                        }}
-                                        className={`w-full h-10 px-3 flex items-center justify-center gap-2 rounded-lg text-xs font-bold transition-colors ${
-                                            entry.account_id
-                                                ? 'bg-black hover:bg-zinc-800 text-white'
-                                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                                        }`}
-                                    >
-                                        <RefreshCw size={12} className={entry.account_id ? 'text-white' : 'text-gray-400'} />
-                                        Post to QuickBooks
-                                    </button>
-                                )}
-
-                                {/* Already synced badge */}
-                                {(req.qb_sync_status === 'SUCCESS' || (!entry.requisition_id && entry.qb_sync_status === 'SUCCESS')) && (
-                                    <div className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-xl text-[11px] font-bold uppercase tracking-widest">
-                                        <CheckCircle2 size={13} />
-                                        Posted to QuickBooks
-                                    </div>
-                                )}
-
-                                {/* Download receipt (product sales) */}
+                                {/* Download receipt (product sales) — full width, contextual */}
                                 {(entry.status === 'COMPLETED' || entry.status === 'ACCOUNTED') &&
                                  entry.entry_type === 'INFLOW' &&
                                  (entry.description?.startsWith('Sale:') || entry.description?.includes('Sale: Products') || entry.description?.includes('Revenue: Products')) && (
