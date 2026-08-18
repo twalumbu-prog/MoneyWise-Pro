@@ -157,15 +157,31 @@ async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
     }
 
     if (ce.account_type === 'MASTERFEES_MANUAL') {
-        // Route to the channel-specific collections account when we know which
-        // channel recorded the payment (BANK / MOBILE / OTHER); fall back to the
-        // single generic account for rows synced before this existed.
-        const channelCode = ce.mf_payment_channel === 'BANK' ? CODE_MASTERFEES_MANUAL_BANK
-            : ce.mf_payment_channel === 'MOBILE' ? CODE_MASTERFEES_MANUAL_MOBILE
-            : ce.mf_payment_channel === 'OTHER' ? CODE_MASTERFEES_MANUAL_OTHER
-            : null;
-        return (channelCode && await getAccountIdByCode(orgId, channelCode))
-            ?? (await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_COLLECTIONS))
+        // Route to the most specific collections account we have for this
+        // payment: a named bank (mf_payment_channel = 'BANK:<slug>', e.g.
+        // 'BANK:zanaco' — must match masterfees.service.ts's codeForBank()
+        // exactly) > channel bucket (BANK / MOBILE / OTHER) > the single
+        // generic account for rows synced before any of this existed.
+        const raw = ce.mf_payment_channel;
+        let channelCode: string | null = null;
+        if (raw?.startsWith('BANK:')) {
+            const slug = raw.slice('BANK:'.length);
+            channelCode = `QB-MF-MANUAL-BANK-${slug.replace(/[^a-z0-9]/g, '').slice(0, 24).toUpperCase()}`;
+        } else if (raw === 'BANK') channelCode = CODE_MASTERFEES_MANUAL_BANK;
+        else if (raw === 'MOBILE') channelCode = CODE_MASTERFEES_MANUAL_MOBILE;
+        else if (raw === 'OTHER') channelCode = CODE_MASTERFEES_MANUAL_OTHER;
+
+        if (channelCode) {
+            const acct = await getAccountIdByCode(orgId, channelCode);
+            if (acct) return acct;
+        }
+        if (raw?.startsWith('BANK:')) {
+            // Named-bank account missing (shouldn't happen — provisioned before
+            // insert) → fall back to the generic bank bucket before Uncategorised.
+            const acct = await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_BANK);
+            if (acct) return acct;
+        }
+        return (await getAccountIdByCode(orgId, CODE_MASTERFEES_MANUAL_COLLECTIONS))
             ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 

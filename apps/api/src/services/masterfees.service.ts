@@ -51,15 +51,61 @@ const CODE_MANUAL_COLLECTIONS_MOBILE = 'QB-MF-MANUAL-MOBILE';
 const CODE_MANUAL_COLLECTIONS_OTHER = 'QB-MF-MANUAL-OTHER';
 const CODE_GENERIC_INCOME = 'QB-MF-INC-GENERAL';
 
-/** Normalize Master Fees' `payment_method` into one of our three accounting channels. */
+/**
+ * Classify a manual Master Fees payment into an accounting channel, and — when
+ * it's a bank payment with a specific bank identified — down to that exact
+ * bank. Master Fees added `account_name` alongside `payment_method` after our
+ * feature request; for 'bank'-channel payments it's populated ~98% of the time
+ * with a real bank slug (confirmed live: 'zanaco', 'absa', 'stanchart',
+ * 'natsave', 'atlas_mara', 'izb'). When known, we post to a dedicated GL
+ * account for that specific bank (e.g. "Master Fees Manual — Zanaco") instead
+ * of one generic "Bank" bucket — this is the double-entry the org actually
+ * wants: Dr <specific bank> / Cr Master Fees Receivables.
+ *
+ * `key` is what gets persisted to cashbook_entries.mf_payment_channel and is
+ * the exact string ledger.service.ts's resolveCashAccount() parses back out
+ * to pick the GL account — keep the two in sync if this format changes.
+ */
 type ManualChannel = 'BANK' | 'MOBILE' | 'OTHER';
-function classifyManualChannel(paymentMethod?: string): ManualChannel {
-    const pm = String(paymentMethod || '').toLowerCase();
-    if (pm.includes('bank')) return 'BANK';
-    if (pm.includes('mobile') || pm.includes('airtel') || pm.includes('mtn') || pm.includes('momo')) return 'MOBILE';
-    return 'OTHER'; // 'manual', 'cash', or anything unrecognised
+interface ManualChannelInfo {
+    bucket: ManualChannel;
+    bankSlug?: string;      // e.g. 'zanaco' — sanitized, used to build the account code
+    bankDisplay?: string;   // e.g. 'Zanaco' — used in account name / label text
+    key: string;            // persisted value: 'BANK:zanaco' | 'BANK' | 'MOBILE' | 'OTHER'
 }
-const manualChannelLabel = (c: ManualChannel) => c === 'BANK' ? 'Bank' : c === 'MOBILE' ? 'Mobile Money' : 'Cash/Other';
+// A few observed slugs get a nicer display name; anything else falls back to a
+// generic title-case of the slug so new banks need no code change.
+const BANK_DISPLAY_OVERRIDES: Record<string, string> = {
+    zanaco: 'Zanaco', absa: 'ABSA', stanchart: 'Standard Chartered', natsave: 'Natsave',
+    atlas_mara: 'Atlas Mara', izb: 'Indo Zambia Bank', fnb: 'FNB', bancabc: 'BancABC',
+};
+function prettifyBankSlug(slug: string): string {
+    if (BANK_DISPLAY_OVERRIDES[slug]) return BANK_DISPLAY_OVERRIDES[slug];
+    return slug.split(/[_\s-]+/).filter(Boolean).map(w => w.length <= 3 ? w.toUpperCase() : w[0].toUpperCase() + w.slice(1)).join(' ');
+}
+function classifyManualChannel(txn: { payment_method?: string; account_name?: string | null }): ManualChannelInfo {
+    const pm = String(txn.payment_method || '').toLowerCase();
+    if (pm.includes('bank')) {
+        const raw = String(txn.account_name || '').trim().toLowerCase();
+        // Guard against Master Fees' own data quirk (mobile-money slugs sometimes
+        // land in account_name under payment_method='bank') — only treat it as a
+        // real bank name if it doesn't look like a mobile money provider.
+        const looksLikeMobile = /airtel|mtn|momo|mobile/.test(raw);
+        if (raw && !looksLikeMobile) {
+            const slug = raw.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+            if (slug) return { bucket: 'BANK', bankSlug: slug, bankDisplay: prettifyBankSlug(slug), key: `BANK:${slug}` };
+        }
+        return { bucket: 'BANK', key: 'BANK' }; // bank channel, but no specific bank named
+    }
+    if (pm.includes('mobile') || pm.includes('airtel') || pm.includes('mtn') || pm.includes('momo')) {
+        return { bucket: 'MOBILE', key: 'MOBILE' };
+    }
+    return { bucket: 'OTHER', key: 'OTHER' }; // 'manual', 'cash', or anything unrecognised
+}
+const manualChannelLabel = (c: ManualChannelInfo) =>
+    c.bankDisplay || (c.bucket === 'BANK' ? 'Bank' : c.bucket === 'MOBILE' ? 'Mobile Money' : 'Cash/Other');
+/** Derive the GL account code for a specific bank slug — must match ledger.service.ts. */
+const codeForBank = (slug: string) => `QB-MF-MANUAL-BANK-${slug.replace(/[^a-z0-9]/g, '').slice(0, 24).toUpperCase()}`;
 const codeForCategory = (categoryId: string) =>
     `QB-MF-INC-${String(categoryId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24).toUpperCase()}`;
 
@@ -316,13 +362,29 @@ async function getManualCollectionsAccount(organizationId: string): Promise<stri
     });
 }
 
-/** Channel-specific manual collections account (Bank / Mobile Money / Cash-Other). */
-async function getManualCollectionsAccountForChannel(organizationId: string, channel: ManualChannel): Promise<string> {
+/**
+ * Resolve (provisioning if needed) the GL account a manual payment's cash leg
+ * should debit. When the specific bank is known (info.bankSlug set), that gets
+ * its own dedicated account — e.g. "Master Fees Manual — Zanaco" — so the
+ * balance sheet shows exactly which real-world bank account holds the cash,
+ * not just a generic "Bank" bucket. Falls back to the channel-level bucket
+ * when Master Fees didn't name a specific bank for this payment.
+ */
+async function getManualCollectionsAccountForChannel(organizationId: string, info: ManualChannelInfo): Promise<string> {
+    if (info.bucket === 'BANK' && info.bankSlug) {
+        return getOrCreateAccount(organizationId, {
+            code: codeForBank(info.bankSlug),
+            name: `Master Fees Manual — ${info.bankDisplay}`,
+            type: 'ASSET',
+            subtype: 'Bank',
+            description: `School fee payments recorded manually in Master Fees via bank transfer/deposit into ${info.bankDisplay}.`,
+        });
+    }
     const spec = {
-        BANK: { code: CODE_MANUAL_COLLECTIONS_BANK, name: 'Master Fees Manual Collections — Bank', description: 'School fee payments recorded manually in Master Fees via bank deposit/transfer.' },
+        BANK: { code: CODE_MANUAL_COLLECTIONS_BANK, name: 'Master Fees Manual Collections — Bank', description: 'School fee payments recorded manually in Master Fees via bank deposit/transfer (specific bank not identified by Master Fees).' },
         MOBILE: { code: CODE_MANUAL_COLLECTIONS_MOBILE, name: 'Master Fees Manual Collections — Mobile Money', description: 'School fee payments recorded manually in Master Fees via mobile money (Airtel/MTN).' },
         OTHER: { code: CODE_MANUAL_COLLECTIONS_OTHER, name: 'Master Fees Manual Collections — Cash/Other', description: 'School fee payments recorded manually in Master Fees with no specific bank/mobile channel given (cash, or unclassified).' },
-    }[channel];
+    }[info.bucket];
     return getOrCreateAccount(organizationId, { ...spec, type: 'ASSET', subtype: 'Bank' });
 }
 
@@ -602,11 +664,11 @@ async function postPayment(
     // row in place and re-derive its journal. Lenco payments cannot be edited at
     // source (they are gateway-authoritative), so we only handle this for manual ones.
     if (!unchanged && prior?.cashbook_entry_id && !isLencoProcessed(txn)) {
-        const channel = classifyManualChannel(txn.payment_method);
+        const channel = classifyManualChannel(txn);
         await getManualCollectionsAccountForChannel(organizationId, channel);
         await supabase
             .from('cashbook_entries')
-            .update({ debit: amount, mf_payment_channel: channel })
+            .update({ debit: amount, mf_payment_channel: channel.key })
             .eq('id', prior.cashbook_entry_id);
         await ledgerService.repostForCashbookEntry(prior.cashbook_entry_id);
         const { data: ce } = await supabase
@@ -651,14 +713,18 @@ async function postPayment(
             // journal, not cashbook_entries.balance_after. Recompute both in full.
             await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, oldType);
             await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, desiredType);
-        } else if (ce && ce.account_type === 'MASTERFEES_MANUAL' && !isLencoProcessed(txn) && !ce.mf_payment_channel) {
-            // Bucket already correct, but this row predates per-channel routing —
-            // tag and repost it (in place, same account_type) so it moves off the
-            // generic collections account onto its own channel-specific one.
-            const channel = classifyManualChannel(txn.payment_method);
-            await getManualCollectionsAccountForChannel(organizationId, channel);
-            await supabase.from('cashbook_entries').update({ mf_payment_channel: channel }).eq('id', prior!.cashbook_entry_id);
-            await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
+        } else if (ce && ce.account_type === 'MASTERFEES_MANUAL' && !isLencoProcessed(txn) && (!ce.mf_payment_channel || ce.mf_payment_channel === 'BANK')) {
+            // Bucket already correct, but this row either predates per-channel
+            // routing (null) or predates per-bank routing (generic 'BANK', from
+            // before Master Fees started returning account_name) — tag/upgrade
+            // and repost it in place so it moves onto its specific bank's account
+            // (or the channel bucket, if still no specific bank is known).
+            const channel = classifyManualChannel(txn);
+            if (channel.key !== ce.mf_payment_channel) {
+                await getManualCollectionsAccountForChannel(organizationId, channel);
+                await supabase.from('cashbook_entries').update({ mf_payment_channel: channel.key }).eq('id', prior!.cashbook_entry_id);
+                await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
+            }
         }
         return 'skipped';
     }
@@ -680,7 +746,7 @@ async function postPayment(
     // always needs posting ourselves, regardless of the org's Lenco mode —
     // "shared vs separate" is a Lenco-account concept and doesn't apply here.
     if (!isLencoProcessed(txn)) {
-        const channel = classifyManualChannel(txn.payment_method);
+        const channel = classifyManualChannel(txn);
         await getManualCollectionsAccountForChannel(organizationId, channel); // ensure the contra-resolvable account exists
         const manualLabel = `Master Fees Manual Payment (${manualChannelLabel(channel)}) ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
         const entry = await cashbookService.createEntry(organizationId, {
@@ -693,7 +759,7 @@ async function postPayment(
             account_type: 'MASTERFEES_MANUAL',
             account_id: receivableId,
             external_reference: txn.reference || txn.transaction_id,
-            mf_payment_channel: channel,
+            mf_payment_channel: channel.key,
             skip_inflow_notification: needsBackfill,
         } as any);
         await upsertRecord(organizationId, integrationId, {
