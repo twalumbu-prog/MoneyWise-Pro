@@ -353,10 +353,9 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                                 <div className="sm:col-span-2 flex items-start bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 text-amber-700">
                                     <AlertCircle className="h-4 w-4 mr-2 mt-0.5 flex-shrink-0" />
                                     <span>
-                                        <strong>Master Fees hit its 1,000-record API limit this sync.</strong> Their invoices/transactions
-                                        endpoints cap at 1,000 rows with no pagination support, so some records — most likely from
-                                        older or other terms — may be missing from your books. This can only be fixed by Master Fees
-                                        adding real pagination on their end; we've flagged it to their team.
+                                        <strong>This sync hit our 200,000-record pagination safety limit.</strong> That's far beyond any
+                                        normal school's size, so this school may genuinely have more records than we fetched. Contact
+                                        support if this keeps happening.
                                     </span>
                                 </div>
                             )}

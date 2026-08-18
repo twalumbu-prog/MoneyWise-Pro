@@ -110,6 +110,12 @@ interface MFTransaction {
     reference?: string;
     amount?: number | string;
     payment_method?: string;
+    // Added by Master Fees after our pagination/channel-detail support request:
+    // the specific bank name behind a 'bank'-channel manual payment (e.g.
+    // 'zanaco', 'absa', 'stanchart') — null for other channels or when the
+    // school didn't record one.
+    account_name?: string | null;
+    source_payment_method?: string | null;
     status?: string;
     completed_at?: string;
     invoice_id?: string;
@@ -164,13 +170,47 @@ export class MasterFeesClient {
         return [];
     }
 
+    /**
+     * Walk `?page=1,2,3...` until Master Fees signals the end. Confirmed live
+     * (2026-08-18, after their pagination fix): a page with fewer than 1000 rows
+     * can still be a real page (not necessarily the last), and requesting one
+     * page past the actual last page returns an HTTP error (500) rather than an
+     * empty array. So: keep going on any non-empty page; treat a request error
+     * as "end of data" ONLY once we've already got at least one good page —
+     * a failure on page 1 itself is a real error (auth/network/etc.) and must
+     * still propagate normally.
+     *
+     * MAX_PAGES is a sanity ceiling, not an expected limit — 200 pages would be
+     * 200,000 rows, far beyond any school's real size; it exists only so a
+     * pathological response (e.g. them always returning non-empty data with no
+     * real end) can't loop forever.
+     */
+    private async getPaginated<T = any>(path: string): Promise<T[]> {
+        const MAX_PAGES = 200;
+        const results: T[] = [];
+        for (let page = 1; page <= MAX_PAGES; page++) {
+            let resp: any;
+            try {
+                resp = await this.get(`${path}?page=${page}`);
+            } catch (err) {
+                if (page === 1) throw err; // real error — first page must succeed
+                break; // subsequent-page failure = end of data (their pagination signal)
+            }
+            const batch = this.list<T>(resp);
+            if (batch.length === 0) break;
+            results.push(...batch);
+            if (batch.length < 1000) break; // short page = last page (avoids one wasted round trip)
+        }
+        return results;
+    }
+
     async getSchoolMeta(): Promise<{ school_name?: string }> {
         const resp = await this.get('invoices').catch(() => this.get('students'));
         return { school_name: resp?.school_name };
     }
     async getStudents(): Promise<MFStudent[]> { return this.list(await this.get('students')); }
-    async getInvoices(): Promise<MFInvoice[]> { return this.list(await this.get('invoices')); }
-    async getTransactions(): Promise<MFTransaction[]> { return this.list(await this.get('transactions')); }
+    async getInvoices(): Promise<MFInvoice[]> { return this.getPaginated<MFInvoice>('invoices'); }
+    async getTransactions(): Promise<MFTransaction[]> { return this.getPaginated<MFTransaction>('transactions'); }
     async getFeeCategories(): Promise<MFFeeCategory[]> { return this.list(await this.get('fee-categories')); }
     async getBalances(): Promise<any[]> { return this.list(await this.get('summary/balances')); }
     async getPaymentsSummary(): Promise<any> { return this.get('summary/payments'); }
@@ -757,23 +797,23 @@ export async function detectLencoMode(organizationId: string, client: MasterFees
 // ─────────────────────────────────────────────────────────────────────────────
 // Sync orchestration
 // ─────────────────────────────────────────────────────────────────────────────
-// Master Fees' invoices/transactions/ledger endpoints silently cap at exactly
-// 1000 rows and ignore every pagination param we've tried (page, limit, offset,
-// term, year — confirmed live: identical 1000-row response regardless). There is
-// no way to fetch beyond this from our side; it's a hard API limitation. When a
-// school's true record count exceeds it, whichever rows don't fit the response
-// are silently dropped — observed live on Twalumbu Education Centre, where Term 2
-// alone fills 790 of the 1000 slots, at real risk of crowding out older/other
-// terms as the year progresses. We can only detect and surface this, not fix it.
-const MF_ROW_CAP = 1000;
+// Master Fees originally capped invoices/transactions/ledger at exactly 1000
+// rows per call with no pagination — fixed on their side 2026-08 (confirmed
+// live: ?page=N now returns real, distinct pages; MasterFeesClient.getPaginated
+// walks all of them). This constant now only guards the client's MAX_PAGES
+// safety ceiling (200 pages = 200,000 rows) — hitting it would mean either a
+// school with a genuinely enormous record count, or their pagination not
+// terminating as expected; either way it's worth surfacing rather than
+// silently truncating again.
+const MF_ROW_CAP = 200_000;
 
 export interface SyncSummary {
     invoices: { posted: number; skipped: number; voided: number };
     payments: { posted: number; reclassified: number; deferred: number; skipped: number };
     errors: string[];
-    /** True when invoices and/or transactions hit Master Fees' undocumented
-     *  1000-row cap this sync — some records (likely older/other terms) may be
-     *  missing from MoneyWise's books until Master Fees adds real pagination. */
+    /** True when invoices and/or transactions hit the pagination safety
+     *  ceiling this sync — see MF_ROW_CAP. Should be rare/never in practice
+     *  now that Master Fees' pagination works. */
     truncated: boolean;
 }
 
@@ -813,7 +853,7 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
         const invoices = await client.getInvoices();
         if (invoices.length >= MF_ROW_CAP) {
             summary.truncated = true;
-            summary.errors.push(`invoices: Master Fees returned the maximum ${MF_ROW_CAP} records — this is a hard cap on their API with no pagination support, so some invoices (likely from older/other terms) may be missing from your books. This needs to be fixed on Master Fees' side.`);
+            summary.errors.push(`invoices: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more invoices than we fetched this sync. Contact us if this persists.`);
         }
         for (const inv of invoices) {
             try {
@@ -832,7 +872,7 @@ export async function syncMasterfees(organizationId: string): Promise<SyncSummar
         const transactions = await client.getTransactions();
         if (transactions.length >= MF_ROW_CAP) {
             summary.truncated = true;
-            summary.errors.push(`transactions: Master Fees returned the maximum ${MF_ROW_CAP} records — this is a hard cap on their API with no pagination support, so some payments (likely from older/other terms) may be missing from your books. This needs to be fixed on Master Fees' side.`);
+            summary.errors.push(`transactions: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more transactions than we fetched this sync. Contact us if this persists.`);
         }
         for (const txn of transactions) {
             try {
