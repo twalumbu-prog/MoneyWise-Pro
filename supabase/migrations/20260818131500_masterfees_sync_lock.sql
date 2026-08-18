@@ -1,0 +1,11 @@
+-- The Master Fees 1-minute cron fires a new sync-all invocation every minute
+-- regardless of whether the previous one has finished. Once the sync-batching
+-- fix (2026-08-18) let a single org's sync actually run its full ~38s budget
+-- instead of dying near-instantly to a timeout, concurrent overlapping syncs
+-- for the same org became visible: two Vercel regions racing to post the same
+-- invoice/payment both call postJournal's delete-then-insert pattern, so one
+-- process's freshly-inserted journal header can be deleted out from under it
+-- by the other before its lines insert — duplicate-key and FK errors on every
+-- tick. Add a simple row-level lock column so a sync can atomically claim
+-- "I'm syncing this org" and a concurrent tick backs off instead of racing.
+ALTER TABLE integrations ADD COLUMN IF NOT EXISTS sync_lock_at timestamptz;

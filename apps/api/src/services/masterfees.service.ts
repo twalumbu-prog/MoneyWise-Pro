@@ -299,6 +299,41 @@ async function patchConfig(organizationId: string, patch: Partial<MasterFeesConf
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Sync lock — the cron fires a new sync-all invocation every minute regardless
+// of whether the previous one finished. Once a sync actually does real work
+// (posting many journals) instead of dying instantly to a timeout, two
+// concurrent invocations for the same org race on postJournal's
+// delete-then-insert pattern: one process's freshly-inserted journal header
+// gets deleted out from under it by the other before its lines insert,
+// producing duplicate-key/FK errors on every tick (confirmed live,
+// 2026-08-18). Claim a lock via an atomic conditional UPDATE (single-row
+// UPDATE...WHERE is atomic in Postgres, no session-scoped advisory lock
+// needed) before starting; a concurrent tick that can't claim it backs off
+// immediately rather than racing. 120s staleness auto-releases a lock left by
+// a killed/crashed instance without needing manual intervention.
+// ─────────────────────────────────────────────────────────────────────────────
+const SYNC_LOCK_STALE_MS = 120_000;
+
+async function acquireSyncLock(integrationId: string): Promise<boolean> {
+    const staleBefore = new Date(Date.now() - SYNC_LOCK_STALE_MS).toISOString();
+    const { data, error } = await supabase
+        .from('integrations')
+        .update({ sync_lock_at: new Date().toISOString() })
+        .eq('id', integrationId)
+        .or(`sync_lock_at.is.null,sync_lock_at.lt.${staleBefore}`)
+        .select('id');
+    if (error) {
+        console.error('[MasterFees] Failed to check/acquire sync lock:', error.message);
+        return false; // fail safe: don't sync if we can't verify exclusivity
+    }
+    return !!(data && data.length > 0);
+}
+
+async function releaseSyncLock(integrationId: string): Promise<void> {
+    await supabase.from('integrations').update({ sync_lock_at: null }).eq('id', integrationId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Account provisioning (idempotent upsert into `accounts` by (code, org))
 // ─────────────────────────────────────────────────────────────────────────────
 async function getOrCreateAccount(
@@ -910,6 +945,28 @@ export interface SyncSummary {
 export async function syncMasterfees(organizationId: string, deadline: number = Date.now() + 35_000): Promise<SyncSummary> {
     const integration = await getMasterFeesIntegration(organizationId);
     if (!integration) throw new Error('Master Fees is not connected for this organization.');
+
+    if (!(await acquireSyncLock(integration.id))) {
+        return {
+            invoices: { posted: 0, skipped: 0, voided: 0 },
+            payments: { posted: 0, reclassified: 0, deferred: 0, skipped: 0 },
+            errors: ['Skipped — a sync for this org is already in progress (concurrent cron tick).'],
+            truncated: false,
+        };
+    }
+
+    try {
+        return await runMasterfeesSync(organizationId, integration, deadline);
+    } finally {
+        await releaseSyncLock(integration.id);
+    }
+}
+
+async function runMasterfeesSync(
+    organizationId: string,
+    integration: { id: string; config: MasterFeesConfig },
+    deadline: number
+): Promise<SyncSummary> {
     const config = integration.config;
     const client = new MasterFeesClient(config);
 
