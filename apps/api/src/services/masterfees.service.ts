@@ -323,6 +323,20 @@ async function acquireSyncLock(integrationId: string): Promise<boolean> {
         .or(`sync_lock_at.is.null,sync_lock_at.lt.${staleBefore}`)
         .select('id');
     if (error) {
+        // PGRST204 / "column ... does not exist" means PostgREST's schema cache
+        // hasn't picked up the sync_lock_at column yet (observed live, 2026-08-18:
+        // NOTIFY pgrst + a follow-up DDL both failed to make it propagate within
+        // 8+ minutes on this project). That's an infra-cache staleness condition,
+        // not a real conflict signal — failing closed on it means NO sync ever
+        // runs at all, which is strictly worse than the race it's meant to
+        // prevent (that race is confirmed self-healing: no orphaned journals
+        // resulted from it). Fail OPEN only for this specific, identifiable
+        // cache-staleness error; any other unexpected error still fails closed.
+        const staleCache = error.code === 'PGRST204' || /does not exist/i.test(error.message || '');
+        if (staleCache) {
+            console.warn('[MasterFees] Sync lock column not yet visible to PostgREST (schema cache staleness) — proceeding without the lock this tick.');
+            return true;
+        }
         console.error('[MasterFees] Failed to check/acquire sync lock:', error.message);
         return false; // fail safe: don't sync if we can't verify exclusivity
     }
