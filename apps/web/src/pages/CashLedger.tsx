@@ -2329,12 +2329,20 @@ Status: VERIFIED`;
                                         )}
                                         {/* Inflow-specific: show sender name/phone (from structured fields, fallback to description parse) + channel */}
                                         {entry.entry_type === 'INFLOW' && (() => {
-                                            // Prefer the structured sender_name field; fall back to parsing description "… — Name"
+                                            // Prefer the structured sender_name/sender_phone fields. For historical
+                                            // entries created before those columns existed, fall back to parsing the
+                                            // description: MasterFees uses "… — Name", product sales use "Cust: <name-or-phone>".
+                                            const custMatch = entry.description?.match(/Cust:\s*([^|]+)/i);
+                                            const custValue = custMatch?.[1]?.trim() || null;
+                                            const custIsPhone = !!custValue && /^\+?\d[\d\s-]{5,}$/.test(custValue);
+
                                             const payerName = (entry as any).sender_name
+                                                || (custValue && !custIsPhone ? custValue : null)
                                                 || (entry.description?.includes(' — ')
                                                     ? entry.description.split(' — ').pop()?.split(' | Ref:')[0]?.trim()
                                                     : null);
-                                            const payerPhone = (entry as any).sender_phone || null;
+                                            const payerPhone = (entry as any).sender_phone
+                                                || (custValue && custIsPhone ? custValue : null);
                                             const ch = entry.mf_payment_channel || '';
                                             const methodLabel = ch.startsWith('BANK:')
                                                 ? `Bank Transfer (${ch.replace('BANK:', '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())})`
@@ -2369,10 +2377,17 @@ Status: VERIFIED`;
                                         {isOutflow && (() => {
                                             // payment_method and recipient_name live on the requisition; the
                                             // disbursement row carries the verified account/bank code used at payout.
-                                            const payMethod = req.payment_method || disbursement?.payment_method;
                                             const recipientName = disbursement?.recipient_account_name || req.recipient_name || disbursement?.recipient_name;
                                             const recipientAccount = disbursement?.recipient_account || req.recipient_account;
                                             const bankCode = disbursement?.recipient_bank_code || req.recipient_bank_code;
+                                            let payMethod = req.payment_method || disbursement?.payment_method;
+                                            // Older disbursements never recorded payment_method explicitly — the
+                                            // bank_code itself distinguishes a mobile operator (mtn/airtel/zamtel)
+                                            // from an actual bank code, so infer from that when it's missing.
+                                            const MOBILE_OPERATORS = ['mtn', 'airtel', 'zamtel'];
+                                            if (!payMethod && bankCode && MOBILE_OPERATORS.includes(String(bankCode).toLowerCase())) {
+                                                payMethod = 'MOBILE_MONEY';
+                                            }
                                             const isMobile = payMethod === 'MOBILE_MONEY';
                                             const methodLabel = isMobile ? 'Mobile Money'
                                                 : payMethod === 'BANK_TRANSFER' ? 'Bank Transfer'

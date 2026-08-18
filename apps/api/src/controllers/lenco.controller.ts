@@ -1959,7 +1959,7 @@ async function categorizeSubscriptionRevenue(orgId: string, entryId: string, ref
  * (product, customer, receipt-compatible format) even when the pending intent was
  * lost, instead of logging the raw bank narration.
  */
-async function buildSaleFinalization(orgId: string, reference: string): Promise<{ description: string; amount: number } | null> {
+async function buildSaleFinalization(orgId: string, reference: string): Promise<{ description: string; amount: number; senderName: string | null; senderPhone: string | null } | null> {
     const { data: sales } = await supabase
         .from('product_sales')
         .select('quantity, amount_paid, customer_name, customer_phone, products(name)')
@@ -1974,7 +1974,9 @@ async function buildSaleFinalization(orgId: string, reference: string): Promise<
 
     return {
         description: `Sale: Products: ${itemsText} | Cust: ${customer} | Ref: ${reference}`,
-        amount: Math.round(total * 100) / 100
+        amount: Math.round(total * 100) / 100,
+        senderName: (sales[0].customer_name || '').trim() || null,
+        senderPhone: sales[0].customer_phone || null,
     };
 }
 
@@ -2522,7 +2524,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                 debit: inflowAmount,
                                 externalReference: resolvedRef || txnId,
                                 fallbackExternalReference: txnId,
-                                date: txnDate || undefined
+                                date: txnDate || undefined,
+                                sender_name: sale?.senderName || null,
+                                sender_phone: sale?.senderPhone || null,
                             });
 
                             if (resolvedRef) {
@@ -2587,7 +2591,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                 account_type: 'MONEYWISE_WALLET',
                                 status: entryStatus,
                                 wallet_id: walletId,
-                                external_reference: entryExternalRef
+                                external_reference: entryExternalRef,
+                                sender_name: sale?.senderName || null,
+                                sender_phone: sale?.senderPhone || null,
                             } as any);
                         } catch (createErr: any) {
                             // The resolved merchant reference can collide with another
@@ -2606,7 +2612,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                     account_type: 'MONEYWISE_WALLET',
                                     status: entryStatus,
                                     wallet_id: walletId,
-                                    external_reference: txnId
+                                    external_reference: txnId,
+                                    sender_name: sale?.senderName || null,
+                                    sender_phone: sale?.senderPhone || null,
                                 } as any);
                             } else {
                                 throw createErr;
@@ -2822,7 +2830,9 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                             await cashbookService.finalizePendingIntent(orgId, intent.id, {
                                 description,
                                 debit: amount,
-                                externalReference: intentRef
+                                externalReference: intentRef,
+                                sender_name: sale?.senderName || null,
+                                sender_phone: sale?.senderPhone || null,
                             });
                             await completeSalesForReference(orgId, intentRef);
                             finalizedCount++;

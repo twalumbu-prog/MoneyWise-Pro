@@ -644,7 +644,7 @@ export const cashbookService = {
                     ),
                     disbursements (
                         id, total_prepared, actual_change_amount, confirmed_change_amount, change_submission_method, confirmed_at,
-                        recipient_account, recipient_bank_code, recipient_account_name
+                        payment_method, recipient_account, recipient_bank_code, recipient_account_name
                     ),
                     qb_sync_status, qb_sync_error
                 ),
