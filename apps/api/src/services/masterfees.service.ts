@@ -843,6 +843,37 @@ async function postPayment(
     // always needs posting ourselves, regardless of the org's Lenco mode —
     // "shared vs separate" is a Lenco-account concept and doesn't apply here.
     if (!isLencoProcessed(txn)) {
+        // Self-heal: a cashbook_entries row with this exact reference may already
+        // exist but have no masterfees_records companion — an orphan left by an
+        // earlier run that inserted the entry but was interrupted (crashed/killed)
+        // before it could link the record. cashbook_entries.external_reference has
+        // a real UNIQUE constraint for INFLOW rows (uniq_cashbook_inflow_per_
+        // reference), so re-attempting the insert below would hard-fail forever —
+        // confirmed live 2026-08-19: 8 Twalumbu payments from an Aug 10 run stuck
+        // in exactly this state, failing on every sync since. If we find one, link
+        // it instead of inserting a duplicate — no new cash, no new journal, just
+        // the missing record.
+        const orphan = await findExistingInflow(organizationId, txn.reference);
+        if (orphan) {
+            const alreadyLinked = await supabase
+                .from('masterfees_records')
+                .select('id')
+                .eq('organization_id', organizationId)
+                .eq('cashbook_entry_id', orphan.id)
+                .maybeSingle();
+            if (!alreadyLinked.data) {
+                await upsertRecord(organizationId, integrationId, {
+                    record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+                    student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+                    journal_entry_id: null, cashbook_entry_id: orphan.id, external_reference: txn.reference, raw: txn,
+                });
+                return 'posted';
+            }
+            // Reference is taken by a DIFFERENT, already-linked payment (a real
+            // collision, not an orphan) — fall through and let the insert fail
+            // loudly below rather than silently attaching to the wrong row.
+        }
+
         const channel = classifyManualChannel(txn);
         await getManualCollectionsAccountForChannel(organizationId, channel); // ensure the contra-resolvable account exists
         const manualLabel = `Master Fees Manual Payment (${manualChannelLabel(channel)}) ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
