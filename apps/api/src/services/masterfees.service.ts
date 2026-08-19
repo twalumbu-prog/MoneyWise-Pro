@@ -601,9 +601,28 @@ async function postInvoice(
     const studentName = invoice.student?.full_name || [invoice.student?.first_name, invoice.student?.last_name].filter(Boolean).join(' ');
     const voided = VOID_STATUSES.has(String(invoice.status || '').toLowerCase());
 
-    // Idempotency: skip when nothing material changed since last sync.
+    // Idempotency: skip when nothing material (amount / void-state) changed since
+    // last sync. `mf_status` is deliberately EXCLUDED from this comparison — an
+    // invoice's status moves pending → partial → complete purely as payments
+    // arrive, with no effect on the journal (still Dr AR / Cr Income for the same
+    // total). Treating a status change as "material" forced a full delete+rebuild
+    // of every affected invoice's journal on every sync pass; with ~2,500 invoices
+    // and payments constantly flipping their statuses, that alone consumed the
+    // entire per-call time budget before the payments loop ever ran — the
+    // confirmed cause of Twalumbu's payment sync stalling at ~50% coverage
+    // (3,095 MF transactions vs. 1,546 synced) while invoices kept re-posting for
+    // nothing. Status is still recorded — just via a cheap field update below,
+    // not a journal rebuild.
     const prior = priorMap.get(invoice.invoice_id);
-    if (prior && Math.abs(num(prior.amount) - total) < TOLERANCE && (prior.mf_status || '') === (invoice.status || '') && !!prior.journal_entry_id === !voided) {
+    if (prior && Math.abs(num(prior.amount) - total) < TOLERANCE && !!prior.journal_entry_id === !voided) {
+        if ((prior.mf_status || '') !== (invoice.status || '')) {
+            await supabase
+                .from('masterfees_records')
+                .update({ mf_status: invoice.status, synced_at: new Date().toISOString() })
+                .eq('organization_id', organizationId)
+                .eq('record_type', 'INVOICE')
+                .eq('mf_id', invoice.invoice_id);
+        }
         return 'skipped';
     }
 
