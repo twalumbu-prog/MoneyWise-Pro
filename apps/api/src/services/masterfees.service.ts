@@ -1243,6 +1243,105 @@ async function runMasterfeesSync(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// One-off ops: correct payment dates from a bank reconciliation
+// ─────────────────────────────────────────────────────────────────────────────
+export interface DateCorrection {
+    cashbookEntryId: string;
+    /** ISO date (YYYY-MM-DD) — the real bank transaction date. */
+    date: string;
+}
+
+export interface DateCorrectionSummary {
+    corrected: number;
+    skippedUnchanged: number;
+    skippedNotFound: number;
+    errors: string[];
+}
+
+/**
+ * Master Fees' completed_at is a known-unreliable bulk-import artifact (see
+ * postPayment's `date` derivation) — every payment's cashbook_entries.date was
+ * set from it, so it's wrong across the board. A bank reconciliation gives the
+ * REAL transaction date for whatever subset it confirms; this applies that
+ * correction properly: update the date, re-derive the journal (entry_date
+ * flows straight from ce.date — see repostForCashbookEntry), and recompute
+ * running balances forward from whichever is earlier of the old/new date per
+ * affected (account_type, wallet) bucket — a date correction can reorder the
+ * whole chain from that point on, not just the one row.
+ */
+export async function applyPaymentDateCorrections(
+    organizationId: string,
+    corrections: DateCorrection[],
+    deadline: number = Date.now() + 35_000
+): Promise<DateCorrectionSummary> {
+    const summary: DateCorrectionSummary = { corrected: 0, skippedUnchanged: 0, skippedNotFound: 0, errors: [] };
+    // key: `${account_type}::${wallet_id||''}` -> earliest affected date (YYYY-MM-DD)
+    const recalcGroups = new Map<string, { date: string; accountType: string; walletId: string | null }>();
+
+    for (const c of corrections) {
+        if (Date.now() > deadline) {
+            summary.errors.push(`Time budget reached — ${corrections.length - summary.corrected - summary.skippedUnchanged - summary.skippedNotFound - summary.errors.length} corrections deferred.`);
+            break;
+        }
+        try {
+            const { data: ce, error: fetchErr } = await supabase
+                .from('cashbook_entries')
+                .select('id, date, account_type, wallet_id, organization_id')
+                .eq('id', c.cashbookEntryId)
+                .maybeSingle();
+            if (fetchErr) throw fetchErr;
+            if (!ce || ce.organization_id !== organizationId) {
+                summary.skippedNotFound++;
+                continue;
+            }
+            if (ce.date === c.date) {
+                summary.skippedUnchanged++;
+                continue;
+            }
+
+            const oldDate = ce.date;
+            const { error: updateErr } = await supabase
+                .from('cashbook_entries')
+                .update({ date: c.date })
+                .eq('id', c.cashbookEntryId);
+            if (updateErr) throw updateErr;
+
+            await ledgerService.repostForCashbookEntry(c.cashbookEntryId);
+
+            const key = `${ce.account_type}::${ce.wallet_id || ''}`;
+            const earliest = oldDate < c.date ? oldDate : c.date;
+            const existing = recalcGroups.get(key);
+            if (!existing || earliest < existing.date) {
+                recalcGroups.set(key, { date: earliest, accountType: ce.account_type, walletId: ce.wallet_id });
+            }
+
+            summary.corrected++;
+        } catch (err: any) {
+            summary.errors.push(`${c.cashbookEntryId}: ${err.message}`);
+        }
+    }
+
+    // Recompute running balances once per affected bucket, from the earliest
+    // point any correction touched — not once per row, which would redundantly
+    // re-walk the same chain hundreds of times.
+    for (const { date, accountType, walletId } of recalcGroups.values()) {
+        // Midnight of the earliest affected date sorts at or before every real
+        // row's created_at on that date, so this reliably includes everything
+        // from that point forward regardless of which specific row anchors it.
+        await cashbookService.recalculateBalancesFrom(
+            organizationId, date, `${date}T00:00:00.000Z`, accountType, walletId || undefined
+        );
+    }
+
+    void broadcastInvalidate(organizationId, [
+        'cashbook-overview', 'cashbook-entries', 'cashbook-balance',
+        'external-balances', 'inflows', 'wallets',
+    ]);
+
+    return summary;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Reconciliation — our posted receivable vs Master Fees' own outstanding total
 // ─────────────────────────────────────────────────────────────────────────────
 export async function reconcileMasterfees(organizationId: string): Promise<{

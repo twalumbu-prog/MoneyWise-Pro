@@ -21,7 +21,8 @@ import {
     syncMasterFeesNow,
     getMasterFeesReconciliation,
     syncAllMasterFees,
-    backfillMasterFeesPayments
+    backfillMasterFeesPayments,
+    correctMasterFeesPaymentDates
 } from '../controllers/masterfees.controller';
 
 const router = Router();
@@ -42,6 +43,9 @@ router.post('/masterfees/sync-all', syncAllMasterFees);
 // One-off ops endpoint: payments-only backfill for a single org, skipping the
 // invoice phase and diffing against what's already synced. Same secret gate.
 router.post('/masterfees/backfill-payments', backfillMasterFeesPayments);
+// One-off ops endpoint: apply bank-reconciliation-derived date corrections
+// to already-synced payments (journal + running-balance recalc included).
+router.post('/masterfees/correct-dates', correctMasterFeesPaymentDates);
 
 // OAuth 1-click flow.
 router.get('/masterfees/oauth/url', requireAuth, getMasterFeesOAuthUrl);

@@ -7,6 +7,7 @@ import {
     detectLencoMode,
     syncMasterfees,
     syncMasterfeesPayments,
+    applyPaymentDateCorrections,
     reconcileMasterfees,
     MasterFeesConfig,
 } from '../services/masterfees.service';
@@ -398,6 +399,41 @@ export const backfillMasterFeesPayments = async (req: Request, res: Response) =>
 
     try {
         const summary = await syncMasterfeesPayments(organizationId, Date.now() + 35_000, { onlyMissing: true });
+        res.json({ success: true, summary });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * One-off ops endpoint: correct payment dates from a bank reconciliation.
+ * Master Fees' completed_at is a known-unreliable bulk-import artifact, so
+ * every cashbook_entries.date for a synced payment inherited that wrong date.
+ * A bank reconciliation gives the real date for whatever it confirms — this
+ * applies those corrections (journal re-derivation + running-balance recalc
+ * included, see applyPaymentDateCorrections). Same secret gate as the other
+ * ops endpoints above.
+ */
+export const correctMasterFeesPaymentDates = async (req: Request, res: Response) => {
+    const authHeader = req.headers['authorization'];
+    const syncSecret = process.env.MASTERFEES_SYNC_SECRET || process.env.LENCO_SYNC_SECRET;
+    if (syncSecret && authHeader !== `Bearer ${syncSecret}`) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid sync secret' });
+    }
+    const organizationId = String(req.body?.organizationId || '');
+    const corrections = req.body?.corrections;
+    if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
+    if (!Array.isArray(corrections) || corrections.length === 0) {
+        return res.status(400).json({ error: 'corrections must be a non-empty array of { cashbookEntryId, date }' });
+    }
+    for (const c of corrections) {
+        if (!c?.cashbookEntryId || !c?.date) {
+            return res.status(400).json({ error: 'Each correction needs cashbookEntryId and date' });
+        }
+    }
+
+    try {
+        const summary = await applyPaymentDateCorrections(organizationId, corrections, Date.now() + 35_000);
         res.json({ success: true, summary });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
