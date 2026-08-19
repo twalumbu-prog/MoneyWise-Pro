@@ -580,12 +580,27 @@ type PriorPaymentRecord = { amount: number | string | null; mf_status: string | 
  */
 async function loadPriorRecords<T>(organizationId: string, recordType: 'INVOICE' | 'PAYMENT', columns: string): Promise<Map<string, T>> {
     const map = new Map<string, T>();
-    const { data } = await supabase
-        .from('masterfees_records')
-        .select(`mf_id, ${columns}`)
-        .eq('organization_id', organizationId)
-        .eq('record_type', recordType);
-    for (const row of data || []) map.set((row as any).mf_id, row as any);
+    // PostgREST caps an unbounded select at 1,000 rows by default. Both invoices
+    // (2,371+) and payments (1,638+) on Twalumbu already exceed that, so a single
+    // unpaged call here silently drops everything past row #1,000 — those rows
+    // then look "never synced" on every pass, and for payments (which are backed
+    // by a real UNIQUE constraint on cashbook_entries.external_reference) that
+    // means re-attempting an INSERT for an already-synced row, which fails with
+    // "duplicate key value violates uniq_cashbook_inflow_per_reference" against
+    // its own pre-existing entry. Confirmed live 2026-08-19: every retry hit the
+    // identical set of transaction_ids past the 1,000 mark. Page through in full.
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+            .from('masterfees_records')
+            .select(`mf_id, ${columns}`)
+            .eq('organization_id', organizationId)
+            .eq('record_type', recordType)
+            .range(from, from + PAGE - 1);
+        if (error) throw error;
+        for (const row of data || []) map.set((row as any).mf_id, row as any);
+        if (!data || data.length < PAGE) break;
+    }
     return map;
 }
 
