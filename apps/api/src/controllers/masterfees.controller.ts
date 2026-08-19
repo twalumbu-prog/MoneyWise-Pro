@@ -6,6 +6,7 @@ import {
     getMasterFeesIntegration,
     detectLencoMode,
     syncMasterfees,
+    syncMasterfeesPayments,
     reconcileMasterfees,
     MasterFeesConfig,
 } from '../services/masterfees.service';
@@ -365,6 +366,39 @@ export const getMasterFeesReconciliation = async (req: AuthRequest, res: Respons
         const organizationId = req.user.organization_id;
         const result = await reconcileMasterfees(organizationId);
         res.json(result);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * One-off ops endpoint: close a single org's PAYMENT backlog directly, skipping
+ * the invoice phase and posting only transactions never seen before.
+ *
+ * Exists because the normal path (syncMasterfees, via syncAllMasterFees below)
+ * walks invoices before payments every pass. On an org with a large, mostly-synced
+ * invoice backlog, re-walking thousands of already-skipped invoices burns the
+ * whole per-call budget before the payments loop ever runs — confirmed on
+ * Twalumbu, which sat at 1,546/3,095 payments synced while invoices were 95%
+ * done. Call this repeatedly (each call is bounded well under Vercel's 45s
+ * function limit) until `payments.posted + reclassified` comes back 0 with no
+ * "Time budget reached" error — see [[masterfees-integration]] memory.
+ *
+ * Same secret + same idempotent posting path as the real sync — this only
+ * changes *what order* work happens in, not the accounting logic.
+ */
+export const backfillMasterFeesPayments = async (req: Request, res: Response) => {
+    const authHeader = req.headers['authorization'];
+    const syncSecret = process.env.MASTERFEES_SYNC_SECRET || process.env.LENCO_SYNC_SECRET;
+    if (syncSecret && authHeader !== `Bearer ${syncSecret}`) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid sync secret' });
+    }
+    const organizationId = String(req.query.organizationId || req.body?.organizationId || '');
+    if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
+
+    try {
+        const summary = await syncMasterfeesPayments(organizationId, Date.now() + 35_000, { onlyMissing: true });
+        res.json({ success: true, summary });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

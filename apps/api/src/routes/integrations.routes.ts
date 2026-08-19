@@ -20,7 +20,8 @@ import {
     updateMasterFeesLencoMode,
     syncMasterFeesNow,
     getMasterFeesReconciliation,
-    syncAllMasterFees
+    syncAllMasterFees,
+    backfillMasterFeesPayments
 } from '../controllers/masterfees.controller';
 
 const router = Router();
@@ -38,6 +39,9 @@ router.post('/quickbooks/sync/:id', requireAuth, syncRequisition);
 // ── Master Fees ──────────────────────────────────────────────────────────────
 // Cron sync (secured inside the handler via MASTERFEES_SYNC_SECRET/LENCO_SYNC_SECRET).
 router.post('/masterfees/sync-all', syncAllMasterFees);
+// One-off ops endpoint: payments-only backfill for a single org, skipping the
+// invoice phase and diffing against what's already synced. Same secret gate.
+router.post('/masterfees/backfill-payments', backfillMasterFeesPayments);
 
 // OAuth 1-click flow.
 router.get('/masterfees/oauth/url', requireAuth, getMasterFeesOAuthUrl);

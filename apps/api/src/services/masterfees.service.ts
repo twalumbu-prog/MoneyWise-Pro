@@ -997,6 +997,101 @@ export async function syncMasterfees(organizationId: string, deadline: number = 
     }
 }
 
+/**
+ * Payments-only sync, with an optional "just the gap" filter.
+ *
+ * The full sync walks invoices before payments (invoices create the receivable
+ * payments clear, so that order matters on a cold start). But the MF feed comes
+ * back in a stable order, so on a school with a large backlog every pass re-walks
+ * the same already-synced invoices from the top and the time budget is gone
+ * before the payments loop is reached — payments then never converge. Twalumbu
+ * sat at 1,546 of 3,095 transactions this way while its invoices were 95% done.
+ *
+ * Once invoices are substantially posted, the receivables those payments need
+ * already exist, so the invoice phase is pure overhead. This entry point skips it
+ * and — with `onlyMissing` — diffs the MF feed against masterfees_records first,
+ * so we only spend the budget on transactions we have never posted rather than
+ * re-deciding "skip" for thousands we already have.
+ *
+ * `onlyMissing` deliberately matches on presence, not content: it will not pick
+ * up an amount edit to an already-synced payment. That is what the full sync is
+ * for. Use this to close a gap, not as a replacement for syncMasterfees.
+ */
+export async function syncMasterfeesPayments(
+    organizationId: string,
+    deadline: number = Date.now() + 35_000,
+    opts: { onlyMissing?: boolean } = {}
+): Promise<SyncSummary> {
+    const integration = await getMasterFeesIntegration(organizationId);
+    if (!integration) throw new Error('Master Fees is not connected for this organization.');
+
+    if (!(await acquireSyncLock(integration.id))) {
+        return {
+            invoices: { posted: 0, skipped: 0, voided: 0 },
+            payments: { posted: 0, reclassified: 0, deferred: 0, skipped: 0 },
+            errors: ['Skipped — a sync for this org is already in progress (concurrent cron tick).'],
+            truncated: false,
+        };
+    }
+
+    const summary: SyncSummary = {
+        invoices: { posted: 0, skipped: 0, voided: 0 },
+        payments: { posted: 0, reclassified: 0, deferred: 0, skipped: 0 },
+        errors: [],
+        truncated: false,
+    };
+
+    try {
+        const config = integration.config;
+        const client = new MasterFeesClient(config);
+
+        if (!config.receivableAccountId) {
+            config.receivableAccountId = await getReceivableAccount(organizationId);
+            await patchConfig(organizationId, { receivableAccountId: config.receivableAccountId });
+        }
+
+        const transactions = await client.getTransactions();
+        if (transactions.length >= MF_ROW_CAP) {
+            summary.truncated = true;
+            summary.errors.push(`transactions: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling — this school may have more transactions than we fetched this sync. Contact us if this persists.`);
+        }
+
+        const priorMap = await loadPriorRecords<PriorPaymentRecord>(
+            organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id'
+        );
+
+        const queue = opts.onlyMissing
+            ? transactions.filter(t => !priorMap.has(t.transaction_id))
+            : transactions;
+
+        let deferredByBudget = false;
+        for (const txn of queue) {
+            if (Date.now() > deadline) { deferredByBudget = true; break; }
+            try {
+                const r = await postPayment(organizationId, integration.id, config, txn, priorMap);
+                summary.payments[r]++;
+            } catch (err: any) {
+                summary.errors.push(`payment ${txn.transaction_id}: ${err.message}`);
+            }
+        }
+
+        if (deferredByBudget) {
+            summary.errors.push('Time budget reached — remaining records deferred to the next sync cycle.');
+        }
+
+        void broadcastInvalidate(organizationId, [
+            'cashbook-overview', 'cashbook-entries', 'cashbook-balance',
+            'external-balances', 'inflows', 'wallets',
+        ]);
+    } catch (err: any) {
+        summary.errors.push(`transactions: ${err.message}`);
+    } finally {
+        await releaseSyncLock(integration.id);
+    }
+
+    return summary;
+}
+
 async function runMasterfeesSync(
     organizationId: string,
     integration: { id: string; config: MasterFeesConfig },
