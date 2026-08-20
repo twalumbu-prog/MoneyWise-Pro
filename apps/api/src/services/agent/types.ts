@@ -48,7 +48,8 @@ export function isProposal(v: unknown): v is ToolProposal {
 export type Widget =
     | { type: 'chart'; spec: ChartSpec }
     | { type: 'table'; spec: TableSpec }
-    | { type: 'kpi'; spec: KpiSpec };
+    | { type: 'kpi'; spec: KpiSpec }
+    | { type: 'file'; spec: FileSpec };
 
 export interface ChartSpec {
     kind: 'bar' | 'line' | 'area' | 'pie' | 'donut';
@@ -70,6 +71,22 @@ export interface TableSpec {
     rows: Array<Record<string, string | number | null>>;
     /** Optional footer row, e.g. totals. */
     total?: Record<string, string | number>;
+}
+
+/**
+ * A generated download — a PDF report or Excel export the model produced.
+ * Rides through the exact same Widget/WidgetResult pipeline as charts and
+ * tables (see tools/viz.tools.ts's WidgetResult) rather than a parallel
+ * mechanism, so the loop, persistence and SSE framing all needed zero
+ * changes. `url` is a signed Supabase Storage URL, time-limited — see
+ * SIGNED_URL_TTL_SECONDS in tools/export.tools.ts.
+ */
+export interface FileSpec {
+    name: string;
+    url: string;
+    kind: 'pdf' | 'xlsx';
+    /** Human-readable size, e.g. "184 KB". */
+    sizeLabel?: string;
 }
 
 export interface KpiSpec {

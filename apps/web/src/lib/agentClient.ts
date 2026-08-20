@@ -35,10 +35,19 @@ export interface KpiSpec {
     items: Array<{ label: string; value: string; delta?: number; hint?: string }>;
 }
 
+/** A generated download (PDF report or Excel export). `url` is a time-limited signed link. */
+export interface FileSpec {
+    name: string;
+    url: string;
+    kind: 'pdf' | 'xlsx';
+    sizeLabel?: string;
+}
+
 export type Widget =
     | { type: 'chart'; spec: ChartSpec }
     | { type: 'table'; spec: TableSpec }
-    | { type: 'kpi'; spec: KpiSpec };
+    | { type: 'kpi'; spec: KpiSpec }
+    | { type: 'file'; spec: FileSpec };
 
 export interface Proposal {
     summary: string;
@@ -117,6 +126,25 @@ async function streamPost(
     if (!resp.ok) {
         // Errors before the stream opens come back as ordinary JSON.
         const detail = await resp.json().catch(() => null);
+
+        // 409 with a `pending` payload means the server refused to start a
+        // new turn because an earlier write proposal in this thread never got
+        // a decision — most often because the SSE event that would have shown
+        // it was dropped mid-stream. Re-synthesizing it as an approval_request
+        // here means the same ApprovalCard UI just re-appears with the real
+        // pending change, rather than the user seeing a dead-end error while
+        // the card silently reattaches to whatever they type next.
+        if (resp.status === 409 && detail?.pending) {
+            onEvent({
+                type: 'approval_request',
+                callId: detail.pending.callId,
+                toolName: detail.pending.toolName,
+                proposal: detail.pending.proposal,
+                args: detail.pending.args,
+            });
+            return;
+        }
+
         onEvent({ type: 'error', message: detail?.error ?? `Request failed (${resp.status}).` });
         return;
     }
@@ -160,13 +188,24 @@ async function streamPost(
 
 export const agentClient = {
     chat(
-        params: { message: string; threadId?: string | null; model: string },
+        params: {
+            message: string;
+            threadId?: string | null;
+            model: string;
+            /** A file already uploaded to the bank-statements bucket — path + display filename. */
+            attachment?: { path: string; filename: string } | null;
+        },
         onEvent: (e: AgentEvent) => void,
         signal?: AbortSignal
     ) {
         return streamPost(
             '/ai/agent/chat',
-            { message: params.message, threadId: params.threadId ?? undefined, model: params.model },
+            {
+                message: params.message,
+                threadId: params.threadId ?? undefined,
+                model: params.model,
+                attachment: params.attachment ?? undefined,
+            },
             onEvent,
             signal
         );

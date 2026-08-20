@@ -10,7 +10,8 @@ import {
     Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, Legend, Line, LineChart,
     Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import type { ChartSpec, KpiSpec, TableSpec, Widget } from '../../../lib/agentClient';
+import { Download, FileSpreadsheet, FileText } from 'lucide-react';
+import type { ChartSpec, FileSpec, KpiSpec, TableSpec, Widget } from '../../../lib/agentClient';
 
 // A single ordered palette keeps every chart in the conversation consistent.
 const PALETTE = ['#006AFF', '#00C48C', '#FFB020', '#7C3AED', '#F0507E', '#14B8A6', '#F97316', '#6366F1'];
@@ -273,11 +274,43 @@ const KpiWidget: React.FC<{ spec: KpiSpec }> = ({ spec }) => (
     </div>
 );
 
+// ─── File download ───────────────────────────────────────────────────────────
+
+/**
+ * The link is a signed Supabase Storage URL, time-limited (7 days server-side)
+ * — a plain anchor is enough, the browser handles the actual download via the
+ * signed URL's own `download` disposition.
+ */
+const FileWidget: React.FC<{ spec: FileSpec }> = ({ spec }) => {
+    const isPdf = spec.kind === 'pdf';
+    return (
+        <a
+            href={spec.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="my-4 flex items-center gap-3 rounded-2xl border border-gray-100 bg-white p-4 shadow-[0_2px_16px_rgba(0,0,0,0.03)] transition-colors hover:border-blue-200 hover:bg-blue-50/20"
+        >
+            <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl ${isPdf ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}`}>
+                {isPdf ? <FileText size={20} /> : <FileSpreadsheet size={20} />}
+            </div>
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-[13px] font-black text-brand-navy">{spec.name}</p>
+                <p className="text-[11px] font-medium text-gray-400">
+                    {isPdf ? 'PDF document' : 'Excel workbook'}
+                    {spec.sizeLabel ? ` · ${spec.sizeLabel}` : ''}
+                </p>
+            </div>
+            <Download size={16} className="flex-shrink-0 text-gray-300" />
+        </a>
+    );
+};
+
 export const WidgetRenderer: React.FC<{ widget: Widget }> = ({ widget }) => {
     switch (widget.type) {
         case 'chart': return <ChartWidget spec={widget.spec} />;
         case 'table': return <TableWidget spec={widget.spec} />;
         case 'kpi': return <KpiWidget spec={widget.spec} />;
+        case 'file': return <FileWidget spec={widget.spec} />;
         default: return null;
     }
 };

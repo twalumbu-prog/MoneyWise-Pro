@@ -17,5 +17,8 @@
     "apps/*",
     "packages/*"
   ],
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@9.15.0",
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
 }

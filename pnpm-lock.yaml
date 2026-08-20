@@ -7,6 +7,10 @@ settings:
 importers:
 
   .:
+    dependencies:
+      xlsx:
+        specifier: ^0.18.5
+        version: 0.18.5
     devDependencies:
       prettier:
         specifier: ^3.4.2
@@ -114,6 +118,9 @@ importers:
       shared:
         specifier: workspace:*
         version: link:../../packages/shared
+      xlsx:
+        specifier: ^0.18.5
+        version: 0.18.5
     devDependencies:
       '@types/axios':
         specifier: ^0.14.4

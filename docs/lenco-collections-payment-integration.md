@@ -234,7 +234,7 @@ startCompletionPoll(ref, orgId, startedAt, analytics?)
     still be processing on Lenco's side; a reload or a manual "Check payment status" click can
     still catch it.
 
-### Backend verify-status resolution order (`verifyPublicPayment` in `lenco.controller.ts`)
+### Backend verify-status resolution order (`verifyCollectionStatus` in `lenco.controller.ts`)
 
 `GET /lenco/public-verify-status/:reference` checks, in order:
 
@@ -463,7 +463,7 @@ full success screen (not part of the shared waiting component):
 | Customer taps "Check payment status" from failed/cancelled | `handleRecheckPayment` | One-off re-query; inline `recheckNote`, transitions to `success` if it actually went through |
 | Lenco API blocked by Cloudflare WAF (observed intermittently from some networks) | `getCollectionStatus` catches HTTP 403 | Surfaces "Access to Lenco API was blocked by security filters. Please try again later." instead of a generic error; poll loop just retries on the next tick |
 | Mobile money name resolution fails | `resolvePublicMobileMoneyName` throws / times out | Non-blocking — inline "Could not verify — check the number," customer can still pay |
-| Webhook already finalized the entry before verify-status is even polled | Local DB check (step 1 of `verifyPublicPayment`) finds a non-PENDING row | Returns `verified: true` immediately, no Lenco call needed |
+| Webhook already finalized the entry before verify-status is even polled | Local DB check (step 1 of `verifyCollectionStatus`) finds a non-PENDING row | Returns `verified: true` immediately, no Lenco call needed |
 | `collections_api_enabled` is false for an org | Feature flag from `getPublicWalletContext`/`getPaymentLinkContext` | Falls back to the LencoPay widget flow entirely (also the only path for card payments) |
 
 ---

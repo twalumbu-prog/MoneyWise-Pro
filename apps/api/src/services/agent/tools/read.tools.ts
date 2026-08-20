@@ -9,6 +9,7 @@
  */
 
 import { supabase } from '../../../lib/supabase';
+import { riskClassifier } from '../../ai/risk.classifier';
 import { AgentContext, ToolDefinition } from '../types';
 
 const MAX_ROWS = 200;
@@ -208,14 +209,26 @@ const searchTransactions: ToolDefinition = {
     description:
         'Search the cashbook ledger — every money-in and money-out entry. Use this for ' +
         'questions about payments received, spending, specific vendors or bank activity. ' +
-        'debit = money in, credit = money out.',
+        'debit = money in, credit = money out. Every result includes its entry id and ' +
+        'account_id (null when the entry has not yet been classified against the chart of ' +
+        'accounts) — pass unaccountedOnly to find the ones still needing that. Use ' +
+        'categorize_transaction to assign an account once you have the id.',
     effect: 'read',
     parameters: {
         type: 'object',
         properties: {
             query: { type: 'string', description: 'Text matched against the entry description.' },
             direction: { type: 'string', enum: ['in', 'out', 'both'], description: 'Default both.' },
-            walletName: { type: 'string', description: 'Restrict to one wallet by name.' },
+            walletName: { type: 'string', description: 'Restrict to one wallet by name, e.g. "Main Wallet".' },
+            status: {
+                type: 'string',
+                enum: ['PENDING', 'COMPLETED', 'DISBURSED', 'UNACCOUNTED'],
+                description: 'Exact ledger status. Omit to see everything except PENDING (the default view).',
+            },
+            unaccountedOnly: {
+                type: 'boolean',
+                description: 'Only entries with no account_id yet — i.e. not classified against the chart of accounts.',
+            },
             minAmount: { type: 'number' },
             ...dateRangeProps,
             limit: { type: 'number', description: 'Max rows, default 50, hard cap 200.' },
@@ -235,11 +248,15 @@ const searchTransactions: ToolDefinition = {
 
         let q = supabase
             .from('cashbook_entries')
-            .select('date, description, debit, credit, balance_after, entry_type, reference_number, status')
+            .select('id, date, description, debit, credit, balance_after, entry_type, reference_number, status, account_id, accounts(name)')
             .eq('organization_id', ctx.organizationId)
-            .neq('status', 'PENDING')
             .order('date', { ascending: false })
             .limit(Math.min(args.limit ?? 50, MAX_ROWS));
+
+        // An explicit status is a deliberate filter; otherwise PENDING (not yet
+        // finalized) is hidden as noise the user didn't ask about.
+        if (args.status) q = q.eq('status', args.status);
+        else q = q.neq('status', 'PENDING');
 
         if (walletId) q = q.eq('wallet_id', walletId);
         if (args.query) q = q.ilike('description', `%${args.query}%`);
@@ -247,13 +264,25 @@ const searchTransactions: ToolDefinition = {
         if (args.endDate) q = q.lte('date', args.endDate);
         if (args.direction === 'in') q = q.gt('debit', 0);
         if (args.direction === 'out') q = q.gt('credit', 0);
+        if (args.unaccountedOnly) q = q.is('account_id', null);
 
         const { data, error } = await q;
         if (error) throw new Error(error.message);
 
-        const rows = (data ?? []).filter(r =>
-            args.minAmount == null || Math.max(money(r.debit), money(r.credit)) >= args.minAmount
-        );
+        const rows = (data ?? [])
+            .filter(r => args.minAmount == null || Math.max(money(r.debit), money(r.credit)) >= args.minAmount)
+            .map((r: any) => ({
+                id: r.id,
+                date: r.date,
+                description: r.description,
+                debit: r.debit,
+                credit: r.credit,
+                balance_after: r.balance_after,
+                entry_type: r.entry_type,
+                reference_number: r.reference_number,
+                status: r.status,
+                account: r.accounts?.name ?? null,
+            }));
 
         return {
             count: rows.length,
@@ -460,6 +489,80 @@ const getFinancialPosition: ToolDefinition = {
     },
 };
 
+const flagRiskyTransactions: ToolDefinition = {
+    name: 'flag_risky_transactions',
+    description:
+        'Screen cashbook entries in a period for ones worth a closer look: high value, ' +
+        'sensitive accounts (payroll, tax, transfers, loans), or barely-described entries. ' +
+        'Use this for "audit our spending", "find suspicious transactions" or "what should ' +
+        'we review". This is a heuristic screen, not a definitive finding — say so, and ' +
+        'suggest what to check on anything it surfaces.',
+    effect: 'read',
+    parameters: {
+        type: 'object',
+        properties: {
+            ...dateRangeProps,
+            minLevel: {
+                type: 'string',
+                enum: ['MEDIUM', 'HIGH'],
+                description: 'Lowest risk level to include. Default MEDIUM (i.e. everything worth a look).',
+            },
+            limit: { type: 'number', description: 'Max rows, default 30, hard cap 100.' },
+        },
+    },
+    handler: async (ctx, args) => {
+        let q = supabase
+            .from('cashbook_entries')
+            .select('id, date, description, debit, credit, reference_number, accounts(name)')
+            .eq('organization_id', ctx.organizationId)
+            .neq('status', 'PENDING')
+            .order('date', { ascending: false })
+            .limit(5000);
+        if (args.startDate) q = q.gte('date', args.startDate);
+        if (args.endDate) q = q.lte('date', args.endDate);
+
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+
+        const minLevel = args.minLevel ?? 'MEDIUM';
+        const rank: Record<string, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
+
+        const flagged = (data ?? [])
+            .map((r: any) => {
+                const amount = Math.max(money(r.debit), money(r.credit));
+                const assessment = riskClassifier.assess({
+                    description: r.description ?? '',
+                    amount,
+                    accountName: r.accounts?.name,
+                });
+                return { row: r, amount, assessment };
+            })
+            .filter(x => rank[x.assessment.riskLevel] >= rank[minLevel])
+            .sort((a, b) => rank[b.assessment.riskLevel] - rank[a.assessment.riskLevel] || b.amount - a.amount)
+            .slice(0, Math.min(args.limit ?? 30, 100))
+            .map(x => ({
+                id: x.row.id,
+                date: x.row.date,
+                description: x.row.description,
+                amount: x.amount,
+                direction: money(x.row.debit) > 0 ? 'in' : 'out',
+                account: x.row.accounts?.name ?? 'Unclassified',
+                reference_number: x.row.reference_number,
+                risk_level: x.assessment.riskLevel,
+                reasons: x.assessment.reasons,
+            }));
+
+        return {
+            method: 'Heuristic screen: transaction value, sensitive-account keywords, description ' +
+                'ambiguity. Not a substitute for a full audit — treat flags as a starting point.',
+            period: { startDate: args.startDate ?? 'all time', endDate: args.endDate ?? ctx.today },
+            scanned: data?.length ?? 0,
+            flagged_count: flagged.length,
+            flagged,
+        };
+    },
+};
+
 // ─── Schedules, accounts, sales ──────────────────────────────────────────────
 
 const listScheduledItems: ToolDefinition = {
@@ -599,6 +702,7 @@ export const readTools: ToolDefinition[] = [
     getRequisitionDetails,
     searchTransactions,
     aggregateSpending,
+    flagRiskyTransactions,
     getFinancialPosition,
     listScheduledItems,
     listAccounts,

@@ -95,15 +95,27 @@ export const agentChat = async (req: AuthRequest, res: Response) => {
     const ctx = buildContext(req);
     if (!ctx) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { message, threadId: incomingThreadId, model: requestedModel } = req.body ?? {};
+    const { message, threadId: incomingThreadId, model: requestedModel, attachment } = req.body ?? {};
     if (!message || typeof message !== 'string' || !message.trim()) {
         return res.status(400).json({ error: 'A message is required' });
     }
     if (message.length > 8000) {
         return res.status(400).json({ error: 'Message is too long (8000 character limit)' });
     }
+    if (attachment && (typeof attachment.path !== 'string' || typeof attachment.filename !== 'string')) {
+        return res.status(400).json({ error: 'attachment must have path and filename' });
+    }
 
     const model = resolveModel(requestedModel);
+
+    // The attachment's storage path is only useful to the model — it's noise
+    // in the chat bubble the user reads back — so the two diverge here: the
+    // clean text is what gets persisted and shown, the path-bearing version is
+    // what the model actually sees, and is never stored.
+    const displayMessage = attachment ? `${message}\n\n📎 ${attachment.filename}` : message;
+    const modelMessage = attachment
+        ? `${message}\n\n[Attached file: "${attachment.filename}" — storage path: ${attachment.path}]`
+        : message;
 
     let threadId: string;
     let priorState: ChatMessage[] = [];
@@ -112,11 +124,34 @@ export const agentChat = async (req: AuthRequest, res: Response) => {
             const owned = await threadStore.assertOwned(ctx, incomingThreadId);
             if (!owned) return res.status(404).json({ error: 'Conversation not found' });
             threadId = owned.id;
+
+            // A write proposal from an earlier turn is still waiting on a
+            // decision. Starting a fresh run on top of it would append a new
+            // user message after an assistant message whose tool_calls were
+            // never answered — providers reject or misbehave on that shape,
+            // and in practice this is exactly how a dropped stream (the
+            // approval_request event never reaching the client) turned into
+            // the *next*, unrelated message getting the *previous* proposal's
+            // card attached to it. Block here and hand the client what it
+            // needs to re-show the real pending decision instead.
+            const pending = await threadStore.getPending(ctx, threadId);
+            if (pending) {
+                return res.status(409).json({
+                    error: 'There is already a change awaiting your approval in this conversation — decide on that first.',
+                    pending: {
+                        callId: pending.call_id,
+                        toolName: pending.tool_name,
+                        args: pending.arguments,
+                        proposal: pending.proposal,
+                    },
+                });
+            }
+
             priorState = await threadStore.loadRunState(ctx, threadId);
         } else {
             threadId = await threadStore.createThread(ctx, message, model);
         }
-        await threadStore.addMessage(ctx, threadId, { role: 'user', content: message });
+        await threadStore.addMessage(ctx, threadId, { role: 'user', content: displayMessage });
     } catch (err: any) {
         return res.status(500).json({ error: err.message });
     }
@@ -142,7 +177,7 @@ export const agentChat = async (req: AuthRequest, res: Response) => {
         const result = await runAgent({
             ctx,
             model,
-            messages: [...priorState, { role: 'user', content: message }],
+            messages: [...priorState, { role: 'user', content: modelMessage }],
             orgName: await getOrgName(ctx.organizationId),
             emit,
             signal: abort.signal,

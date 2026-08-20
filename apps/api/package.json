@@ -24,7 +24,8 @@
         "postgres": "^3.4.8",
         "posthog-node": "^5.39.2",
         "resend": "^6.9.1",
-        "shared": "workspace:*"
+        "shared": "workspace:*",
+        "xlsx": "^0.18.5"
     },
     "devDependencies": {
         "@types/axios": "^0.14.4",

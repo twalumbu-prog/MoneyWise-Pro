@@ -27,9 +27,18 @@ const WALL_CLOCK_MS = 110_000;
  * Output ceiling per step. Without this OpenRouter bills against the model's
  * maximum (64k on Sonnet) — it pre-authorises the full amount, so an unset
  * value both risks runaway cost and gets rejected outright on a low balance.
- * 2000 is comfortably more than any answer this assistant should produce.
+ *
+ * Raised from the original 2000 on 2026-08-19: a tool-heavy answer (prose +
+ * a render_table call carrying real row data as tool-call arguments) was
+ * genuinely hitting 2000 mid-generation on ordinary questions, not just large
+ * ones — "list the unaccounted transactions" cut off before finishing the
+ * table call. The loop now auto-continues a truncated step either way (see
+ * `finishReason === 'length'` below), so this number is about how often that
+ * has to happen, not correctness. 2000 was sized for a credit-constrained
+ * account; that constraint no longer holds day-to-day (Sonnet 4.5 is the
+ * model actually in use), so there's no longer a reason to keep it this tight.
  */
-const MAX_OUTPUT_TOKENS = 2000;
+const MAX_OUTPUT_TOKENS = 4000;
 /** Tool payloads above this are truncated before entering context. */
 const MAX_TOOL_RESULT_CHARS = 12_000;
 
@@ -109,6 +118,11 @@ export async function runAgent(params: {
     const deadline = Date.now() + WALL_CLOCK_MS;
     const widgets: any[] = [];
     let fullText = '';
+    // Set when a step ends because the provider cut it off at MAX_OUTPUT_TOKENS
+    // (finish_reason "length"), not because the model actually finished. The
+    // next step continues that same answer instead of starting a fresh one —
+    // see the `finishReason === 'length'` branch below for why this exists.
+    let continuingTruncatedAnswer = false;
 
     for (let step = 0; step < MAX_STEPS; step++) {
         if (Date.now() > deadline) {
@@ -134,6 +148,8 @@ export async function runAgent(params: {
                 tools: isFinalStep ? undefined : tools,
                 extraSystem: isFinalStep
                     ? 'You have no more tool calls available. Answer now using the data you have already gathered, and say plainly if something remains unverified.'
+                    : continuingTruncatedAnswer
+                    ? 'Your previous reply was cut off by a length limit before you finished. Continue writing exactly where it left off — no greeting, no re-summary, no repeating anything already written. If you were mid-word, finish the word first.'
                     : undefined,
                 emit,
                 signal,
@@ -149,7 +165,10 @@ export async function runAgent(params: {
             return { messages: strip(messages), text: fullText, widgets, stopReason: 'error' };
         }
 
-        if (turn.text) fullText += (fullText ? '\n\n' : '') + turn.text;
+        // A continuation reads as one unbroken answer, not a new paragraph —
+        // that's the whole point of resuming it. Every other case (after a
+        // tool round, e.g.) genuinely is a fresh paragraph of the reply.
+        if (turn.text) fullText += (fullText && !continuingTruncatedAnswer ? '\n\n' : '') + turn.text;
 
         const assistantMessage: Extract<ChatMessage, { role: 'assistant' }> = {
             role: 'assistant',
@@ -176,9 +195,21 @@ export async function runAgent(params: {
                 return { messages: strip(messages), text: fullText, widgets, stopReason: 'error' };
             }
 
+            // The provider stopped this step because it ran out of room, not
+            // because the model was actually finished — treating that as
+            // "complete" is exactly the bug that made replies end mid-sentence
+            // with the user never told why. Loop again to finish the thought;
+            // MAX_STEPS still bounds this like everything else.
+            if (turn.finishReason === 'length' && !isFinalStep) {
+                continuingTruncatedAnswer = true;
+                continue;
+            }
+
             emit({ type: 'done', reason: 'complete' });
             return { messages: strip(messages), text: fullText, widgets, stopReason: 'complete' };
         }
+
+        continuingTruncatedAnswer = false;
 
         for (const [callIndex, call] of turn.toolCalls.entries()) {
             const tool = getTool(call.function.name);
@@ -296,6 +327,12 @@ interface StreamedTurn {
     toolCalls: ToolCall[];
     /** The model wrote a tool call into the prose; `text` is not an answer. */
     leaked: boolean;
+    /**
+     * Why the provider stopped generating — 'length' means MAX_OUTPUT_TOKENS
+     * was hit mid-answer, not that the model chose to stop. Null if the
+     * provider never sent one (some don't on every chunk).
+     */
+    finishReason: string | null;
 }
 
 /**
@@ -383,6 +420,7 @@ async function streamTurn(params: {
     // Emission bookkeeping for the hold-back window above.
     let emittedUpTo = 0;
     let leaked = false;
+    let finishReason: string | null = null;
     // Tool calls stream in fragments keyed by index; name and arguments arrive
     // across many chunks and must be concatenated in order.
     const partial = new Map<number, { id: string; name: string; args: string }>();
@@ -418,6 +456,12 @@ async function streamTurn(params: {
             } catch {
                 continue; // partial JSON across chunk boundary; the buffer keeps the rest
             }
+
+            // Read before the `!delta` bail-out below: some providers send
+            // finish_reason on a final chunk whose delta is empty ({}, still
+            // truthy) but others send it on a chunk with no delta key at all.
+            const reason = parsed.choices?.[0]?.finish_reason;
+            if (reason) finishReason = reason;
 
             const delta = parsed.choices?.[0]?.delta;
             if (!delta) continue;
@@ -472,7 +516,7 @@ async function streamTurn(params: {
         params.emit({ type: 'text', delta: text.slice(emittedUpTo) });
     }
 
-    return { text: leaked ? '' : text, toolCalls, leaked };
+    return { text: leaked ? '' : text, toolCalls, leaked, finishReason };
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

@@ -16,6 +16,7 @@
  */
 
 import { supabase } from '../../../lib/supabase';
+import { ledgerService } from '../../ledger.service';
 import { AgentContext, ToolDefinition, ToolProposal } from '../types';
 
 const kwacha = (n: number) =>
@@ -403,6 +404,89 @@ const updateScheduledItem: ToolDefinition = {
     },
 };
 
+// ─── Ledger ──────────────────────────────────────────────────────────────────
+
+/**
+ * Mirrors the "account it" flow the Cashbook UI uses (narrateEntry /
+ * updateEntryAccount in cashbook.controller.ts): setting account_id also
+ * moves status to COMPLETED, and the GL is re-posted so the entry leaves
+ * Suspense immediately rather than on the next sync.
+ */
+const categorizeTransaction: ToolDefinition = {
+    name: 'categorize_transaction',
+    description:
+        'Assign a chart-of-accounts account to a cashbook entry that has none yet — the same ' +
+        'action as "accounting for" a transaction in the Cashbook UI. Find the entry id and ' +
+        'candidate accounts with search_transactions (unaccountedOnly: true) and list_accounts ' +
+        'first. This does not move money; it only classifies an entry that already exists.',
+    effect: 'write',
+    allowedRoles: ['ADMIN', 'AUTHORISER', 'ACCOUNTANT'],
+    parameters: {
+        type: 'object',
+        properties: {
+            entryId: { type: 'string', description: 'Cashbook entry UUID, from search_transactions.' },
+            accountCode: { type: 'string', description: 'Account code from list_accounts, e.g. "5010".' },
+        },
+        required: ['entryId', 'accountCode'],
+    },
+    handler: async (ctx, args) => {
+        const { data: entry } = await supabase
+            .from('cashbook_entries')
+            .select('id, date, description, debit, credit, account_id, status')
+            .eq('id', args.entryId)
+            .eq('organization_id', ctx.organizationId)
+            .maybeSingle();
+        if (!entry) invalid('No cashbook entry with that id exists in this organisation.');
+
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('id, code, name')
+            .eq('organization_id', ctx.organizationId)
+            .eq('code', args.accountCode)
+            .maybeSingle();
+        if (!account) invalid(`No active account with code "${args.accountCode}". Check list_accounts.`);
+
+        const amount = Math.max(Number(entry.debit ?? 0), Number(entry.credit ?? 0));
+
+        return propose(
+            `Classify "${entry.description}" against ${account.name}`,
+            [
+                { label: 'Date', value: entry.date },
+                { label: 'Amount', value: kwacha(amount) },
+                { label: 'Account', value: `${account.code} — ${account.name}` },
+                { label: 'Status after', value: 'COMPLETED' },
+            ]
+        );
+    },
+    execute: async (ctx, args) => {
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('id, code, name')
+            .eq('organization_id', ctx.organizationId)
+            .eq('code', args.accountCode)
+            .maybeSingle();
+        if (!account) throw new Error(`Account "${args.accountCode}" no longer exists.`);
+
+        const { data, error } = await supabase
+            .from('cashbook_entries')
+            .update({ account_id: account.id, status: 'COMPLETED' })
+            .eq('id', args.entryId)
+            .eq('organization_id', ctx.organizationId)
+            .select('id, description, account_id, status')
+            .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!data) throw new Error('Entry was not updated — it may have been deleted.');
+
+        // Fire-and-forget, matching the UI's own behaviour: categorization is
+        // saved immediately, GL posting follows without blocking the response.
+        ledgerService
+            .repostForCashbookEntry(args.entryId)
+            .catch(err => console.error(`[Agent] repost after categorization failed for ${args.entryId}:`, err?.message));
+
+        return { updated: true, entry: data, account: { code: account.code, name: account.name } };
+    },
+};
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 const ORG_FIELDS = ['name', 'email', 'phone', 'address', 'website', 'tax_id'] as const;
@@ -465,5 +549,6 @@ export const writeTools: ToolDefinition[] = [
     updateRequisition,
     createScheduledItem,
     updateScheduledItem,
+    categorizeTransaction,
     updateOrgSettings,
 ];

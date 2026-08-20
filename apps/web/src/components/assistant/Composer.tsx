@@ -10,9 +10,11 @@
  */
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { ArrowUp, Check, ChevronDown, Mic, Square } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, Loader2, Mic, Paperclip, Square, X } from 'lucide-react';
 import type { AssistantModel } from '../../lib/agentClient';
 import { VendorLogo } from './VendorLogos';
+
+const ACCEPTED_ATTACHMENT_TYPES = '.csv,.xlsx,.xls';
 
 const TIER_STYLE: Record<string, string> = {
     fast: 'bg-emerald-50 text-emerald-600',
@@ -38,15 +40,23 @@ interface Props {
     onSelectModel: (id: string) => void;
     placeholder?: string;
     autoFocus?: boolean;
+    /** Filename of a file attached to the next message, once uploaded. */
+    attachmentName?: string | null;
+    /** True while the file is uploading — the attach button shows a spinner and can't be re-triggered. */
+    attaching?: boolean;
+    onAttach: (file: File) => void;
+    onRemoveAttachment: () => void;
 }
 
 export const Composer: React.FC<Props> = ({
     value, onChange, onSend, onStop, busy, disabled,
     models, selectedModel, onSelectModel, placeholder, autoFocus,
+    attachmentName, attaching, onAttach, onRemoveAttachment,
 }) => {
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // ── Speech-to-text ───────────────────────────────────────────────────────
 
@@ -196,7 +206,9 @@ export const Composer: React.FC<Props> = ({
     }, [menuOpen]);
 
     const active = models.find(m => m.id === selectedModel);
-    const canSend = value.trim().length > 0 && !busy && !disabled;
+    // A message with just an attachment and no text is a perfectly normal send
+    // ("here's my statement") — text isn't required once a file is attached.
+    const canSend = (value.trim().length > 0 || !!attachmentName) && !busy && !disabled && !attaching;
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (e.key === 'Enter' && !e.shiftKey) {
@@ -205,8 +217,36 @@ export const Composer: React.FC<Props> = ({
         }
     };
 
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // allow re-selecting the same file later
+        if (file) onAttach(file);
+    };
+
     return (
         <div className="rounded-[24px] border border-gray-200/70 bg-white shadow-[0_4px_28px_rgba(0,0,0,0.06)] transition-shadow focus-within:border-blue-200 focus-within:shadow-[0_4px_32px_rgba(0,106,255,0.10)]">
+            {(attachmentName || attaching) && (
+                <div className="flex items-center gap-2 px-4 pt-3">
+                    <span className="flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-[#006AFF]">
+                        {attaching ? <Loader2 size={12} className="animate-spin" /> : <Paperclip size={12} />}
+                        <span className="max-w-[220px] truncate">{attaching ? 'Uploading…' : attachmentName}</span>
+                        {!attaching && (
+                            <button onClick={onRemoveAttachment} title="Remove attachment" className="ml-0.5 -mr-0.5 rounded-full p-0.5 hover:bg-blue-100">
+                                <X size={11} />
+                            </button>
+                        )}
+                    </span>
+                </div>
+            )}
+
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept={ACCEPTED_ATTACHMENT_TYPES}
+                onChange={handleFileChange}
+                className="hidden"
+            />
+
             <textarea
                 ref={textareaRef}
                 value={value}
@@ -277,6 +317,17 @@ export const Composer: React.FC<Props> = ({
 
                 {/* Right-side action buttons */}
                 <div className="flex items-center gap-1.5">
+                    {/* Attach a bank statement — hidden while AI is generating or one is already attached */}
+                    {!busy && !attachmentName && !attaching && (
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            title="Attach a bank statement (CSV or Excel)"
+                            className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-gray-500 transition-colors hover:bg-gray-200 hover:text-gray-700"
+                        >
+                            <Paperclip size={15} />
+                        </button>
+                    )}
+
                     {/* Mic / speech-to-text — hidden while AI is generating */}
                     {!busy && (
                         <button

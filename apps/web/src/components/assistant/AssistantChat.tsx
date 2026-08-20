@@ -13,10 +13,20 @@ import { ArrowLeft, History, PenSquare, Trash2 } from 'lucide-react';
 import {
     agentClient, AgentEvent, AssistantModel, Proposal, ThreadSummary, Widget,
 } from '../../lib/agentClient';
+import { supabase } from '../../lib/supabase';
+import { useAuth } from '../../context/AuthContext';
 import { ChatMessage, MessageBubble } from './MessageBubble';
 import { ApprovalCard } from './ApprovalCard';
 import { Composer } from './Composer';
 import { Step } from './ToolTimeline';
+
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024; // matches the bank-statements bucket's own limit
+const ATTACHMENT_EXTENSIONS = /\.(csv|xlsx|xls)$/i;
+
+interface Attachment {
+    path: string;
+    filename: string;
+}
 
 interface PendingApproval {
     callId: string;
@@ -48,8 +58,11 @@ interface Props {
 }
 
 export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
+    const { organizationId } = useAuth();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
+    const [attachment, setAttachment] = useState<Attachment | null>(null);
+    const [attaching, setAttaching] = useState(false);
     const [busy, setBusy] = useState(false);
     const [threadId, setThreadId] = useState<string | null>(null);
     const [models, setModels] = useState<AssistantModel[]>([]);
@@ -186,18 +199,25 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
 
     const send = useCallback(async (text: string) => {
         const trimmed = text.trim();
-        if (!trimmed || busy) return;
+        // A bare attachment with no words ("here's my statement") is a normal send.
+        if ((!trimmed && !attachment) || busy) return;
 
         const assistantId = uid();
+        const outgoingAttachment = attachment;
         setInput('');
+        setAttachment(null);
         setPending(null);
         setBusy(true);
         setViewMode('chat');
         stickToBottom.current = true;
 
+        const displayContent = outgoingAttachment
+            ? [trimmed, `📎 ${outgoingAttachment.filename}`].filter(Boolean).join('\n\n')
+            : trimmed;
+
         setMessages(prev => [
             ...prev,
-            { id: uid(), role: 'user', content: trimmed, widgets: [], steps: [] },
+            { id: uid(), role: 'user', content: displayContent, widgets: [], steps: [] },
             { id: assistantId, role: 'assistant', content: '', widgets: [], steps: [], streaming: true, activity: 'thinking' },
         ]);
 
@@ -205,7 +225,12 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
         abortRef.current = controller;
 
         await agentClient.chat(
-            { message: trimmed, threadId, model },
+            {
+                message: trimmed || `I've attached ${outgoingAttachment?.filename}.`,
+                threadId,
+                model,
+                attachment: outgoingAttachment,
+            },
             e => applyEvent(assistantId, e),
             controller.signal
         );
@@ -214,7 +239,42 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
         setBusy(false);
         abortRef.current = null;
         refreshThreads();
-    }, [busy, threadId, model, applyEvent, refreshThreads]);
+    }, [busy, threadId, model, attachment, applyEvent, refreshThreads]);
+
+    // ── Attachments ──────────────────────────────────────────────────────────
+
+    const handleAttach = useCallback(async (file: File) => {
+        if (!ATTACHMENT_EXTENSIONS.test(file.name)) {
+            // eslint-disable-next-line no-alert
+            alert('Please attach a CSV or Excel (.xlsx/.xls) bank statement export.');
+            return;
+        }
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+            // eslint-disable-next-line no-alert
+            alert('That file is larger than 20MB. Export a shorter date range and try again.');
+            return;
+        }
+        if (!organizationId) return;
+
+        setAttaching(true);
+        try {
+            const safeName = file.name.replace(/[^a-zA-Z0-9_.\-]/g, '_');
+            const path = `${organizationId}/${Date.now()}-${safeName}`;
+            const { error } = await supabase.storage.from('bank-statements').upload(path, file, {
+                contentType: file.type || undefined,
+                upsert: false,
+            });
+            if (error) throw error;
+            setAttachment({ path, filename: file.name });
+        } catch (err: any) {
+            // eslint-disable-next-line no-alert
+            alert(`Could not upload that file: ${err?.message ?? 'unknown error'}`);
+        } finally {
+            setAttaching(false);
+        }
+    }, [organizationId]);
+
+    const removeAttachment = useCallback(() => setAttachment(null), []);
 
     const decide = useCallback(async (approved: boolean) => {
         if (!pending || !threadId) return;
@@ -259,6 +319,7 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
         setPending(null);
         setBusy(false);
         setInput('');
+        setAttachment(null);
         setHistoryOpen(false);
         setViewMode('hero');
         setTitle(NEW_CHAT_TITLE);
@@ -269,6 +330,7 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
 
     const openThread = async (id: string) => {
         setHistoryOpen(false);
+        setAttachment(null); // an in-progress attachment belongs to the conversation being left
         try {
             const data = await agentClient.thread(id);
             setThreadId(data.threadId);
@@ -439,6 +501,10 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
                             models={models}
                             selectedModel={model}
                             onSelectModel={setModel}
+                            attachmentName={attachment?.filename ?? null}
+                            attaching={attaching}
+                            onAttach={handleAttach}
+                            onRemoveAttachment={removeAttachment}
                             autoFocus
                         />
 
@@ -499,6 +565,10 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
                                 models={models}
                                 selectedModel={model}
                                 onSelectModel={setModel}
+                                attachmentName={attachment?.filename ?? null}
+                                attaching={attaching}
+                                onAttach={handleAttach}
+                                onRemoveAttachment={removeAttachment}
                                 placeholder="Ask a follow-up…"
                             />
                         </div>
