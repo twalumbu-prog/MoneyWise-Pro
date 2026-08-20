@@ -10,6 +10,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { riskClassifier } from '../../ai/risk.classifier';
+import { resolveEntryAccounting } from './accounting.util';
 import { AgentContext, ToolDefinition } from '../types';
 
 const MAX_ROWS = 200;
@@ -209,10 +210,13 @@ const searchTransactions: ToolDefinition = {
     description:
         'Search the cashbook ledger — every money-in and money-out entry. Use this for ' +
         'questions about payments received, spending, specific vendors or bank activity. ' +
-        'debit = money in, credit = money out. Every result includes its entry id and ' +
-        'account_id (null when the entry has not yet been classified against the chart of ' +
-        'accounts) — pass unaccountedOnly to find the ones still needing that. Use ' +
-        'categorize_transaction to assign an account once you have the id.',
+        'debit = money in, credit = money out. Every result includes its entry id and its ' +
+        'true accounted status, resolved from the posted general ledger (not just whether the ' +
+        'entry itself carries an account — a requisition-driven expense is classified through ' +
+        'its line items, not the transaction row, and this correctly recognises that) — pass ' +
+        'unaccountedOnly to find the ones still genuinely needing classification. Use ' +
+        'categorize_transaction to assign an account once you have the id, for entries with no ' +
+        'requisition attached — a requisition-linked entry is reclassified via its line items instead.',
     effect: 'read',
     parameters: {
         type: 'object',
@@ -227,7 +231,7 @@ const searchTransactions: ToolDefinition = {
             },
             unaccountedOnly: {
                 type: 'boolean',
-                description: 'Only entries with no account_id yet — i.e. not classified against the chart of accounts.',
+                description: 'Only entries whose posted journal still has an amount sitting in Suspense — i.e. genuinely not fully classified yet.',
             },
             minAmount: { type: 'number' },
             ...dateRangeProps,
@@ -248,7 +252,7 @@ const searchTransactions: ToolDefinition = {
 
         let q = supabase
             .from('cashbook_entries')
-            .select('id, date, description, debit, credit, balance_after, entry_type, reference_number, status, account_id, accounts(name)')
+            .select('id, date, description, debit, credit, balance_after, entry_type, reference_number, status, requisition_id')
             .eq('organization_id', ctx.organizationId)
             .order('date', { ascending: false })
             .limit(Math.min(args.limit ?? 50, MAX_ROWS));
@@ -264,14 +268,26 @@ const searchTransactions: ToolDefinition = {
         if (args.endDate) q = q.lte('date', args.endDate);
         if (args.direction === 'in') q = q.gt('debit', 0);
         if (args.direction === 'out') q = q.gt('credit', 0);
-        if (args.unaccountedOnly) q = q.is('account_id', null);
 
         const { data, error } = await q;
         if (error) throw new Error(error.message);
 
-        const rows = (data ?? [])
-            .filter(r => args.minAmount == null || Math.max(money(r.debit), money(r.credit)) >= args.minAmount)
-            .map((r: any) => ({
+        let candidates = (data ?? []).filter(r =>
+            args.minAmount == null || Math.max(money(r.debit), money(r.credit)) >= args.minAmount
+        );
+
+        // Resolved from the posted journal, not from cashbook_entries.account_id
+        // directly — see accounting.util.ts for why that column alone is wrong
+        // for any entry with a requisition attached.
+        const accounting = await resolveEntryAccounting(ctx.organizationId, candidates.map(r => r.id));
+
+        if (args.unaccountedOnly) {
+            candidates = candidates.filter(r => !(accounting.get(r.id)?.accounted ?? false));
+        }
+
+        const rows = candidates.map((r: any) => {
+            const status = accounting.get(r.id);
+            return {
                 id: r.id,
                 date: r.date,
                 description: r.description,
@@ -281,8 +297,10 @@ const searchTransactions: ToolDefinition = {
                 entry_type: r.entry_type,
                 reference_number: r.reference_number,
                 status: r.status,
-                account: r.accounts?.name ?? null,
-            }));
+                account: status?.dominantAccountName ?? null,
+                accounted: status?.accounted ?? false,
+            };
+        });
 
         return {
             count: rows.length,
@@ -346,9 +364,65 @@ const aggregateSpending: ToolDefinition = {
             };
         }
 
+        // Account grouping reads the posted general ledger (journal_lines),
+        // not cashbook_entries.account_id — that column is only ever set for
+        // entries with no requisition attached (see accounting.util.ts). A
+        // requisition-driven expense's real classification is split across
+        // its journal lines instead, and journal_lines already has that
+        // computed correctly, including a single cashbook entry landing
+        // partly in a real account and partly in Suspense. Reading it here
+        // instead of re-deriving it is what makes this match reality rather
+        // than inflating "Uncategorised" with spend that's actually classified.
+        if (args.groupBy === 'account') {
+            let jq = supabase
+                .from('journal_lines')
+                .select('debit, credit, accounts(name, type), journal_entries!inner(entry_date, organization_id, source_type)')
+                .eq('journal_entries.organization_id', ctx.organizationId)
+                .eq('journal_entries.source_type', 'CASHBOOK')
+                .limit(20000);
+            if (args.startDate) jq = jq.gte('journal_entries.entry_date', args.startDate);
+            if (args.endDate) jq = jq.lte('journal_entries.entry_date', args.endDate);
+
+            const { data: lines, error: jErr } = await jq;
+            if (jErr) throw new Error(jErr.message);
+
+            const jBuckets = new Map<string, { total: number; count: number }>();
+            for (const l of (lines ?? []) as any[]) {
+                // The cash/wallet leg of every entry is an ASSET account —
+                // excluding it is what keeps this a spend/income breakdown
+                // rather than double-counting the cash movement itself.
+                if (l.accounts?.type === 'ASSET') continue;
+
+                const amount =
+                    direction === 'in' ? money(l.credit)
+                    : direction === 'out' ? money(l.debit)
+                    : money(l.debit) + money(l.credit);
+                if (amount === 0) continue;
+
+                const label = l.accounts?.name ?? 'Uncategorised';
+                const cur = jBuckets.get(label) ?? { total: 0, count: 0 };
+                cur.total += amount;
+                cur.count += 1;
+                jBuckets.set(label, cur);
+            }
+
+            const groups = [...jBuckets.entries()]
+                .map(([label, v]) => ({ label, total: Number(v.total.toFixed(2)), count: v.count }))
+                .sort((a, b) => b.total - a.total);
+
+            return {
+                group_by: 'account',
+                source: 'journal_lines (the posted ledger, not the raw cashbook row)',
+                direction,
+                period: { startDate: args.startDate, endDate: args.endDate },
+                grand_total: Number(groups.reduce((s, g) => s + g.total, 0).toFixed(2)),
+                groups,
+            };
+        }
+
         let q = supabase
             .from('cashbook_entries')
-            .select('date, debit, credit, account_id, wallet_id')
+            .select('date, debit, credit, wallet_id')
             .eq('organization_id', ctx.organizationId)
             .neq('status', 'PENDING')
             .limit(10000);
@@ -396,15 +470,11 @@ const aggregateSpending: ToolDefinition = {
     },
 };
 
+// 'account' is handled separately, above (reads journal_lines, not this
+// resolver) — this only ever runs for 'wallet' now.
 async function buildLabelResolver(ctx: AgentContext, groupBy: string): Promise<Map<string, string>> {
     const map = new Map<string, string>();
-    if (groupBy === 'account') {
-        const { data } = await supabase
-            .from('accounts')
-            .select('id, name')
-            .eq('organization_id', ctx.organizationId);
-        for (const a of data ?? []) map.set(a.id, a.name);
-    } else if (groupBy === 'wallet') {
+    if (groupBy === 'wallet') {
         const { data } = await supabase
             .from('organization_wallets')
             .select('id, name')
@@ -426,7 +496,6 @@ function bucketKey(groupBy: string, row: any, labels: Map<string, string>): stri
             d.setUTCDate(d.getUTCDate() - day);
             return d.toISOString().slice(0, 10);
         }
-        case 'account': return labels.get(row.account_id) ?? 'Uncategorised';
         case 'wallet': return labels.get(row.wallet_id) ?? 'Main';
         default: return 'All';
     }
@@ -513,7 +582,7 @@ const flagRiskyTransactions: ToolDefinition = {
     handler: async (ctx, args) => {
         let q = supabase
             .from('cashbook_entries')
-            .select('id, date, description, debit, credit, reference_number, accounts(name)')
+            .select('id, date, description, debit, credit, reference_number')
             .eq('organization_id', ctx.organizationId)
             .neq('status', 'PENDING')
             .order('date', { ascending: false })
@@ -524,18 +593,26 @@ const flagRiskyTransactions: ToolDefinition = {
         const { data, error } = await q;
         if (error) throw new Error(error.message);
 
+        // Resolved from the posted journal (see accounting.util.ts) — a plain
+        // accounts(name) join on cashbook_entries.account_id misses every
+        // requisition-driven entry, which would silently drop the "sensitive
+        // account name" signal (payroll, transfer, capital…) for most of an
+        // org's actual expense transactions.
+        const accounting = await resolveEntryAccounting(ctx.organizationId, (data ?? []).map(r => r.id));
+
         const minLevel = args.minLevel ?? 'MEDIUM';
         const rank: Record<string, number> = { LOW: 0, MEDIUM: 1, HIGH: 2 };
 
         const flagged = (data ?? [])
             .map((r: any) => {
                 const amount = Math.max(money(r.debit), money(r.credit));
+                const accountName = accounting.get(r.id)?.dominantAccountName ?? undefined;
                 const assessment = riskClassifier.assess({
                     description: r.description ?? '',
                     amount,
-                    accountName: r.accounts?.name,
+                    accountName,
                 });
-                return { row: r, amount, assessment };
+                return { row: r, amount, assessment, accountName };
             })
             .filter(x => rank[x.assessment.riskLevel] >= rank[minLevel])
             .sort((a, b) => rank[b.assessment.riskLevel] - rank[a.assessment.riskLevel] || b.amount - a.amount)
@@ -546,7 +623,7 @@ const flagRiskyTransactions: ToolDefinition = {
                 description: x.row.description,
                 amount: x.amount,
                 direction: money(x.row.debit) > 0 ? 'in' : 'out',
-                account: x.row.accounts?.name ?? 'Unclassified',
+                account: x.accountName ?? 'Unclassified',
                 reference_number: x.row.reference_number,
                 risk_level: x.assessment.riskLevel,
                 reasons: x.assessment.reasons,

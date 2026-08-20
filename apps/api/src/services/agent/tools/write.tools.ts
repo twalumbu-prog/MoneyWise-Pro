@@ -418,7 +418,10 @@ const categorizeTransaction: ToolDefinition = {
         'Assign a chart-of-accounts account to a cashbook entry that has none yet — the same ' +
         'action as "accounting for" a transaction in the Cashbook UI. Find the entry id and ' +
         'candidate accounts with search_transactions (unaccountedOnly: true) and list_accounts ' +
-        'first. This does not move money; it only classifies an entry that already exists.',
+        'first. This does not move money; it only classifies an entry that already exists. Only ' +
+        'works for entries with no requisition attached — a requisition-driven entry is ' +
+        'classified through its line items instead, and this tool will say so rather than write ' +
+        'somewhere the ledger does not look.',
     effect: 'write',
     allowedRoles: ['ADMIN', 'AUTHORISER', 'ACCOUNTANT'],
     parameters: {
@@ -432,11 +435,24 @@ const categorizeTransaction: ToolDefinition = {
     handler: async (ctx, args) => {
         const { data: entry } = await supabase
             .from('cashbook_entries')
-            .select('id, date, description, debit, credit, account_id, status')
+            .select('id, date, description, debit, credit, account_id, status, requisition_id')
             .eq('id', args.entryId)
             .eq('organization_id', ctx.organizationId)
             .maybeSingle();
         if (!entry) invalid('No cashbook entry with that id exists in this organisation.');
+        // The ledger resolves a requisition-linked entry's classification
+        // from its line items, not from cashbook_entries.account_id — see
+        // ledger.service.ts's repostForCashbookEntry, which checks
+        // requisition_id *before* account_id and never falls through to it
+        // when one is present. Writing here would silently do nothing to the
+        // actual GL posting while telling the user it worked.
+        if (entry.requisition_id) {
+            invalid(
+                `This entry belongs to a requisition (id ${entry.requisition_id.slice(0, 8)}) and is classified through ` +
+                `that requisition's line items, not directly. Tell the user to reclassify it from the requisition's ` +
+                `expense details in the app rather than through this tool.`
+            );
+        }
 
         const { data: account } = await supabase
             .from('accounts')
@@ -459,6 +475,21 @@ const categorizeTransaction: ToolDefinition = {
         );
     },
     execute: async (ctx, args) => {
+        // Re-checked at commit time, same as the accountability block on
+        // create_requisition: nothing prevents the entry from having gained
+        // a requisition link between proposal and approval, and this write
+        // would be silently ineffective on one either way.
+        const { data: entry } = await supabase
+            .from('cashbook_entries')
+            .select('requisition_id')
+            .eq('id', args.entryId)
+            .eq('organization_id', ctx.organizationId)
+            .maybeSingle();
+        if (!entry) throw new Error('Entry no longer exists.');
+        if (entry.requisition_id) {
+            throw new Error('This entry is linked to a requisition and must be reclassified through its line items, not directly.');
+        }
+
         const { data: account } = await supabase
             .from('accounts')
             .select('id, code, name')
