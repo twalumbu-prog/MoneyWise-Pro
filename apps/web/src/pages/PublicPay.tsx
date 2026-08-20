@@ -1600,7 +1600,7 @@ Status: VERIFIED`;
                 <div className="flex-1 flex flex-col gap-1.5 min-w-0 ml-4">
                     {/* Name + price row */}
                     <div className="flex flex-col">
-                        <span className="text-slate-900 text-base font-semibold truncate leading-snug">{product.name}</span>
+                        <span className="text-[#55595E] text-base font-semibold truncate leading-snug">{product.name}</span>
                         <div className="flex items-center gap-2 mt-0.5">
                             {isDonation ? (
                                 isInCart ? (
@@ -1801,7 +1801,7 @@ Status: VERIFIED`;
                 {/* Info + action */}
                 <div className="pt-3 flex flex-col gap-2.5">
                     <div className="flex flex-col gap-0.5 min-w-0">
-                        <span className="text-slate-500 text-[11px] truncate">{product.name}</span>
+                        <span className="text-[#55595E] text-[11px] truncate">{product.name}</span>
                         <span className="text-slate-900 text-sm font-bold">
                             {isDonation
                                 ? 'Open amount'
@@ -1823,7 +1823,7 @@ Status: VERIFIED`;
                             className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
                                 isInCart
                                     ? 'bg-black border-black text-white'
-                                    : 'border-slate-300 text-black hover:bg-black hover:text-white'
+                                    : 'border-[#55595E] text-black hover:bg-black hover:text-white'
                             }`}
                         >
                             {isInCart ? <Check size={13} strokeWidth={2.5} /> : <CalendarDays size={13} />}
@@ -1875,7 +1875,7 @@ Status: VERIFIED`;
                                         className={`w-full py-2.5 rounded-lg border text-[11px] font-medium flex items-center justify-center gap-1.5 transition-colors active:scale-95 ${
                                             isInCart && isDonation
                                                 ? 'bg-black border-black text-white'
-                                                : 'border-slate-300 text-black hover:bg-black hover:text-white'
+                                                : 'border-[#55595E] text-black hover:bg-black hover:text-white'
                                         }`}
                                     >
                                         {isInCart && isDonation ? (
@@ -1904,13 +1904,13 @@ Status: VERIFIED`;
         if (!org) return null;
         if (org.logo_url) {
             return (
-                <div className={`${sizeClass} rounded-2xl overflow-hidden shadow-md bg-white border border-slate-100/50 flex-shrink-0 animate-in fade-in zoom-in duration-300`}>
+                <div className={`${sizeClass} rounded-2xl overflow-hidden bg-white flex-shrink-0 animate-in fade-in zoom-in duration-300`}>
                     <img src={org.logo_url} alt={`${org.name} Logo`} className="w-full h-full object-cover" />
                 </div>
             );
         }
         return (
-            <div className={`${sizeClass} rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black ${textClass} shadow-md uppercase flex-shrink-0`}>
+            <div className={`${sizeClass} rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white font-black ${textClass} uppercase flex-shrink-0`}>
                 {org.name.charAt(0)}
             </div>
         );
@@ -2273,38 +2273,41 @@ Status: VERIFIED`;
                             )}
                         </div>
 
-                        {/* Subtotal + Go to Cart (pinned) */}
+                        {/* Subtotal + Go to Cart (pinned) — only once something's in the cart */}
                         <div className="mt-auto bg-white border-t border-slate-100 px-6 pt-4 pb-5 space-y-3 flex-shrink-0">
-                            <div className="space-y-1">
-                                <div className="flex justify-between items-center">
-                                    <span className="text-xs font-normal text-slate-500">Items Added</span>
-                                    <span className="text-xs font-normal text-slate-700">{cartItemCount} Item{cartItemCount === 1 ? '' : 's'}</span>
-                                </div>
-                                <div className="flex justify-between items-center">
-                                    <span className="text-base font-bold text-slate-900">Subtotal</span>
-                                    <span className="text-base font-bold text-slate-900">
-                                        K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                    </span>
-                                </div>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setError(null);
-                                    posthog.capture('checkout_initiated', {
-                                        wallet_id,
-                                        organization_name: org?.name,
-                                        item_count: cartItemCount,
-                                        subtotal,
-                                    });
-                                    setStep('CATALOG');
-                                }}
-                                disabled={cartItemCount === 0}
-                                className="w-full bg-black hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
-                            >
-                                <ShoppingBag size={18} />
-                                <span>Go to Cart</span>
-                                <ArrowRight size={18} strokeWidth={2.5} />
-                            </button>
+                            {cartItemCount > 0 && (
+                                <>
+                                    <div className="space-y-1">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-xs font-normal text-slate-500">Items Added</span>
+                                            <span className="text-xs font-normal text-slate-700">{cartItemCount} Item{cartItemCount === 1 ? '' : 's'}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-base font-bold text-slate-900">Subtotal</span>
+                                            <span className="text-base font-bold text-slate-900">
+                                                K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={() => {
+                                            setError(null);
+                                            posthog.capture('checkout_initiated', {
+                                                wallet_id,
+                                                organization_name: org?.name,
+                                                item_count: cartItemCount,
+                                                subtotal,
+                                            });
+                                            setStep('CATALOG');
+                                        }}
+                                        className="w-full bg-black hover:bg-slate-800 text-white py-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2.5"
+                                    >
+                                        <ShoppingBag size={18} />
+                                        <span>Go to Cart</span>
+                                        <ArrowRight size={18} strokeWidth={2.5} />
+                                    </button>
+                                </>
+                            )}
                             <div className="text-center">
                                 <button
                                     type="button"
