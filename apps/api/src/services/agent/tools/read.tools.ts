@@ -157,8 +157,10 @@ const getRequisitionDetails: ToolDefinition = {
     name: 'get_requisition_details',
     description:
         'Full detail for one or more requisitions, including every line item with its ' +
-        'quantity, unit price, actual amount and expense account. Pass several ids at once ' +
-        'rather than calling this repeatedly.',
+        'quantity, unit price, actual amount, expense account, and its own id — the id a ' +
+        'line item needs is here, not on search_transactions\' results. accounted: false on a ' +
+        'line item means categorize_requisition_expense can classify it. Pass several ' +
+        'requisition ids at once rather than calling this repeatedly.',
     effect: 'read',
     parameters: {
         type: 'object',
@@ -189,7 +191,7 @@ const getRequisitionDetails: ToolDefinition = {
 
         const { data: items } = await supabase
             .from('line_items')
-            .select('requisition_id, description, quantity, unit_price, estimated_amount, actual_amount, qb_account_name, payment_method')
+            .select('id, requisition_id, description, quantity, unit_price, estimated_amount, actual_amount, account_id, qb_account_name, payment_method, accounts(name)')
             .in('requisition_id', ownedIds);
 
         return {
@@ -197,7 +199,11 @@ const getRequisitionDetails: ToolDefinition = {
                 ...r,
                 line_items: (items ?? [])
                     .filter(i => i.requisition_id === r.id)
-                    .map(({ requisition_id, ...rest }) => rest),
+                    .map(({ requisition_id, account_id, accounts, qb_account_name, ...rest }: any) => ({
+                        ...rest,
+                        account: accounts?.name ?? qb_account_name ?? null,
+                        accounted: !!account_id,
+                    })),
             })),
         };
     },
@@ -214,9 +220,10 @@ const searchTransactions: ToolDefinition = {
         'true accounted status, resolved from the posted general ledger (not just whether the ' +
         'entry itself carries an account — a requisition-driven expense is classified through ' +
         'its line items, not the transaction row, and this correctly recognises that) — pass ' +
-        'unaccountedOnly to find the ones still genuinely needing classification. Use ' +
-        'categorize_transaction to assign an account once you have the id, for entries with no ' +
-        'requisition attached — a requisition-linked entry is reclassified via its line items instead.',
+        'unaccountedOnly to find the ones still genuinely needing classification. Check ' +
+        'requisition_id before picking a write tool: null → categorize_transaction with the ' +
+        'entry id; set → get_requisition_details with that id, then categorize_requisition_expense ' +
+        'on whichever line items come back with accounted: false.',
     effect: 'read',
     parameters: {
         type: 'object',
@@ -299,6 +306,10 @@ const searchTransactions: ToolDefinition = {
                 status: r.status,
                 account: status?.dominantAccountName ?? null,
                 accounted: status?.accounted ?? false,
+                // When set, categorize_transaction will refuse this entry — use
+                // get_requisition_details + categorize_requisition_expense
+                // instead. Checking this avoids a wasted round trip finding out.
+                requisition_id: r.requisition_id ?? null,
             };
         });
 

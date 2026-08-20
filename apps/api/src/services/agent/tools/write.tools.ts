@@ -17,6 +17,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { ledgerService } from '../../ledger.service';
+import { memoryService } from '../../ai/memory.service';
 import { AgentContext, ToolDefinition, ToolProposal } from '../types';
 
 const kwacha = (n: number) =>
@@ -448,9 +449,9 @@ const categorizeTransaction: ToolDefinition = {
         // actual GL posting while telling the user it worked.
         if (entry.requisition_id) {
             invalid(
-                `This entry belongs to a requisition (id ${entry.requisition_id.slice(0, 8)}) and is classified through ` +
-                `that requisition's line items, not directly. Tell the user to reclassify it from the requisition's ` +
-                `expense details in the app rather than through this tool.`
+                `This entry belongs to requisition ${entry.requisition_id} and is classified through that ` +
+                `requisition's line items, not directly. Call get_requisition_details with that id to see its ` +
+                `line items, then use categorize_requisition_expense on the ones with accounted: false.`
             );
         }
 
@@ -518,6 +519,114 @@ const categorizeTransaction: ToolDefinition = {
     },
 };
 
+/**
+ * The requisition-linked counterpart to categorize_transaction. Mirrors the
+ * Requisitions UI's single-item inline correction (requisition.controller.ts's
+ * updateLineItemAccount) — with one deliberate improvement: that endpoint
+ * updates line_items.account_id but never re-posts the GL, unlike its own
+ * bulk-classify sibling a few functions over, which does. A line item
+ * classified through this tool and left un-reposted would look accounted for
+ * here while still showing Suspense in the ledger — so execute() always
+ * reposts, matching what the bulk path already does correctly.
+ */
+const categorizeRequisitionExpense: ToolDefinition = {
+    name: 'categorize_requisition_expense',
+    description:
+        'Assign a chart-of-accounts account to one line item of a requisition-linked expense. ' +
+        'This is what categorize_transaction hands off to when an entry belongs to a ' +
+        'requisition. Get the line item id and its accounted status from get_requisition_details ' +
+        '— an item with accounted: false is what this classifies.',
+    effect: 'write',
+    allowedRoles: ['ADMIN', 'AUTHORISER', 'ACCOUNTANT'],
+    parameters: {
+        type: 'object',
+        properties: {
+            lineItemId: { type: 'string', description: 'Line item UUID, from get_requisition_details.' },
+            accountCode: { type: 'string', description: 'Account code from list_accounts, e.g. "5010".' },
+        },
+        required: ['lineItemId', 'accountCode'],
+    },
+    handler: async (ctx, args) => {
+        const { data: item } = await supabase
+            .from('line_items')
+            .select('id, description, actual_amount, estimated_amount, account_id, requisition_id, requisitions!inner(organization_id, reference_number)')
+            .eq('id', args.lineItemId)
+            .eq('requisitions.organization_id', ctx.organizationId)
+            .maybeSingle();
+        if (!item) invalid('No line item with that id exists in this organisation.');
+
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('id, code, name')
+            .eq('organization_id', ctx.organizationId)
+            .eq('code', args.accountCode)
+            .maybeSingle();
+        if (!account) invalid(`No active account with code "${args.accountCode}". Check list_accounts.`);
+
+        const amount = Number(item.actual_amount ?? item.estimated_amount ?? 0);
+        const reqRef = (item.requisitions as any)?.reference_number ?? item.requisition_id.slice(0, 8);
+
+        return propose(
+            `Classify "${item.description}" (requisition ${reqRef}) against ${account.name}`,
+            [
+                { label: 'Line item', value: item.description },
+                { label: 'Requisition', value: reqRef },
+                { label: 'Amount', value: kwacha(amount) },
+                { label: 'Account', value: `${account.code} — ${account.name}` },
+            ]
+        );
+    },
+    execute: async (ctx, args) => {
+        const { data: item } = await supabase
+            .from('line_items')
+            .select('id, description, requisition_id, requisitions!inner(organization_id)')
+            .eq('id', args.lineItemId)
+            .eq('requisitions.organization_id', ctx.organizationId)
+            .maybeSingle();
+        if (!item) throw new Error('Line item no longer exists.');
+
+        const { data: account } = await supabase
+            .from('accounts')
+            .select('id, code, name, qb_account_id')
+            .eq('organization_id', ctx.organizationId)
+            .eq('code', args.accountCode)
+            .maybeSingle();
+        if (!account) throw new Error(`Account "${args.accountCode}" no longer exists.`);
+
+        const { data, error } = await supabase
+            .from('line_items')
+            .update({ account_id: account.id, qb_account_id: account.qb_account_id || null })
+            .eq('id', args.lineItemId)
+            .select('id, description, account_id')
+            .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!data) throw new Error('Line item was not updated — it may have been deleted.');
+
+        // Re-post the GL so this moves out of Suspense immediately, same as
+        // the bulk-classify path — see the tool's header comment for why the
+        // single-item UI endpoint this mirrors does NOT do this on its own.
+        ledgerService
+            .repostForRequisition(item.requisition_id)
+            .catch(err => console.error(`[Agent] repost after line-item categorization failed for req ${item.requisition_id}:`, err?.message));
+
+        // Same authoritative-correction signal the UI's inline edit sends —
+        // an agent-driven classification is just as good a training example.
+        if (item.description) {
+            memoryService
+                .learn({
+                    organizationId: ctx.organizationId,
+                    description: item.description,
+                    accountId: account.id,
+                    authoritative: true,
+                    source: 'agent_correction',
+                })
+                .catch(err => console.error('[Agent] memory learn after categorization failed:', err?.message));
+        }
+
+        return { updated: true, lineItem: data, account: { code: account.code, name: account.name } };
+    },
+};
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 const ORG_FIELDS = ['name', 'email', 'phone', 'address', 'website', 'tax_id'] as const;
@@ -581,5 +690,6 @@ export const writeTools: ToolDefinition[] = [
     createScheduledItem,
     updateScheduledItem,
     categorizeTransaction,
+    categorizeRequisitionExpense,
     updateOrgSettings,
 ];

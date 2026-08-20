@@ -45,6 +45,7 @@ const PHRASES: Record<string, string[]> = {
     create_scheduled_item: ['Setting up the schedule entry'],
     update_scheduled_item: ['Preparing the schedule changes'],
     categorize_transaction: ['Matching it to an account', 'Preparing the classification'],
+    categorize_requisition_expense: ['Matching the line item to an account', 'Preparing the classification'],
     update_org_settings: ['Preparing the settings change'],
 };
 
