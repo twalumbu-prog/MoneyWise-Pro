@@ -138,7 +138,16 @@ interface MFStudent {
     grade?: string;
     admission_number?: string;
 }
-interface MFInvoiceItem { description?: string; amount?: number | string; fee_category_id?: string; category_id?: string; }
+// `category` is the tag MF actually returns per line item today (confirmed live,
+// 2026-08-21) — a free-text string that is EITHER a real fee-category name
+// ("Primary Phase", "Transport", ...) OR an older lowercase alias ("tuition",
+// "transport", "canteen", "uniform", ...) OR the literal fallback "general"/
+// "other" when MF itself has nothing better. It was never modeled here, so
+// resolveItemCategory() below fell through to guessing from free-text
+// descriptions for every item — the reason ~99.6% of Twalumbu's invoiced
+// revenue (K2.22m of K2.23m) landed in one generic income account instead of
+// split by category, even though MF had already fixed their side.
+interface MFInvoiceItem { description?: string; amount?: number | string; fee_category_id?: string; category_id?: string; category?: string; }
 interface MFInvoice {
     invoice_id: string;
     invoice_number?: string;
@@ -176,6 +185,72 @@ const num = (v: any): number => {
 const dateOnly = (v?: string): string => (v ? String(v).slice(0, 10) : new Date().toISOString().slice(0, 10));
 const catId = (c: MFFeeCategory | MFInvoiceItem): string | undefined =>
     (c as any).id || (c as any).category_id || (c as any).fee_category_id;
+
+// Older lowercase tags MF still emits on some items alongside the newer
+// proper category names — confirmed live by sampling the full invoice corpus,
+// 2026-08-21: every item.category value in the data is either one of the 7
+// real category names, one of these legacy aliases, or the literal fallback
+// "general"/"other". "discount" is deliberately excluded — it's a contra
+// adjustment, not a fee category, and forcing it into one would misrepresent
+// revenue by category.
+const LEGACY_CATEGORY_ALIAS: Record<string, string> = {
+    tuition: 'primary phase',
+    transport: 'transport',
+    canteen: 'canteen',
+    uniform: 'uniforms',
+    uniforms: 'uniforms',
+    sports: 'sports activities',
+    application: 'application forms',
+};
+
+// Description patterns that reliably identify a fee's category when MF gives
+// us nothing better than the literal "general"/"other" fallback — each was
+// validated against the live corpus by confirming every OTHER item sharing the
+// same description pattern that DOES carry a real category tag agrees on this
+// one (2026-08-21). "Educational Tour" is deliberately excluded: the corpus
+// shows it mapped to three different real categories (School Tours, Application
+// Forms, tuition) depending on context we can't see from the description alone,
+// so guessing would risk misclassifying revenue rather than just leaving it
+// generic.
+const DESC_CATEGORY_HINTS: [RegExp, string][] = [
+    [/tuition/i, 'primary phase'],
+    [/\blunch\b|\bmeal\b/i, 'canteen'],
+    [/application\s*form/i, 'application forms'],
+    [/-\s*between\b/i, 'transport'], // bus-route naming: "CHS# - Between X & Y"
+];
+
+/**
+ * Resolve an invoice line item to a real fee category, in priority order:
+ * explicit fee_category_id/category_id -> MF's own item.category tag (direct
+ * name match, then legacy alias) -> description pattern (only for the
+ * genuinely untagged "general"/"other" residue). Returns null (falls to the
+ * generic income bucket, same as before) only when none of these resolve —
+ * never guesses on an ambiguous case.
+ */
+function resolveItemCategory(item: MFInvoiceItem, categoriesByName: Map<string, MFFeeCategory>): MFFeeCategory | null {
+    const explicitId = catId(item);
+    if (explicitId) return { id: explicitId, name: undefined } as MFFeeCategory;
+
+    const tag = String(item.category || '').trim().toLowerCase();
+    if (tag && tag !== 'general' && tag !== 'other') {
+        const direct = categoriesByName.get(tag);
+        if (direct) return direct;
+        const aliased = LEGACY_CATEGORY_ALIAS[tag];
+        if (aliased) {
+            const byAlias = categoriesByName.get(aliased);
+            if (byAlias) return byAlias;
+        }
+    }
+
+    const desc = String(item.description || '').toLowerCase();
+    for (const [pattern, categoryName] of DESC_CATEGORY_HINTS) {
+        if (pattern.test(desc)) {
+            const byDesc = categoriesByName.get(categoryName);
+            if (byDesc) return byDesc;
+        }
+    }
+    return null;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REST client
@@ -610,7 +685,8 @@ async function postInvoice(
     config: MasterFeesConfig,
     invoice: MFInvoice,
     categoriesByName: Map<string, MFFeeCategory>,
-    priorMap: Map<string, PriorInvoiceRecord>
+    priorMap: Map<string, PriorInvoiceRecord>,
+    force: boolean = false
 ): Promise<'posted' | 'skipped' | 'voided'> {
     const total = num(invoice.total_amount);
     const studentName = invoice.student?.full_name || [invoice.student?.first_name, invoice.student?.last_name].filter(Boolean).join(' ');
@@ -628,8 +704,13 @@ async function postInvoice(
     // (3,095 MF transactions vs. 1,546 synced) while invoices kept re-posting for
     // nothing. Status is still recorded — just via a cheap field update below,
     // not a journal rebuild.
+    //
+    // `force` bypasses this entirely — used by recategorizeMasterfeesInvoices()
+    // to rebuild every invoice's journal against resolveItemCategory()'s new
+    // category resolution without waiting for each invoice's amount/status to
+    // change first. Never set true on the regular sync path.
     const prior = priorMap.get(invoice.invoice_id);
-    if (prior && Math.abs(num(prior.amount) - total) < TOLERANCE && !!prior.journal_entry_id === !voided) {
+    if (!force && prior && Math.abs(num(prior.amount) - total) < TOLERANCE && !!prior.journal_entry_id === !voided) {
         if ((prior.mf_status || '') !== (invoice.status || '')) {
             await supabase
                 .from('masterfees_records')
@@ -667,13 +748,7 @@ async function postInvoice(
     for (const item of items) {
         const amt = num(item.amount);
         if (amt <= 0) continue;
-        let category: MFFeeCategory | null = null;
-        const explicit = catId(item);
-        if (explicit) category = { id: explicit, name: undefined } as MFFeeCategory;
-        else {
-            const desc = String(item.description || '').toLowerCase();
-            for (const [nm, c] of categoriesByName) if (nm && desc.includes(nm)) { category = c; break; }
-        }
+        const category = resolveItemCategory(item, categoriesByName);
         const acct = await getIncomeAccountForCategory(organizationId, config, category);
         incomeByAccount.set(acct, (incomeByAccount.get(acct) || 0) + amt);
         allocated += amt;
@@ -1131,6 +1206,95 @@ export async function syncMasterfeesPayments(
         ]);
     } catch (err: any) {
         summary.errors.push(`transactions: ${err.message}`);
+    } finally {
+        await releaseSyncLock(integration.id);
+    }
+
+    return summary;
+}
+
+/**
+ * One-off ops entry point: rebuild every already-posted invoice's journal
+ * using resolveItemCategory()'s new resolution (item.category tag + legacy
+ * aliases + description hints), instead of leaving revenue that was posted
+ * before this fix sitting in the one generic "School Fees Income" bucket.
+ *
+ * Confirmed live, 2026-08-21: before this fix, K2,219,907.67 of Twalumbu's
+ * K2,227,708 in invoiced MASTERFEES revenue (99.6%) was posted to the generic
+ * bucket because the old matching logic only ever guessed from free-text
+ * descriptions and never read the `category` field MF actually returns.
+ *
+ * Uses postInvoice's `force` flag to bypass the normal skip-by-amount check —
+ * these invoices' amounts haven't changed, only how we categorize them, so the
+ * regular idempotency path would otherwise leave every one of them alone
+ * forever. Safe to re-run: fully idempotent per invoice, and does not touch
+ * payments.
+ */
+export async function recategorizeMasterfeesInvoices(
+    organizationId: string,
+    deadline: number = Date.now() + 35_000
+): Promise<SyncSummary> {
+    const integration = await getMasterFeesIntegration(organizationId);
+    if (!integration) throw new Error('Master Fees is not connected for this organization.');
+
+    if (!(await acquireSyncLock(integration.id))) {
+        return {
+            invoices: { posted: 0, skipped: 0, voided: 0 },
+            payments: { posted: 0, reclassified: 0, deferred: 0, skipped: 0 },
+            errors: ['Skipped — a sync for this org is already in progress (concurrent cron tick).'],
+            truncated: false,
+        };
+    }
+
+    const summary: SyncSummary = {
+        invoices: { posted: 0, skipped: 0, voided: 0 },
+        payments: { posted: 0, reclassified: 0, deferred: 0, skipped: 0 },
+        errors: [],
+        truncated: false,
+    };
+
+    try {
+        const config = integration.config;
+        const client = new MasterFeesClient(config);
+
+        if (!config.receivableAccountId) {
+            config.receivableAccountId = await getReceivableAccount(organizationId);
+            await patchConfig(organizationId, { receivableAccountId: config.receivableAccountId });
+        }
+
+        const categoriesByName = new Map<string, MFFeeCategory>();
+        const categories = await client.getFeeCategories();
+        for (const c of categories) {
+            if (c.name) categoriesByName.set(c.name.trim().toLowerCase(), c);
+            await getIncomeAccountForCategory(organizationId, config, c);
+        }
+
+        const invoices = await client.getInvoices();
+        if (invoices.length >= MF_ROW_CAP) {
+            summary.truncated = true;
+            summary.errors.push(`invoices: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling.`);
+        }
+
+        const priorMap = await loadPriorRecords<PriorInvoiceRecord>(organizationId, 'INVOICE', 'amount, mf_status, journal_entry_id');
+
+        let deferredByBudget = false;
+        for (const inv of invoices) {
+            if (Date.now() > deadline) { deferredByBudget = true; break; }
+            try {
+                const r = await postInvoice(organizationId, integration.id, config, inv, categoriesByName, priorMap, /* force */ true);
+                summary.invoices[r]++;
+            } catch (err: any) {
+                summary.errors.push(`invoice ${inv.invoice_id}: ${err.message}`);
+            }
+        }
+
+        if (deferredByBudget) {
+            summary.errors.push('Time budget reached — remaining invoices deferred to the next call.');
+        }
+
+        void broadcastInvalidate(organizationId, ['cashbook-overview']);
+    } catch (err: any) {
+        summary.errors.push(`invoices: ${err.message}`);
     } finally {
         await releaseSyncLock(integration.id);
     }

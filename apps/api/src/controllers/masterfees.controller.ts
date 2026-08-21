@@ -7,6 +7,7 @@ import {
     detectLencoMode,
     syncMasterfees,
     syncMasterfeesPayments,
+    recategorizeMasterfeesInvoices,
     applyPaymentDateCorrections,
     reconcileMasterfees,
     MasterFeesConfig,
@@ -399,6 +400,30 @@ export const backfillMasterFeesPayments = async (req: Request, res: Response) =>
 
     try {
         const summary = await syncMasterfeesPayments(organizationId, Date.now() + 35_000, { onlyMissing: true });
+        res.json({ success: true, summary });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * One-off ops endpoint: rebuild every posted invoice's journal against the
+ * fixed category-resolution logic (resolveItemCategory now reads MF's own
+ * item.category tag instead of guessing from free text). Call repeatedly
+ * (each call bounded well under Vercel's 45s limit) until invoices.posted
+ * comes back 0 with no "Time budget reached" error.
+ */
+export const recategorizeMasterFeesInvoices = async (req: Request, res: Response) => {
+    const authHeader = req.headers['authorization'];
+    const syncSecret = process.env.MASTERFEES_SYNC_SECRET || process.env.LENCO_SYNC_SECRET;
+    if (syncSecret && authHeader !== `Bearer ${syncSecret}`) {
+        return res.status(401).json({ error: 'Unauthorized: Invalid sync secret' });
+    }
+    const organizationId = String(req.query.organizationId || req.body?.organizationId || '');
+    if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
+
+    try {
+        const summary = await recategorizeMasterfeesInvoices(organizationId, Date.now() + 35_000);
         res.json({ success: true, summary });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
