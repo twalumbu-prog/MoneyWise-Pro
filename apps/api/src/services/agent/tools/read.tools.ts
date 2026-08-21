@@ -84,7 +84,7 @@ const getOrgOverview: ToolDefinition = {
         // belong to get_financial_position.
         const { data, error } = await supabase
             .from('requisitions')
-            .select('department, type')
+            .select('department, type, status')
             .eq('organization_id', ctx.organizationId)
             .limit(1000);
         if (error) throw new Error(error.message);
@@ -95,10 +95,13 @@ const getOrgOverview: ToolDefinition = {
             today: ctx.today,
             departments_in_use: [...new Set(rows.map(r => r.department).filter(Boolean))],
             requisition_types_in_use: [...new Set(rows.map(r => r.type).filter(Boolean))],
-            requisition_statuses: [
-                'DRAFT', 'SUBMITTED', 'AUTHORISED', 'RECEIVED',
-                'CHANGE_SUBMITTED', 'DISBURSED', 'COMPLETED', 'REJECTED',
-            ],
+            // Derived from real data, not hardcoded — a hardcoded list here
+            // previously omitted ACCOUNTED entirely, which is most requisitions
+            // in a live org (workflow evolves; this can't fall out of sync).
+            requisition_statuses_in_use: [...new Set(rows.map(r => r.status).filter(Boolean))],
+            note:
+                'DRAFT and REJECTED requisitions never had money move — exclude them when a question ' +
+                'is about actual spending, not just requisitions raised.',
         };
     },
 };
@@ -108,8 +111,13 @@ const getOrgOverview: ToolDefinition = {
 const searchRequisitions: ToolDefinition = {
     name: 'search_requisitions',
     description:
-        'Find requisitions by free text, status, department, requester or date range. ' +
-        'Returns headers only — follow up with get_requisition_details for line items.',
+        'Find requisitions by free text, status, department, requester or date range. Text only ' +
+        'matches the requisition\'s own title — "Tailor 3rd Installment" has line items that say ' +
+        '"uniforms" but the requisition itself never uses that word, so a search for "uniforms" ' +
+        'here would miss it. For a specific item, service or category (ZESCO units, uniforms, ' +
+        'stationery — anything more specific than a requisition\'s own title), use ' +
+        'search_expense_items instead; it searches where that text actually lives. Returns ' +
+        'headers only — follow up with get_requisition_details for line items.',
     effect: 'read',
     parameters: {
         type: 'object',
@@ -148,6 +156,97 @@ const searchRequisitions: ToolDefinition = {
         return {
             count: rows.length,
             note: rows.length >= (args.limit ?? 25) ? 'Result set was truncated — narrow the filters for a complete picture.' : undefined,
+            results: rows,
+        };
+    },
+};
+
+/**
+ * The gap this closes: neither search_requisitions (matches the requisition's
+ * own title only) nor search_transactions (matches the ledger's generic
+ * voucher text, e.g. "MONEYWISE_WALLET disbursed for Requisition #613b534f",
+ * which never carries what was actually bought) can find spending by what it
+ * was actually for. That text — "ZESCO units", "school uniforms" — lives on
+ * line_items.description alone, and nothing searched it before this. A
+ * requisition titled "Tailor 3rd Installment" whose line item says "Labor for
+ * manufactured uniforms" was invisible to every other tool in this file.
+ */
+const searchExpenseItems: ToolDefinition = {
+    name: 'search_expense_items',
+    description:
+        'Search what was actually purchased, at the line-item level — "ZESCO units", "school ' +
+        'uniforms", "stationery". Use this for any question naming a specific item, service or ' +
+        'category rather than a requisition title or department. Returns a monthly breakdown and ' +
+        'average alongside the matching items, so "how much do we spend on X per month" is ' +
+        'answered directly — do not compute the average yourself from the raw rows. By default ' +
+        'excludes DRAFT and REJECTED requisitions, since no money moved for either — pass ' +
+        'includeAllStatuses if the question is about requisitions raised rather than money spent.',
+    effect: 'read',
+    parameters: {
+        type: 'object',
+        properties: {
+            query: { type: 'string', description: 'Text matched against the line item description, e.g. "zesco" or "uniform".' },
+            department: { type: 'string', description: 'The owning requisition\'s department, partial match allowed.' },
+            includeAllStatuses: { type: 'boolean', description: 'Include DRAFT and REJECTED requisitions. Default false (spend-only).' },
+            ...dateRangeProps,
+            limit: { type: 'number', description: 'Max rows, default 50, hard cap 200. Dated by when the requisition was created.' },
+        },
+        required: ['query'],
+    },
+    handler: async (ctx, args) => {
+        if (!args.query?.trim()) throw new Error('INVALID_ARGUMENTS: query is required.');
+
+        let q = supabase
+            .from('line_items')
+            .select('id, description, actual_amount, estimated_amount, requisitions!inner(id, organization_id, reference_number, description, department, status, created_at)')
+            .eq('requisitions.organization_id', ctx.organizationId)
+            .ilike('description', `%${args.query}%`)
+            .order('id', { ascending: false })
+            .limit(Math.min(args.limit ?? 50, MAX_ROWS));
+
+        if (!args.includeAllStatuses) {
+            q = q.neq('requisitions.status', 'DRAFT').neq('requisitions.status', 'REJECTED');
+        }
+        if (args.department) q = q.ilike('requisitions.department', `%${args.department}%`);
+        if (args.startDate) q = q.gte('requisitions.created_at', args.startDate);
+        if (args.endDate) q = q.lte('requisitions.created_at', `${args.endDate}T23:59:59`);
+
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+
+        const rows = (data ?? []).map((li: any) => {
+            const req = li.requisitions;
+            return {
+                lineItemId: li.id,
+                description: li.description,
+                amount: money(li.actual_amount ?? li.estimated_amount),
+                date: req?.created_at?.slice(0, 10) ?? null,
+                requisition: req?.reference_number ?? req?.id?.slice(0, 8) ?? null,
+                requisitionTitle: req?.description ?? null,
+                department: req?.department ?? null,
+                status: req?.status ?? null,
+            };
+        });
+
+        // Computed here, not left to the model — see the tool description.
+        const byMonth = new Map<string, number>();
+        for (const r of rows) {
+            if (!r.date) continue;
+            const month = r.date.slice(0, 7);
+            byMonth.set(month, (byMonth.get(month) ?? 0) + r.amount);
+        }
+        const monthly = [...byMonth.entries()]
+            .map(([month, total]) => ({ month, total: Number(total.toFixed(2)) }))
+            .sort((a, b) => a.month.localeCompare(b.month));
+
+        const total = Number(rows.reduce((s, r) => s + r.amount, 0).toFixed(2));
+
+        return {
+            count: rows.length,
+            note: rows.length >= (args.limit ?? 50) ? 'Result set was truncated — narrow the filters for a complete picture.' : undefined,
+            total,
+            monthly_breakdown: monthly,
+            average_per_month: monthly.length ? Number((total / monthly.length).toFixed(2)) : 0,
             results: rows,
         };
     },
@@ -214,8 +313,12 @@ const getRequisitionDetails: ToolDefinition = {
 const searchTransactions: ToolDefinition = {
     name: 'search_transactions',
     description:
-        'Search the cashbook ledger — every money-in and money-out entry. Use this for ' +
-        'questions about payments received, spending, specific vendors or bank activity. ' +
+        'Search the cashbook ledger — every money-in and money-out entry. The query text only ' +
+        'matches the ledger\'s own description, which for a requisition-linked entry is a ' +
+        'generic voucher label like "MONEYWISE_WALLET disbursed for Requisition #613b534f" — it ' +
+        'never contains what was actually bought. For a specific item or category ("ZESCO ' +
+        'units", "uniforms"), use search_expense_items instead; use this tool for direct bank ' +
+        'activity, inflows, or when you already have a wallet/date/amount filter to apply. ' +
         'debit = money in, credit = money out. Every result includes its entry id and its ' +
         'true accounted status, resolved from the posted general ledger (not just whether the ' +
         'entry itself carries an account — a requisition-driven expense is classified through ' +
@@ -787,6 +890,7 @@ const getSalesSummary: ToolDefinition = {
 export const readTools: ToolDefinition[] = [
     getOrgOverview,
     searchRequisitions,
+    searchExpenseItems,
     getRequisitionDetails,
     searchTransactions,
     aggregateSpending,

@@ -24,6 +24,7 @@ const PHRASES: Record<string, string[]> = {
     ],
     get_org_overview: ['Getting my bearings', 'Checking how you are set up'],
     search_requisitions: ['Flipping through your requisitions', 'Searching the requisition records'],
+    search_expense_items: ['Digging into the line items', 'Checking what was actually bought'],
     get_requisition_details: ['Reading the line items', 'Opening up the details'],
     search_transactions: ['Running through your cashbook', 'Combing the ledger'],
     aggregate_spending: ['Adding up the numbers', 'Crunching the totals'],
