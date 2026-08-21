@@ -1916,13 +1916,14 @@ export async function triggerEarlyClassification(requisitionId: string, organiza
 }
 
 /**
- * Auto-complete a requisition that has been stuck in DISBURSED for > 24 hours.
+ * Auto-complete a requisition that has been stuck unaccounted (DISBURSED — cash —
+ * or RECEIVED — digital, where most disbursements actually land) for > 24 hours.
  *
  * POST /requisitions/:id/auto-complete
  * Protected by X-Internal-Secret header (same value as LENCO_SYNC_SECRET).
  *
  * Flow:
- *   1. Validate the requisition is still in DISBURSED and not yet auto-completed.
+ *   1. Validate the requisition is still DISBURSED/RECEIVED and not yet auto-completed.
  *   2. Copy estimated_amount → actual_amount for items with no actuals.
  *   3. Set actual_total = estimated_total, status = RECEIVED, is_auto_categorized = true.
  *   4. Run triggerAIReview with the heavyweight reasoning model flag.
@@ -1946,8 +1947,8 @@ export const autoCompleteRequisition = async (req: any, res: any): Promise<any> 
         if (reqErr || !requisition) {
             return res.status(404).json({ error: 'Requisition not found' });
         }
-        if (requisition.status !== 'DISBURSED') {
-            return res.status(400).json({ error: `Requisition is in ${requisition.status}, not DISBURSED — skipping.` });
+        if (!['DISBURSED', 'RECEIVED'].includes(requisition.status)) {
+            return res.status(400).json({ error: `Requisition is in ${requisition.status}, not DISBURSED/RECEIVED — skipping.` });
         }
         if (requisition.is_auto_categorized) {
             return res.status(400).json({ error: 'Already auto-categorized.' });

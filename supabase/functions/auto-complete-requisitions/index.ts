@@ -1,7 +1,9 @@
 /**
  * auto-complete-requisitions — hourly cron worker
  *
- * Runs every hour via pg_cron.  For each org with stuck DISBURSED requisitions:
+ * Runs every hour via pg_cron.  For each org with stuck unaccounted requisitions
+ * (status DISBURSED — cash — or RECEIVED — digital disbursements, which is where
+ * most requisitions actually land per disbursement.controller.ts):
  *   • 12 h old and reminder not yet sent  → POST /requisitions/auto-reminder (batch)
  *   • 24 h old and not yet auto-completed → POST /requisitions/:id/auto-complete
  *
@@ -44,7 +46,7 @@ Deno.serve(async (req) => {
         const { data: reminderCandidates, error: remErr } = await supabase
             .from('requisitions')
             .select('id, organization_id, description, reference_number')
-            .eq('status', 'DISBURSED')
+            .in('status', ['DISBURSED', 'RECEIVED'])
             .eq('is_auto_categorized', false)
             .is('auto_reminder_sent_at', null)
             .lt('updated_at', h12ago);
@@ -99,7 +101,7 @@ Deno.serve(async (req) => {
         const { data: completeCandidates, error: compErr } = await supabase
             .from('requisitions')
             .select('id')
-            .eq('status', 'DISBURSED')
+            .in('status', ['DISBURSED', 'RECEIVED'])
             .eq('is_auto_categorized', false)
             .lt('updated_at', h24ago);
 
