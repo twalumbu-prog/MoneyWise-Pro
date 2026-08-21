@@ -222,26 +222,26 @@ const DESC_CATEGORY_HINTS: [RegExp, string][] = [
 /**
  * Resolve an invoice line item to a real fee category, in priority order:
  * explicit fee_category_id/category_id -> MF's own item.category tag (direct
- * name match, then legacy alias) -> description pattern (only for the
- * genuinely untagged "general"/"other" residue). Returns null (falls to the
- * generic income bucket, same as before) only when none of these resolve —
- * never guesses on an ambiguous case.
+ * name match) -> description pattern (takes priority over legacy aliases so
+ * that e.g. items tagged "tuition" but described "application form" resolve
+ * correctly) -> legacy alias (last-resort for tag-only identification) ->
+ * null (falls to the generic income bucket).
  */
 function resolveItemCategory(item: MFInvoiceItem, categoriesByName: Map<string, MFFeeCategory>): MFFeeCategory | null {
     const explicitId = catId(item);
     if (explicitId) return { id: explicitId, name: undefined } as MFFeeCategory;
 
     const tag = String(item.category || '').trim().toLowerCase();
+
+    // 1. Direct name match — if MF already gives us the exact category name, trust it.
     if (tag && tag !== 'general' && tag !== 'other') {
         const direct = categoriesByName.get(tag);
         if (direct) return direct;
-        const aliased = LEGACY_CATEGORY_ALIAS[tag];
-        if (aliased) {
-            const byAlias = categoriesByName.get(aliased);
-            if (byAlias) return byAlias;
-        }
     }
 
+    // 2. Description patterns — checked BEFORE the legacy alias table so that items
+    //    mistagged with a broad alias (e.g. "tuition") but whose description is more
+    //    specific (e.g. "Application Form Fees") resolve to the right category.
     const desc = String(item.description || '').toLowerCase();
     for (const [pattern, categoryName] of DESC_CATEGORY_HINTS) {
         if (pattern.test(desc)) {
@@ -249,6 +249,16 @@ function resolveItemCategory(item: MFInvoiceItem, categoriesByName: Map<string, 
             if (byDesc) return byDesc;
         }
     }
+
+    // 3. Legacy alias — last resort when the description gives no useful signal.
+    if (tag && tag !== 'general' && tag !== 'other') {
+        const aliased = LEGACY_CATEGORY_ALIAS[tag];
+        if (aliased) {
+            const byAlias = categoriesByName.get(aliased);
+            if (byAlias) return byAlias;
+        }
+    }
+
     return null;
 }
 
