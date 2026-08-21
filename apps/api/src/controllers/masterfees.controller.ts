@@ -421,9 +421,10 @@ export const recategorizeMasterFeesInvoices = async (req: Request, res: Response
     }
     const organizationId = String(req.query.organizationId || req.body?.organizationId || '');
     if (!organizationId) return res.status(400).json({ error: 'organizationId is required' });
+    const sinceCutoff = String(req.query.sinceCutoff || req.body?.sinceCutoff || '') || undefined;
 
     try {
-        const summary = await recategorizeMasterfeesInvoices(organizationId, Date.now() + 35_000);
+        const summary = await recategorizeMasterfeesInvoices(organizationId, Date.now() + 35_000, { sinceCutoff });
         res.json({ success: true, summary });
     } catch (error: any) {
         res.status(500).json({ error: error.message });

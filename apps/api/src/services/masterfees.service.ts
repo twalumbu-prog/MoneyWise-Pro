@@ -640,7 +640,7 @@ async function upsertRecord(organizationId: string, integrationId: string, rec: 
 // ─────────────────────────────────────────────────────────────────────────────
 const VOID_STATUSES = new Set(['void', 'voided', 'cancelled', 'canceled', 'deleted', 'draft']);
 
-type PriorInvoiceRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null };
+type PriorInvoiceRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; synced_at?: string | null };
 type PriorPaymentRecord = { amount: number | string | null; mf_status: string | null; journal_entry_id: string | null; cashbook_entry_id: string | null };
 
 /**
@@ -1232,7 +1232,8 @@ export async function syncMasterfeesPayments(
  */
 export async function recategorizeMasterfeesInvoices(
     organizationId: string,
-    deadline: number = Date.now() + 35_000
+    deadline: number = Date.now() + 35_000,
+    opts: { sinceCutoff?: string } = {}
 ): Promise<SyncSummary> {
     const integration = await getMasterFeesIntegration(organizationId);
     if (!integration) throw new Error('Master Fees is not connected for this organization.');
@@ -1275,11 +1276,30 @@ export async function recategorizeMasterfeesInvoices(
             summary.errors.push(`invoices: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling.`);
         }
 
-        const priorMap = await loadPriorRecords<PriorInvoiceRecord>(organizationId, 'INVOICE', 'amount, mf_status, journal_entry_id');
+        const priorMap = await loadPriorRecords<PriorInvoiceRecord>(organizationId, 'INVOICE', 'amount, mf_status, journal_entry_id, synced_at');
 
+        // force=true means every invoice always comes back 'posted', even a
+        // no-op rebuild — so unlike syncMasterfeesPayments' onlyMissing, there
+        // is no natural signal telling a later call "this one's already done".
+        // Without a filter, client.getInvoices() returns the same feed in the
+        // same order every call, so hitting the same time budget lands at
+        // roughly the same array position every time — confirmed live,
+        // 2026-08-21: 5 consecutive calls reprocessed the same ~300-invoice
+        // prefix and the GL's category totals did not move at all between
+        // them. Skip anything synced_at >= sinceCutoff (already redone by this
+        // recategorization campaign, not a stale sync from before it), so each
+        // call's budget goes toward genuinely-untouched invoices instead.
+        const sinceCutoff = opts.sinceCutoff;
         let deferredByBudget = false;
         for (const inv of invoices) {
             if (Date.now() > deadline) { deferredByBudget = true; break; }
+            if (sinceCutoff) {
+                const prior = priorMap.get(inv.invoice_id);
+                if (prior?.synced_at && prior.synced_at >= sinceCutoff) {
+                    summary.invoices.skipped++;
+                    continue;
+                }
+            }
             try {
                 const r = await postInvoice(organizationId, integration.id, config, inv, categoriesByName, priorMap, /* force */ true);
                 summary.invoices[r]++;
