@@ -1927,7 +1927,8 @@ export async function triggerEarlyClassification(requisitionId: string, organiza
  *   2. Copy estimated_amount → actual_amount for items with no actuals.
  *   3. Set actual_total = estimated_total, status = RECEIVED, is_auto_categorized = true.
  *   4. Run triggerAIReview with the heavyweight reasoning model flag.
- *   5. Send the requestor an email summary of what was categorized.
+ *   5. Auto-approve: advance status all the way to COMPLETED (no QB) or ACCOUNTED (QB).
+ *   6. Send the requestor an email summary of what was categorized.
  */
 export const autoCompleteRequisition = async (req: any, res: any): Promise<any> => {
     // Internal-only: protected by the same shared secret used by the sync edge functions.
@@ -1971,7 +1972,7 @@ export const autoCompleteRequisition = async (req: any, res: any): Promise<any> 
             }
         }
 
-        // 2. Mark requisition as RECEIVED (no change) and auto-categorized.
+        // 2. Mark requisition as RECEIVED and auto-categorized.
         const estimatedTotal = Number(requisition.estimated_total) || 0;
         await supabase
             .from('requisitions')
@@ -1988,7 +1989,120 @@ export const autoCompleteRequisition = async (req: any, res: any): Promise<any> 
         //    Pass a flag so classifyWithModels() uses callAutoCompleteProvider().
         await triggerAIReview(id, organizationId, requestor_id, { useAdvancedModel: true });
 
-        // 4. Fetch final line items for the summary email.
+        // 4. Auto-approve: advance the requisition all the way to its final state
+        //    without requiring a human to open the app and click Approve.
+        //    Mirrors approveCategorization + postToQuickBooks but runs as a system action.
+        try {
+            // 4a. Verify the Lenco transfer is settled (same gate as the UI flow).
+            const confirmation = await ensureWalletTransferConfirmed(id, organizationId);
+            if (!confirmation.confirmed) {
+                // Transfer not yet confirmed — leave at RECEIVED with AI_REVIEW card.
+                // The next hourly run will retry; status will not regress.
+                console.warn(`[AutoComplete] Transfer not yet confirmed for ${id}: ${confirmation.message}. Leaving at RECEIVED for retry.`);
+            } else {
+                // 4b. Teach org memory from the AI's classifications (no human to do it).
+                memoryService.learnFromRequisition(id, { authoritative: false }).catch(err =>
+                    console.error('[AutoComplete] Memory learning failed:', err)
+                );
+
+                // 4c. Check QuickBooks.
+                const { data: qbIntegration } = await supabase
+                    .from('integrations')
+                    .select('id')
+                    .eq('provider', 'QUICKBOOKS')
+                    .eq('organization_id', organizationId)
+                    .maybeSingle();
+
+                const isQBConnected = !!qbIntegration;
+
+                if (!isQBConnected) {
+                    // No QB — go straight to COMPLETED.
+                    await supabase
+                        .from('requisitions')
+                        .update({ status: 'COMPLETED', updated_at: new Date().toISOString() })
+                        .eq('id', id);
+
+                    await RequisitionMessageService.createMessage({
+                        requisitionId: id,
+                        userId: requestor_id,
+                        content: 'Categorization Approved. Requisition COMPLETED.',
+                        type: 'SYSTEM',
+                        metadata: { isSummary: true, isCategorizationApproval: true, autoApproved: true }
+                    });
+                    await RequisitionMessageService.createMessage({
+                        requisitionId: id,
+                        userId: requestor_id,
+                        content: 'Transaction has been fully categorized and automatically approved.',
+                        type: 'SYSTEM',
+                        metadata: { stage: 'COMPLETED', autoApproved: true }
+                    });
+
+                    console.log(`[AutoComplete] Auto-approved → COMPLETED for ${id}`);
+                } else {
+                    // QB connected — approve to CATEGORIZED then auto-post.
+                    await supabase
+                        .from('requisitions')
+                        .update({ status: 'CATEGORIZED', updated_at: new Date().toISOString() })
+                        .eq('id', id);
+
+                    await RequisitionMessageService.createMessage({
+                        requisitionId: id,
+                        userId: requestor_id,
+                        content: 'Categorization Approved.',
+                        type: 'CHAT',
+                        metadata: { isSummary: true, isCategorizationApproval: true, autoApproved: true }
+                    });
+
+                    // 4d. Post to QuickBooks (payment account auto-resolved from wallet mapping).
+                    try {
+                        const qbResult = await QuickBooksService.createExpense(
+                            id, requestor_id, organizationId
+                            // paymentAccountId left undefined — QB service resolves from wallet/mappings
+                        );
+
+                        if (!qbResult.success) {
+                            const errMsg = typeof qbResult.error === 'object'
+                                ? (qbResult.error?.Fault?.Error?.[0]?.Detail || JSON.stringify(qbResult.error))
+                                : String(qbResult.error);
+                            throw new Error(errMsg);
+                        }
+
+                        const now = new Date().toISOString();
+                        await supabase.from('requisitions').update({ status: 'ACCOUNTED', accounted_at: now } as any).eq('id', id);
+
+                        AuditService.calculateAuditScore(id).catch(err =>
+                            console.error('[AutoComplete] Audit score failed:', err)
+                        );
+
+                        await RequisitionMessageService.createMessage({
+                            requisitionId: id,
+                            userId: requestor_id,
+                            content: 'Successfully posted to QuickBooks',
+                            type: 'SYSTEM',
+                            metadata: { stage: 'POSTED_SUCCESS', qbExpenseId: qbResult.qbId, autoApproved: true }
+                        });
+
+                        console.log(`[AutoComplete] Auto-approved → ACCOUNTED (QB) for ${id}`);
+                    } catch (qbErr: any) {
+                        // QB posting failed — leave at CATEGORIZED so the user can retry manually.
+                        console.error(`[AutoComplete] QB posting failed for ${id} (left at CATEGORIZED):`, qbErr.message);
+                        await RequisitionMessageService.createMessage({
+                            requisitionId: id,
+                            userId: requestor_id,
+                            content: `QuickBooks posting failed during auto-approval: ${qbErr.message}. Please post manually.`,
+                            type: 'SYSTEM',
+                            metadata: { stage: 'QUICKBOOKS_POSTING', autoApproved: true, error: true }
+                        });
+                    }
+                }
+            }
+        } catch (approveErr: any) {
+            // Auto-approval is best-effort — a failure here does not roll back the
+            // AI categorization, which has already been written to line_items.
+            console.error(`[AutoComplete] Auto-approval failed for ${id} (AI review card still visible):`, approveErr.message);
+        }
+
+        // 5. Fetch final line items for the summary email.
         const { data: finalItems } = await supabase
             .from('line_items')
             .select('description, actual_amount, estimated_amount, ai_reasoning, accounts(name, code)')
@@ -2002,7 +2116,7 @@ export const autoCompleteRequisition = async (req: any, res: any): Promise<any> 
             reasoning:     li.ai_reasoning || null,
         }));
 
-        // 5. Send summary email to the requestor.
+        // 6. Send summary email to the requestor.
         emailService.notifyAutoCategorizationComplete({
             organizationId,
             categorized: [{
@@ -2015,7 +2129,7 @@ export const autoCompleteRequisition = async (req: any, res: any): Promise<any> 
             }],
         }).catch(err => console.error('[AutoComplete] Email failed:', err.message));
 
-        console.log(`[AutoComplete] Completed for ${id}`);
+        console.log(`[AutoComplete] Finished for ${id}`);
         res.json({ message: 'Auto-completion successful', requisition_id: id });
     } catch (err: any) {
         console.error('[AutoComplete] Error:', err.message);
