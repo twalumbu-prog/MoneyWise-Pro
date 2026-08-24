@@ -665,12 +665,39 @@ export class QuickBooksService {
     }
 
     /**
-     * Fetch all transactions touching a specific QB account within a date range.
-     * Uses the QB TransactionList report — returns a bank-statement-style list
-     * (date, type, memo, amount, running balance) ordered oldest→newest.
+     * Recursively search a QB report's Row tree for the section whose Header
+     * names the given account id. The GeneralLedger report groups rows by
+     * account TYPE first (e.g. "Banks"), then by individual ACCOUNT within
+     * that type, so the target section is usually 1-2 levels deep — this
+     * walks arbitrarily deep rather than assuming a fixed nesting depth.
+     */
+    private static findGLAccountSection(rows: any[], targetId: string): any | null {
+        for (const row of rows ?? []) {
+            if (row.Header?.ColData?.some((c: any) => c.id === targetId)) return row;
+            if (row.Rows?.Row) {
+                const found = this.findGLAccountSection(row.Rows.Row, targetId);
+                if (found) return found;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Fetch all transactions touching a specific QB account within a date range,
+     * as a bank-statement-style list with a running balance.
+     *
+     * Uses QB's **GeneralLedger** report (not TransactionList — empirically,
+     * TransactionList's `account` filter is silently ignored by QB and always
+     * returns the whole company's transactions regardless of the account
+     * passed). GeneralLedger correctly scopes to one account: it nests rows
+     * under a type-group → account section, includes a "Beginning Balance"
+     * row, and carries a running balance column per transaction — verified
+     * against Twalumbu Education Centre's live QB company (opening + Σamounts
+     * reconciles exactly to closing on both a Bank and a Bank-subtype wallet
+     * account).
      *
      * @param organizationId  MW org
-     * @param qbAccountId     QB account Id (e.g. "95")
+     * @param qbAccountId     QB account Id (e.g. "63")
      * @param fromDate        ISO date string "YYYY-MM-DD"
      * @param toDate          ISO date string "YYYY-MM-DD"
      */
@@ -691,6 +718,7 @@ export class QuickBooksService {
             docNum: string;
             name: string;
             memo: string;
+            splitAccount: string;
             amount: number;
             balance: number;
         }>;
@@ -698,21 +726,13 @@ export class QuickBooksService {
         const { apiBase } = this.getEnv();
         const { accessToken, realmId } = await this.getValidToken(organizationId);
 
-        // First resolve the account name from our accounts list
-        const accounts = await this.fetchAccounts(organizationId);
-        const account = accounts.find((a: any) => a.Id === qbAccountId);
-        const accountName = account?.Name ?? `Account ${qbAccountId}`;
-
-        // QB Reports API — TransactionList report filtered to one account
         const params = new URLSearchParams({
             account: qbAccountId,
             start_date: fromDate,
             end_date: toDate,
-            sort_by: 'tx_date',
-            sort_order: 'ascend',
             minorversion: '70'
         });
-        const url = `${apiBase}/${realmId}/reports/TransactionList?${params}`;
+        const url = `${apiBase}/${realmId}/reports/GeneralLedger?${params}`;
 
         const response = await fetch(url, {
             headers: {
@@ -723,82 +743,74 @@ export class QuickBooksService {
 
         const data = await response.json();
         if (!response.ok) {
-            console.error('[QB TransactionList] API error', JSON.stringify(data));
+            console.error('[QB GeneralLedger] API error', JSON.stringify(data));
             throw new Error(`QB Reports API error: ${JSON.stringify(data?.Fault?.Error?.[0]?.Message ?? data)}`);
         }
 
-        // Parse the columnar report format QB returns
-        // Columns vary slightly by QB version — find them by ColType
-        const cols: string[] = (data.Columns?.Column ?? []).map((c: any) => c.ColType as string);
-        const txDateIdx   = cols.indexOf('tx_date');
-        const txTypeIdx   = cols.indexOf('tx_type');
-        const docNumIdx   = cols.indexOf('doc_num');
-        const nameIdx     = cols.indexOf('entity');
-        const memoIdx     = cols.indexOf('memo');
-        const amtIdx      = cols.indexOf('subt_nat_amount');  // signed native amount
-        const balIdx      = cols.indexOf('rbal_nat_amount');   // running balance
-
-        // Fallback to positional if ColType names differ
-        const safeIdx = (preferred: number, fallback: number) =>
-            preferred >= 0 ? preferred : fallback;
-
-        const transactions: Array<{ date: string; type: string; docNum: string; name: string; memo: string; amount: number; balance: number }> = [];
-
-        // Rows can be nested sections; flatten all leaf rows
-        const flattenRows = (rows: any[]): any[] => {
-            const out: any[] = [];
-            for (const row of rows ?? []) {
-                if (row.type === 'Section' || row.Rows) {
-                    out.push(...flattenRows(row.Rows?.Row ?? []));
-                } else if (row.ColData) {
-                    out.push(row);
-                }
-            }
-            return out;
+        // Resolve column indices dynamically from the report's own metadata —
+        // don't hardcode positions, QB can reorder/omit columns between reports.
+        const colKeyIdx: Record<string, number> = {};
+        (data.Columns?.Column ?? []).forEach((c: any, i: number) => {
+            const key = c.MetaData?.[0]?.Value;
+            if (key) colKeyIdx[key] = i;
+        });
+        const idx = {
+            date:    colKeyIdx['tx_date']          ?? 0,
+            type:    colKeyIdx['txn_type']          ?? 1,
+            docNum:  colKeyIdx['doc_num']           ?? 2,
+            name:    colKeyIdx['name']              ?? 3,
+            memo:    colKeyIdx['memo']               ?? 4,
+            split:   colKeyIdx['split_acc']          ?? 5,
+            amount:  colKeyIdx['subt_nat_amount']    ?? 6,
+            balance: colKeyIdx['rbal_nat_amount']    ?? 7,
         };
 
-        const allRows = flattenRows(data.Rows?.Row ?? []);
+        const section = this.findGLAccountSection(data.Rows?.Row ?? [], qbAccountId);
+        if (!section) {
+            console.warn(`[QB GeneralLedger] No section found for account ${qbAccountId} in ${fromDate}..${toDate} — likely zero activity in range.`);
+            const accounts = await this.fetchAccounts(organizationId);
+            const account = accounts.find((a: any) => a.Id === qbAccountId);
+            return {
+                accountName: account?.Name ?? `Account ${qbAccountId}`,
+                fromDate, toDate, openingBalance: 0, closingBalance: 0, transactions: []
+            };
+        }
+
+        const accountName = section.Header?.ColData?.[0]?.value ?? `Account ${qbAccountId}`;
+        const dataRows = (section.Rows?.Row ?? []).filter((r: any) => r.type === 'Data');
+
+        const get = (row: any, i: number): string => row.ColData?.[i]?.value?.trim() ?? '';
+        const getNum = (row: any, i: number): number => parseFloat(get(row, i).replace(/,/g, '')) || 0;
+
         let openingBalance = 0;
-        let closingBalance = 0;
+        const transactions: Array<{ date: string; type: string; docNum: string; name: string; memo: string; splitAccount: string; amount: number; balance: number }> = [];
 
-        for (const row of allRows) {
-            const cols = row.ColData as Array<{ value: string; id?: string }>;
-            if (!cols || cols.length === 0) continue;
-
-            const get = (idx: number) => (idx >= 0 && idx < cols.length ? cols[idx].value?.trim() ?? '' : '');
-            const getNum = (idx: number) => parseFloat(get(idx).replace(/,/g, '')) || 0;
-
-            // Opening/closing balance summary rows
-            const label = get(0).toLowerCase();
-            if (label.includes('opening balance') || label.includes('beginning balance')) {
-                openingBalance = getNum(amtIdx >= 0 ? amtIdx : cols.length - 1);
+        for (const row of dataRows) {
+            const firstVal = get(row, 0).toLowerCase();
+            if (firstVal.includes('beginning balance')) {
+                openingBalance = getNum(row, idx.balance);
                 continue;
             }
-            if (label.includes('ending balance') || label.includes('closing balance') || label.includes('total')) {
-                closingBalance = getNum(balIdx >= 0 ? balIdx : cols.length - 1);
-                continue;
-            }
-
-            const txDate = get(safeIdx(txDateIdx, 0));
-            if (!txDate || !/^\d{4}-\d{2}-\d{2}/.test(txDate)) continue; // skip non-data rows
+            const txDate = get(row, idx.date);
+            if (!/^\d{4}-\d{2}-\d{2}/.test(txDate)) continue; // skip any other summary row
 
             transactions.push({
-                date:    txDate,
-                type:    get(safeIdx(txTypeIdx, 1)),
-                docNum:  get(safeIdx(docNumIdx, 2)),
-                name:    get(safeIdx(nameIdx,   3)),
-                memo:    get(safeIdx(memoIdx,   4)),
-                amount:  getNum(safeIdx(amtIdx, cols.length - 2)),
-                balance: getNum(safeIdx(balIdx, cols.length - 1)),
+                date:         txDate,
+                type:         get(row, idx.type),
+                docNum:       get(row, idx.docNum),
+                name:         get(row, idx.name),
+                memo:         get(row, idx.memo),
+                splitAccount: get(row, idx.split),
+                amount:       getNum(row, idx.amount),
+                balance:      getNum(row, idx.balance),
             });
         }
 
-        // Infer closing balance from last transaction if report didn't give it
-        if (closingBalance === 0 && transactions.length > 0) {
-            closingBalance = transactions[transactions.length - 1].balance;
-        }
+        const closingBalance = transactions.length > 0
+            ? transactions[transactions.length - 1].balance
+            : openingBalance;
 
-        console.log(`[QB TransactionList] ${accountName}: ${transactions.length} txns, bal ${openingBalance}→${closingBalance}`);
+        console.log(`[QB GeneralLedger] ${accountName}: ${transactions.length} txns, bal ${openingBalance}→${closingBalance}`);
 
         return { accountName, fromDate, toDate, openingBalance, closingBalance, transactions };
     }

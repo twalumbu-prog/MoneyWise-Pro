@@ -22,6 +22,7 @@ interface QBTransaction {
     docNum: string;
     name: string;
     memo: string;
+    splitAccount: string;
     amount: number;
     balance: number;
 }
@@ -164,9 +165,9 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
     const handleDownloadCSV = () => {
         if (!statement) return;
         const rows = [
-            ['Date', 'Type', 'Doc #', 'Name / Payer', 'Memo', 'Amount (ZMW)', 'Running Balance'],
+            ['Date', 'Type', 'Doc #', 'Name / Payer', 'Memo', 'Split Account', 'Amount (ZMW)', 'Running Balance'],
             ...statement.transactions.map(t => [
-                t.date, t.type, t.docNum, t.name, t.memo,
+                t.date, t.type, t.docNum, t.name, t.memo, t.splitAccount,
                 t.amount.toFixed(2), t.balance.toFixed(2)
             ])
         ];
@@ -440,10 +441,10 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
 
                             {/* Transactions table */}
                             <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto custom-scrollbar shadow-sm">
-                                <table className="min-w-[750px] w-full divide-y divide-gray-200 text-sm">
+                                <table className="min-w-[900px] w-full divide-y divide-gray-200 text-sm">
                                     <thead className="bg-gray-50">
                                         <tr>
-                                            {['Date', 'Type', 'Doc #', 'Name / Payer', 'Memo', 'Amount', 'Balance'].map(h => (
+                                            {['Date', 'Type', 'Doc #', 'Name / Payer', 'Memo', 'Split Account', 'Amount', 'Balance'].map(h => (
                                                 <th key={h} className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">
                                                     {h}
                                                 </th>
@@ -453,7 +454,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
                                     <tbody className="divide-y divide-gray-100">
                                         {statement.transactions.length === 0 ? (
                                             <tr>
-                                                <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                                                <td colSpan={8} className="px-4 py-8 text-center text-gray-400 text-sm">
                                                     No transactions in this date range.
                                                 </td>
                                             </tr>
@@ -468,6 +469,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
                                                 <td className="px-4 py-2.5 whitespace-nowrap text-gray-500 text-xs">{t.docNum || '—'}</td>
                                                 <td className="px-4 py-2.5 max-w-[160px] truncate font-medium text-gray-800" title={t.name}>{t.name || '—'}</td>
                                                 <td className="px-4 py-2.5 max-w-[200px] truncate text-gray-500" title={t.memo}>{t.memo || '—'}</td>
+                                                <td className="px-4 py-2.5 max-w-[150px] truncate text-gray-500 text-xs" title={t.splitAccount}>{t.splitAccount || '—'}</td>
                                                 <td className={`px-4 py-2.5 whitespace-nowrap font-bold text-right ${t.amount < 0 ? 'text-red-600' : 'text-green-700'}`}>
                                                     {t.amount < 0 ? '−' : '+'}
                                                     {Math.abs(t.amount).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}

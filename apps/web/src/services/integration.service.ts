@@ -77,6 +77,7 @@ export const integrationService = {
             docNum: string;
             name: string;
             memo: string;
+            splitAccount: string;
             amount: number;
             balance: number;
         }>;
