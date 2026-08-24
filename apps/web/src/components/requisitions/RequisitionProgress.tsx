@@ -13,7 +13,7 @@ const RequisitionProgress: React.FC<RequisitionProgressProps> = ({ currentStatus
     const uiSteps = [
         { label: 'Draft', statuses: ['DRAFT'] },
         { label: 'Approved', statuses: ['PENDING_APPROVAL', 'AUTHORISED'] },
-        { label: 'Disbursed', statuses: ['DISBURSED'] },
+        { label: 'Disbursed', statuses: ['DISBURSED', 'PROCESSING'] },
         { label: 'Expensed', statuses: ['EXPENSED'] },
         { label: 'Returns', statuses: ['RECEIVED', 'CHANGE_SUBMITTED'] },
         ...(isPrivileged ? [{ label: 'Complete', statuses: Object.keys(REQUISITION_STATUS_CONFIG).filter(s => REQUISITION_STATUS_CONFIG[s].isCompleted) }] : [])

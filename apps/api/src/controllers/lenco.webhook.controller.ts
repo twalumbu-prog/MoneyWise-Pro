@@ -729,11 +729,17 @@ async function handleTransferSuccessful(data: any) {
 
         if (result.rows.length > 0) {
             const requisitionId = result.rows[0].requisition_id;
-            // We NO LONGER set status to 'COMPLETED' here.
-            // It must remain 'DISBURSED' so the user can acknowledge receipt and reconcile.
+            // Advance requisition from PROCESSING → RECEIVED now that Lenco has confirmed.
+            // We guard on PROCESSING so we don't clobber a further state (e.g. EXPENSED)
+            // if the webhook fires late.
+            await client.query(
+                `UPDATE requisitions SET status = 'RECEIVED', updated_at = NOW()
+                 WHERE id = $1 AND status = 'PROCESSING'`,
+                [requisitionId]
+            );
             await client.query('COMMIT');
 
-            console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference}`);
+            console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference}. Requisition ${requisitionId} → RECEIVED.`);
 
             // Trigger ledger finalization and withdrawal fee addition
             // The DB UNIQUE constraint prevents duplicates if polling already ran

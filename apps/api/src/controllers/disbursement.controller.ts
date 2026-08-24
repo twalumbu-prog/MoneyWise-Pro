@@ -50,9 +50,12 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             }
         }
 
-        const updateParams: any = { 
-            status: isDigital ? 'RECEIVED' : 'DISBURSED', 
-            updated_at: new Date().toISOString() 
+        const updateParams: any = {
+            // Digital wallet transfers start as PROCESSING until Lenco confirms via
+            // webhook (handleTransferSuccessful) or the deferred poller; only then
+            // do they advance to RECEIVED. Cash stays DISBURSED until acknowledged.
+            status: isDigital ? 'PROCESSING' : 'DISBURSED',
+            updated_at: new Date().toISOString()
         };
         if (finalWalletId) {
             updateParams.wallet_id = finalWalletId;
@@ -271,13 +274,19 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             );
 
         } else if ((req as any).lencoStatus === 'successful') {
-            // CRITICAL: If the Wallet payout succeeded IMMEDIATELY during the initial call, 
-            // finalize the ledger now that the disbursement record has been securely created.
-            console.log(`[Lenco] Payout succeeded immediately for ${id}. Finalizing ledger post-record creation...`);
-            
+            // CRITICAL: If the Wallet payout succeeded IMMEDIATELY during the initial call,
+            // finalize the ledger now that the disbursement record has been securely created,
+            // and advance the requisition status to RECEIVED.
+            console.log(`[Lenco] Payout succeeded immediately for ${id}. Finalizing ledger and marking RECEIVED...`);
+
             // Extract actual fee if returned by Lenco
             const actualFee = (req as any).lencoFee;
             await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
+
+            await supabase
+                .from('requisitions')
+                .update({ status: 'RECEIVED', updated_at: new Date().toISOString() })
+                .eq('id', id);
         } else {
             // Transfer is not successful yet (could be pending, processing, etc.)
             // Schedule background polling for any non-terminal status
@@ -1037,7 +1046,15 @@ function scheduleDeferredLedgerFinalization(
                 console.log(`[Deferred Finalization] Transfer ${reference} confirmed successful. Finalizing ledger for ${requisitionId}...`);
                 const actualFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
                 await cashbookService.finalizeWalletDisbursementLedger(requisitionId, actualFee);
-                console.log(`[Deferred Finalization] ✅ Ledger finalized for ${requisitionId}.`);
+
+                // Advance requisition to RECEIVED now that Lenco has confirmed the transfer
+                await supabase
+                    .from('requisitions')
+                    .update({ status: 'RECEIVED', updated_at: new Date().toISOString() })
+                    .eq('id', requisitionId)
+                    .eq('status', 'PROCESSING'); // guard: don't clobber a concurrent state change
+
+                console.log(`[Deferred Finalization] ✅ Ledger finalized and status set to RECEIVED for ${requisitionId}.`);
                 return; // Done — no further retries needed
             }
 

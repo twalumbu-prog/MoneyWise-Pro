@@ -88,6 +88,7 @@ export const REQUISITION_STATUS_CONFIG: Record<string, {
     'DISBURSED': { label: 'Disbursed', color: 'emerald', tab: 'DISBURSED', isCompleted: false, iconType: 'check' },
     'EXPENSED': { label: 'Expensed', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'clock' },
     'CHANGE_SUBMITTED': { label: 'Returned', color: 'purple', tab: 'CHANGE_SUBMITTED', isCompleted: false, iconType: 'check-circle' },
+    'PROCESSING': { label: 'Processing', color: 'amber', tab: 'DISBURSED', isCompleted: false, iconType: 'clock' },
     'RECEIVED': { label: 'Funds Received', color: 'emerald', tab: 'DISBURSED', isCompleted: false, iconType: 'check-circle' },
     'CATEGORIZED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
     'COMPLETED': { label: 'Completed', color: 'blue', tab: 'COMPLETED', isCompleted: true, iconType: 'check-circle' },
