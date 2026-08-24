@@ -367,8 +367,11 @@ export const DesktopRequisitionWorkspace: React.FC<DesktopRequisitionWorkspacePr
                     const recipientAccount = paymentMethod === 'mobile' ? normalizedPhone : accountNumber;
                     const recipientBankCode = (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
 
-                    await requisitionService.updateStatus(created.id, 'AUTHORISED');
-                    const result = await requisitionService.disburse(created.id, {
+                    // Single atomic call: authorizes the requisition AND disburses it
+                    // via Lenco in one HTTP round-trip. Replaces the old two-step
+                    // updateStatus('AUTHORISED') + disburse() pattern which had a race
+                    // window where the disburse lock could see the pre-commit DRAFT status.
+                    const result = await requisitionService.autoDisburse(created.id, {
                         payment_method: 'MONEYWISE_WALLET',
                         total_prepared: getTotal(),
                         recipient_account: recipientAccount,

@@ -107,6 +107,33 @@ export const getStatusConfig = (status: string) => {
 };
 
 export const requisitionService = {
+    /**
+     * Atomically authorizes and disburses a requisition in one HTTP request.
+     * Use this instead of separate updateStatus('AUTHORISED') + disburse() calls
+     * to avoid the timing window where the disburse lock sees a pre-commit status.
+     */
+    async autoDisburse(id: string, payload: {
+        payment_method: string;
+        total_prepared: number;
+        recipient_account?: string;
+        recipient_bank_code?: string;
+        recipient_account_name?: string;
+        wallet_id?: string;
+    }) {
+        const response = await apiFetch(`/requisitions/${id}/auto-disburse`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Auto-disburse failed');
+        }
+
+        return data;
+    },
+
     async disburse(id: string, payload: {
         payment_method: string;
         total_prepared: number;

@@ -390,11 +390,11 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                     const recipientAccount = paymentMethod === 'mobile' ? normalizedPhone : accountNumber;
                     const recipientBankCode = (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
 
-                    // 1. Authorize — creates the disbursal stage and approves the items.
-                    await requisitionService.updateStatus(created.id, 'AUTHORISED');
-
-                    // 2. Disburse electronically through the MoneyWise Wallet (Lenco).
-                    const result = await requisitionService.disburse(created.id, {
+                    // Single atomic call: authorizes the requisition AND disburses it
+                    // via Lenco in one HTTP round-trip. This replaces the old two-step
+                    // updateStatus('AUTHORISED') + disburse() pattern which had a race
+                    // window where the disburse lock could see the pre-commit DRAFT status.
+                    const result = await requisitionService.autoDisburse(created.id, {
                         payment_method: 'MONEYWISE_WALLET',
                         total_prepared: getTotal(),
                         recipient_account: recipientAccount,

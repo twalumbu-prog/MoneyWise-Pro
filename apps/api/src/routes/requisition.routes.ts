@@ -29,10 +29,11 @@ import {
     sendAutoCategorizationReminder,
     resolveRecipientName,
 } from '../controllers/requisition.controller';
-import { 
-    disburseRequisition, 
-    acknowledgeReceipt, 
-    getDisbursementHistory, 
+import {
+    disburseRequisition,
+    autoAuthorizeAndDisburse,
+    acknowledgeReceipt,
+    getDisbursementHistory,
     updateDisbursement,
     analyzeDisbursementProof,
     verifyDisbursementStatus,
@@ -61,6 +62,7 @@ router.post('/maintenance/backfill-audit', backfillAuditScores);
 // Disbursement routes
 router.get('/disbursements/history', getDisbursementHistory);
 router.post('/:id/disburse', disburseRequisition);
+router.post('/:id/auto-disburse', autoAuthorizeAndDisburse);
 router.post('/:id/disburse-payroll', disbursePayrollRequisition);
 router.post('/:id/disburse-excess', disburseExcessRequisition);
 router.post('/:id/acknowledge', acknowledgeReceipt);

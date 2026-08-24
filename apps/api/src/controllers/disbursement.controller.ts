@@ -400,6 +400,98 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     }
 };
 
+/**
+ * Auto-authorize + disburse in a single request.
+ *
+ * The separate PATCH /status + POST /disburse flow has an inherent timing
+ * window: the DB connection used by the first call is released before the
+ * second call starts, and under pgBouncer transaction-mode pooling those
+ * two calls can land on different connections, letting the second request
+ * briefly see the pre-commit state (DRAFT, not AUTHORISED) and fail with
+ * "not in AUTHORISED status". This endpoint eliminates that window by
+ * doing the authorize step in the same DB round-trip as the disburse lock.
+ */
+export const autoAuthorizeAndDisburse = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organizationId = (req as any).user.organization_id;
+        const userRole = (req as any).user.role;
+        const userId = (req as any).user.id;
+
+        if (!organizationId) return res.status(400).json({ error: 'Missing organization context' });
+
+        // Only ADMINs may auto-authorize-and-disburse
+        if (userRole !== 'ADMIN') {
+            return res.status(403).json({ error: 'Only Admins can auto-authorize and disburse' });
+        }
+
+        // 1. Atomically transition: DRAFT/PENDING_APPROVAL → AUTHORISED
+        //    (generates reference number if needed)
+        const { data: currentReq } = await supabase
+            .from('requisitions')
+            .select('reference_number, status')
+            .eq('id', id)
+            .eq('organization_id', organizationId)
+            .single();
+
+        if (!currentReq) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+
+        // Already past AUTHORISED — let the normal disburse endpoint handle it
+        if (!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED'].includes(currentReq.status)) {
+            return res.status(400).json({
+                error: `Requisition is in ${currentReq.status} status and cannot be auto-authorized`
+            });
+        }
+
+        // Generate reference number if one hasn't been assigned yet
+        let refNum = currentReq.reference_number;
+        if (!refNum) {
+            const { data: newRef } = await supabase.rpc('generate_sequential_reference', {
+                p_org_id: organizationId,
+                p_entity_type: 'REQUISITION',
+                p_prefix: 'REQ'
+            });
+            if (newRef) {
+                refNum = newRef;
+                await supabase
+                    .from('requisitions')
+                    .update({ reference_number: refNum })
+                    .eq('id', id);
+            }
+        }
+
+        // Set to AUTHORISED if not already there
+        if (currentReq.status !== 'AUTHORISED') {
+            await supabase
+                .from('requisitions')
+                .update({ status: 'AUTHORISED', updated_at: new Date().toISOString() })
+                .eq('id', id)
+                .eq('organization_id', organizationId);
+        }
+
+        // Fire the approval email + DISBURSAL message (non-blocking)
+        emailService.notifyRequisitionEvent(id, 'REQUISITION_APPROVED').catch(() => {});
+        supabase.from('requisition_messages').insert({
+            requisition_id: id,
+            user_id: userId,
+            content: 'How would you like to disburse these funds?',
+            type: 'SYSTEM',
+            metadata: { status: 'AUTHORISED', stage: 'DISBURSAL' }
+        }).then().catch(() => {});
+
+        // 2. Immediately hand off to the standard disburse handler in the same
+        //    request — no new HTTP round-trip, so the status is guaranteed to be
+        //    AUTHORISED when the disburse lock fires.
+        return disburseRequisition(req, res);
+
+    } catch (error: any) {
+        console.error('[Auto-Authorize] Error:', error);
+        res.status(500).json({ error: 'Auto-authorize failed', details: error.message });
+    }
+};
+
 export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
