@@ -741,9 +741,12 @@ async function handleTransferSuccessful(data: any) {
 
             console.log(`[Lenco Webhook] Confirmed transfer for reference ${reference}. Requisition ${requisitionId} → RECEIVED.`);
 
-            // Trigger ledger finalization and withdrawal fee addition
-            // The DB UNIQUE constraint prevents duplicates if polling already ran
-            await cashbookService.finalizeWalletDisbursementLedger(requisitionId);
+            // Trigger ledger finalization and withdrawal fee addition.
+            // Pass Lenco's own transfer timestamp so the cashbook entry's created_at
+            // reflects the real transfer time, keeping same-day ordering deterministic.
+            // The DB UNIQUE constraint prevents duplicates if polling already ran.
+            const txAt = data.createdAt || data.date || undefined;
+            await cashbookService.finalizeWalletDisbursementLedger(requisitionId, undefined, txAt);
 
             // If this requisition came from a scheduled item with PoP enabled,
             // send the Proof of Payment email now that Lenco has confirmed the transfer.

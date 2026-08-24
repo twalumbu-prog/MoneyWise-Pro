@@ -203,6 +203,9 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     (req as any).lencoStatus = payout.status || 'pending';
                     (req as any).lencoFee = payout.fee ? parseFloat(payout.fee) : undefined;
                     (req as any).resolvedRef = resolvedRef; // Carry forward for deferred finalization
+                    // Capture Lenco's own timestamp so the cashbook entry gets the real
+                    // transfer time as created_at rather than the API request time.
+                    (req as any).lencoTransactionAt = payout.createdAt || payout.date || undefined;
                 }
 
             } catch (payoutError: any) {
@@ -279,9 +282,10 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             // and advance the requisition status to RECEIVED.
             console.log(`[Lenco] Payout succeeded immediately for ${id}. Finalizing ledger and marking RECEIVED...`);
 
-            // Extract actual fee if returned by Lenco
+            // Extract actual fee and transaction timestamp if returned by Lenco
             const actualFee = (req as any).lencoFee;
-            await cashbookService.finalizeWalletDisbursementLedger(id, actualFee);
+            const lencoTxAt = (req as any).lencoTransactionAt;
+            await cashbookService.finalizeWalletDisbursementLedger(id, actualFee, lencoTxAt);
 
             await supabase
                 .from('requisitions')
@@ -1045,7 +1049,8 @@ function scheduleDeferredLedgerFinalization(
             if (statusCheck?.status === 'successful') {
                 console.log(`[Deferred Finalization] Transfer ${reference} confirmed successful. Finalizing ledger for ${requisitionId}...`);
                 const actualFee = statusCheck?.fee ? parseFloat(statusCheck.fee) : undefined;
-                await cashbookService.finalizeWalletDisbursementLedger(requisitionId, actualFee);
+                const txAt = statusCheck?.createdAt || statusCheck?.date || undefined;
+                await cashbookService.finalizeWalletDisbursementLedger(requisitionId, actualFee, txAt);
 
                 // Advance requisition to RECEIVED now that Lenco has confirmed the transfer
                 await supabase

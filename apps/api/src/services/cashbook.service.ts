@@ -156,17 +156,29 @@ export const cashbookService = {
             refNum = data;
         }
 
-        // 1. Insert the entry first (we'll fix balance in a moment)
+        // 1. Insert the entry first (we'll fix balance in a moment).
+        // If the caller supplies a `transaction_at` (e.g. the actual Lenco
+        // transfer timestamp), use it as `created_at` so same-day entries
+        // from different Lenco transactions get distinct, accurate timestamps
+        // and the recalculate RPC's (date, created_at) sort is deterministic.
+        const transactionAt = (entry as any).transaction_at;
+        const insertPayload: any = {
+            ...entry,
+            organization_id: organizationId,
+            account_type: accountType,
+            wallet_id: walletId,
+            reference_number: refNum,
+            balance_after: 0
+        };
+        if (transactionAt) {
+            insertPayload.created_at = transactionAt;
+        }
+        // Remove the helper field — it's not a real DB column
+        delete insertPayload.transaction_at;
+
         const { data, error } = await supabase
             .from('cashbook_entries')
-            .insert({
-                ...entry,
-                organization_id: organizationId,
-                account_type: accountType,
-                wallet_id: walletId,
-                reference_number: refNum,
-                balance_after: 0
-            })
+            .insert(insertPayload)
             .select()
             .single();
 
@@ -422,7 +434,8 @@ export const cashbookService = {
         cashierId: string,
         description?: string,
         accountType: string = 'CASH',
-        walletId?: string
+        walletId?: string,
+        transactionAt?: string   // actual Lenco transfer timestamp; used as created_at
     ): Promise<CashbookEntry> {
         return this.createEntry(organizationId, {
             entry_type: 'DISBURSEMENT',
@@ -434,7 +447,8 @@ export const cashbookService = {
             created_by: cashierId,
             status: 'DISBURSED',  // Fixed: was 'PENDING', must match duplicate guard
             account_type: accountType,
-            wallet_id: walletId
+            wallet_id: walletId,
+            ...(transactionAt ? { transaction_at: transactionAt } : {})
         } as any);
     },
 
@@ -466,7 +480,7 @@ export const cashbookService = {
      * Finalize the ledger for a successful Wallet disbursement (Lenco payout)
      * Handles creating the Cashbook Entry and appending the transaction fee to the requisition.
      */
-    async finalizeWalletDisbursementLedger(requisitionId: string, actualFee?: number): Promise<void> {
+    async finalizeWalletDisbursementLedger(requisitionId: string, actualFee?: number, transactionAt?: string): Promise<void> {
         // 1. Fetch disbursement record
         const { data: disbursement, error: disbError } = await supabase
             .from('disbursements')
@@ -524,7 +538,8 @@ export const cashbookService = {
             disbursement.cashier_id,
             mainDescription,
             'MONEYWISE_WALLET',
-            walletId
+            walletId,
+            transactionAt  // pin created_at to the actual Lenco transfer time
         );
 
         // 2. Prevent Double Entry (Line Items)
