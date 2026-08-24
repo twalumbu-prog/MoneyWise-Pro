@@ -94,6 +94,28 @@ export const getQuickBooksAccountTransactions = async (req: AuthRequest, res: Re
     }
 };
 
+export const getQuickBooksInvoices = async (req: AuthRequest, res: Response<any>) => {
+    try {
+        const organizationId = (req as any).user.organization_id;
+        const { from, to, label } = req.query;
+
+        const now = new Date();
+        const fromDate = (from as string) || `${now.getFullYear()}-01-01`;
+        const toDate   = (to   as string) || now.toISOString().split('T')[0];
+
+        const invoices = await QuickBooksService.fetchInvoices(
+            organizationId,
+            fromDate,
+            toDate,
+            label as string | undefined,
+        );
+        res.json({ fromDate, toDate, label: label ?? null, count: invoices.length, invoices });
+    } catch (error: any) {
+        console.error('[QB Invoices]', error.message);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 export const disconnectQuickBooks = async (req: AuthRequest, res: Response<any>) => {
     try {
         const organizationId = (req as any).user.organization_id;

@@ -1052,4 +1052,106 @@ export class QuickBooksService {
             return { success: false, error: error.message };
         }
     }
+
+    /**
+     * Fetch invoices from QuickBooks for a given date range.
+     * Uses the QB Query API (SELECT FROM Invoice) and paginates automatically.
+     *
+     * @param organizationId  MW org ID (used to resolve the QB token)
+     * @param fromDate        YYYY-MM-DD inclusive start date
+     * @param toDate          YYYY-MM-DD inclusive end date
+     * @param labelFilter     Optional substring to search for in CustomerMemo /
+     *                        PrivateNote / line Descriptions (case-insensitive).
+     *                        Only invoices that contain this string are returned.
+     *                        Pass undefined / empty string to return all invoices.
+     */
+    static async fetchInvoices(
+        organizationId: string,
+        fromDate: string,
+        toDate: string,
+        labelFilter?: string,
+    ): Promise<Array<{
+        id: string;
+        docNumber: string;
+        date: string;
+        customerName: string;
+        customerEmail: string;
+        memo: string;
+        privateNote: string;
+        totalAmt: number;
+        balance: number;
+        lines: Array<{
+            lineNum: number;
+            amount: number;
+            itemName: string;
+            itemId: string;
+            description: string;
+            qty: number;
+            unitPrice: number;
+        }>;
+    }>> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+        const pageSize = 1000;
+        const allInvoices: any[] = [];
+        let startPos = 1;
+
+        while (true) {
+            const query =
+                `SELECT * FROM Invoice ` +
+                `WHERE TxnDate >= '${fromDate}' AND TxnDate <= '${toDate}' ` +
+                `MAXRESULTS ${pageSize} STARTPOSITION ${startPos}`;
+
+            const url = `${apiBase}/${realmId}/query?query=${encodeURIComponent(query)}&minorversion=65`;
+            const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+            });
+
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(`[QB fetchInvoices] Query failed (${res.status}): ${txt}`);
+            }
+
+            const data = await res.json();
+            const batch: any[] = data.QueryResponse?.Invoice ?? [];
+            allInvoices.push(...batch);
+            if (batch.length < pageSize) break;
+            startPos += pageSize;
+        }
+
+        // Optionally filter by label appearing in memo/note/line-descriptions
+        const label = (labelFilter ?? '').toLowerCase().trim();
+        const filtered = label
+            ? allInvoices.filter(inv => {
+                const memo  = (inv.CustomerMemo?.value ?? '').toLowerCase();
+                const priv  = (inv.PrivateNote ?? '').toLowerCase();
+                const lines = (inv.Line ?? []).map((l: any) => (l.Description ?? '').toLowerCase()).join(' ');
+                return memo.includes(label) || priv.includes(label) || lines.includes(label);
+            })
+            : allInvoices;
+
+        // Normalise into a clean structure
+        return filtered.map(inv => ({
+            id         : inv.Id ?? '',
+            docNumber  : inv.DocNumber ?? '',
+            date       : inv.TxnDate ?? '',
+            customerName : inv.CustomerRef?.name ?? '',
+            customerEmail: inv.BillEmail?.Address ?? '',
+            memo         : inv.CustomerMemo?.value ?? '',
+            privateNote  : inv.PrivateNote ?? '',
+            totalAmt     : inv.TotalAmt ?? 0,
+            balance      : inv.Balance ?? 0,
+            lines: (inv.Line ?? [])
+                .filter((l: any) => l.DetailType === 'SalesItemLineDetail' && (l.Amount ?? 0) > 0)
+                .map((l: any, i: number) => ({
+                    lineNum    : l.LineNum ?? i + 1,
+                    amount     : l.Amount ?? 0,
+                    itemName   : l.SalesItemLineDetail?.ItemRef?.name ?? '',
+                    itemId     : l.SalesItemLineDetail?.ItemRef?.value ?? '',
+                    description: l.Description ?? '',
+                    qty        : l.SalesItemLineDetail?.Qty ?? 1,
+                    unitPrice  : l.SalesItemLineDetail?.UnitPrice ?? l.Amount ?? 0,
+                })),
+        }));
+    }
 }
