@@ -664,6 +664,145 @@ export class QuickBooksService {
         }
     }
 
+    /**
+     * Fetch all transactions touching a specific QB account within a date range.
+     * Uses the QB TransactionList report — returns a bank-statement-style list
+     * (date, type, memo, amount, running balance) ordered oldest→newest.
+     *
+     * @param organizationId  MW org
+     * @param qbAccountId     QB account Id (e.g. "95")
+     * @param fromDate        ISO date string "YYYY-MM-DD"
+     * @param toDate          ISO date string "YYYY-MM-DD"
+     */
+    static async fetchAccountTransactions(
+        organizationId: string,
+        qbAccountId: string,
+        fromDate: string,
+        toDate: string
+    ): Promise<{
+        accountName: string;
+        fromDate: string;
+        toDate: string;
+        openingBalance: number;
+        closingBalance: number;
+        transactions: Array<{
+            date: string;
+            type: string;
+            docNum: string;
+            name: string;
+            memo: string;
+            amount: number;
+            balance: number;
+        }>;
+    }> {
+        const { apiBase } = this.getEnv();
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+
+        // First resolve the account name from our accounts list
+        const accounts = await this.fetchAccounts(organizationId);
+        const account = accounts.find((a: any) => a.Id === qbAccountId);
+        const accountName = account?.Name ?? `Account ${qbAccountId}`;
+
+        // QB Reports API — TransactionList report filtered to one account
+        const params = new URLSearchParams({
+            account: qbAccountId,
+            start_date: fromDate,
+            end_date: toDate,
+            sort_by: 'tx_date',
+            sort_order: 'ascend',
+            minorversion: '70'
+        });
+        const url = `${apiBase}/${realmId}/reports/TransactionList?${params}`;
+
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Accept': 'application/json'
+            }
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            console.error('[QB TransactionList] API error', JSON.stringify(data));
+            throw new Error(`QB Reports API error: ${JSON.stringify(data?.Fault?.Error?.[0]?.Message ?? data)}`);
+        }
+
+        // Parse the columnar report format QB returns
+        // Columns vary slightly by QB version — find them by ColType
+        const cols: string[] = (data.Columns?.Column ?? []).map((c: any) => c.ColType as string);
+        const txDateIdx   = cols.indexOf('tx_date');
+        const txTypeIdx   = cols.indexOf('tx_type');
+        const docNumIdx   = cols.indexOf('doc_num');
+        const nameIdx     = cols.indexOf('entity');
+        const memoIdx     = cols.indexOf('memo');
+        const amtIdx      = cols.indexOf('subt_nat_amount');  // signed native amount
+        const balIdx      = cols.indexOf('rbal_nat_amount');   // running balance
+
+        // Fallback to positional if ColType names differ
+        const safeIdx = (preferred: number, fallback: number) =>
+            preferred >= 0 ? preferred : fallback;
+
+        const transactions: Array<{ date: string; type: string; docNum: string; name: string; memo: string; amount: number; balance: number }> = [];
+
+        // Rows can be nested sections; flatten all leaf rows
+        const flattenRows = (rows: any[]): any[] => {
+            const out: any[] = [];
+            for (const row of rows ?? []) {
+                if (row.type === 'Section' || row.Rows) {
+                    out.push(...flattenRows(row.Rows?.Row ?? []));
+                } else if (row.ColData) {
+                    out.push(row);
+                }
+            }
+            return out;
+        };
+
+        const allRows = flattenRows(data.Rows?.Row ?? []);
+        let openingBalance = 0;
+        let closingBalance = 0;
+
+        for (const row of allRows) {
+            const cols = row.ColData as Array<{ value: string; id?: string }>;
+            if (!cols || cols.length === 0) continue;
+
+            const get = (idx: number) => (idx >= 0 && idx < cols.length ? cols[idx].value?.trim() ?? '' : '');
+            const getNum = (idx: number) => parseFloat(get(idx).replace(/,/g, '')) || 0;
+
+            // Opening/closing balance summary rows
+            const label = get(0).toLowerCase();
+            if (label.includes('opening balance') || label.includes('beginning balance')) {
+                openingBalance = getNum(amtIdx >= 0 ? amtIdx : cols.length - 1);
+                continue;
+            }
+            if (label.includes('ending balance') || label.includes('closing balance') || label.includes('total')) {
+                closingBalance = getNum(balIdx >= 0 ? balIdx : cols.length - 1);
+                continue;
+            }
+
+            const txDate = get(safeIdx(txDateIdx, 0));
+            if (!txDate || !/^\d{4}-\d{2}-\d{2}/.test(txDate)) continue; // skip non-data rows
+
+            transactions.push({
+                date:    txDate,
+                type:    get(safeIdx(txTypeIdx, 1)),
+                docNum:  get(safeIdx(docNumIdx, 2)),
+                name:    get(safeIdx(nameIdx,   3)),
+                memo:    get(safeIdx(memoIdx,   4)),
+                amount:  getNum(safeIdx(amtIdx, cols.length - 2)),
+                balance: getNum(safeIdx(balIdx, cols.length - 1)),
+            });
+        }
+
+        // Infer closing balance from last transaction if report didn't give it
+        if (closingBalance === 0 && transactions.length > 0) {
+            closingBalance = transactions[transactions.length - 1].balance;
+        }
+
+        console.log(`[QB TransactionList] ${accountName}: ${transactions.length} txns, bal ${openingBalance}→${closingBalance}`);
+
+        return { accountName, fromDate, toDate, openingBalance, closingBalance, transactions };
+    }
+
     static async createDeposit(organizationId: string, entryId: string, creditAccountId: string, userId: string) {
         console.log(`[QB Deposit] Starting deposit creation for entry ${entryId}`);
         try {

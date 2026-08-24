@@ -8,8 +8,31 @@ import {
     RefreshCw,
     ArrowRightLeft,
     ArrowDownToLine,
-    ArrowLeft
+    ArrowLeft,
+    BookOpen,
+    TrendingUp,
+    TrendingDown,
+    Download
 } from 'lucide-react';
+
+// ── Types ─────────────────────────────────────────────────────────────────────
+interface QBTransaction {
+    date: string;
+    type: string;
+    docNum: string;
+    name: string;
+    memo: string;
+    amount: number;
+    balance: number;
+}
+interface QBStatement {
+    accountName: string;
+    fromDate: string;
+    toDate: string;
+    openingBalance: number;
+    closingBalance: number;
+    transactions: QBTransaction[];
+}
 
 interface QuickBooksIntegrationProps {
     onBack: () => void;
@@ -26,6 +49,17 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
     const [localAccounts, setLocalAccounts] = useState<Account[]>([]);
     const [saving, setSaving] = useState<string | null>(null);
     const [mappingSearchQuery, setMappingSearchQuery] = useState('');
+
+    // ── Account Statement state ──────────────────────────────────────────────
+    const [stmtAccountId, setStmtAccountId] = useState('');
+    const [stmtFrom, setStmtFrom] = useState(() => {
+        const d = new Date(); d.setMonth(0); d.setDate(1);
+        return d.toISOString().split('T')[0];
+    });
+    const [stmtTo, setStmtTo] = useState(() => new Date().toISOString().split('T')[0]);
+    const [stmtLoading, setStmtLoading] = useState(false);
+    const [stmtError, setStmtError] = useState<string | null>(null);
+    const [statement, setStatement] = useState<QBStatement | null>(null);
 
     useEffect(() => {
         loadIntegrationData();
@@ -110,6 +144,40 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
         } finally {
             setSaving(null);
         }
+    };
+
+    const handleFetchStatement = async () => {
+        if (!stmtAccountId) { setStmtError('Please select an account.'); return; }
+        try {
+            setStmtLoading(true);
+            setStmtError(null);
+            setStatement(null);
+            const data = await integrationService.getAccountTransactions(stmtAccountId, stmtFrom, stmtTo);
+            setStatement(data);
+        } catch (err: any) {
+            setStmtError(err.message);
+        } finally {
+            setStmtLoading(false);
+        }
+    };
+
+    const handleDownloadCSV = () => {
+        if (!statement) return;
+        const rows = [
+            ['Date', 'Type', 'Doc #', 'Name / Payer', 'Memo', 'Amount (ZMW)', 'Running Balance'],
+            ...statement.transactions.map(t => [
+                t.date, t.type, t.docNum, t.name, t.memo,
+                t.amount.toFixed(2), t.balance.toFixed(2)
+            ])
+        ];
+        const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `QB_${statement.accountName.replace(/\s+/g, '_')}_${stmtFrom}_to_${stmtTo}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
     };
 
     const handleSmartMatch = async () => {
@@ -272,6 +340,150 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
                     </button>
                 </div>
             </div>
+
+            {/* ── QB Account Statement ────────────────────────────────────── */}
+            {status?.connected && (
+                <div className="pt-8 border-t border-gray-100">
+                    <div className="mb-5">
+                        <h3 className="text-lg font-bold text-brand-navy flex items-center">
+                            <BookOpen className="h-5 w-5 mr-2 text-brand-green" />
+                            QB Account Statement
+                        </h3>
+                        <p className="text-sm text-gray-500 mt-1">
+                            Read transactions from any QuickBooks account — Zanaco, Master Fees wallet, petty cash, or any other.
+                        </p>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="bg-white border border-gray-200 rounded-xl p-4 flex flex-wrap gap-3 items-end shadow-sm">
+                        <div className="flex-1 min-w-[200px]">
+                            <label className="block text-xs font-bold text-gray-600 mb-1">Account</label>
+                            <select
+                                value={stmtAccountId}
+                                onChange={e => { setStmtAccountId(e.target.value); setStatement(null); }}
+                                className="w-full pl-3 pr-8 py-2 text-sm border border-gray-300 rounded-xl focus:ring-brand-green focus:border-brand-green"
+                            >
+                                <option value="">— Select QB account —</option>
+                                {qbAccounts
+                                    .slice()
+                                    .sort((a: any, b: any) => a.Name.localeCompare(b.Name))
+                                    .map((a: any) => (
+                                        <option key={a.Id} value={a.Id}>{a.Name} ({a.AccountType})</option>
+                                    ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 mb-1">From</label>
+                            <input type="date" value={stmtFrom} onChange={e => { setStmtFrom(e.target.value); setStatement(null); }}
+                                className="py-2 px-3 text-sm border border-gray-300 rounded-xl focus:ring-brand-green focus:border-brand-green" />
+                        </div>
+                        <div>
+                            <label className="block text-xs font-bold text-gray-600 mb-1">To</label>
+                            <input type="date" value={stmtTo} onChange={e => { setStmtTo(e.target.value); setStatement(null); }}
+                                className="py-2 px-3 text-sm border border-gray-300 rounded-xl focus:ring-brand-green focus:border-brand-green" />
+                        </div>
+                        <button
+                            onClick={handleFetchStatement}
+                            disabled={stmtLoading || !stmtAccountId}
+                            className="inline-flex items-center px-4 py-2 bg-brand-green text-white text-sm font-bold rounded-xl hover:bg-brand-green/90 disabled:opacity-50 transition-all"
+                        >
+                            {stmtLoading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <BookOpen className="h-4 w-4 mr-2" />}
+                            {stmtLoading ? 'Loading…' : 'Load Statement'}
+                        </button>
+                    </div>
+
+                    {stmtError && (
+                        <div className="mt-3 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-2 flex-shrink-0" />{stmtError}
+                        </div>
+                    )}
+
+                    {/* Statement results */}
+                    {statement && (
+                        <div className="mt-4 space-y-4">
+                            {/* Summary cards */}
+                            <div className="grid grid-cols-3 gap-3">
+                                {[
+                                    { label: 'Opening Balance', value: statement.openingBalance, icon: null },
+                                    { label: 'Closing Balance', value: statement.closingBalance, icon: null },
+                                    { label: 'Net Movement', value: statement.closingBalance - statement.openingBalance,
+                                      icon: statement.closingBalance >= statement.openingBalance
+                                          ? <TrendingUp className="h-4 w-4 text-green-600" />
+                                          : <TrendingDown className="h-4 w-4 text-red-500" /> },
+                                ].map(card => (
+                                    <div key={card.label} className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+                                        <p className="text-xs text-gray-500 font-medium">{card.label}</p>
+                                        <div className="flex items-center mt-1 space-x-2">
+                                            {card.icon}
+                                            <p className={`text-lg font-bold ${card.value < 0 ? 'text-red-600' : 'text-gray-900'}`}>
+                                                ZMW {Math.abs(card.value).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}
+                                                {card.value < 0 ? ' Dr' : ''}
+                                            </p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Header with download */}
+                            <div className="flex items-center justify-between">
+                                <p className="text-sm font-bold text-gray-700">
+                                    {statement.accountName} — {statement.transactions.length} transactions
+                                </p>
+                                <button
+                                    onClick={handleDownloadCSV}
+                                    className="inline-flex items-center px-3 py-1.5 text-xs font-bold text-gray-600 border border-gray-300 rounded-xl hover:bg-gray-50 transition-all"
+                                >
+                                    <Download className="h-3.5 w-3.5 mr-1.5" />
+                                    Download CSV
+                                </button>
+                            </div>
+
+                            {/* Transactions table */}
+                            <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto custom-scrollbar shadow-sm">
+                                <table className="min-w-[750px] w-full divide-y divide-gray-200 text-sm">
+                                    <thead className="bg-gray-50">
+                                        <tr>
+                                            {['Date', 'Type', 'Doc #', 'Name / Payer', 'Memo', 'Amount', 'Balance'].map(h => (
+                                                <th key={h} className="px-4 py-3 text-left text-xs font-black text-gray-500 uppercase tracking-wider">
+                                                    {h}
+                                                </th>
+                                            ))}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-100">
+                                        {statement.transactions.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-sm">
+                                                    No transactions in this date range.
+                                                </td>
+                                            </tr>
+                                        ) : statement.transactions.map((t, i) => (
+                                            <tr key={i} className="hover:bg-gray-50 transition-colors">
+                                                <td className="px-4 py-2.5 whitespace-nowrap text-gray-600 font-medium">{t.date}</td>
+                                                <td className="px-4 py-2.5 whitespace-nowrap">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                                                        {t.type || '—'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-2.5 whitespace-nowrap text-gray-500 text-xs">{t.docNum || '—'}</td>
+                                                <td className="px-4 py-2.5 max-w-[160px] truncate font-medium text-gray-800" title={t.name}>{t.name || '—'}</td>
+                                                <td className="px-4 py-2.5 max-w-[200px] truncate text-gray-500" title={t.memo}>{t.memo || '—'}</td>
+                                                <td className={`px-4 py-2.5 whitespace-nowrap font-bold text-right ${t.amount < 0 ? 'text-red-600' : 'text-green-700'}`}>
+                                                    {t.amount < 0 ? '−' : '+'}
+                                                    {Math.abs(t.amount).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}
+                                                </td>
+                                                <td className="px-4 py-2.5 whitespace-nowrap text-right text-gray-700 font-medium">
+                                                    {t.balance.toLocaleString('en-ZM', { minimumFractionDigits: 2 })}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Chart of Accounts Mapping */}
             {status?.connected && (

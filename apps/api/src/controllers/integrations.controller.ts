@@ -71,6 +71,29 @@ export const getQuickBooksAccounts = async (req: AuthRequest, res: Response<any>
     }
 };
 
+export const getQuickBooksAccountTransactions = async (req: AuthRequest, res: Response<any>) => {
+    try {
+        const organizationId = (req as any).user.organization_id;
+        const { qbAccountId } = req.params;
+        const { from, to } = req.query;
+
+        if (!qbAccountId) return res.status(400).json({ error: 'qbAccountId is required' });
+
+        // Default to current calendar year if not specified
+        const now = new Date();
+        const fromDate = (from as string) || `${now.getFullYear()}-01-01`;
+        const toDate   = (to   as string) || now.toISOString().split('T')[0];
+
+        const result = await QuickBooksService.fetchAccountTransactions(
+            organizationId, qbAccountId, fromDate, toDate
+        );
+        res.json(result);
+    } catch (error: any) {
+        console.error('[QB Account Transactions]', error.message);
+        res.status(500).json({ error: error.message });
+    }
+};
+
 export const disconnectQuickBooks = async (req: AuthRequest, res: Response<any>) => {
     try {
         const organizationId = (req as any).user.organization_id;

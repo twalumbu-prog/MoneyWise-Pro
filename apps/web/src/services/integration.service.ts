@@ -61,6 +61,39 @@ export const integrationService = {
         return response.json();
     },
 
+    async getAccountTransactions(
+        qbAccountId: string,
+        fromDate: string,
+        toDate: string
+    ): Promise<{
+        accountName: string;
+        fromDate: string;
+        toDate: string;
+        openingBalance: number;
+        closingBalance: number;
+        transactions: Array<{
+            date: string;
+            type: string;
+            docNum: string;
+            name: string;
+            memo: string;
+            amount: number;
+            balance: number;
+        }>;
+    }> {
+        const { data: { session } } = await supabase.auth.getSession();
+        const params = new URLSearchParams({ from: fromDate, to: toDate });
+        const response = await fetch(
+            `${API_URL}/integrations/quickbooks/accounts/${encodeURIComponent(qbAccountId)}/transactions?${params}`,
+            { headers: { 'Authorization': `Bearer ${session?.access_token}` } }
+        );
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to fetch account transactions');
+        }
+        return response.json();
+    },
+
     async retrySync(requisitionId: string): Promise<void> {
         const { data: { session } } = await supabase.auth.getSession();
         const response = await fetch(`${API_URL}/integrations/quickbooks/sync/${requisitionId}`, {

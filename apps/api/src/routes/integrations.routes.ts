@@ -5,6 +5,7 @@ import {
     quickBooksCallback,
     getIntegrationStatus,
     getQuickBooksAccounts,
+    getQuickBooksAccountTransactions,
     disconnectQuickBooks,
     syncRequisition
 } from '../controllers/integrations.controller';
@@ -36,6 +37,7 @@ router.delete('/quickbooks', requireAuth, disconnectQuickBooks);
 // Status and Data
 router.get('/status', requireAuth, getIntegrationStatus);
 router.get('/quickbooks/accounts', requireAuth, getQuickBooksAccounts);
+router.get('/quickbooks/accounts/:qbAccountId/transactions', requireAuth, getQuickBooksAccountTransactions);
 router.post('/quickbooks/sync/:id', requireAuth, syncRequisition);
 
 // ── Master Fees ──────────────────────────────────────────────────────────────
