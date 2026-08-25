@@ -38,7 +38,8 @@ import {
     analyzeDisbursementProof,
     verifyDisbursementStatus,
     disburseExcessRequisition,
-    disbursePayrollRequisition
+    disbursePayrollRequisition,
+    pollProcessingDisbursements
 } from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
 import { requireAuth } from '../middleware/auth';
@@ -49,6 +50,7 @@ const router = Router();
 // These are called by the auto-complete-requisitions edge function via pg_cron.
 router.post('/auto-reminder', sendAutoCategorizationReminder);
 router.post('/:id/auto-complete', autoCompleteRequisition);
+router.post('/poll-processing', pollProcessingDisbursements);
 
 router.use(requireAuth);
 

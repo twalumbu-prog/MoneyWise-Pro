@@ -16,13 +16,16 @@ Deno.serve(async (req) => {
 
         console.log(`[Edge Function] Triggering Lenco sync on API_URL: ${apiUrl}`);
 
-        const response = await fetch(`${apiUrl}/lenco/sync`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${syncSecret}`
-            }
-        });
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${syncSecret}`
+        };
+
+        // Run Lenco sync and PROCESSING-requisition poll in parallel
+        const [response, pollResponse] = await Promise.all([
+            fetch(`${apiUrl}/lenco/sync`, { method: 'POST', headers }),
+            fetch(`${apiUrl}/requisitions/poll-processing`, { method: 'POST', headers }),
+        ]);
 
         if (!response.ok) {
             const errText = await response.text();
@@ -30,10 +33,14 @@ Deno.serve(async (req) => {
         }
 
         const data = await response.json();
+        const pollData = pollResponse.ok ? await pollResponse.json() : { error: `poll-processing ${pollResponse.status}` };
         console.log('[Edge Function] Lenco sync completed successfully:', JSON.stringify(data));
+        if (pollData?.processed > 0) {
+            console.log('[Edge Function] poll-processing results:', JSON.stringify(pollData));
+        }
 
         return new Response(
-            JSON.stringify({ success: true, data }),
+            JSON.stringify({ success: true, data, pollProcessing: pollData }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
 

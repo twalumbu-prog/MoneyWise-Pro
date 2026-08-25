@@ -2090,3 +2090,100 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
         res.status(500).json({ error: 'Failed to process payroll batch disbursal', details: error.message });
     }
 };
+
+/**
+ * POST /requisitions/poll-processing  (internal, LENCO_SYNC_SECRET protected)
+ *
+ * Called by pg_cron every 5 minutes.  Finds every requisition that is stuck
+ * in PROCESSING status and checks its Lenco transfer state so it can be
+ * finalized (→ RECEIVED) or reverted (→ AUTHORISED) without relying on the
+ * setTimeout-based deferred poller that dies when a serverless function ends.
+ */
+export const pollProcessingDisbursements = async (req: any, res: any): Promise<any> => {
+    const authHeader = req.headers['authorization'] || '';
+    const secret = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    if (!secret || secret !== process.env.LENCO_SYNC_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    try {
+        // Find all requisitions stuck in PROCESSING that have a disbursement record
+        const { data: pending, error: fetchErr } = await supabase
+            .from('disbursements')
+            .select('requisition_id, external_reference, organization_id, payment_method, requisitions!inner(status, organization_id)')
+            .eq('requisitions.status', 'PROCESSING')
+            .not('external_reference', 'is', null);
+
+        if (fetchErr) throw fetchErr;
+        if (!pending || pending.length === 0) {
+            return res.json({ message: 'No PROCESSING requisitions found.', processed: 0 });
+        }
+
+        console.log(`[Poll-Processing] Found ${pending.length} PROCESSING requisition(s). Checking Lenco...`);
+
+        const results: any[] = [];
+
+        for (const row of pending) {
+            const reqId = row.requisition_id;
+            const ref = row.external_reference;
+            const orgId = (row.requisitions as any)?.organization_id || row.organization_id;
+
+            try {
+                const { data: org } = await supabase
+                    .from('organizations')
+                    .select('lenco_secret_key')
+                    .eq('id', orgId)
+                    .single();
+
+                const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+                const statusCheck = await LencoService.getTransferStatus(ref, secretKey);
+
+                if (!statusCheck) {
+                    console.warn(`[Poll-Processing] Transfer ${ref} not found on Lenco for req ${reqId}. Reverting.`);
+                    await revertDisbursementAndCleanup(reqId, orgId, row.payment_method);
+                    results.push({ requisitionId: reqId, action: 'reverted', reason: 'not_found_on_lenco' });
+                    continue;
+                }
+
+                if (statusCheck.status === 'successful') {
+                    console.log(`[Poll-Processing] Transfer ${ref} confirmed SUCCESSFUL for req ${reqId}. Finalizing.`);
+                    const actualFee = statusCheck.fee ? parseFloat(statusCheck.fee) : undefined;
+                    const txAt = statusCheck.createdAt || statusCheck.date || undefined;
+                    await cashbookService.finalizeWalletDisbursementLedger(reqId, actualFee, txAt);
+                    await supabase
+                        .from('requisitions')
+                        .update({ status: 'RECEIVED', updated_at: new Date().toISOString() })
+                        .eq('id', reqId)
+                        .eq('status', 'PROCESSING');
+                    results.push({ requisitionId: reqId, action: 'finalized', lencoStatus: 'successful' });
+                    continue;
+                }
+
+                if (statusCheck.status === 'failed') {
+                    console.warn(`[Poll-Processing] Transfer ${ref} FAILED on Lenco for req ${reqId}. Reverting.`);
+                    await revertDisbursementAndCleanup(reqId, orgId, row.payment_method);
+                    results.push({ requisitionId: reqId, action: 'reverted', reason: 'failed_on_lenco' });
+                    continue;
+                }
+
+                // Still pending — leave it for the next poll cycle
+                console.log(`[Poll-Processing] Transfer ${ref} still ${statusCheck.status} for req ${reqId}. Will check again.`);
+                results.push({ requisitionId: reqId, action: 'skipped', lencoStatus: statusCheck.status });
+
+            } catch (err: any) {
+                console.error(`[Poll-Processing] Error processing req ${reqId}:`, err.message);
+                results.push({ requisitionId: reqId, action: 'error', error: err.message });
+            }
+        }
+
+        return res.json({
+            message: `Processed ${pending.length} PROCESSING requisition(s).`,
+            processed: pending.length,
+            results,
+        });
+
+    } catch (error: any) {
+        console.error('[Poll-Processing] Fatal error:', error);
+        return res.status(500).json({ error: 'Poll failed', details: error.message });
+    }
+};
