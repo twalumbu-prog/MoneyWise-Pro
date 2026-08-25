@@ -479,7 +479,10 @@ export const autoAuthorizeAndDisburse = async (req: any, res: any): Promise<any>
             content: 'How would you like to disburse these funds?',
             type: 'SYSTEM',
             metadata: { status: 'AUTHORISED', stage: 'DISBURSAL' }
-        }).then().catch(() => {});
+        }).then(
+            () => {},
+            (err) => console.error('[Auto-Authorize] Error inserting message:', err)
+        );
 
         // 2. Immediately hand off to the standard disburse handler in the same
         //    request — no new HTTP round-trip, so the status is guaranteed to be
