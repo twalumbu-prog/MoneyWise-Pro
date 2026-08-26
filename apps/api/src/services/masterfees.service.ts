@@ -696,7 +696,10 @@ async function postInvoice(
     invoice: MFInvoice,
     categoriesByName: Map<string, MFFeeCategory>,
     priorMap: Map<string, PriorInvoiceRecord>,
-    force: boolean = false
+    force: boolean = false,
+    /** When provided, status-only changes are collected here for a single
+     *  batch update after the loop rather than issuing one DB call per invoice. */
+    statusUpdateCollector?: Array<{ mf_id: string; status: string }>
 ): Promise<'posted' | 'skipped' | 'voided'> {
     const total = num(invoice.total_amount);
     const studentName = invoice.student?.full_name || [invoice.student?.first_name, invoice.student?.last_name].filter(Boolean).join(' ');
@@ -722,12 +725,20 @@ async function postInvoice(
     const prior = priorMap.get(invoice.invoice_id);
     if (!force && prior && Math.abs(num(prior.amount) - total) < TOLERANCE && !!prior.journal_entry_id === !voided) {
         if ((prior.mf_status || '') !== (invoice.status || '')) {
-            await supabase
-                .from('masterfees_records')
-                .update({ mf_status: invoice.status, synced_at: new Date().toISOString() })
-                .eq('organization_id', organizationId)
-                .eq('record_type', 'INVOICE')
-                .eq('mf_id', invoice.invoice_id);
+            if (statusUpdateCollector) {
+                // Defer to caller for a single batch update — avoids one DB round
+                // trip per invoice when hundreds of statuses change at once (e.g.
+                // pending→complete as students pay), which was exhausting the time
+                // budget before the payments loop could start.
+                statusUpdateCollector.push({ mf_id: invoice.invoice_id, status: invoice.status || '' });
+            } else {
+                await supabase
+                    .from('masterfees_records')
+                    .update({ mf_status: invoice.status, synced_at: new Date().toISOString() })
+                    .eq('organization_id', organizationId)
+                    .eq('record_type', 'INVOICE')
+                    .eq('mf_id', invoice.invoice_id);
+            }
         }
         return 'skipped';
     }
@@ -1377,13 +1388,43 @@ async function runMasterfeesSync(
         // Batch-preload idempotency state for ALL invoices in one query instead of
         // one row-by-row round trip per invoice — see loadPriorRecords doc comment.
         const priorMap = await loadPriorRecords<PriorInvoiceRecord>(organizationId, 'INVOICE', 'amount, mf_status, journal_entry_id');
+
+        // Collect status-only changes during the loop (pending→complete etc.) so
+        // we can flush them in one grouped UPDATE instead of one call per invoice.
+        // With ~640 invoices changing status at once this was the primary cause of
+        // the payments loop being starved of its time budget.
+        const statusUpdateCollector: Array<{ mf_id: string; status: string }> = [];
+
         for (const inv of invoices) {
             if (Date.now() > deadline) { deferredByBudget = true; break; }
             try {
-                const r = await postInvoice(organizationId, integration.id, config, inv, categoriesByName, priorMap);
+                const r = await postInvoice(organizationId, integration.id, config, inv, categoriesByName, priorMap, false, statusUpdateCollector);
                 summary.invoices[r]++;
             } catch (err: any) {
                 summary.errors.push(`invoice ${inv.invoice_id}: ${err.message}`);
+            }
+        }
+
+        // Flush all collected status updates in a small number of grouped DB calls
+        // (one per distinct status value, chunked at 200 ids to stay within URL limits).
+        // This replaces up to N individual UPDATE calls with at most a handful.
+        if (statusUpdateCollector.length > 0) {
+            const byStatus = new Map<string, string[]>();
+            for (const u of statusUpdateCollector) {
+                const arr = byStatus.get(u.status) ?? [];
+                arr.push(u.mf_id);
+                byStatus.set(u.status, arr);
+            }
+            const now = new Date().toISOString();
+            const CHUNK = 200;
+            for (const [status, mf_ids] of byStatus) {
+                for (let i = 0; i < mf_ids.length; i += CHUNK) {
+                    await supabase.from('masterfees_records')
+                        .update({ mf_status: status, synced_at: now })
+                        .eq('organization_id', organizationId)
+                        .eq('record_type', 'INVOICE')
+                        .in('mf_id', mf_ids.slice(i, i + CHUNK));
+                }
             }
         }
     } catch (err: any) {
