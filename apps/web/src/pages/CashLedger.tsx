@@ -40,6 +40,7 @@ import { useAuth } from '../context/AuthContext';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
 import RequisitionModal from '../components/requisitions/RequisitionModal';
+import DepositProofPreview from '../components/wallets/DepositProofPreview';
 import { Requisition } from '../services/requisition.service';
 import ExportLedgerModal from '../components/ExportLedgerModal';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
@@ -224,6 +225,7 @@ const renderMobileStatusIcon = (status: string) => {
 const CashLedger: React.FC = () => {
     const navigate = useNavigate();
     const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
+    const [depositProofEntry, setDepositProofEntry] = useState<CashbookEntry | null>(null);
     const [postingReview, setPostingReview] = useState<{
         type: 'INFLOW' | 'REQUISITION';
         data: any;
@@ -2290,13 +2292,25 @@ Status: VERIFIED`;
                                             {resolvedStatus === 'CATEGORIZED' ? 'COMPLETED' : resolvedStatus}
                                         </span>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedEntry(null)}
-                                        className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition flex-shrink-0"
-                                    >
-                                        <X size={16} />
-                                    </button>
+                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                        {entry.entry_type === 'INFLOW' && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setDepositProofEntry(entry)}
+                                                title="Download Proof of Deposit"
+                                                className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 hover:text-[#006AFF] transition flex-shrink-0"
+                                            >
+                                                <Download size={16} />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => setSelectedEntry(null)}
+                                            className="p-1.5 rounded-lg text-gray-400 hover:bg-gray-100 transition flex-shrink-0"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
                                 </div>
                                 <h2 className="text-sm font-bold text-gray-900 leading-snug pr-2">{displayDescription}</h2>
                                 <p className={`text-2xl font-black mt-1 ${isOutflow ? 'text-rose-600' : 'text-gray-900'}`}>
@@ -2784,6 +2798,13 @@ Status: VERIFIED`;
                     </div>
                 );
             })()}
+
+            {depositProofEntry && (
+                <DepositProofPreview
+                    entry={depositProofEntry}
+                    onClose={() => setDepositProofEntry(null)}
+                />
+            )}
         </Layout>
     );
 };
