@@ -39,6 +39,7 @@ import {
     CalendarDays,
     MapPin,
     Edit2,
+    Star,
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
@@ -2520,20 +2521,24 @@ Status: VERIFIED`;
                                 {/* Name */}
                                 <h2 className="mt-2 text-2xl font-bold text-black leading-snug">{p.name}</h2>
 
-                                {/* Sold count — right below the name */}
+                                {/* Rating (static) + Sold count — right below the name */}
                                 <div className="mt-1 flex items-center gap-2">
+                                    <span className="flex items-center gap-1">
+                                        <Star size={12} className="text-yellow-400" fill="#facc15" />
+                                        <span className="text-xs text-slate-500">4.9 (320 Reviews)</span>
+                                    </span>
                                     <span className={`text-xs font-bold ${salesCount > 0 ? 'text-slate-500' : 'text-teal-600'}`}>
                                         {salesCount > 0 ? `${salesCount} Sold` : 'NEW'}
                                     </span>
                                 </div>
 
                                 {/* Description */}
-                                {p.description && (
-                                    <div className="mt-5">
-                                        <h3 className="text-base font-bold text-black mb-1">Product Information</h3>
-                                        <p className="text-base text-slate-500 leading-relaxed">{p.description}</p>
-                                    </div>
-                                )}
+                                <div className="mt-5">
+                                    <h3 className="text-base font-bold text-black mb-1">Product Information</h3>
+                                    <p className="text-base text-slate-500 leading-relaxed">
+                                        {p.description || 'This product does not have any description.'}
+                                    </p>
+                                </div>
 
                                 {/* What's Included */}
                                 {(p.whats_included?.length ?? 0) > 0 && (
@@ -3840,7 +3845,7 @@ Status: VERIFIED`;
 
             {/* Footer Brand Info — hidden on the premium processing screen, which has its own header,
                 and on the dedicated checkout page, which has its own "Secure payments" footer */}
-            {step !== 'SHOP' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && step !== 'CHECKOUT' && !(step === 'VERIFYING' && displayPaymentPhase) && (
+            {step !== 'SHOP' && step !== 'DETAIL' && step !== 'CATALOG' && step !== 'SUMMARY' && step !== 'SUCCESS' && step !== 'CHECKOUT' && !(step === 'VERIFYING' && displayPaymentPhase) && (
             <div className="mt-auto pt-8 pb-6 text-center space-y-2">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-center space-x-1.5">
                     <Building2 size={12} />
