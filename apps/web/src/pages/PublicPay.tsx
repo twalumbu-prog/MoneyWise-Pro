@@ -24,6 +24,8 @@ import {
     BadgeCheck,
     PlusCircle,
     ChevronRight,
+    Bike,
+    Store,
     ChevronDown,
     Check,
     X,
@@ -2725,9 +2727,9 @@ Status: VERIFIED`;
                                         }`}
                                     >
                                         {m === 'deliver' ? (
-                                            <><ChevronRight className="h-3.5 w-3.5" />Deliver</>
+                                            <><Bike className="h-3.5 w-3.5" />Deliver</>
                                         ) : (
-                                            <><ShoppingBag className="h-3.5 w-3.5" />Pick Up</>
+                                            <><Store className="h-3.5 w-3.5" />Pick Up</>
                                         )}
                                     </button>
                                 ))}
