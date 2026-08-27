@@ -254,6 +254,7 @@ export const PublicPay: React.FC = () => {
     const [deliveryApartment, setDeliveryApartment] = useState('');
     const [selectedRider, setSelectedRider] = useState<string>(RIDER_SERVICES[0].id);
     const [riderDropdownOpen, setRiderDropdownOpen] = useState(false);
+    const riderSectionRef = useRef<HTMLDivElement | null>(null);
     const [locating, setLocating] = useState(false);
 
     // Desktop (≥1024px) uses a full-width two-column shop+cart layout; mobile keeps
@@ -2586,7 +2587,7 @@ Status: VERIFIED`;
                                         {/* Country */}
                                         <div>
                                             <label className="text-xs font-semibold text-gray-700 mb-1 block">Country</label>
-                                            <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border min-h-[48px]" style={{borderColor:'#EFF2F6'}}>
+                                            <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border" style={{borderColor:'#EFF2F6'}}>
                                                 <span className="text-lg">🇿🇲</span>
                                                 <span className="flex-1 text-xs text-gray-600 font-normal">{deliveryCountry}</span>
                                                 <span className="text-xs font-semibold text-gray-600">ZM</span>
@@ -2644,31 +2645,42 @@ Status: VERIFIED`;
                                     {cartAllowsExternalDelivery && (() => {
                                         const activeSvc = RIDER_SERVICES.find(s => s.id === selectedRider) ?? RIDER_SERVICES[0];
                                         return (
-                                            <div className="relative">
+                                            <div ref={riderSectionRef}>
+                                                {/* Label sits above the bordered component, matching address field layout */}
+                                                <label className="text-xs font-semibold text-gray-700 mb-1 block">Choose Rider Service</label>
+
                                                 {/* Collapsed pill — shows selected rider */}
                                                 <button
-                                                    onClick={() => setRiderDropdownOpen(o => !o)}
-                                                    className="w-full bg-white rounded-2xl border px-5 py-1.5 flex flex-col justify-center gap-1 overflow-hidden text-left" style={{borderColor:'#EFF2F6'}}
+                                                    onClick={() => {
+                                                        const opening = !riderDropdownOpen;
+                                                        setRiderDropdownOpen(opening);
+                                                        if (opening) {
+                                                            // Let the list render first, then scroll it into view
+                                                            // with enough bottom clearance for the sticky footer (~100px).
+                                                            setTimeout(() => {
+                                                                riderSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                                                            }, 50);
+                                                        }
+                                                    }}
+                                                    className="w-full bg-white rounded-2xl border px-5 py-3 flex items-center gap-2.5 text-left" style={{borderColor:'#EFF2F6'}}
                                                 >
-                                                    <span className="text-xs font-medium text-zinc-600">Choose Rider Service</span>
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
-                                                            {activeSvc.logo}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <div className="text-base font-medium text-black leading-5">{activeSvc.name}</div>
-                                                            <div className="text-[10px] text-zinc-600">
-                                                                Est <span className="font-bold">Price K{activeSvc.est_price}</span>
-                                                                {' · '}Est Delivery time <span className="font-bold">~{activeSvc.est_minutes} min</span>
-                                                            </div>
-                                                        </div>
-                                                        <ChevronDown className={`h-5 w-5 text-gray-600 flex-shrink-0 transition-transform duration-200 ${riderDropdownOpen ? 'rotate-180' : ''}`} />
+                                                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
+                                                        {activeSvc.logo}
                                                     </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="text-base font-medium text-black leading-5">{activeSvc.name}</div>
+                                                        <div className="text-[10px] text-zinc-600">
+                                                            Est <span className="font-bold">Price K{activeSvc.est_price}</span>
+                                                            {' · '}Est Delivery time <span className="font-bold">~{activeSvc.est_minutes} min</span>
+                                                        </div>
+                                                    </div>
+                                                    <ChevronDown className={`h-5 w-5 text-gray-600 flex-shrink-0 transition-transform duration-200 ${riderDropdownOpen ? 'rotate-180' : ''}`} />
                                                 </button>
 
-                                                {/* Dropdown list */}
+                                                {/* Inline list — not absolute, so it pushes layout down and
+                                                    never overlaps the sticky footer */}
                                                 {riderDropdownOpen && (
-                                                    <div className="absolute left-0 right-0 top-full mt-1.5 z-20 bg-white border rounded-2xl shadow-lg overflow-hidden" style={{borderColor:'#EFF2F6'}}>
+                                                    <div className="mt-1.5 bg-white border rounded-2xl overflow-hidden" style={{borderColor:'#EFF2F6'}}>
                                                         {RIDER_SERVICES.map((svc, idx) => (
                                                             <button
                                                                 key={svc.id}
