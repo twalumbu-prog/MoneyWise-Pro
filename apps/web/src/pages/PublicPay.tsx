@@ -2588,7 +2588,7 @@ Status: VERIFIED`;
                                         <div>
                                             <label className="text-xs font-semibold text-gray-700 mb-1 block">Country</label>
                                             <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border" style={{borderColor:'#EFF2F6'}}>
-                                                <span className="text-lg">🇿🇲</span>
+                                                <span className="text-sm leading-none">🇿🇲</span>
                                                 <span className="flex-1 text-xs text-gray-600 font-normal">{deliveryCountry}</span>
                                                 <span className="text-xs font-semibold text-gray-600">ZM</span>
                                                 <ChevronDown className="h-4 w-4 text-gray-500" />
