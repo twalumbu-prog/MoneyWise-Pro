@@ -2588,8 +2588,8 @@ Status: VERIFIED`;
                                             <label className="text-xs font-semibold text-gray-700 mb-1 block">Country</label>
                                             <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border border-slate-300 min-h-[48px]">
                                                 <span className="text-lg">🇿🇲</span>
-                                                <span className="flex-1 text-base text-gray-600 font-normal">{deliveryCountry}</span>
-                                                <span className="text-base font-semibold text-gray-600">ZM</span>
+                                                <span className="flex-1 text-xs text-gray-600 font-normal">{deliveryCountry}</span>
+                                                <span className="text-xs font-semibold text-gray-600">ZM</span>
                                                 <ChevronDown className="h-4 w-4 text-gray-500" />
                                             </div>
                                         </div>
@@ -2603,7 +2603,7 @@ Status: VERIFIED`;
                                                     value={deliveryState}
                                                     onChange={e => setDeliveryState(e.target.value)}
                                                     placeholder="e.g. Lusaka"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-base text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
                                                 />
                                                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
                                             </div>
@@ -2618,7 +2618,7 @@ Status: VERIFIED`;
                                                     value={deliveryStreet}
                                                     onChange={e => setDeliveryStreet(e.target.value)}
                                                     placeholder="e.g. E7158 Whitechapel High St"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-base text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
                                                 />
                                                 <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             </div>
@@ -2633,7 +2633,7 @@ Status: VERIFIED`;
                                                     value={deliveryApartment}
                                                     onChange={e => setDeliveryApartment(e.target.value)}
                                                     placeholder="Suite B225, House No. 12"
-                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-base text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-xs text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
                                                 />
                                                 <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             </div>
