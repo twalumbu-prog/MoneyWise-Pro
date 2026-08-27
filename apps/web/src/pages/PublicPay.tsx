@@ -253,6 +253,7 @@ export const PublicPay: React.FC = () => {
     const [deliveryStreet, setDeliveryStreet] = useState('');
     const [deliveryApartment, setDeliveryApartment] = useState('');
     const [selectedRider, setSelectedRider] = useState<string>(RIDER_SERVICES[0].id);
+    const [riderDropdownOpen, setRiderDropdownOpen] = useState(false);
     const [locating, setLocating] = useState(false);
 
     // Desktop (≥1024px) uses a full-width two-column shop+cart layout; mobile keeps
@@ -1327,6 +1328,7 @@ export const PublicPay: React.FC = () => {
         setDeliveryStreet('');
         setDeliveryApartment('');
         setSelectedRider(RIDER_SERVICES[0].id);
+        setRiderDropdownOpen(false);
         setStep('SHOP');
         setError(null);
     };
@@ -2638,35 +2640,63 @@ Status: VERIFIED`;
                                         </div>
                                     </div>
 
-                                    {/* Rider service selector (only when org allows external delivery) */}
-                                    {cartAllowsExternalDelivery && (
-                                        <div className="bg-white border border-slate-300 rounded-2xl overflow-hidden">
-                                            <p className="px-4 pt-3 pb-2 text-xs font-medium text-gray-500">Choose Rider Service</p>
-                                            {RIDER_SERVICES.map((svc, idx) => (
+                                    {/* Rider service selector — collapsed dropdown (only when org allows external delivery) */}
+                                    {cartAllowsExternalDelivery && (() => {
+                                        const activeSvc = RIDER_SERVICES.find(s => s.id === selectedRider) ?? RIDER_SERVICES[0];
+                                        return (
+                                            <div className="relative">
+                                                {/* Collapsed pill — shows selected rider */}
                                                 <button
-                                                    key={svc.id}
-                                                    onClick={() => setSelectedRider(svc.id)}
-                                                    className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${
-                                                        idx < RIDER_SERVICES.length - 1 ? 'border-b border-gray-100' : ''
-                                                    } ${selectedRider === svc.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}
+                                                    onClick={() => setRiderDropdownOpen(o => !o)}
+                                                    className="w-full bg-white rounded-2xl border border-slate-300 px-5 py-1.5 flex flex-col justify-center gap-1 overflow-hidden text-left"
                                                 >
-                                                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">{svc.logo}</div>
-                                                    <div className="flex-1 text-left">
-                                                        <div className="text-sm font-medium text-gray-900">{svc.name}</div>
-                                                        <div className="text-[11px] text-gray-500">
-                                                            Est <span className="font-bold">Price K{svc.est_price}</span>
-                                                            {' · '}Est Delivery time <span className="font-bold">~{svc.est_minutes} min</span>
+                                                    <span className="text-xs font-medium text-zinc-600">Choose Rider Service</span>
+                                                    <div className="flex items-center gap-2.5">
+                                                        <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
+                                                            {activeSvc.logo}
                                                         </div>
-                                                    </div>
-                                                    <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors ${
-                                                        selectedRider === svc.id ? 'border-[#0058DB] bg-[#0058DB]' : 'border-gray-300'
-                                                    }`}>
-                                                        {selectedRider === svc.id && <div className="w-2 h-2 bg-white rounded-full m-auto mt-[1px]" />}
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="text-base font-medium text-black leading-5">{activeSvc.name}</div>
+                                                            <div className="text-[10px] text-zinc-600">
+                                                                Est <span className="font-bold">Price K{activeSvc.est_price}</span>
+                                                                {' · '}Est Delivery time <span className="font-bold">~{activeSvc.est_minutes} min</span>
+                                                            </div>
+                                                        </div>
+                                                        <ChevronDown className={`h-5 w-5 text-gray-600 flex-shrink-0 transition-transform duration-200 ${riderDropdownOpen ? 'rotate-180' : ''}`} />
                                                     </div>
                                                 </button>
-                                            ))}
-                                        </div>
-                                    )}
+
+                                                {/* Dropdown list */}
+                                                {riderDropdownOpen && (
+                                                    <div className="absolute left-0 right-0 top-full mt-1.5 z-20 bg-white border border-slate-300 rounded-2xl shadow-lg overflow-hidden">
+                                                        {RIDER_SERVICES.map((svc, idx) => (
+                                                            <button
+                                                                key={svc.id}
+                                                                onClick={() => { setSelectedRider(svc.id); setRiderDropdownOpen(false); }}
+                                                                className={`w-full flex items-center gap-3 px-5 py-3 transition-colors text-left ${
+                                                                    idx < RIDER_SERVICES.length - 1 ? 'border-b border-gray-100' : ''
+                                                                } ${selectedRider === svc.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}
+                                                            >
+                                                                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">{svc.logo}</div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <div className="text-base font-medium text-black leading-5">{svc.name}</div>
+                                                                    <div className="text-[10px] text-zinc-600">
+                                                                        Est <span className="font-bold">Price K{svc.est_price}</span>
+                                                                        {' · '}Est Delivery time <span className="font-bold">~{svc.est_minutes} min</span>
+                                                                    </div>
+                                                                </div>
+                                                                {selectedRider === svc.id && (
+                                                                    <div className="w-4 h-4 rounded-full bg-[#0058DB] flex-shrink-0 flex items-center justify-center">
+                                                                        <div className="w-2 h-2 bg-white rounded-full" />
+                                                                    </div>
+                                                                )}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })()}
                                 </>
                             )}
 
