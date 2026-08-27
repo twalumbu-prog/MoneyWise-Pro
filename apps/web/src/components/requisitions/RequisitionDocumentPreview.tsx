@@ -7,7 +7,8 @@ import {
     CashDisbursalProof,
     ExpenseVarianceForm,
     AccountingTreatmentForm,
-    QuickBooksSyncLog
+    QuickBooksSyncLog,
+    LoanRequestApplication
 } from './RequisitionDocumentTemplates';
 
 interface RequisitionDocumentPreviewProps {
@@ -27,11 +28,12 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
     const renderDocument = () => {
         if (type === 'all') {
             const status = requisition.status || 'DRAFT';
+            const isLoan = requisition.type === 'LOAN';
             return (
                 <div className="flex flex-col space-y-8 md:space-y-[4rem] print:space-y-0 bg-transparent">
                     {!['DRAFT', 'PENDING_APPROVAL'].includes(status) && (
                         <div className="print-page bg-white shadow-xl shadow-black/8 md:shadow-2xl md:shadow-black/10 rounded-sm overflow-hidden ring-1 ring-gray-900/5 print:shadow-none print:ring-0">
-                            <PurchaseRequisitionForm requisition={requisition} />
+                            {isLoan ? <LoanRequestApplication requisition={requisition} /> : <PurchaseRequisitionForm requisition={requisition} />}
                         </div>
                     )}
                     {!['DRAFT', 'PENDING_APPROVAL', 'AUTHORISED'].includes(status) && (
@@ -60,6 +62,7 @@ const RequisitionDocumentPreview: React.FC<RequisitionDocumentPreviewProps> = ({
 
         switch (type) {
             case 'pr_form':          return <PurchaseRequisitionForm requisition={requisition} />;
+            case 'loan_application': return <LoanRequestApplication requisition={requisition} />;
             case 'pop_proof':        return <CashDisbursalProof requisition={requisition} />;
             case 'expense_summary':  return <ExpenseVarianceForm requisition={requisition} />;
             case 'accounting_treatment': return <AccountingTreatmentForm requisition={requisition} />;

@@ -1,21 +1,37 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Requisition, requisitionService } from '../../services/requisition.service';
 import { Lock, FileDown } from 'lucide-react';
 import RequisitionDocumentPreview from './RequisitionDocumentPreview';
 
 interface RequisitionAttachmentsProps {
     requisition: Requisition;
+    /** When set, auto-opens a document preview immediately after mount. Clear after handling. */
+    autoOpenDoc?: { type: string; title: string } | null;
+    onAutoOpenDocHandled?: () => void;
 }
 
-const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({ requisition }) => {
+const RequisitionAttachments: React.FC<RequisitionAttachmentsProps> = ({
+    requisition,
+    autoOpenDoc,
+    onAutoOpenDocHandled,
+}) => {
     const [previewDoc, setPreviewDoc] = useState<{ type: string; title: string } | null>(null);
 
+    // Auto-open a document when the parent requests it (e.g. "View Request Details" button)
+    useEffect(() => {
+        if (autoOpenDoc) {
+            setPreviewDoc(autoOpenDoc);
+            onAutoOpenDocHandled?.();
+        }
+    }, [autoOpenDoc]);
+
+    const isLoan = requisition.type === 'LOAN';
     const status = requisition.status || 'DRAFT';
 
     const docs = [
         {
-            id: 'pr_form',
-            title: 'Purchase Requisition Signed and Authorized',
+            id: isLoan ? 'loan_application' : 'pr_form',
+            title: isLoan ? 'Loan Request Application' : 'Purchase Requisition Signed and Authorized',
             isAvailable: !['DRAFT', 'PENDING_APPROVAL'].includes(status),
             isCompleted: !['DRAFT', 'PENDING_APPROVAL'].includes(status),
         },

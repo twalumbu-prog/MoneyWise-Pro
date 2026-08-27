@@ -9,9 +9,11 @@ interface RequisitionChatProps {
     requisition: Requisition;
     canAction: boolean;
     onStatusChange?: () => void;
+    /** Called when the user clicks "View Request Details" on a LOAN requisition */
+    onViewLoanApplication?: () => void;
 }
 
-const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canAction, onStatusChange }) => {
+const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canAction, onStatusChange, onViewLoanApplication }) => {
     const [messages, setMessages] = useState<RequisitionMessage[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [isTyping, setIsTyping] = useState(false);
@@ -305,6 +307,8 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
                                         scrollToBottom();
                                         loadMessages();
                                         onStatusChange?.();
+                                    } else if (action === 'VIEW_LOAN_APPLICATION') {
+                                        onViewLoanApplication?.();
                                     } else {
                                         return handleAction(action);
                                     }

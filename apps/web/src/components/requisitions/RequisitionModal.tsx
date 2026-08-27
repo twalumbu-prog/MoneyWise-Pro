@@ -55,6 +55,13 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const mobileMenuRef = useRef<HTMLDivElement>(null);
     const { userRole } = useAuth();
+    // Tracks a document that should be auto-opened when the Attachments tab mounts
+    const [pendingAutoDoc, setPendingAutoDoc] = useState<{ type: string; title: string } | null>(null);
+
+    const handleViewLoanApplication = () => {
+        setActiveTab('attachments');
+        setPendingAutoDoc({ type: 'loan_application', title: 'Loan Request Application' });
+    };
 
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
@@ -234,9 +241,14 @@ const RequisitionModal: React.FC<RequisitionModalProps> = ({
                             requisition={requisition}
                             canAction={canAction}
                             onStatusChange={onStatusChange}
+                            onViewLoanApplication={handleViewLoanApplication}
                         />
                     ) : activeTab === 'attachments' ? (
-                        <RequisitionAttachments requisition={requisition} />
+                        <RequisitionAttachments
+                            requisition={requisition}
+                            autoOpenDoc={pendingAutoDoc}
+                            onAutoOpenDocHandled={() => setPendingAutoDoc(null)}
+                        />
                     ) : (
                         <div className="flex-1 overflow-y-auto p-6 md:p-10 bg-white">
                             <AuditScoreBreakdown 

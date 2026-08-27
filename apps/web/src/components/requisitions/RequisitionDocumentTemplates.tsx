@@ -491,3 +491,173 @@ export const QuickBooksSyncLog: React.FC<DocumentTemplateProps> = ({ requisition
         </div>
     </div>
 );
+
+
+// ─────────────────────────────────────────────────────────
+// 6. LOAN REQUEST APPLICATION
+// ─────────────────────────────────────────────────────────
+export const LoanRequestApplication: React.FC<DocumentTemplateProps> = ({ requisition }) => {
+    const loanAmount = requisition.loan_amount ?? requisition.estimated_total ?? 0;
+    const interestRate = requisition.interest_rate ?? 15;
+    const months = requisition.repayment_period ?? 1;
+    const totalRepayment = loanAmount * (1 + interestRate / 100);
+    const monthlyPayment = months > 0 ? totalRepayment / months : totalRepayment;
+
+    // Amortization schedule — flat-rate interest spread equally over all months
+    const startDate = new Date(requisition.created_at);
+    const schedule: { month: number; date: string; payment: number; cumulative: number; balance: number }[] = [];
+    for (let i = 1; i <= months; i++) {
+        const payDate = new Date(startDate);
+        payDate.setMonth(payDate.getMonth() + i);
+        const cumulative = monthlyPayment * i;
+        const balance = Math.max(0, totalRepayment - cumulative);
+        schedule.push({
+            month: i,
+            date: payDate.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }),
+            payment: monthlyPayment,
+            cumulative,
+            balance,
+        });
+    }
+
+    const lastPayment = schedule[schedule.length - 1];
+    const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const requestDate = new Date(requisition.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    return (
+        <div className="bg-white p-5 sm:p-8 md:p-12 max-w-4xl mx-auto font-sans text-gray-900 printable-document">
+
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-7 md:mb-10 pb-6 md:pb-8 border-b border-gray-100">
+                <div>
+                    <h1 className="text-lg sm:text-xl md:text-2xl font-black uppercase tracking-tight mb-1">Loan Request Application</h1>
+                    <p className="text-sm font-bold text-[#006AFF]">REQ-{requisition.id.slice(0, 8).toUpperCase()}</p>
+                </div>
+                <div className="sm:text-right space-y-1">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Date of Request</p>
+                    <p className="text-sm font-bold">{requestDate}</p>
+                </div>
+            </div>
+
+            {/* Employee Details */}
+            <div className="mb-6 md:mb-8">
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Employee Details</h3>
+                <div className="space-y-1">
+                    <p className="text-sm font-black text-gray-900">{requisition.staff_name || requisition.requestor_name || '—'}</p>
+                    {requisition.employee_id && (
+                        <p className="text-xs font-medium text-gray-500">Employee ID: {requisition.employee_id}</p>
+                    )}
+                    <p className="text-xs font-medium text-gray-500">{requisition.department || 'General Administration'}</p>
+                </div>
+            </div>
+
+            {/* Loan Summary */}
+            <div className="mb-7 md:mb-10">
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">Loan Summary</h3>
+                <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">Principal Amount</span>
+                        <span className="font-black text-gray-900">K{fmt(loanAmount)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">Interest Rate</span>
+                        <span className="font-bold text-gray-700">{interestRate}% (flat)</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                        <span className="text-gray-500">Interest Charge</span>
+                        <span className="font-bold text-gray-700">K{fmt(loanAmount * interestRate / 100)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs border-t border-gray-100 pt-1.5">
+                        <span className="text-gray-500 font-bold">Total Repayment</span>
+                        <span className="font-black text-[#006AFF]">K{fmt(totalRepayment)}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Repayment terms highlight row */}
+            <div className="grid grid-cols-3 gap-3 mb-7 md:mb-10">
+                {[
+                    { label: 'Monthly Payment', value: `K${fmt(monthlyPayment)}`, sub: 'per month' },
+                    { label: 'Repayment Period', value: `${months} ${months === 1 ? 'Month' : 'Months'}`, sub: 'duration' },
+                    { label: 'Final Payment', value: lastPayment?.date ?? '—', sub: 'end date' },
+                ].map(({ label, value, sub }) => (
+                    <div
+                        key={label}
+                        className="rounded-xl p-4 border text-center bg-gray-50/60 border-gray-100"
+                    >
+                        <p className="text-[10px] font-bold uppercase tracking-widest mb-1 text-gray-400">{label}</p>
+                        <p className="text-base md:text-lg font-black text-gray-900">{value}</p>
+                        <p className="text-[9px] text-gray-400 mt-0.5">{sub}</p>
+                    </div>
+                ))}
+            </div>
+
+            {/* Amortization Schedule */}
+            <div className="mb-7 md:mb-10">
+                <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 md:mb-4">Amortization Schedule</h3>
+                <div className="overflow-x-auto -mx-1 px-1">
+                    <table className="w-full min-w-[420px] border-collapse">
+                        <thead>
+                            <tr className="bg-gray-50/60">
+                                <th className="px-3 sm:px-5 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-left border-b border-gray-100">Month</th>
+                                <th className="px-3 sm:px-5 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-left border-b border-gray-100">Due Date</th>
+                                <th className="px-3 sm:px-5 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right border-b border-gray-100">Payment</th>
+                                <th className="px-3 sm:px-5 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right border-b border-gray-100">Cumulative</th>
+                                <th className="px-3 sm:px-5 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-widest text-right border-b border-gray-100">Balance</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {schedule.map((row) => {
+                                const isFinal = row.month === months;
+                                return (
+                                    <tr key={row.month} className="hover:bg-gray-50/40">
+                                        <td className="px-3 sm:px-5 py-3 text-xs font-bold text-gray-500">
+                                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-black bg-gray-100 text-gray-600">
+                                                {row.month}
+                                            </span>
+                                        </td>
+                                        <td className="px-3 sm:px-5 py-3 text-xs font-medium text-gray-700">
+                                            {row.date}
+                                            {isFinal && <span className="ml-2 text-[9px] font-black text-gray-400 uppercase tracking-widest">Final</span>}
+                                        </td>
+                                        <td className="px-3 sm:px-5 py-3 text-xs font-bold text-gray-900 text-right whitespace-nowrap">K{fmt(row.payment)}</td>
+                                        <td className="px-3 sm:px-5 py-3 text-xs font-medium text-gray-600 text-right whitespace-nowrap">K{fmt(row.cumulative)}</td>
+                                        <td className="px-3 sm:px-5 py-3 text-xs font-bold text-gray-900 text-right whitespace-nowrap">
+                                            K{fmt(row.balance)}
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                        <tfoot>
+                            <tr className="border-t border-b border-gray-200">
+                                <td colSpan={2} className="px-3 sm:px-5 py-3 md:py-4 text-[11px] font-bold text-gray-600 uppercase tracking-widest">Total Repaid</td>
+                                <td className="px-3 sm:px-5 py-3 md:py-4 text-base font-black text-gray-900 text-right whitespace-nowrap">K{fmt(totalRepayment)}</td>
+                                <td colSpan={2} />
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            {/* Signature row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 md:gap-12 pt-8 md:pt-12 border-t border-gray-100">
+                <div className="relative">
+                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-6 md:mb-8 text-center">Employee Signature</h3>
+                    <div className="h-0.5 bg-gray-100 w-full mb-2" />
+                    <p className="text-center font-bold text-xs text-gray-400">{requisition.staff_name || requisition.requestor_name || '—'}</p>
+                </div>
+                <div className="relative">
+                    <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-6 md:mb-8 text-center">Authorized By</h3>
+                    <div className="h-0.5 bg-gray-100 w-full mb-2" />
+                    <p className="text-center font-bold text-xs text-gray-400">Finance Manager / HR</p>
+                    <div className="absolute top-3 left-1/2 -translate-x-1/2 rotate-[-5deg] opacity-60">
+                        <div className="border-[3px] border-[#006AFF] px-3 py-1 rounded-md">
+                            <p className="text-[#006AFF] font-black text-[10px] uppercase tracking-[0.2em]">Authorized</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};

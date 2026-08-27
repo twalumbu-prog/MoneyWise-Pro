@@ -1303,6 +1303,20 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                     </table>
                                 </div>
 
+                                {/* View Request Details — LOAN type only */}
+                                {requisitionData?.type === 'LOAN' && (
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            onAction?.('VIEW_LOAN_APPLICATION');
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 mt-2 mb-4 py-2.5 px-4 rounded-xl border border-[#006AFF]/30 bg-[#F0F7FF] text-[#006AFF] text-[12px] font-bold hover:bg-[#006AFF]/10 transition-all"
+                                    >
+                                        <FileText size={14} />
+                                        View Request Details
+                                    </button>
+                                )}
+
                                 {isPastApproval ? (
                                     <div className={`mt-4 py-3 px-5 rounded-[18px] flex items-center justify-between transition-all duration-500 ${
                                         isRejected ? 'bg-red-50/20 border border-red-50' : 'bg-emerald-50/20 border border-emerald-50'
