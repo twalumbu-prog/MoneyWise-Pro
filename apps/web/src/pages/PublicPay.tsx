@@ -2502,7 +2502,7 @@ Status: VERIFIED`;
                         </div>
 
                         {/* "Your Cart" title row */}
-                        <div className="border-t border-neutral-200 px-7 py-3 flex-shrink-0">
+                        <div className="px-7 py-3 flex-shrink-0">
                             <h2 className="text-xl font-semibold text-black">Your Cart</h2>
                         </div>
 
