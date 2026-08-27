@@ -75,6 +75,10 @@ if (typeof document !== 'undefined' && !document.getElementById(POP_STYLE_ID)) {
 @keyframes mw-flash {
   0%   { opacity: 0.45; }
   100% { opacity: 0; }
+}
+@keyframes mw-slide-out-right {
+  from { opacity: 1; transform: translateX(0); }
+  to   { opacity: 0; transform: translateX(48px); }
 }`;
     document.head.appendChild(el);
 }
@@ -205,6 +209,9 @@ export const PublicPay: React.FC = () => {
     const [detailProduct, setDetailProduct] = useState<Product | null>(null);
     // Current image index in the detail carousel.
     const [detailImageIndex, setDetailImageIndex] = useState(0);
+    // True while the detail panel is playing its slide-out-right exit animation
+    // (Add to Cart / Back), just before the step actually flips to SHOP.
+    const [detailExiting, setDetailExiting] = useState(false);
 
     // Data Context
     const [org, setOrg] = useState<OrgContext | null>(null);
@@ -2412,9 +2419,22 @@ Status: VERIFIED`;
                     const isInCart = qty > 0;
                     const salesCount = p.sales_count ?? 0;
 
+                    // Leave the detail panel with a slide-out-right exit, then land on
+                    // the requested step once the animation has actually finished.
+                    const exitTo = (next: 'SHOP') => {
+                        if (detailExiting) return;
+                        setDetailExiting(true);
+                        window.setTimeout(() => {
+                            setStep(next);
+                            setDetailProduct(null);
+                            setDetailExiting(false);
+                        }, 260);
+                    };
+
                     const handleAddToCart = () => {
                         if (isBooking) {
                             openBookingCalendar(p);
+                            exitTo('SHOP');
                             return;
                         }
                         if (isDonation) {
@@ -2422,11 +2442,14 @@ Status: VERIFIED`;
                         } else {
                             handleQuantityChange(p.id, 1);
                         }
-                        setStep('SHOP');
+                        exitTo('SHOP');
                     };
 
                     return (
-                        <div className="flex flex-col flex-1 min-h-0" style={{ animation: 'atabs-in-right 0.38s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+                        <div
+                            className="relative flex flex-col flex-1 min-h-0"
+                            style={{ animation: detailExiting ? 'mw-slide-out-right 0.26s ease-in both' : 'atabs-in-right 0.38s cubic-bezier(0.22, 1, 0.36, 1)' }}
+                        >
                             {/* Image carousel */}
                             <div className="relative w-full aspect-square flex-shrink-0 bg-neutral-100 overflow-hidden">
                                 {hasImages ? (
@@ -2467,16 +2490,11 @@ Status: VERIFIED`;
 
                                 {/* Back button */}
                                 <button
-                                    onClick={() => { setStep('SHOP'); setDetailProduct(null); }}
+                                    onClick={() => exitTo('SHOP')}
                                     className="absolute top-4 left-4 w-9 h-9 rounded-full bg-black/30 backdrop-blur-sm text-white flex items-center justify-center"
                                 >
                                     <ArrowLeft size={18} />
                                 </button>
-
-                                {/* In Stock badge */}
-                                <span className="absolute top-4 right-4 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
-                                    In Stock
-                                </span>
 
                                 {/* Dot indicators */}
                                 {allImages.length > 1 && (
@@ -2494,44 +2512,42 @@ Status: VERIFIED`;
 
                             {/* Content */}
                             <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-28">
-                                {/* Name + Sales */}
-                                <div className="flex items-start justify-between gap-3">
-                                    <h2 className="text-lg font-black text-slate-900 leading-snug flex-1">{p.name}</h2>
-                                    <span className={`flex-shrink-0 mt-0.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${salesCount > 0 ? 'bg-orange-50 text-orange-600' : 'bg-teal-50 text-teal-600'}`}>
+                                {/* In Stock badge — sits above the name */}
+                                <span className="inline-flex px-3 py-1 bg-gray-200 rounded-full text-[11px] font-semibold text-zinc-600">
+                                    In Stock
+                                </span>
+
+                                {/* Name */}
+                                <h2 className="mt-2 text-2xl font-bold text-black leading-snug">{p.name}</h2>
+
+                                {/* Sold count — right below the name */}
+                                <div className="mt-1 flex items-center gap-2">
+                                    <span className={`text-xs font-bold ${salesCount > 0 ? 'text-slate-500' : 'text-teal-600'}`}>
                                         {salesCount > 0 ? `${salesCount} Sold` : 'NEW'}
                                     </span>
                                 </div>
 
-                                {/* Price */}
-                                <p className="mt-1 text-2xl font-black text-slate-900">
-                                    {isDonation
-                                        ? 'Open amount'
-                                        : isBooking
-                                            ? `K ${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} / ${bookingUnit}`
-                                            : `K ${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-                                </p>
-
                                 {/* Description */}
                                 {p.description && (
-                                    <div className="mt-4">
-                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Product Information</h3>
-                                        <p className="text-sm text-slate-700 leading-relaxed">{p.description}</p>
+                                    <div className="mt-5">
+                                        <h3 className="text-base font-bold text-black mb-1">Product Information</h3>
+                                        <p className="text-base text-slate-500 leading-relaxed">{p.description}</p>
                                     </div>
                                 )}
 
                                 {/* What's Included */}
                                 {(p.whats_included?.length ?? 0) > 0 && (
-                                    <div className="mt-4">
-                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">What's Included</h3>
-                                        <div className="space-y-2">
+                                    <div className="mt-5">
+                                        <h3 className="text-base font-bold text-black mb-1">What's Included</h3>
+                                        <div className="flex flex-col">
                                             {(p.whats_included ?? []).map((item, i) => (
-                                                <div key={i} className="flex items-start gap-2.5">
-                                                    <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 flex items-center justify-center">
-                                                        <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-teal-600" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                                                <div key={i} className="flex items-center gap-3 py-1">
+                                                    <span className="flex-shrink-0 w-4 h-4 rounded-full border border-teal-800 flex items-center justify-center">
+                                                        <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-teal-800" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                                                             <path d="M5 13l4 4L19 7" />
                                                         </svg>
                                                     </span>
-                                                    <span className="text-sm text-slate-700">{item}</span>
+                                                    <span className="text-sm text-black">{item}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -2539,37 +2555,33 @@ Status: VERIFIED`;
                                 )}
                             </div>
 
-                            {/* Sticky footer */}
-                            <div className="absolute bottom-0 inset-x-0 bg-white border-t border-slate-100 px-5 py-4 flex items-center gap-3">
-                                <div className="flex-1 min-w-0">
-                                    <p className="text-[10px] font-medium text-slate-400 leading-none">Price</p>
-                                    <p className="text-lg font-black text-slate-900 leading-tight truncate">
-                                        {isDonation ? 'Open amount' : `K ${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
-                                    </p>
+                            {/* Sticky footer — price + Add to Cart */}
+                            <div className="flex-shrink-0 border-t border-zinc-100 px-6 py-3 flex items-center gap-6">
+                                <div className="w-36 flex flex-col justify-center">
+                                    <span className="text-black text-3xl font-bold">
+                                        {isDonation
+                                            ? 'Open'
+                                            : isBooking
+                                                ? `K${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}/${bookingUnit}`
+                                                : `K${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                                    </span>
                                 </div>
                                 <button
                                     onClick={handleAddToCart}
-                                    className={`flex-shrink-0 px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 transition-all active:scale-95 ${
-                                        isInCart && !isBooking
-                                            ? 'bg-black text-white'
-                                            : 'bg-black text-white hover:bg-slate-800'
-                                    }`}
+                                    className="flex-1 h-11 px-3 bg-black rounded-lg flex items-center justify-center gap-2.5 transition-all hover:bg-slate-800 active:scale-95"
                                 >
                                     {isInCart && !isBooking ? (
                                         <>
-                                            <Check size={16} strokeWidth={2.5} />
-                                            <span>Added</span>
+                                            <Check size={16} strokeWidth={2.5} className="text-white" />
+                                            <span className="text-white text-sm font-bold">Added</span>
                                         </>
                                     ) : isBooking ? (
                                         <>
-                                            <CalendarDays size={16} />
-                                            <span>Reserve</span>
+                                            <CalendarDays size={16} className="text-white" />
+                                            <span className="text-white text-sm font-bold">Reserve</span>
                                         </>
                                     ) : (
-                                        <>
-                                            <ShoppingBag size={16} />
-                                            <span>Add to Cart</span>
-                                        </>
+                                        <span className="text-white text-sm font-bold">Add to Cart</span>
                                     )}
                                 </button>
                             </div>
