@@ -116,6 +116,12 @@ interface Product {
     requires_delivery?: boolean;
     allow_external_delivery?: boolean;
     own_delivery_charge?: number;
+    /** Ordered array of extra image URLs for the detail page carousel. */
+    additional_images?: string[];
+    /** Bullet-point feature list shown on the detail page. */
+    whats_included?: string[];
+    /** Number of completed sales (aggregated server-side). */
+    sales_count?: number;
 }
 
 /** Rider service options available in Zambia — placeholder until a live API exists. */
@@ -194,7 +200,11 @@ export const PublicPay: React.FC = () => {
     //  DELIVERY = delivery address + rider selection (only when cart has physical goods)
     //  SUMMARY  = checkout breakdown + customer details + Pay
     //  CHECKOUT = dedicated payment-method page (Collections API own-UX only)
-    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'CATALOG' | 'DELIVERY' | 'SUMMARY' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
+    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'DETAIL' | 'CATALOG' | 'DELIVERY' | 'SUMMARY' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
+    // Product currently shown on the DETAIL page.
+    const [detailProduct, setDetailProduct] = useState<Product | null>(null);
+    // Current image index in the detail carousel.
+    const [detailImageIndex, setDetailImageIndex] = useState(0);
 
     // Data Context
     const [org, setOrg] = useState<OrgContext | null>(null);
@@ -650,7 +660,7 @@ export const PublicPay: React.FC = () => {
 
     // Full-screen "app" steps fill the viewport (fixed height) so inner content
     // scrolls and footers stay pinned; the simple states just center normally.
-    const isAppStep = step === 'SHOP' || step === 'CATALOG' || step === 'DELIVERY' || step === 'SUMMARY' || step === 'CHECKOUT' || step === 'SUCCESS' || step === 'VERIFYING';
+    const isAppStep = step === 'SHOP' || step === 'DETAIL' || step === 'CATALOG' || step === 'DELIVERY' || step === 'SUMMARY' || step === 'CHECKOUT' || step === 'SUCCESS' || step === 'VERIFYING';
 
     // Whether any item in the cart requires physical delivery.
     const cartNeedsDelivery = lineItems.some(li => li.product.requires_delivery);
@@ -1930,10 +1940,19 @@ Status: VERIFIED`;
             setTimeout(() => setPoppedId(cur => (cur === product.id ? null : cur)), 600);
         };
 
+        const openDetail = () => {
+            setDetailProduct(product);
+            setDetailImageIndex(0);
+            setStep('DETAIL');
+        };
+
         return (
             <div key={product.id} className="flex flex-col">
-                {/* Image */}
-                <div className="relative w-full aspect-square bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center">
+                {/* Image — tappable → product detail */}
+                <div
+                    className="relative w-full aspect-square bg-neutral-100 rounded-2xl overflow-hidden flex items-center justify-center cursor-pointer"
+                    onClick={openDetail}
+                >
                     {product.image_url ? (
                         <img src={product.image_url} alt={product.name} loading="lazy" className="w-full h-full object-cover" />
                     ) : (
@@ -1960,11 +1979,17 @@ Status: VERIFIED`;
                             </svg>
                         </span>
                     )}
+                    {/* Multiple images indicator dot */}
+                    {((product.additional_images?.length ?? 0) > 0) && (
+                        <span className="absolute bottom-2 right-2 bg-black/50 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full">
+                            +{(product.additional_images?.length ?? 0)}
+                        </span>
+                    )}
                 </div>
 
                 {/* Info + action */}
                 <div className="pt-3 flex flex-col gap-2.5">
-                    <div className="flex flex-col gap-0.5 min-w-0">
+                    <div className="flex flex-col gap-0.5 min-w-0 cursor-pointer" onClick={openDetail}>
                         <span className="text-[#55595E] text-[11px] truncate">{product.name}</span>
                         <span className="text-slate-900 text-sm font-bold">
                             {isDonation
@@ -2374,7 +2399,185 @@ Status: VERIFIED`;
                     </div>
                 )}
 
-                {/* 2. Catalogue (Shop) Step — entry page */}
+                {/* 2. Product Detail Step */}
+                {step === 'DETAIL' && detailProduct && org && (() => {
+                    const p = detailProduct;
+                    const allImages = [p.image_url, ...(p.additional_images || [])].filter((u): u is string => !!u);
+                    const hasImages = allImages.length > 0;
+                    const clampedIdx = Math.max(0, Math.min(detailImageIndex, allImages.length - 1));
+                    const isDonation = p.product_type === 'DONATION';
+                    const isBooking = isBookingProductType(p.product_type);
+                    const bookingUnit = getBookingTerminology(p.product_type).unit;
+                    const qty = selectedQuantities[p.id] || 0;
+                    const isInCart = qty > 0;
+                    const salesCount = p.sales_count ?? 0;
+
+                    const handleAddToCart = () => {
+                        if (isBooking) {
+                            openBookingCalendar(p);
+                            return;
+                        }
+                        if (isDonation) {
+                            setSelectedQuantities(prev => ({ ...prev, [p.id]: isInCart ? 0 : 1 }));
+                        } else {
+                            handleQuantityChange(p.id, 1);
+                        }
+                        setStep('SHOP');
+                    };
+
+                    return (
+                        <div className="flex flex-col flex-1 min-h-0" style={{ animation: 'atabs-in-right 0.38s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+                            {/* Image carousel */}
+                            <div className="relative w-full aspect-square flex-shrink-0 bg-neutral-100 overflow-hidden">
+                                {hasImages ? (
+                                    <>
+                                        <img
+                                            key={allImages[clampedIdx]}
+                                            src={allImages[clampedIdx]}
+                                            alt={p.name}
+                                            className="w-full h-full object-cover"
+                                            style={{ animation: 'atabs-in-right 0.28s cubic-bezier(0.22, 1, 0.36, 1)' }}
+                                        />
+                                        {/* Swipe hint arrows */}
+                                        {allImages.length > 1 && clampedIdx > 0 && (
+                                            <button
+                                                onClick={() => setDetailImageIndex(i => Math.max(0, i - 1))}
+                                                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center"
+                                            >
+                                                <ArrowLeft size={16} />
+                                            </button>
+                                        )}
+                                        {allImages.length > 1 && clampedIdx < allImages.length - 1 && (
+                                            <button
+                                                onClick={() => setDetailImageIndex(i => Math.min(allImages.length - 1, i + 1))}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/40 text-white flex items-center justify-center"
+                                            >
+                                                <ChevronRight size={16} />
+                                            </button>
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center">
+                                        <ShoppingBag size={48} className="text-neutral-200" />
+                                    </div>
+                                )}
+
+                                {/* Gradient overlay at top for back button */}
+                                <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-black/40 to-transparent pointer-events-none" />
+
+                                {/* Back button */}
+                                <button
+                                    onClick={() => { setStep('SHOP'); setDetailProduct(null); }}
+                                    className="absolute top-4 left-4 w-9 h-9 rounded-full bg-black/30 backdrop-blur-sm text-white flex items-center justify-center"
+                                >
+                                    <ArrowLeft size={18} />
+                                </button>
+
+                                {/* In Stock badge */}
+                                <span className="absolute top-4 right-4 px-2.5 py-1 bg-white/90 backdrop-blur-sm rounded-full text-[10px] font-bold text-emerald-600 uppercase tracking-wider">
+                                    In Stock
+                                </span>
+
+                                {/* Dot indicators */}
+                                {allImages.length > 1 && (
+                                    <div className="absolute bottom-3 inset-x-0 flex justify-center gap-1.5">
+                                        {allImages.map((_, i) => (
+                                            <button
+                                                key={i}
+                                                onClick={() => setDetailImageIndex(i)}
+                                                className={`rounded-full transition-all ${i === clampedIdx ? 'w-4 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/50'}`}
+                                            />
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Content */}
+                            <div className="flex-1 min-h-0 overflow-y-auto px-5 pt-5 pb-28">
+                                {/* Name + Sales */}
+                                <div className="flex items-start justify-between gap-3">
+                                    <h2 className="text-lg font-black text-slate-900 leading-snug flex-1">{p.name}</h2>
+                                    <span className={`flex-shrink-0 mt-0.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${salesCount > 0 ? 'bg-orange-50 text-orange-600' : 'bg-teal-50 text-teal-600'}`}>
+                                        {salesCount > 0 ? `${salesCount} Sold` : 'NEW'}
+                                    </span>
+                                </div>
+
+                                {/* Price */}
+                                <p className="mt-1 text-2xl font-black text-slate-900">
+                                    {isDonation
+                                        ? 'Open amount'
+                                        : isBooking
+                                            ? `K ${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })} / ${bookingUnit}`
+                                            : `K ${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                                </p>
+
+                                {/* Description */}
+                                {p.description && (
+                                    <div className="mt-4">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Product Information</h3>
+                                        <p className="text-sm text-slate-700 leading-relaxed">{p.description}</p>
+                                    </div>
+                                )}
+
+                                {/* What's Included */}
+                                {(p.whats_included?.length ?? 0) > 0 && (
+                                    <div className="mt-4">
+                                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">What's Included</h3>
+                                        <div className="space-y-2">
+                                            {(p.whats_included ?? []).map((item, i) => (
+                                                <div key={i} className="flex items-start gap-2.5">
+                                                    <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-teal-100 flex items-center justify-center">
+                                                        <svg viewBox="0 0 24 24" className="w-2.5 h-2.5 text-teal-600" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round">
+                                                            <path d="M5 13l4 4L19 7" />
+                                                        </svg>
+                                                    </span>
+                                                    <span className="text-sm text-slate-700">{item}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Sticky footer */}
+                            <div className="absolute bottom-0 inset-x-0 bg-white border-t border-slate-100 px-5 py-4 flex items-center gap-3">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[10px] font-medium text-slate-400 leading-none">Price</p>
+                                    <p className="text-lg font-black text-slate-900 leading-tight truncate">
+                                        {isDonation ? 'Open amount' : `K ${p.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={handleAddToCart}
+                                    className={`flex-shrink-0 px-6 py-3 rounded-2xl text-sm font-bold flex items-center gap-2 transition-all active:scale-95 ${
+                                        isInCart && !isBooking
+                                            ? 'bg-black text-white'
+                                            : 'bg-black text-white hover:bg-slate-800'
+                                    }`}
+                                >
+                                    {isInCart && !isBooking ? (
+                                        <>
+                                            <Check size={16} strokeWidth={2.5} />
+                                            <span>Added</span>
+                                        </>
+                                    ) : isBooking ? (
+                                        <>
+                                            <CalendarDays size={16} />
+                                            <span>Reserve</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ShoppingBag size={16} />
+                                            <span>Add to Cart</span>
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* 3. Catalogue (Shop) Step — entry page */}
                 {step === 'SHOP' && org && (
                     <div className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]">
                         {/* Header */}

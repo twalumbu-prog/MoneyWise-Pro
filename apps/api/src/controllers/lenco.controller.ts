@@ -821,7 +821,7 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                         .single(),
                     supabase
                         .from('products')
-                        .select('id, name, description, price, image_url, category, product_type, requires_delivery, allow_external_delivery, own_delivery_charge')
+                        .select('id, name, description, price, image_url, additional_images, whats_included, category, product_type, requires_delivery, allow_external_delivery, own_delivery_charge')
                         .eq('organization_id', wallet.organization_id)
                         .eq('is_active', true)
                         .order('name', { ascending: true })
@@ -837,7 +837,25 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                 const { data: products, error: productsError } = productsResult;
                 if (productsError) throw productsError;
 
-                return { org, products };
+                // Attach completed-sale counts so the store detail page can show "X Sold".
+                const productIds = (products || []).map((p: any) => p.id);
+                let salesCounts: Record<string, number> = {};
+                if (productIds.length > 0) {
+                    const { data: salesRows } = await supabase
+                        .from('product_sales')
+                        .select('product_id')
+                        .in('product_id', productIds)
+                        .eq('status', 'COMPLETED');
+                    (salesRows || []).forEach((r: any) => {
+                        salesCounts[r.product_id] = (salesCounts[r.product_id] || 0) + 1;
+                    });
+                }
+                const productsWithCounts = (products || []).map((p: any) => ({
+                    ...p,
+                    sales_count: salesCounts[p.id] || 0,
+                }));
+
+                return { org, products: productsWithCounts };
             }
         );
 

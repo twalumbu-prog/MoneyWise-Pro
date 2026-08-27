@@ -77,6 +77,10 @@ export interface Product {
     allow_external_delivery?: boolean;
     /** Flat delivery fee (ZMW) when the merchant manages their own delivery. */
     own_delivery_charge?: number;
+    /** Additional product images for the store detail carousel (ordered array of URLs). */
+    additional_images?: string[];
+    /** Bullet-point list of features / inclusions shown on the store detail page. */
+    whats_included?: string[];
     created_at?: string;
     updated_at?: string;
 }

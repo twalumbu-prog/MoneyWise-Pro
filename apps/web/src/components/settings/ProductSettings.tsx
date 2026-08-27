@@ -79,6 +79,11 @@ export const ProductSettings: React.FC = () => {
         allow_external_delivery: false,
         own_delivery_charge: '',
     });
+    // Additional gallery images (ordered list of public URLs)
+    const [additionalImages, setAdditionalImages] = useState<string[]>([]);
+    const [uploadingAdditionalImage, setUploadingAdditionalImage] = useState(false);
+    // "What's Included" bullet list
+    const [whatsIncluded, setWhatsIncluded] = useState<string[]>([]);
 
     // Share-link modal state
     const [shareProduct, setShareProduct] = useState<Product | null>(null);
@@ -188,6 +193,8 @@ export const ProductSettings: React.FC = () => {
 
     const handleOpenAddModal = () => {
         setEditingProduct(null);
+        setAdditionalImages([]);
+        setWhatsIncluded([]);
         setFormData({
             name: '',
             description: '',
@@ -210,6 +217,8 @@ export const ProductSettings: React.FC = () => {
     const handleOpenEditModal = (product: Product) => {
         setEditingProduct(product);
         setDigitalAssets(Array.isArray(product.digital_assets) ? product.digital_assets : []);
+        setAdditionalImages(Array.isArray(product.additional_images) ? product.additional_images : []);
+        setWhatsIncluded(Array.isArray(product.whats_included) ? product.whats_included : []);
         setFormData({
             name: product.name,
             description: product.description || '',
@@ -265,6 +274,31 @@ export const ProductSettings: React.FC = () => {
             setError(err.message || 'Failed to upload image.');
         } finally {
             setUploadingImage(false);
+        }
+    };
+
+    // Upload an extra gallery image and append its public URL to additionalImages.
+    const handleUploadAdditionalImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !isAdmin) return;
+        e.target.value = '';
+        try {
+            setUploadingAdditionalImage(true);
+            setError(null);
+            const compressed = await compressImage(file, { maxSizeMB: 0.3, maxWidthOrHeight: 1000, initialQuality: 0.72 });
+            const folder = organizationId || 'shared';
+            const filePath = `${folder}/product-gallery-${Date.now()}.jpg`;
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('product-images')
+                .upload(filePath, compressed, { cacheControl: '31536000', upsert: true, contentType: 'image/jpeg' });
+            if (uploadError) throw uploadError;
+            const publicUrl = supabase.storage.from('product-images').getPublicUrl(uploadData.path).data.publicUrl;
+            setAdditionalImages(prev => [...prev, publicUrl]);
+        } catch (err: any) {
+            console.error('Gallery image upload failed:', err);
+            setError(err.message || 'Failed to upload gallery image.');
+        } finally {
+            setUploadingAdditionalImage(false);
         }
     };
 
@@ -378,6 +412,8 @@ export const ProductSettings: React.FC = () => {
                 requires_delivery: formData.requires_delivery,
                 allow_external_delivery: formData.allow_external_delivery,
                 own_delivery_charge: Number(formData.own_delivery_charge) || 0,
+                additional_images: additionalImages,
+                whats_included: whatsIncluded.filter(s => s.trim()),
             };
 
             if (editingProduct) {
@@ -1085,6 +1121,78 @@ export const ProductSettings: React.FC = () => {
                                         )}
                                     </div>
                                 )}
+
+                                {/* ── Additional gallery images ── */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-800 mb-1">
+                                        Additional Images <span className="text-xs font-medium text-gray-400 ml-1">Optional</span>
+                                    </label>
+                                    <p className="text-xs text-gray-400 mb-2">Customers can swipe through these on the product detail page.</p>
+                                    {additionalImages.length > 0 && (
+                                        <div className="flex flex-wrap gap-2 mb-2">
+                                            {additionalImages.map((url, idx) => (
+                                                <div key={url} className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-100 flex-shrink-0 group">
+                                                    <img src={url} alt={`Gallery ${idx + 1}`} className="w-full h-full object-cover" />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setAdditionalImages(prev => prev.filter((_, i) => i !== idx))}
+                                                        disabled={submitting}
+                                                        className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                                    >
+                                                        <X className="w-4 h-4 text-white" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <label className={`inline-flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors ${(submitting || uploadingAdditionalImage) ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                                        {uploadingAdditionalImage ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />}
+                                        {uploadingAdditionalImage ? 'Uploading...' : 'Add Photo'}
+                                        <input type="file" accept="image/*" className="hidden" onChange={handleUploadAdditionalImage} disabled={submitting || uploadingAdditionalImage} />
+                                    </label>
+                                </div>
+
+                                {/* ── What's Included bullet list ── */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-800 mb-1">
+                                        What's Included <span className="text-xs font-medium text-gray-400 ml-1">Optional</span>
+                                    </label>
+                                    <p className="text-xs text-gray-400 mb-2">Bullet points shown on the product detail page (e.g. "Free shipping", "1-year warranty").</p>
+                                    {whatsIncluded.length > 0 && (
+                                        <div className="space-y-2 mb-2">
+                                            {whatsIncluded.map((item, idx) => (
+                                                <div key={idx} className="flex items-center gap-2">
+                                                    <div className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0 mt-0.5" />
+                                                    <input
+                                                        type="text"
+                                                        value={item}
+                                                        onChange={(e) => setWhatsIncluded(prev => prev.map((s, i) => i === idx ? e.target.value : s))}
+                                                        disabled={submitting}
+                                                        placeholder="e.g. Free delivery included"
+                                                        className="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setWhatsIncluded(prev => prev.filter((_, i) => i !== idx))}
+                                                        disabled={submitting}
+                                                        className="p-1.5 text-gray-400 hover:text-red-500 transition-colors disabled:opacity-50"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <button
+                                        type="button"
+                                        onClick={() => setWhatsIncluded(prev => [...prev, ''])}
+                                        disabled={submitting}
+                                        className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                        Add Item
+                                    </button>
+                                </div>
 
                                 {/* Active toggle */}
                                 <button

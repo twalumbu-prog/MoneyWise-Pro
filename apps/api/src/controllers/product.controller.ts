@@ -80,7 +80,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
         }
 
         const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
-                requires_delivery, allow_external_delivery, own_delivery_charge } = req.body;
+                requires_delivery, allow_external_delivery, own_delivery_charge,
+                additional_images, whats_included } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -126,6 +127,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 requires_delivery: requires_delivery === true,
                 allow_external_delivery: allow_external_delivery === true,
                 own_delivery_charge: Number(own_delivery_charge) || 0,
+                additional_images: Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [],
+                whats_included: Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [],
             })
             .select()
             .single();
@@ -168,7 +171,8 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         }
 
         const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
-                requires_delivery, allow_external_delivery, own_delivery_charge } = req.body;
+                requires_delivery, allow_external_delivery, own_delivery_charge,
+                additional_images, whats_included } = req.body;
         const updateData: any = {};
 
         if (name !== undefined) {
@@ -236,6 +240,8 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         if (requires_delivery !== undefined) updateData.requires_delivery = requires_delivery === true;
         if (allow_external_delivery !== undefined) updateData.allow_external_delivery = allow_external_delivery === true;
         if (own_delivery_charge !== undefined) updateData.own_delivery_charge = Number(own_delivery_charge) || 0;
+        if (additional_images !== undefined) updateData.additional_images = Array.isArray(additional_images) ? additional_images.filter((u: any) => typeof u === 'string' && u.trim()) : [];
+        if (whats_included !== undefined) updateData.whats_included = Array.isArray(whats_included) ? whats_included.filter((s: any) => typeof s === 'string' && s.trim()) : [];
         updateData.updated_at = new Date().toISOString();
 
         const { data, error } = await supabase
