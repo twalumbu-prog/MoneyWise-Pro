@@ -256,6 +256,7 @@ export const PublicPay: React.FC = () => {
     const [riderDropdownOpen, setRiderDropdownOpen] = useState(false);
     const riderSectionRef = useRef<HTMLDivElement | null>(null);
     const [locating, setLocating] = useState(false);
+    const [locationError, setLocationError] = useState<string | null>(null);
 
     // Desktop (≥1024px) uses a full-width two-column shop+cart layout; mobile keeps
     // the stepped flow. Initialised from matchMedia to avoid a first-paint flash.
@@ -1279,8 +1280,16 @@ export const PublicPay: React.FC = () => {
 
     // Use browser Geolocation to pre-fill address fields.
     const handleUseCurrentLocation = () => {
-        if (!navigator.geolocation) return;
+        if (!navigator.geolocation) {
+            setLocationError('Location services are not supported by this browser.');
+            return;
+        }
         setLocating(true);
+        setLocationError(null);
+
+        // enableHighAccuracy: false — uses network/WiFi positioning instead of GPS.
+        // GPS is unavailable on most desktop hardware; requesting it triggers
+        // kCLErrorLocationUnknown on macOS before the WiFi fallback is reached.
         navigator.geolocation.getCurrentPosition(
             async (pos) => {
                 try {
@@ -1300,13 +1309,20 @@ export const PublicPay: React.FC = () => {
                         setDeliveryApartment(addr.house_number || '');
                     }
                 } catch {
-                    // Silently ignore — the user can fill manually.
+                    setLocationError('Could not look up your address. Please fill it in manually.');
                 } finally {
                     setLocating(false);
                 }
             },
-            () => setLocating(false),
-            { timeout: 8000, maximumAge: 60000 }
+            (err) => {
+                setLocating(false);
+                if (err.code === GeolocationPositionError.PERMISSION_DENIED) {
+                    setLocationError('Location permission was denied. Please enable it in your browser settings.');
+                } else {
+                    setLocationError('Could not get your location. Please fill in the address manually.');
+                }
+            },
+            { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 }
         );
     };
 
@@ -1330,6 +1346,7 @@ export const PublicPay: React.FC = () => {
         setDeliveryApartment('');
         setSelectedRider(RIDER_SERVICES[0].id);
         setRiderDropdownOpen(false);
+        setLocationError(null);
         setStep('SHOP');
         setError(null);
     };
@@ -2581,6 +2598,9 @@ Status: VERIFIED`;
                                         )}
                                         {locating ? 'Locating…' : 'Use Current Location'}
                                     </button>
+                                    {locationError && (
+                                        <p className="text-[11px] text-red-500 text-center -mt-1 px-2">{locationError}</p>
+                                    )}
 
                                     {/* Address fields */}
                                     <div className="space-y-3">
