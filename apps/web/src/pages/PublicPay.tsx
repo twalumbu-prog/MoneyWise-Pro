@@ -255,6 +255,7 @@ export const PublicPay: React.FC = () => {
     const [selectedRider, setSelectedRider] = useState<string>(RIDER_SERVICES[0].id);
     const [riderDropdownOpen, setRiderDropdownOpen] = useState(false);
     const riderSectionRef = useRef<HTMLDivElement | null>(null);
+    const locationWatchRef = useRef<number | null>(null);
     const [locating, setLocating] = useState(false);
     const [locationError, setLocationError] = useState<string | null>(null);
 
@@ -608,7 +609,6 @@ export const PublicPay: React.FC = () => {
     // of the subtotal. The merchant settles the net subtotal; the fee is swept to
     // the MoneyWise settlement account after the collection succeeds.
     const processingFee = calculatePlatformFee(subtotal);
-    const totalPayable = subtotal > 0 ? subtotal + processingFee : 0;
 
     const isSlowNetwork = networkLatencyMs !== null && networkLatencyMs > SLOW_LATENCY_MS;
 
@@ -666,6 +666,7 @@ export const PublicPay: React.FC = () => {
     })();
     const effectiveDeliveryCharge = deliveryMode === 'pickup' ? 0 :
         cartAllowsExternalDelivery ? riderDeliveryCharge : ownDeliveryCharge;
+    const totalPayable = subtotal > 0 ? subtotal + processingFee + effectiveDeliveryCharge : 0;
 
     // Computed delivery details snapshot for the order.
     const deliveryDetails: DeliveryDetails | null = cartNeedsDelivery ? {
@@ -1284,37 +1285,60 @@ export const PublicPay: React.FC = () => {
             setLocationError('Location services are not supported by this browser.');
             return;
         }
+
+        // Cancel any previous watch still running.
+        if (locationWatchRef.current !== null) {
+            navigator.geolocation.clearWatch(locationWatchRef.current);
+            locationWatchRef.current = null;
+        }
+
         setLocating(true);
         setLocationError(null);
 
-        // enableHighAccuracy: false — uses network/WiFi positioning instead of GPS.
-        // GPS is unavailable on most desktop hardware; requesting it triggers
-        // kCLErrorLocationUnknown on macOS before the WiFi fallback is reached.
-        navigator.geolocation.getCurrentPosition(
-            async (pos) => {
-                try {
-                    const { latitude, longitude } = pos.coords;
-                    const res = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
-                        { headers: { 'Accept-Language': 'en' } }
-                    );
-                    if (res.ok) {
-                        const data = await res.json();
-                        const addr = data.address || {};
-                        setDeliveryCountry(addr.country || 'Zambia');
-                        setDeliveryState(addr.state || addr.county || addr.city || '');
-                        const road = [addr.road, addr.suburb, addr.neighbourhood, addr.quarter]
-                            .filter(Boolean).join(', ');
-                        setDeliveryStreet(road || '');
-                        setDeliveryApartment(addr.house_number || '');
-                    }
-                } catch {
-                    setLocationError('Could not look up your address. Please fill it in manually.');
-                } finally {
-                    setLocating(false);
+        // Use watchPosition instead of getCurrentPosition.
+        // kCLErrorLocationUnknown (POSITION_UNAVAILABLE, code 2) is a *transient*
+        // macOS CoreLocation state — the service is available but hasn't fixed yet.
+        // watchPosition keeps retrying past it; getCurrentPosition gives up immediately.
+        // enableHighAccuracy: false skips the GPS attempt entirely and goes straight
+        // to WiFi/network positioning, which is reliable on desktop hardware.
+        const resolveWatch = async (pos: GeolocationPosition) => {
+            if (locationWatchRef.current !== null) {
+                navigator.geolocation.clearWatch(locationWatchRef.current);
+                locationWatchRef.current = null;
+            }
+            try {
+                const { latitude, longitude } = pos.coords;
+                const res = await fetch(
+                    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+                    { headers: { 'Accept-Language': 'en' } }
+                );
+                if (res.ok) {
+                    const data = await res.json();
+                    const addr = data.address || {};
+                    setDeliveryCountry(addr.country || 'Zambia');
+                    setDeliveryState(addr.state || addr.county || addr.city || '');
+                    const road = [addr.road, addr.suburb, addr.neighbourhood, addr.quarter]
+                        .filter(Boolean).join(', ');
+                    setDeliveryStreet(road || '');
+                    setDeliveryApartment(addr.house_number || '');
                 }
-            },
+            } catch {
+                setLocationError('Could not look up your address. Please fill it in manually.');
+            } finally {
+                setLocating(false);
+            }
+        };
+
+        locationWatchRef.current = navigator.geolocation.watchPosition(
+            resolveWatch,
             (err) => {
+                // POSITION_UNAVAILABLE (2) is transient — keep watching.
+                if (err.code === GeolocationPositionError.POSITION_UNAVAILABLE) return;
+                // Any other error (PERMISSION_DENIED, TIMEOUT) is terminal.
+                if (locationWatchRef.current !== null) {
+                    navigator.geolocation.clearWatch(locationWatchRef.current);
+                    locationWatchRef.current = null;
+                }
                 setLocating(false);
                 if (err.code === GeolocationPositionError.PERMISSION_DENIED) {
                     setLocationError('Location permission was denied. Please enable it in your browser settings.');
@@ -1322,8 +1346,18 @@ export const PublicPay: React.FC = () => {
                     setLocationError('Could not get your location. Please fill in the address manually.');
                 }
             },
-            { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 }
+            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
         );
+
+        // Hard stop after 20 s in case the watch never resolves or errors.
+        setTimeout(() => {
+            if (locationWatchRef.current !== null) {
+                navigator.geolocation.clearWatch(locationWatchRef.current);
+                locationWatchRef.current = null;
+                setLocating(false);
+                setLocationError('Could not get your location. Please fill in the address manually.');
+            }
+        }, 20000);
     };
 
     const handleReset = () => {
@@ -1347,6 +1381,10 @@ export const PublicPay: React.FC = () => {
         setSelectedRider(RIDER_SERVICES[0].id);
         setRiderDropdownOpen(false);
         setLocationError(null);
+        if (locationWatchRef.current !== null) {
+            navigator.geolocation.clearWatch(locationWatchRef.current);
+            locationWatchRef.current = null;
+        }
         setStep('SHOP');
         setError(null);
     };
@@ -2816,6 +2854,19 @@ Status: VERIFIED`;
                                                 K{processingFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </span>
                                         </div>
+                                        {effectiveDeliveryCharge > 0 && (
+                                            <div className="flex justify-between text-xs">
+                                                <span className="text-slate-500">
+                                                    Delivery
+                                                    {deliveryDetails?.rider_service_name
+                                                        ? ` · ${deliveryDetails.rider_service_name}`
+                                                        : ''}
+                                                </span>
+                                                <span className="text-slate-700 font-medium">
+                                                    K{effectiveDeliveryCharge.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                </span>
+                                            </div>
+                                        )}
                                         <div className="border-t border-dashed border-slate-200 pt-3 flex justify-between text-sm">
                                             <span className="font-bold text-slate-900">Total</span>
                                             <span className="font-bold text-slate-900">
