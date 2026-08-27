@@ -35,7 +35,9 @@ import {
     Info,
     Wallet,
     ClipboardList,
-    CalendarDays
+    CalendarDays,
+    MapPin,
+    Edit2,
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
@@ -110,6 +112,28 @@ interface Product {
     image_url?: string | null;
     product_type?: 'PRODUCT' | 'SERVICE_FIXED' | 'SERVICE_VARIABLE' | 'DONATION' | 'SERVICE_BOOKING' | 'SERVICE_BOOKING_DAILY' | 'DIGITAL';
     category?: string | null;
+    requires_delivery?: boolean;
+    allow_external_delivery?: boolean;
+    own_delivery_charge?: number;
+}
+
+/** Rider service options available in Zambia — placeholder until a live API exists. */
+const RIDER_SERVICES = [
+    { id: 'yango',   name: 'Yango',    est_price: 15, est_minutes: 45, logo: '🚗' },
+    { id: 'glovo',   name: 'Glovo',    est_price: 20, est_minutes: 35, logo: '🟡' },
+    { id: 'pickup',  name: 'Zed Ride', est_price: 12, est_minutes: 60, logo: '🛵' },
+];
+
+/** Delivery details captured at checkout. */
+interface DeliveryDetails {
+    mode: 'deliver' | 'pickup';
+    country: string;
+    state: string;
+    street: string;
+    apartment: string;
+    rider_service: string | null;
+    rider_service_name: string | null;
+    delivery_charge: number;
 }
 
 interface OrgContext {
@@ -166,9 +190,10 @@ export const PublicPay: React.FC = () => {
     // UI Steps
     //  SHOP     = product catalogue grid (entry page)
     //  CATALOG  = the cart (added items)
+    //  DELIVERY = delivery address + rider selection (only when cart has physical goods)
     //  SUMMARY  = checkout breakdown + customer details + Pay
     //  CHECKOUT = dedicated payment-method page (Collections API own-UX only)
-    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'CATALOG' | 'SUMMARY' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
+    const [step, setStep] = useState<'LOADING' | 'SHOP' | 'CATALOG' | 'DELIVERY' | 'SUMMARY' | 'CHECKOUT' | 'VERIFYING' | 'SUCCESS' | 'ERROR'>('LOADING');
 
     // Data Context
     const [org, setOrg] = useState<OrgContext | null>(null);
@@ -220,6 +245,15 @@ export const PublicPay: React.FC = () => {
     const [calendarProduct, setCalendarProduct] = useState<Product | null>(null);
     const [calendarAvailability, setCalendarAvailability] = useState<BookingRange[]>([]);
     const [calendarLoading, setCalendarLoading] = useState(false);
+
+    // Delivery details captured on the DELIVERY step.
+    const [deliveryMode, setDeliveryMode] = useState<'deliver' | 'pickup'>('deliver');
+    const [deliveryCountry, setDeliveryCountry] = useState('Zambia');
+    const [deliveryState, setDeliveryState] = useState('');
+    const [deliveryStreet, setDeliveryStreet] = useState('');
+    const [deliveryApartment, setDeliveryApartment] = useState('');
+    const [selectedRider, setSelectedRider] = useState<string>(RIDER_SERVICES[0].id);
+    const [locating, setLocating] = useState(false);
 
     // Desktop (≥1024px) uses a full-width two-column shop+cart layout; mobile keeps
     // the stepped flow. Initialised from matchMedia to avoid a first-paint flash.
@@ -612,10 +646,38 @@ export const PublicPay: React.FC = () => {
 
     // Full-screen "app" steps fill the viewport (fixed height) so inner content
     // scrolls and footers stay pinned; the simple states just center normally.
-    const isAppStep = step === 'SHOP' || step === 'CATALOG' || step === 'SUMMARY' || step === 'CHECKOUT' || step === 'SUCCESS' || step === 'VERIFYING';
+    const isAppStep = step === 'SHOP' || step === 'CATALOG' || step === 'DELIVERY' || step === 'SUMMARY' || step === 'CHECKOUT' || step === 'SUCCESS' || step === 'VERIFYING';
 
-    // Cart → Payment Summary. Validates the cart before showing the breakdown;
-    // the actual Lenco charge is only triggered by the Pay button on the summary.
+    // Whether any item in the cart requires physical delivery.
+    const cartNeedsDelivery = lineItems.some(li => li.product.requires_delivery);
+    // Whether the org allows external rider services (any product in cart with it set).
+    const cartAllowsExternalDelivery = lineItems.some(li => li.product.allow_external_delivery);
+    // Own delivery charge = first matching product's charge (if not using external riders).
+    const ownDeliveryCharge = (() => {
+        const p = lineItems.find(li => li.product.requires_delivery && !li.product.allow_external_delivery);
+        return p ? (p.product.own_delivery_charge ?? 0) : 0;
+    })();
+    const riderDeliveryCharge = (() => {
+        const r = RIDER_SERVICES.find(s => s.id === selectedRider);
+        return r ? r.est_price : 0;
+    })();
+    const effectiveDeliveryCharge = deliveryMode === 'pickup' ? 0 :
+        cartAllowsExternalDelivery ? riderDeliveryCharge : ownDeliveryCharge;
+
+    // Computed delivery details snapshot for the order.
+    const deliveryDetails: DeliveryDetails | null = cartNeedsDelivery ? {
+        mode: deliveryMode,
+        country: deliveryCountry,
+        state: deliveryState,
+        street: deliveryStreet,
+        apartment: deliveryApartment,
+        rider_service: deliveryMode === 'deliver' && cartAllowsExternalDelivery ? selectedRider : null,
+        rider_service_name: deliveryMode === 'deliver' && cartAllowsExternalDelivery
+            ? (RIDER_SERVICES.find(s => s.id === selectedRider)?.name ?? null) : null,
+        delivery_charge: effectiveDeliveryCharge,
+    } : null;
+
+    // Cart → Delivery (if needed) → Payment Summary.
     const handleProceedToSummary = () => {
         setError(null);
         if (lineItems.length === 0) {
@@ -630,7 +692,12 @@ export const PublicPay: React.FC = () => {
             setError('Please select at least one product or service to purchase.');
             return;
         }
-        setStep('SUMMARY');
+        // Route through delivery step if any cart item needs it.
+        if (cartNeedsDelivery) {
+            setStep('DELIVERY');
+        } else {
+            setStep('SUMMARY');
+        }
     };
 
     const handlePay = async () => {
@@ -706,7 +773,8 @@ export const PublicPay: React.FC = () => {
                     ...(li.isBooking && li.booking
                         ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
                         : {})
-                }))
+                })),
+                orderDetails: deliveryDetails,
             });
 
             // Start Lenco Payment Gateway Iframe
@@ -999,7 +1067,8 @@ export const PublicPay: React.FC = () => {
                     ...(li.isBooking && li.booking
                         ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
                         : {})
-                }))
+                })),
+                orderDetails: deliveryDetails,
             });
 
             // 2. Initiate the collection server-side (gross = subtotal + platform fee).
@@ -1206,6 +1275,39 @@ export const PublicPay: React.FC = () => {
         }
     };
 
+    // Use browser Geolocation to pre-fill address fields.
+    const handleUseCurrentLocation = () => {
+        if (!navigator.geolocation) return;
+        setLocating(true);
+        navigator.geolocation.getCurrentPosition(
+            async (pos) => {
+                try {
+                    const { latitude, longitude } = pos.coords;
+                    const res = await fetch(
+                        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+                        { headers: { 'Accept-Language': 'en' } }
+                    );
+                    if (res.ok) {
+                        const data = await res.json();
+                        const addr = data.address || {};
+                        setDeliveryCountry(addr.country || 'Zambia');
+                        setDeliveryState(addr.state || addr.county || addr.city || '');
+                        const road = [addr.road, addr.suburb, addr.neighbourhood, addr.quarter]
+                            .filter(Boolean).join(', ');
+                        setDeliveryStreet(road || '');
+                        setDeliveryApartment(addr.house_number || '');
+                    }
+                } catch {
+                    // Silently ignore — the user can fill manually.
+                } finally {
+                    setLocating(false);
+                }
+            },
+            () => setLocating(false),
+            { timeout: 8000, maximumAge: 60000 }
+        );
+    };
+
     const handleReset = () => {
         setSelectedQuantities({});
         setDonationAmounts({});
@@ -1219,6 +1321,12 @@ export const PublicPay: React.FC = () => {
         setElapsedSeconds(0);
         setResolvedAccountName('');
         setResolveFailed(false);
+        setDeliveryMode('deliver');
+        setDeliveryCountry('Zambia');
+        setDeliveryState('');
+        setDeliveryStreet('');
+        setDeliveryApartment('');
+        setSelectedRider(RIDER_SERVICES[0].id);
         setStep('SHOP');
         setError(null);
     };
@@ -2409,7 +2517,194 @@ Status: VERIFIED`;
                     </div>
                 )}
 
-                {/* 3b. Payment Summary Step */}
+                {/* 3b. Delivery Step — address + rider selection */}
+                {step === 'DELIVERY' && org && (
+                    <div className="flex flex-col flex-1 min-h-0" style={{ animation: 'atabs-in-right 0.42s cubic-bezier(0.22, 1, 0.36, 1)' }}>
+                        {/* Header */}
+                        <div className="px-6 pt-6 pb-4 flex items-center gap-4 shrink-0 border-b border-gray-100">
+                            {org.logo_url ? (
+                                <img src={org.logo_url} alt={org.name} className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                            ) : (
+                                <div className="w-10 h-10 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
+                                    <ShoppingBag className="h-5 w-5 text-[#0058DB]" />
+                                </div>
+                            )}
+                            <div>
+                                <p className="text-base font-bold text-gray-900">{org.name}</p>
+                                <p className="text-xs text-gray-400">Payment Checkout Portal</p>
+                            </div>
+                        </div>
+
+                        {/* Scrollable content */}
+                        <div className="flex-1 overflow-y-auto px-6 pt-5 pb-36 space-y-4">
+                            <div>
+                                <h2 className="text-lg font-semibold text-gray-900">Checkout</h2>
+                                <p className="text-xs text-gray-500 mt-0.5">Please choose the mode of delivery that you would like to use to collect your parcel.</p>
+                            </div>
+
+                            {/* Deliver / Pick Up segmented control */}
+                            <div className="p-1 bg-gray-100 rounded-full flex">
+                                {(['deliver', 'pickup'] as const).map(m => (
+                                    <button
+                                        key={m}
+                                        onClick={() => setDeliveryMode(m)}
+                                        className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-full text-xs font-medium transition-all ${
+                                            deliveryMode === m
+                                                ? 'bg-white text-gray-900 shadow-sm'
+                                                : 'text-gray-500'
+                                        }`}
+                                    >
+                                        {m === 'deliver' ? (
+                                            <><ChevronRight className="h-3.5 w-3.5" />Deliver</>
+                                        ) : (
+                                            <><ShoppingBag className="h-3.5 w-3.5" />Pick Up</>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {deliveryMode === 'deliver' && (
+                                <>
+                                    {/* Use Current Location */}
+                                    <button
+                                        onClick={handleUseCurrentLocation}
+                                        disabled={locating}
+                                        className="w-full flex items-center justify-center gap-3 py-3 px-5 bg-white border border-slate-300 rounded-full shadow-sm text-sm text-gray-800 hover:bg-gray-50 active:scale-[0.98] transition-all disabled:opacity-60"
+                                    >
+                                        {locating ? (
+                                            <Loader2 className="h-4 w-4 animate-spin text-gray-500" />
+                                        ) : (
+                                            <MapPin className="h-4 w-4 text-gray-700" />
+                                        )}
+                                        {locating ? 'Locating…' : 'Use Current Location'}
+                                    </button>
+
+                                    {/* Address fields */}
+                                    <div className="space-y-3">
+                                        {/* Country */}
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-700 mb-1 block">Country</label>
+                                            <div className="flex items-center gap-3 px-4 py-3 bg-white rounded-full border border-slate-300 min-h-[48px]">
+                                                <span className="text-lg">🇿🇲</span>
+                                                <span className="flex-1 text-base text-gray-600 font-normal">{deliveryCountry}</span>
+                                                <span className="text-base font-semibold text-gray-600">ZM</span>
+                                                <ChevronDown className="h-4 w-4 text-gray-500" />
+                                            </div>
+                                        </div>
+
+                                        {/* State / Province */}
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-700 mb-1 block">State / Province</label>
+                                            <div className="relative">
+                                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                                <input
+                                                    value={deliveryState}
+                                                    onChange={e => setDeliveryState(e.target.value)}
+                                                    placeholder="e.g. Lusaka"
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-base text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
+                                                />
+                                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500 pointer-events-none" />
+                                            </div>
+                                        </div>
+
+                                        {/* Street address */}
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-700 mb-1 block">Street Address</label>
+                                            <div className="relative">
+                                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                                <input
+                                                    value={deliveryStreet}
+                                                    onChange={e => setDeliveryStreet(e.target.value)}
+                                                    placeholder="e.g. E7158 Whitechapel High St"
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-base text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
+                                                />
+                                                <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                            </div>
+                                        </div>
+
+                                        {/* Apartment */}
+                                        <div>
+                                            <label className="text-xs font-semibold text-gray-700 mb-1 block">Apartment / Suite or House / Plot No.</label>
+                                            <div className="relative">
+                                                <Building2 className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                                <input
+                                                    value={deliveryApartment}
+                                                    onChange={e => setDeliveryApartment(e.target.value)}
+                                                    placeholder="Suite B225, House No. 12"
+                                                    className="w-full pl-10 pr-10 py-3 bg-white rounded-full border border-slate-300 text-base text-gray-700 outline-none focus:border-[#0058DB] transition-colors"
+                                                />
+                                                <Edit2 className="absolute right-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Rider service selector (only when org allows external delivery) */}
+                                    {cartAllowsExternalDelivery && (
+                                        <div className="bg-white border border-slate-300 rounded-2xl overflow-hidden">
+                                            <p className="px-4 pt-3 pb-2 text-xs font-medium text-gray-500">Choose Rider Service</p>
+                                            {RIDER_SERVICES.map((svc, idx) => (
+                                                <button
+                                                    key={svc.id}
+                                                    onClick={() => setSelectedRider(svc.id)}
+                                                    className={`w-full flex items-center gap-3 px-4 py-3 transition-colors ${
+                                                        idx < RIDER_SERVICES.length - 1 ? 'border-b border-gray-100' : ''
+                                                    } ${selectedRider === svc.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}
+                                                >
+                                                    <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">{svc.logo}</div>
+                                                    <div className="flex-1 text-left">
+                                                        <div className="text-sm font-medium text-gray-900">{svc.name}</div>
+                                                        <div className="text-[11px] text-gray-500">
+                                                            Est <span className="font-bold">Price K{svc.est_price}</span>
+                                                            {' · '}Est Delivery time <span className="font-bold">~{svc.est_minutes} min</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 transition-colors ${
+                                                        selectedRider === svc.id ? 'border-[#0058DB] bg-[#0058DB]' : 'border-gray-300'
+                                                    }`}>
+                                                        {selectedRider === svc.id && <div className="w-2 h-2 bg-white rounded-full m-auto mt-[1px]" />}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </>
+                            )}
+
+                            {deliveryMode === 'pickup' && (
+                                <div className="flex flex-col items-center justify-center py-10 text-center text-gray-500">
+                                    <ShoppingBag className="h-10 w-10 text-gray-200 mb-3" />
+                                    <p className="text-sm font-semibold text-gray-700">You'll collect at the store</p>
+                                    <p className="text-xs text-gray-400 mt-1 max-w-xs">The merchant will contact you with pick-up details after your order is confirmed.</p>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Sticky footer */}
+                        <div className="fixed bottom-0 inset-x-0 sm:absolute sm:bottom-0 sm:inset-x-auto sm:left-0 sm:right-0 sm:w-full bg-white border-t border-gray-200 px-6 py-4 space-y-3">
+                            <div className="flex items-center justify-between text-sm font-bold text-gray-600">
+                                <span>Delivery Charge</span>
+                                <span>K{effectiveDeliveryCharge.toFixed(2)}</span>
+                            </div>
+                            <div className="flex gap-2.5">
+                                <button
+                                    onClick={() => setStep('CATALOG')}
+                                    className="flex-1 h-11 px-3 py-2 bg-white rounded-xl border border-gray-900 flex items-center justify-center text-xs font-medium text-gray-900 hover:bg-gray-50 transition-colors"
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    onClick={() => setStep('SUMMARY')}
+                                    className="flex-1 h-11 px-3 py-2 bg-gray-900 rounded-xl flex items-center justify-center gap-2 text-xs font-bold text-white hover:bg-black transition-colors"
+                                >
+                                    <CreditCard className="h-3.5 w-3.5" />
+                                    Checkout
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* 3c. Payment Summary Step */}
                 {step === 'SUMMARY' && org && (
                     <div
                         className="flex flex-col flex-1 min-h-0 sm:min-h-[min(620px,80vh)]"

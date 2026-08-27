@@ -79,7 +79,8 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
             return res.status(403).json({ error: 'Only administrators can manage products' });
         }
 
-        const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets } = req.body;
+        const { name, description, price, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
+                requires_delivery, allow_external_delivery, own_delivery_charge } = req.body;
 
         if (!name || name.trim() === '') {
             return res.status(400).json({ error: 'Product name is required' });
@@ -121,7 +122,10 @@ export const createProduct = async (req: any, res: Response): Promise<any> => {
                 income_account_id: income_account_id || null,
                 category: (category && category.trim()) || null,
                 digital_assets: digitalAssets,
-                is_active: true
+                is_active: true,
+                requires_delivery: requires_delivery === true,
+                allow_external_delivery: allow_external_delivery === true,
+                own_delivery_charge: Number(own_delivery_charge) || 0,
             })
             .select()
             .single();
@@ -163,7 +167,8 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
             return res.status(403).json({ error: 'Permission denied: Product belongs to another organization' });
         }
 
-        const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets } = req.body;
+        const { name, description, price, is_active, image_url, product_type, wallet_id, income_account_id, category, digital_assets,
+                requires_delivery, allow_external_delivery, own_delivery_charge } = req.body;
         const updateData: any = {};
 
         if (name !== undefined) {
@@ -228,6 +233,9 @@ export const updateProduct = async (req: any, res: Response): Promise<any> => {
         }
 
         if (is_active !== undefined) updateData.is_active = !!is_active;
+        if (requires_delivery !== undefined) updateData.requires_delivery = requires_delivery === true;
+        if (allow_external_delivery !== undefined) updateData.allow_external_delivery = allow_external_delivery === true;
+        if (own_delivery_charge !== undefined) updateData.own_delivery_charge = Number(own_delivery_charge) || 0;
         updateData.updated_at = new Date().toISOString();
 
         const { data, error } = await supabase
@@ -328,3 +336,32 @@ export const getProductSales = async (req: any, res: Response): Promise<any> => 
     }
 };
 
+
+/**
+ * GET /organizations/products/sales-by-reference/:reference
+ * Returns all product_sales rows (with product snapshot) for a cashbook entry
+ * identified by its external_reference. Used by the inflow detail drawer.
+ */
+export const getSalesByReference = async (req: any, res: Response): Promise<any> => {
+    try {
+        const { reference } = req.params;
+        const organization_id = req.user.organization_id;
+
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const { data: sales, error: salesError } = await supabase
+            .from('product_sales')
+            .select('*, products(id, name, description, image_url, product_type)')
+            .eq('organization_id', organization_id)
+            .eq('reference', reference)
+            .order('created_at', { ascending: true });
+
+        if (salesError) throw salesError;
+        res.json(sales || []);
+    } catch (error: any) {
+        console.error('[Products] Get sales by reference error:', error);
+        res.status(500).json({ error: 'Failed to fetch sales', details: error.message });
+    }
+};

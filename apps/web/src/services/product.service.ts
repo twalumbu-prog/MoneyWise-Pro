@@ -70,8 +70,27 @@ export interface Product {
     income_account_id?: string | null;
     category?: string | null;
     digital_assets?: DigitalAsset[] | null;
+    /** Whether this product requires physical delivery / pick-up at checkout. */
+    requires_delivery?: boolean;
+    /** When true, the checkout shows the rider-service selector;
+     *  when false, the merchant handles delivery at a flat charge. */
+    allow_external_delivery?: boolean;
+    /** Flat delivery fee (ZMW) when the merchant manages their own delivery. */
+    own_delivery_charge?: number;
     created_at?: string;
     updated_at?: string;
+}
+
+/** Delivery details captured at checkout and stored with each sale. */
+export interface OrderDeliveryDetails {
+    mode: 'deliver' | 'pickup';
+    country?: string;
+    state?: string;
+    street?: string;
+    apartment?: string;
+    rider_service?: string;
+    rider_service_name?: string;
+    delivery_charge?: number;
 }
 
 /** Snapshot of a single line item stored inside payment_links.items */

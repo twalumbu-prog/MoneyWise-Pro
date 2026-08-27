@@ -30,6 +30,7 @@ import { cashbookService } from '../services/cashbook.service';
 import { payrollService } from '../services/payroll.service';
 import { paymentLinkService, PaymentLink, UpdateInvoiceLinkPayload } from '../services/product.service';
 import { useNewnessTracker } from '../hooks/useNewnessTracker';
+import InflowDetailDrawer from '../components/InflowDetailDrawer';
 
 interface Requisition {
     id: string;
@@ -94,6 +95,7 @@ export const RequisitionList: React.FC = () => {
     const [inflowSubMode, setInflowSubMode] = useState<'cash' | 'invoices'>('cash');
     const [selectedInvoice, setSelectedInvoice] = useState<PaymentLink | null>(null);
     const [editingInvoice, setEditingInvoice] = useState<PaymentLink | null>(null);
+    const [selectedInflow, setSelectedInflow] = useState<InflowRow | null>(null);
     // Inflows are fetched up front too (not just when the tab is opened) so the
     // "new inflow" dot on the Inflows toggle is accurate even while viewing
     // Outflows; switching back to the tab refetches (e.g. after a sale).
@@ -819,7 +821,12 @@ export const RequisitionList: React.FC = () => {
                                                 <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a sale with the New Sale button to see money-in here.</p>
                                             </div>
                                         )}
-                                        {sortedInflows.length > 0 && <InflowInbox inflows={sortedInflows} />}
+                                        {sortedInflows.length > 0 && (
+                                            <InflowInbox
+                                                inflows={sortedInflows}
+                                                onRowClick={(id) => setSelectedInflow(sortedInflows.find(r => r.id === id) ?? null)}
+                                            />
+                                        )}
                                     </>)}
 
                                     {/* Invoice inflows */}
@@ -1025,7 +1032,7 @@ export const RequisitionList: React.FC = () => {
                                                     };
                                                     const isNew = inflowsSeen.isNew(row.created_at || row.date);
                                                     return (
-                                                        <div key={row.id} className="flex flex-col gap-1">
+                                                        <div key={row.id} className="flex flex-col gap-1 cursor-pointer" onClick={() => setSelectedInflow(row)}>
                                                             <div className="flex items-center gap-1.5 py-1">
                                                                 <span className={`text-xs text-zinc-500 transition-all duration-500 ${isNew ? 'font-extrabold' : 'font-bold'}`}>
                                                                     {row.reference_number || 'Receipt'}
@@ -1095,6 +1102,11 @@ export const RequisitionList: React.FC = () => {
                 </div>
             </div>
         </Layout>
+
+            <InflowDetailDrawer
+                inflow={selectedInflow}
+                onClose={() => setSelectedInflow(null)}
+            />
 
             <InvoiceDetailModal
                 invoice={selectedInvoice}

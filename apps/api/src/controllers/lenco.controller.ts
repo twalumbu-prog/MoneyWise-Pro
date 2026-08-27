@@ -821,7 +821,7 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                         .single(),
                     supabase
                         .from('products')
-                        .select('id, name, description, price, image_url, category, product_type')
+                        .select('id, name, description, price, image_url, category, product_type, requires_delivery, allow_external_delivery, own_delivery_charge')
                         .eq('organization_id', wallet.organization_id)
                         .eq('is_active', true)
                         .order('name', { ascending: true })
@@ -1035,7 +1035,7 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
     let analyticsBase: { feature: string; workflow_id: string; organization_id: string; user_id: string; [key: string]: any } =
         { feature, workflow_id: 'unknown', organization_id: 'unknown', user_id: (req as any).user?.id || 'anonymous' };
     try {
-        const { reference, purpose, amount, walletId, customerName, customerPhone, customerEmail, items, paymentLinkToken } = req.body;
+        const { reference, purpose, amount, walletId, customerName, customerPhone, customerEmail, items, paymentLinkToken, orderDetails } = req.body;
 
         if (!reference || !purpose || !walletId) {
             return res.status(400).json({ error: 'reference, purpose, and walletId are required' });
@@ -1146,7 +1146,10 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
                     quantity: qty,
                     amount_paid: Math.round(unit * qty * 100) / 100,
                     reference: reference,
-                    status: 'PENDING'
+                    status: 'PENDING',
+                    // Store the delivery details captured at checkout (address, mode, rider service).
+                    // Stored on every line item in the purchase so the inflow drawer can surface them.
+                    order_details: orderDetails ? JSON.parse(JSON.stringify(orderDetails)) : null,
                 };
             });
 

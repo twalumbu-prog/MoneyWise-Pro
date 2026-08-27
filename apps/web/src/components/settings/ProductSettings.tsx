@@ -15,8 +15,6 @@ import {
     Loader2,
     CheckCircle,
     AlertCircle,
-    DollarSign,
-    Tag,
     X,
     Eye,
     Download,
@@ -24,7 +22,6 @@ import {
     ImagePlus,
     Wallet,
     BookOpen,
-    Layers,
     FileUp,
     FileText,
     MoreHorizontal,
@@ -77,7 +74,10 @@ export const ProductSettings: React.FC = () => {
         income_account_id: '',
         image_url: '',
         category: '',
-        is_active: true
+        is_active: true,
+        requires_delivery: false,
+        allow_external_delivery: false,
+        own_delivery_charge: '',
     });
 
     // Share-link modal state
@@ -197,7 +197,10 @@ export const ProductSettings: React.FC = () => {
             income_account_id: '',
             image_url: '',
             category: '',
-            is_active: true
+            is_active: true,
+            requires_delivery: false,
+            allow_external_delivery: false,
+            own_delivery_charge: '',
         });
         setDigitalAssets([]);
         setError(null);
@@ -216,7 +219,10 @@ export const ProductSettings: React.FC = () => {
             income_account_id: product.income_account_id || '',
             image_url: product.image_url || '',
             category: product.category || '',
-            is_active: product.is_active
+            is_active: product.is_active,
+            requires_delivery: product.requires_delivery ?? false,
+            allow_external_delivery: product.allow_external_delivery ?? false,
+            own_delivery_charge: product.own_delivery_charge?.toString() ?? '',
         });
         setError(null);
         setIsModalOpen(true);
@@ -225,11 +231,6 @@ export const ProductSettings: React.FC = () => {
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleCheckboxChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const { name, checked } = e.target;
-        setFormData(prev => ({ ...prev, [name]: checked }));
     };
 
     const handleUploadImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -322,6 +323,8 @@ export const ProductSettings: React.FC = () => {
     const isBooking = isBookingProductType(formData.product_type);
     const isDailyBooking = formData.product_type === 'SERVICE_BOOKING_DAILY';
     const priceRequired = !isDonation && !isVariable;
+    // Delivery only makes sense for tangible physical products
+    const canHaveDelivery = formData.product_type === 'PRODUCT';
 
     // Existing categories across the catalog — offered as suggestions so admins
     // reuse consistent names (these drive the toggle tabs on the public portal).
@@ -371,7 +374,10 @@ export const ProductSettings: React.FC = () => {
                 image_url: formData.image_url || null,
                 category: formData.category.trim() || null,
                 digital_assets: isDigital ? digitalAssets : null,
-                is_active: formData.is_active
+                is_active: formData.is_active,
+                requires_delivery: formData.requires_delivery,
+                allow_external_delivery: formData.allow_external_delivery,
+                own_delivery_charge: Number(formData.own_delivery_charge) || 0,
             };
 
             if (editingProduct) {
@@ -809,116 +815,137 @@ export const ProductSettings: React.FC = () => {
 
 
             {isModalOpen && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 max-h-[92vh] flex flex-col">
-                        <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
-                            <h3 className="font-bold text-brand-navy flex items-center">
-                                <ShoppingBag className="h-5 w-5 mr-2 text-brand-green" />
-                                {editingProduct ? 'Edit Product/Service' : 'Add Product/Service'}
-                            </h3>
+                <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-xl w-full sm:max-w-lg overflow-hidden animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200 max-h-[94vh] flex flex-col">
+
+                        {/* Header */}
+                        <div className="px-6 pt-6 pb-4 flex items-center justify-between shrink-0">
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-900">
+                                    {editingProduct ? 'Edit listing' : 'Add a listing'}
+                                </h3>
+                                <p className="text-xs text-gray-400 mt-0.5">Fill in the details for this product or service</p>
+                            </div>
                             <button
                                 onClick={() => !submitting && setIsModalOpen(false)}
                                 disabled={submitting}
-                                className="text-gray-400 hover:text-gray-600 p-1 rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-50"
+                                className="p-2 rounded-full text-gray-400 hover:bg-gray-100 transition-colors disabled:opacity-50"
                             >
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
 
                         <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
-                            <div className="p-6 space-y-4 overflow-y-auto">
+                            <div className="px-6 pb-6 space-y-5 overflow-y-auto flex-1">
                                 {error && (
-                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-xl text-sm flex items-center">
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2.5 rounded-2xl text-sm flex items-center">
                                         <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0" />
                                         {error}
                                     </div>
                                 )}
 
-                                {/* Product type */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                                        Type <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        name="product_type"
-                                        value={formData.product_type}
-                                        onChange={handleChange}
-                                        disabled={submitting}
-                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50"
+                                {/* Image upload — prominent, top of form */}
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        type="button"
+                                        onClick={() => document.getElementById('product-img-input')?.click()}
+                                        aria-label="Upload product image"
+                                        className="relative w-20 h-20 rounded-2xl bg-gray-50 border-2 border-dashed border-gray-200 flex items-center justify-center overflow-hidden hover:border-[#0058DB]/50 hover:bg-blue-50/30 transition-all flex-shrink-0"
                                     >
-                                        {PRODUCT_TYPE_OPTIONS.map(o => (
-                                            <option key={o.value} value={o.value}>{o.label}</option>
-                                        ))}
-                                    </select>
-                                    <p className="text-xs text-gray-400 mt-1">
-                                        {PRODUCT_TYPE_OPTIONS.find(o => o.value === formData.product_type)?.hint}
-                                    </p>
-                                </div>
-
-                                {/* Image upload */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Image</label>
-                                    <div className="flex items-center gap-4">
-                                        <div className="h-16 w-16 rounded-xl border border-gray-200 bg-gray-50 overflow-hidden flex items-center justify-center flex-shrink-0">
-                                            {formData.image_url ? (
-                                                <img src={formData.image_url} alt="Product" className="h-full w-full object-cover" />
-                                            ) : (
-                                                <ImagePlus className="h-5 w-5 text-gray-300" />
-                                            )}
-                                        </div>
-                                        <div className="flex flex-col gap-1.5">
-                                            <label className="inline-flex items-center px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors w-fit">
-                                                {uploadingImage ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <ImagePlus className="h-4 w-4 mr-1.5" />}
-                                                {uploadingImage ? 'Uploading...' : (formData.image_url ? 'Replace image' : 'Upload image')}
-                                                <input type="file" accept="image/*" className="hidden" onChange={handleUploadImage} disabled={submitting || uploadingImage} />
-                                            </label>
-                                            {formData.image_url && (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setFormData(prev => ({ ...prev, image_url: '' }))}
-                                                    className="text-xs font-semibold text-red-500 hover:text-red-600 w-fit"
-                                                >
-                                                    Remove
-                                                </button>
-                                            )}
-                                        </div>
+                                        {uploadingImage ? (
+                                            <Loader2 className="h-5 w-5 text-[#0058DB] animate-spin" />
+                                        ) : formData.image_url ? (
+                                            <img src={formData.image_url} alt="Product" className="h-full w-full object-cover" />
+                                        ) : (
+                                            <ImagePlus className="h-5 w-5 text-gray-300" />
+                                        )}
+                                    </button>
+                                    <input id="product-img-input" type="file" accept="image/*" className="hidden" onChange={handleUploadImage} disabled={submitting || uploadingImage} />
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-800">Product photo</p>
+                                        <p className="text-xs text-gray-400 mt-0.5">Tap the box to upload. Optional but recommended.</p>
+                                        {formData.image_url && (
+                                            <button type="button" onClick={() => setFormData(prev => ({ ...prev, image_url: '' }))} className="text-xs font-semibold text-red-500 hover:text-red-700 mt-1">Remove photo</button>
+                                        )}
                                     </div>
                                 </div>
 
-                                {/* Digital assets — files delivered to the buyer on payment */}
+                                {/* Product name */}
+                                <div>
+                                    <label className="block text-sm font-bold text-gray-800 mb-1.5">
+                                        Name <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        name="name"
+                                        value={formData.name}
+                                        onChange={handleChange}
+                                        disabled={submitting}
+                                        required
+                                        className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
+                                        placeholder="e.g. Men's Sneakers, Standard Haircut"
+                                    />
+                                </div>
+
+                                {/* Type + Category in a 2-col grid */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5">Type</label>
+                                        <select
+                                            name="product_type"
+                                            value={formData.product_type}
+                                            onChange={handleChange}
+                                            disabled={submitting}
+                                            className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50"
+                                        >
+                                            {PRODUCT_TYPE_OPTIONS.map(o => (
+                                                <option key={o.value} value={o.value}>{o.label}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5">Category</label>
+                                        <input
+                                            type="text"
+                                            name="category"
+                                            list="product-categories"
+                                            value={formData.category}
+                                            onChange={handleChange}
+                                            disabled={submitting}
+                                            className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 placeholder-gray-400"
+                                            placeholder="e.g. Shoes"
+                                        />
+                                        <datalist id="product-categories">
+                                            {existingCategories.map(c => <option key={c} value={c} />)}
+                                        </datalist>
+                                    </div>
+                                </div>
+                                <p className="text-xs text-gray-400 -mt-3">
+                                    {PRODUCT_TYPE_OPTIONS.find(o => o.value === formData.product_type)?.hint}
+                                </p>
+
+                                {/* Digital assets */}
                                 {isDigital && (
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                                        <label className="block text-sm font-bold text-gray-800 mb-1">
                                             Digital file(s) <span className="text-red-500">*</span>
                                         </label>
-                                        <p className="text-xs text-gray-400 mb-2">
-                                            Uploaded privately and emailed to the buyer automatically once they pay. Small files are attached; large files are sent as a secure download link.
-                                        </p>
-
+                                        <p className="text-xs text-gray-400 mb-2">Emailed to the buyer automatically on payment.</p>
                                         {digitalAssets.length > 0 && (
-                                            <div className="space-y-2 mb-3">
+                                            <div className="space-y-2 mb-2">
                                                 {digitalAssets.map(asset => (
-                                                    <div key={asset.path} className="flex items-center gap-3 px-3 py-2.5 bg-violet-50/60 border border-violet-100 rounded-xl">
+                                                    <div key={asset.path} className="flex items-center gap-3 px-3 py-2.5 bg-violet-50 border border-violet-100 rounded-2xl">
                                                         <FileText className="h-4 w-4 text-violet-500 flex-shrink-0" />
                                                         <div className="min-w-0 flex-1">
                                                             <div className="text-sm font-semibold text-gray-800 truncate">{asset.name}</div>
                                                             {asset.size ? <div className="text-xs text-gray-400">{formatBytes(asset.size)}</div> : null}
                                                         </div>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleRemoveAsset(asset.path)}
-                                                            disabled={submitting}
-                                                            className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                                                            title="Remove file"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </button>
+                                                        <button type="button" onClick={() => handleRemoveAsset(asset.path)} disabled={submitting} className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"><Trash2 className="h-4 w-4" /></button>
                                                     </div>
                                                 ))}
                                             </div>
                                         )}
-
-                                        <label className="inline-flex items-center px-3 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors w-fit">
+                                        <label className="inline-flex items-center px-4 py-2.5 text-xs font-bold text-gray-700 bg-white border border-gray-200 rounded-2xl hover:bg-gray-50 cursor-pointer transition-colors">
                                             {uploadingAsset ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : <FileUp className="h-4 w-4 mr-1.5" />}
                                             {uploadingAsset ? 'Uploading...' : (digitalAssets.length > 0 ? 'Add another file' : 'Upload file')}
                                             <input type="file" multiple className="hidden" onChange={handleUploadAssets} disabled={submitting || uploadingAsset} />
@@ -926,62 +953,15 @@ export const ProductSettings: React.FC = () => {
                                     </div>
                                 )}
 
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                                        Product/Service Name <span className="text-red-500">*</span>
-                                    </label>
-                                    <div className="relative">
-                                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                            <Tag className="h-4 w-4 text-gray-400" />
-                                        </div>
-                                        <input
-                                            type="text"
-                                            name="name"
-                                            value={formData.name}
-                                            onChange={handleChange}
-                                            disabled={submitting}
-                                            required
-                                            className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50"
-                                            placeholder="e.g. Standard Consultation"
-                                        />
-                                    </div>
-                                </div>
-
-                                {/* Category — drives the toggle tabs on the public portal */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center">
-                                        <Layers className="h-4 w-4 mr-1.5 text-gray-400" />
-                                        Category
-                                    </label>
-                                    <input
-                                        type="text"
-                                        name="category"
-                                        list="product-categories"
-                                        value={formData.category}
-                                        onChange={handleChange}
-                                        disabled={submitting}
-                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50"
-                                        placeholder="e.g. School Fees, Merchandise"
-                                    />
-                                    <datalist id="product-categories">
-                                        {existingCategories.map(c => (
-                                            <option key={c} value={c} />
-                                        ))}
-                                    </datalist>
-                                    <p className="text-xs text-gray-400 mt-1">Groups this item into a tab on the public payment portal. Optional.</p>
-                                </div>
-
-                                {/* Price — hidden for donations */}
+                                {/* Price */}
                                 {!isDonation && (
                                     <div>
-                                        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                                            {isBooking ? `Price per ${isDailyBooking ? 'day' : 'night'} (K)` : isVariable ? 'Default / quoted price (K)' : 'Price (K)'}
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5">
+                                            {isBooking ? `Price per ${isDailyBooking ? 'day' : 'night'}` : isVariable ? 'Default / quoted price' : 'Selling price'}
                                             {priceRequired && <span className="text-red-500"> *</span>}
                                         </label>
                                         <div className="relative">
-                                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                                <DollarSign className="h-4 w-4 text-gray-400" />
-                                            </div>
+                                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-gray-400">ZMW</span>
                                             <input
                                                 type="number"
                                                 name="price"
@@ -991,109 +971,157 @@ export const ProductSettings: React.FC = () => {
                                                 onChange={handleChange}
                                                 disabled={submitting}
                                                 required={priceRequired}
-                                                className="block w-full pl-10 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50"
+                                                className="block w-full pl-14 pr-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50"
                                                 placeholder="0.00"
                                             />
                                         </div>
-                                        {isVariable && (
-                                            <p className="text-xs text-gray-400 mt-1">You'll confirm the final amount when generating a share link.</p>
-                                        )}
+                                        {isVariable && <p className="text-xs text-gray-400 mt-1">You'll confirm the final amount when sharing a link.</p>}
                                     </div>
                                 )}
 
-                                {/* Destination wallet */}
+                                {/* Description */}
                                 <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center">
-                                        <Wallet className="h-4 w-4 mr-1.5 text-gray-400" />
-                                        Revenue wallet
-                                    </label>
-                                    <select
-                                        name="wallet_id"
-                                        value={formData.wallet_id}
-                                        onChange={handleChange}
-                                        disabled={submitting}
-                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50"
-                                    >
-                                        <option value="">Default (the catalog's wallet)</option>
-                                        {wallets.map(w => (
-                                            <option key={w.id} value={w.id}>{w.name}{w.is_main ? ' (Main)' : ''}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Income account */}
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center">
-                                        <BookOpen className="h-4 w-4 mr-1.5 text-gray-400" />
-                                        Income account
-                                    </label>
-                                    <select
-                                        name="income_account_id"
-                                        value={formData.income_account_id}
-                                        onChange={handleChange}
-                                        disabled={submitting}
-                                        className="block w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50"
-                                    >
-                                        <option value="">Auto-categorize (AI)</option>
-                                        {incomeAccounts.map(a => (
-                                            <option key={a.id} value={a.id}>{a.code} — {a.name}</option>
-                                        ))}
-                                    </select>
-                                    <p className="text-xs text-gray-400 mt-1">Map an account to post this revenue automatically, or leave on AI.</p>
-                                </div>
-
-                                <div>
-                                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                                        Description
+                                    <label className="block text-sm font-bold text-gray-800 mb-1.5">
+                                        Description <span className="text-xs font-medium text-gray-400 ml-1">Optional</span>
                                     </label>
                                     <textarea
                                         name="description"
                                         value={formData.description}
                                         onChange={handleChange}
                                         disabled={submitting}
-                                        rows={3}
-                                        className="block w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-brand-green/20 focus:border-brand-green outline-none transition-all disabled:bg-gray-50 resize-none font-brand-family"
-                                        placeholder="Describe the product or service..."
+                                        rows={2}
+                                        className="block w-full px-4 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50 resize-none placeholder-gray-400"
+                                        placeholder="A short description customers will see..."
                                     />
                                 </div>
 
-                                <div className="flex items-center">
-                                    <input
-                                        type="checkbox"
-                                        id="is_active"
-                                        name="is_active"
-                                        checked={formData.is_active}
-                                        onChange={handleCheckboxChange}
-                                        disabled={submitting}
-                                        className="h-4 w-4 rounded border-gray-300 text-brand-green focus:ring-brand-green"
-                                    />
-                                    <label htmlFor="is_active" className="ml-2 block text-sm font-semibold text-gray-900">
-                                        Active (visible to customers on the payment portal)
-                                    </label>
+                                {/* Revenue wallet + Income account */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5 flex items-center gap-1"><Wallet className="h-3.5 w-3.5 text-gray-400" />Wallet</label>
+                                        <select name="wallet_id" value={formData.wallet_id} onChange={handleChange} disabled={submitting} className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50">
+                                            <option value="">Default</option>
+                                            {wallets.map(w => <option key={w.id} value={w.id}>{w.name}{w.is_main ? ' (Main)' : ''}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-bold text-gray-800 mb-1.5 flex items-center gap-1"><BookOpen className="h-3.5 w-3.5 text-gray-400" />Account</label>
+                                        <select name="income_account_id" value={formData.income_account_id} onChange={handleChange} disabled={submitting} className="block w-full px-3 py-3 bg-white border border-gray-200 rounded-2xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all disabled:bg-gray-50">
+                                            <option value="">Auto (AI)</option>
+                                            {incomeAccounts.map(a => <option key={a.id} value={a.id}>{a.code} — {a.name}</option>)}
+                                        </select>
+                                    </div>
                                 </div>
+
+                                {/* ── Delivery settings (physical products only) ── */}
+                                {canHaveDelivery && (
+                                    <div className="border border-gray-100 rounded-2xl overflow-hidden">
+                                        {/* Toggle: requires delivery */}
+                                        <button
+                                            type="button"
+                                            onClick={() => setFormData(prev => ({ ...prev, requires_delivery: !prev.requires_delivery }))}
+                                            disabled={submitting}
+                                            className="w-full flex items-center justify-between px-4 py-3.5 hover:bg-gray-50 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-xl bg-[#0058DB]/10 flex items-center justify-center flex-shrink-0">
+                                                    <svg className="w-4 h-4 text-[#0058DB]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    </svg>
+                                                </div>
+                                                <div className="text-left">
+                                                    <div className="text-sm font-bold text-gray-800">Requires Delivery</div>
+                                                    <div className="text-xs text-gray-400">Customer chooses deliver or pick up at checkout</div>
+                                                </div>
+                                            </div>
+                                            {/* Toggle pill */}
+                                            <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.requires_delivery ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.requires_delivery ? 'translate-x-5' : 'translate-x-1'}`} />
+                                            </div>
+                                        </button>
+
+                                        {/* Sub-settings when delivery is on */}
+                                        {formData.requires_delivery && (
+                                            <div className="border-t border-gray-100 bg-gray-50/50 px-4 py-4 space-y-4">
+                                                {/* Allow external riders */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setFormData(prev => ({ ...prev, allow_external_delivery: !prev.allow_external_delivery }))}
+                                                    disabled={submitting}
+                                                    className="w-full flex items-center justify-between"
+                                                >
+                                                    <div className="text-left">
+                                                        <div className="text-sm font-bold text-gray-700">Allow External Deliveries</div>
+                                                        <div className="text-xs text-gray-400">Show rider service options (Yango, etc.) at checkout</div>
+                                                    </div>
+                                                    <div className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ml-3 ${formData.allow_external_delivery ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                                        <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.allow_external_delivery ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                                                    </div>
+                                                </button>
+
+                                                {/* Own delivery charge — only when not using external riders */}
+                                                {!formData.allow_external_delivery && (
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-gray-700 mb-1.5">Your flat delivery charge (ZMW)</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">K</span>
+                                                            <input
+                                                                type="number"
+                                                                name="own_delivery_charge"
+                                                                step="0.01"
+                                                                min="0"
+                                                                value={formData.own_delivery_charge}
+                                                                onChange={handleChange}
+                                                                disabled={submitting}
+                                                                className="block w-full pl-7 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#0058DB]/20 focus:border-[#0058DB] outline-none transition-all"
+                                                                placeholder="0.00"
+                                                            />
+                                                        </div>
+                                                        <p className="text-xs text-gray-400 mt-1">Shown to customers as the delivery charge at checkout.</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+
+                                {/* Active toggle */}
+                                <button
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
+                                    disabled={submitting}
+                                    className="w-full flex items-center justify-between px-4 py-3.5 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors"
+                                >
+                                    <div className="text-left">
+                                        <div className="text-sm font-bold text-gray-800">Active</div>
+                                        <div className="text-xs text-gray-400">Visible to customers on the payment portal</div>
+                                    </div>
+                                    <div className={`relative w-10 h-6 rounded-full transition-colors flex-shrink-0 ${formData.is_active ? 'bg-[#0058DB]' : 'bg-gray-200'}`}>
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${formData.is_active ? 'translate-x-5' : 'translate-x-1'}`} />
+                                    </div>
+                                </button>
                             </div>
 
-                            <div className="p-6 border-t border-gray-100 bg-gray-50 flex justify-end gap-3">
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-gray-100 bg-white flex justify-end gap-3 shrink-0">
                                 <button
                                     type="button"
                                     onClick={() => setIsModalOpen(false)}
                                     disabled={submitting}
-                                    className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
+                                    className="px-5 py-2.5 text-sm font-bold text-gray-700 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors disabled:opacity-50"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
                                     disabled={submitting || uploadingImage || uploadingAsset || !formData.name.trim()}
-                                    className="inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-brand-green hover:bg-[#238914] rounded-xl focus:ring-2 focus:ring-offset-2 focus:ring-brand-green transition-colors disabled:opacity-50"
+                                    className="inline-flex items-center px-6 py-2.5 text-sm font-bold text-white bg-black hover:bg-gray-900 rounded-xl focus:ring-2 focus:ring-offset-2 focus:ring-black transition-colors disabled:opacity-50"
                                 >
                                     {submitting ? (
-                                        <>
-                                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                            Saving...
-                                        </>
+                                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Saving...</>
                                     ) : (
-                                        'Save Product'
+                                        editingProduct ? 'Save changes' : 'Add listing'
                                     )}
                                 </button>
                             </div>
