@@ -120,9 +120,9 @@ interface Product {
 
 /** Rider service options available in Zambia — placeholder until a live API exists. */
 const RIDER_SERVICES = [
-    { id: 'yango',   name: 'Yango',    est_price: 15, est_minutes: 45, logo: '🚗' },
-    { id: 'glovo',   name: 'Glovo',    est_price: 20, est_minutes: 35, logo: '🟡' },
-    { id: 'pickup',  name: 'Zed Ride', est_price: 12, est_minutes: 60, logo: '🛵' },
+    { id: 'yango',   name: 'Yango',    est_price: 15, est_minutes: 45, logo: '🚗', logoUrl: '/yango-logo.png' },
+    { id: 'glovo',   name: 'Glovo',    est_price: 20, est_minutes: 35, logo: '🟡', logoUrl: null },
+    { id: 'pickup',  name: 'Zed Ride', est_price: 12, est_minutes: 60, logo: '🛵', logoUrl: null },
 ];
 
 /** Delivery details captured at checkout. */
@@ -2837,7 +2837,9 @@ Status: VERIFIED`;
                                                     className="w-full bg-white rounded-2xl border px-5 py-3 flex items-center gap-2.5 text-left" style={{borderColor:'#EFF2F6'}}
                                                 >
                                                     <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
-                                                        {activeSvc.logo}
+                                                        {activeSvc.logoUrl
+                                                            ? <img src={activeSvc.logoUrl} alt={activeSvc.name} className="w-full h-full object-cover" />
+                                                            : activeSvc.logo}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <div className="text-base font-medium text-black leading-5">{activeSvc.name}</div>
@@ -2861,7 +2863,11 @@ Status: VERIFIED`;
                                                                     idx < RIDER_SERVICES.length - 1 ? 'border-b border-gray-100' : ''
                                                                 } ${selectedRider === svc.id ? 'bg-blue-50/60' : 'hover:bg-gray-50'}`}
                                                             >
-                                                                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0">{svc.logo}</div>
+                                                                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center text-xl flex-shrink-0 overflow-hidden">
+                                                                    {svc.logoUrl
+                                                                        ? <img src={svc.logoUrl} alt={svc.name} className="w-full h-full object-cover" />
+                                                                        : svc.logo}
+                                                                </div>
                                                                 <div className="flex-1 min-w-0">
                                                                     <div className="text-base font-medium text-black leading-5">{svc.name}</div>
                                                                     <div className="text-[10px] text-zinc-600">
