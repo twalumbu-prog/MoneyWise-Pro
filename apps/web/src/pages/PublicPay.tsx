@@ -2525,17 +2525,17 @@ Status: VERIFIED`;
                                 <div className="mt-1 flex items-center gap-2">
                                     <span className="flex items-center gap-1">
                                         <Star size={12} className="text-yellow-400" fill="#facc15" />
-                                        <span className="text-xs text-slate-500">4.9 (320 Reviews)</span>
+                                        <span className="text-xs text-[#757575]">4.9 (320 Reviews)</span>
                                     </span>
-                                    <span className={`text-xs font-bold ${salesCount > 0 ? 'text-slate-500' : 'text-teal-600'}`}>
+                                    <span className={`text-xs font-bold ${salesCount > 0 ? 'text-[#757575]' : 'text-teal-600'}`}>
                                         {salesCount > 0 ? `${salesCount} Sold` : 'NEW'}
                                     </span>
                                 </div>
 
                                 {/* Description */}
                                 <div className="mt-5">
-                                    <h3 className="text-base font-bold text-black mb-1">Product Information</h3>
-                                    <p className="text-base text-slate-500 leading-relaxed">
+                                    <h3 className="text-base font-semibold text-black mb-1">Product Information</h3>
+                                    <p className="text-base font-normal text-[#757575] leading-relaxed">
                                         {p.description || 'This product does not have any description.'}
                                     </p>
                                 </div>
