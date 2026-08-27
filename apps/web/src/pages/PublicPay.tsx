@@ -1280,84 +1280,81 @@ export const PublicPay: React.FC = () => {
     };
 
     // Use browser Geolocation to pre-fill address fields.
-    const handleUseCurrentLocation = () => {
-        if (!navigator.geolocation) {
-            setLocationError('Location services are not supported by this browser.');
-            return;
-        }
-
+    const handleUseCurrentLocation = async () => {
         // Cancel any previous watch still running.
         if (locationWatchRef.current !== null) {
-            navigator.geolocation.clearWatch(locationWatchRef.current);
+            navigator.geolocation?.clearWatch(locationWatchRef.current);
             locationWatchRef.current = null;
         }
 
         setLocating(true);
         setLocationError(null);
 
-        // Use watchPosition instead of getCurrentPosition.
-        // kCLErrorLocationUnknown (POSITION_UNAVAILABLE, code 2) is a *transient*
-        // macOS CoreLocation state — the service is available but hasn't fixed yet.
-        // watchPosition keeps retrying past it; getCurrentPosition gives up immediately.
-        // enableHighAccuracy: false skips the GPS attempt entirely and goes straight
-        // to WiFi/network positioning, which is reliable on desktop hardware.
-        const resolveWatch = async (pos: GeolocationPosition) => {
-            if (locationWatchRef.current !== null) {
-                navigator.geolocation.clearWatch(locationWatchRef.current);
-                locationWatchRef.current = null;
-            }
-            try {
-                const { latitude, longitude } = pos.coords;
-                const res = await fetch(
-                    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
-                    { headers: { 'Accept-Language': 'en' } }
-                );
-                if (res.ok) {
-                    const data = await res.json();
-                    const addr = data.address || {};
-                    setDeliveryCountry(addr.country || 'Zambia');
-                    setDeliveryState(addr.state || addr.county || addr.city || '');
-                    const road = [addr.road, addr.suburb, addr.neighbourhood, addr.quarter]
-                        .filter(Boolean).join(', ');
-                    setDeliveryStreet(road || '');
-                    setDeliveryApartment(addr.house_number || '');
-                }
-            } catch {
-                setLocationError('Could not look up your address. Please fill it in manually.');
-            } finally {
+        // Strategy: IP geolocation first (no permissions, no GPS, works everywhere),
+        // then attempt browser geolocation for a finer street-level fix if available.
+        // IP geo reliably fills country + state; street address is always manual.
+        try {
+            // ipapi.co — free, HTTPS, no API key required, ~30k req/month.
+            const res = await fetch('https://ipapi.co/json/', { signal: AbortSignal.timeout(8000) });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.country_name) setDeliveryCountry(data.country_name);
+                if (data.region)       setDeliveryState(data.region);
+                // Street address can't come from IP geo — leave for manual entry.
                 setLocating(false);
-            }
-        };
 
-        locationWatchRef.current = navigator.geolocation.watchPosition(
-            resolveWatch,
-            (err) => {
-                // POSITION_UNAVAILABLE (2) is transient — keep watching.
-                if (err.code === GeolocationPositionError.POSITION_UNAVAILABLE) return;
-                // Any other error (PERMISSION_DENIED, TIMEOUT) is terminal.
-                if (locationWatchRef.current !== null) {
-                    navigator.geolocation.clearWatch(locationWatchRef.current);
-                    locationWatchRef.current = null;
-                }
-                setLocating(false);
-                if (err.code === GeolocationPositionError.PERMISSION_DENIED) {
-                    setLocationError('Location permission was denied. Please enable it in your browser settings.');
-                } else {
-                    setLocationError('Could not get your location. Please fill in the address manually.');
-                }
-            },
-            { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
-        );
+                // If the browser also supports geolocation, attempt a background
+                // Nominatim reverse-geocode for the street. We don't block on it —
+                // the address fields are already partially filled and useful.
+                if (navigator.geolocation) {
+                    const abortTimeout = setTimeout(() => {
+                        if (locationWatchRef.current !== null) {
+                            navigator.geolocation.clearWatch(locationWatchRef.current);
+                            locationWatchRef.current = null;
+                        }
+                    }, 15000);
 
-        // Hard stop after 20 s in case the watch never resolves or errors.
-        setTimeout(() => {
-            if (locationWatchRef.current !== null) {
-                navigator.geolocation.clearWatch(locationWatchRef.current);
-                locationWatchRef.current = null;
-                setLocating(false);
-                setLocationError('Could not get your location. Please fill in the address manually.');
+                    locationWatchRef.current = navigator.geolocation.watchPosition(
+                        async (pos) => {
+                            clearTimeout(abortTimeout);
+                            if (locationWatchRef.current !== null) {
+                                navigator.geolocation.clearWatch(locationWatchRef.current);
+                                locationWatchRef.current = null;
+                            }
+                            try {
+                                const { latitude, longitude } = pos.coords;
+                                const nr = await fetch(
+                                    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}`,
+                                    { headers: { 'Accept-Language': 'en' }, signal: AbortSignal.timeout(8000) }
+                                );
+                                if (nr.ok) {
+                                    const addr = (await nr.json()).address || {};
+                                    if (addr.country)  setDeliveryCountry(addr.country);
+                                    if (addr.state || addr.county || addr.city)
+                                        setDeliveryState(addr.state || addr.county || addr.city);
+                                    const road = [addr.road, addr.suburb, addr.neighbourhood, addr.quarter]
+                                        .filter(Boolean).join(', ');
+                                    if (road) setDeliveryStreet(road);
+                                    if (addr.house_number) setDeliveryApartment(addr.house_number);
+                                }
+                            } catch { /* background enhancement — silent */ }
+                        },
+                        () => {
+                            clearTimeout(abortTimeout);
+                            if (locationWatchRef.current !== null) {
+                                navigator.geolocation.clearWatch(locationWatchRef.current);
+                                locationWatchRef.current = null;
+                            }
+                        },
+                        { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 }
+                    );
+                }
+                return;
             }
-        }, 20000);
+        } catch { /* fall through to error state */ }
+
+        setLocating(false);
+        setLocationError('Could not detect your location. Please fill in the address manually.');
     };
 
     const handleReset = () => {
