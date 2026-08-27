@@ -358,6 +358,31 @@ export const createPayrollRun = async (req: Request, res: Response) => {
 const RECOVERABLE_STATUSES = ['DISBURSED', 'RECEIVED', 'ACCOUNTED', 'CATEGORIZED', 'COMPLETED'];
 
 /**
+ * Returns true if a LOAN's calendar repayment term has already elapsed.
+ *
+ * We use created_at as the loan start date and add repayment_period months to
+ * get the expiry. If today is past that point the loan should no longer generate
+ * payroll deductions — this handles loans that were fully or partially repaid
+ * outside the payroll system before automatic tracking was introduced.
+ *
+ * Salary advances (type === 'ADVANCE') have no fixed term, so this always
+ * returns false for them.
+ */
+function loanTermExpired(r: any): boolean {
+    if (r.type !== 'LOAN') return false;
+    const periods = Number(r.repayment_period) || 0;
+    if (periods <= 0) return false;
+
+    const start = new Date(r.created_at);
+    if (isNaN(start.getTime())) return false;
+
+    const expiry = new Date(start);
+    expiry.setMonth(expiry.getMonth() + periods);
+
+    return new Date() > expiry;
+}
+
+/**
  * Total amount a loan or advance is expected to repay in full.
  * For a loan this is the instalment schedule (or principal plus interest);
  * for an advance it is simply the amount advanced.
@@ -430,7 +455,13 @@ async function loadOutstandingDebts(orgId: string, staff: { id: string; user_id:
             outstanding: Math.max(0, parseFloat((owed - recovered).toFixed(2))),
             recoveredPeriods: mine.map(x => `${x.period_year}-${x.period_month}`),
         };
-    }).filter(d => d.staff_id); // shouldn't happen given the OR filter, but keep the ledger's guarantee that every debt is attributable
+    }).filter(d =>
+        // Every debt must be attributable to a staff member
+        d.staff_id &&
+        // Skip loans whose calendar repayment term has elapsed — covers debts
+        // that were repaid outside the payroll system before tracking was added
+        !loanTermExpired(d)
+    );
 }
 
 /**
