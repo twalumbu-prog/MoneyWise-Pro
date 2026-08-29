@@ -1404,7 +1404,7 @@ export const Reporting: React.FC = () => {
 
                 {!isChartOpen && (
                 <div
-                    className="mx-5 mb-5 rounded-2xl p-5 text-white shadow-[0px_2px_6px_3px_rgba(0,0,0,0.25)] relative overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900"
+                    className="mx-5 mb-3 rounded-2xl p-5 text-white relative overflow-hidden bg-gradient-to-l from-blue-950 to-slate-900"
                     style={{
                         animation: 'atabs-fade-up 0.4s cubic-bezier(0.22, 1, 0.36, 1)',
                     }}
@@ -1427,24 +1427,9 @@ export const Reporting: React.FC = () => {
                                 <h2 className="text-[34px] font-black leading-none">
                                     K{totals.totalProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </h2>
-                                <span className="text-[28px] font-black leading-none font-bold">
-                                    <span className="text-[#4D9FFF]">{totals.profitChange.isIncrease ? '+' : '-'}</span>
-                                    <span className="text-white">{totals.profitChange.value}%</span>
-                                </span>
                             </div>
                             
-                            {/* Secondary Band */}
-                            <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
-                                <div className="flex items-center gap-1.5">
-                                    <Link2 size={13} className="text-white/60" />
-                                    <span>Total Revenue <strong className="font-extrabold text-white">K{totals.totalRevenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                                <div className="h-3 w-px bg-white/20"></div>
-                                <div className="flex items-center gap-1.5">
-                                    <ArrowUpRight size={14} className="text-[#34D399]" />
-                                    <span>Total Expenses <strong className="font-extrabold text-white">K{totals.totalExpenses.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                            </div>
+
                         </>
                     ) : (
                         <>
@@ -1463,24 +1448,9 @@ export const Reporting: React.FC = () => {
                                 <h2 className="text-[34px] font-black leading-none">
                                     K{totals.netWorth.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </h2>
-                                <span className="text-[28px] font-black leading-none font-bold">
-                                    <span className="text-[#4D9FFF]">{totals.netWorthChange.isIncrease ? '+' : '-'}</span>
-                                    <span className="text-white">{totals.netWorthChange.value}%</span>
-                                </span>
                             </div>
                             
-                            {/* Secondary Band */}
-                            <div className="bg-white/10 rounded-2xl px-4 py-3 mt-5 flex justify-between items-center text-[10px] font-bold text-white/90">
-                                <div className="flex items-center gap-1.5">
-                                    <Link2 size={13} className="text-white/60" />
-                                    <span>Total Assets <strong className="font-extrabold text-white">K{totals.totalAssets.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                                <div className="h-3 w-px bg-white/20"></div>
-                                <div className="flex items-center gap-1.5">
-                                    <ArrowUpRight size={14} className="text-[#34D399]" />
-                                    <span>Total Liabilities <strong className="font-extrabold text-white">K{totals.totalLiabilities.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></span>
-                                </div>
-                            </div>
+
                         </>
                     )}
                     </AnimatedTabContent>
