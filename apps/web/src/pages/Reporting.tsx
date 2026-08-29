@@ -9,7 +9,15 @@ import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Settings2, 
 import { useAuth } from '../context/AuthContext';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { FinancialHighlights } from '../components/FinancialHighlights';
+import { BucketProgressBar } from '../components/BucketProgressBar';
+
 import { StaffPortfolio } from './StaffPortfolio';
+import {
+  Accordion,
+  AccordionItem,
+  AccordionTrigger,
+  AccordionContent,
+} from '../components/animate-ui/components/radix/accordion';
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
@@ -517,6 +525,47 @@ export const Reporting: React.FC = () => {
         }, 340);
     };
 
+    
+
+    const periodKeyRef = useRef(`${periodData.start}|${periodData.end}|${mode}`);
+    
+    // Prefetch all account items so the progress bar is instant
+    useEffect(() => {
+        const currentPeriodKey = `${periodData.start}|${periodData.end}|${mode}`;
+        
+        // If timeframe changed, clear accountItems immediately
+        if (periodKeyRef.current !== currentPeriodKey) {
+            setAccountItems({});
+            periodKeyRef.current = currentPeriodKey;
+            // The next render/effect run will have empty accountItems
+            return;
+        }
+
+        if (!expenditures.length) return;
+        
+        const fetchAll = async () => {
+            const activeAccounts = expenditures.filter(e => Number(e.total_amount) !== 0);
+            const toFetch = activeAccounts.filter(e => !accountItems[e.account_id]);
+            
+            if (toFetch.length === 0) return;
+
+            for (let i = 0; i < toFetch.length; i += 5) {
+                const chunk = toFetch.slice(i, i + 5);
+                await Promise.all(
+                    chunk.map(async (acc) => {
+                        try {
+                            const items = await reportService.getExpenditureItems(acc.account_id, periodData.start, periodData.end, mode);
+                            setAccountItems(prev => ({ ...prev, [acc.account_id]: items }));
+                        } catch (err) {
+                            // ignore
+                        }
+                    })
+                );
+            }
+        };
+        fetchAll();
+    }, [expenditures, periodData.start, periodData.end, mode, accountItems]);
+
     const toggleExpand = async (accountId: string) => {
         if (expandedAccount === accountId) {
             setExpandedAccount(null);
@@ -537,17 +586,6 @@ export const Reporting: React.FC = () => {
         }
     };
 
-    const toggleGroupExpand = (groupId: string) => {
-        setExpandedGroups(prev => {
-            const next = new Set(prev);
-            if (next.has(groupId)) {
-                next.delete(groupId);
-            } else {
-                next.add(groupId);
-            }
-            return next;
-        });
-    };
 
     // Grouping Handlers
     const handleCreateGroup = () => {
@@ -1124,28 +1162,30 @@ export const Reporting: React.FC = () => {
                                     </div>
                                 ) : (
                                     <div className="w-full flex flex-col gap-4">
-                                        {/* Desktop Summary Banner */}
-                                        <div className="w-full h-24 p-5 bg-gradient-to-l from-blue-950 to-slate-900 shadow-[0px_2px_4px_2px_rgba(0,0,0,0.25)] rounded-2xl flex justify-between items-center overflow-hidden mb-2">
-                                            <div className="flex flex-col justify-start items-start gap-2">
-                                                <div className="text-white text-[10px] font-normal font-['Figtree'] uppercase tracking-wider text-white/70">
-                                                    {reportView === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}
+                                        <div className="flex flex-col gap-2">
+                                            {/* Desktop Summary Banner */}
+                                            <div className="w-full h-24 p-5 bg-gradient-to-l from-blue-950 to-slate-900 rounded-2xl flex justify-between items-center overflow-hidden">
+                                                <div className="flex flex-col justify-start items-start gap-2">
+                                                    <div className="text-white text-[10px] font-normal font-['Figtree'] uppercase tracking-wider text-white/70">
+                                                        {reportView === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}
+                                                    </div>
+                                                    <div className="text-white text-3xl font-bold font-['DM_Sans'] leading-none">
+                                                        K {(reportView === 'PROFIT_LOSS' ? totals.totalProfit : totals.netWorth).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                    </div>
                                                 </div>
-                                                <div className="text-white text-3xl font-bold font-['DM_Sans'] leading-none">
-                                                    K {(reportView === 'PROFIT_LOSS' ? totals.totalProfit : totals.netWorth).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                <div className="flex flex-col justify-center items-end">
+                                                    <button
+                                                        onClick={() => setIsChartOpen(true)}
+                                                        className="px-4 py-2 bg-white rounded-lg text-gray-900 text-xs font-bold font-['DM_Sans'] hover:bg-gray-100 transition-colors"
+                                                    >
+                                                        Go to Chart
+                                                    </button>
                                                 </div>
                                             </div>
-                                            <div className="flex flex-col justify-center items-end">
-                                                <button
-                                                    onClick={() => setIsChartOpen(true)}
-                                                    className="px-4 py-2 bg-white rounded-lg text-gray-900 text-xs font-bold font-['DM_Sans'] hover:bg-gray-100 transition-colors"
-                                                >
-                                                    Go to Chart
-                                                </button>
-                                            </div>
-                                        </div>
 
-                                        {/* Financial Highlights */}
-                                        <FinancialHighlights />
+                                            {/* Financial Highlights */}
+                                            <FinancialHighlights className="w-full h-24 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-2.5 flex flex-col justify-between" />
+                                        </div>
 
                                         {/* Transactions Header */}
                                         <div className="w-full h-8 py-0.5 inline-flex justify-between items-center flex-shrink-0 mt-2 mb-1">
@@ -1180,33 +1220,40 @@ export const Reporting: React.FC = () => {
                                             </div>
                                         ) : (
                                             <>
-                                                {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
-                                                    if (groupData.items.length === 0) return null;
-                                                    const progressPercent = groupData.totals.budgeted_amount > 0 ? (groupData.totals.total_amount / groupData.totals.budgeted_amount) * 100 : 0;
-                                                    const change = getPercentageChange(groupData.totals.total_amount, groupData.totals.prev_total_amount);
-                                                    const isExpanded = expandedGroups.has(groupId);
+                                                <Accordion 
+                                                    type="multiple" 
+                                                    value={Array.from(expandedGroups)} 
+                                                    onValueChange={(val) => setExpandedGroups(new Set(val))}
+                                                    className="w-full flex flex-col gap-4"
+                                                >
+                                                    {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
+                                                        if (groupData.items.length === 0) return null;
+                                                        const progressPercent = groupData.totals.budgeted_amount > 0 ? (groupData.totals.total_amount / groupData.totals.budgeted_amount) * 100 : 0;
+                                                        const change = getPercentageChange(groupData.totals.total_amount, groupData.totals.prev_total_amount);
+                                                        const isExpanded = expandedGroups.has(groupId);
 
-                                                    return (
-                                                        <div key={`desk-group-${groupId}`} className="w-full bg-white rounded-xl outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-start items-start px-5 pt-4 pb-6 transition-all gap-3">
-                                                            {/* Category Header */}
-                                                            <div 
-                                                                onClick={() => toggleGroupExpand(groupId)}
-                                                                className="w-full flex justify-between items-center cursor-pointer mb-2"
-                                                            >
-                                                                <div className="flex justify-start items-center gap-2">
-                                                                    <h3 className="text-gray-900 text-sm font-semibold font-['DM_Sans'] leading-5">{groupData.groupName}</h3>
-                                                                    <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{groupData.items.length}</span>
-                                                                </div>
-                                                                <div className="flex items-center gap-3">
-                                                                    <span className="text-sm font-black font-['DM_Sans'] text-gray-900">
-                                                                        K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                                    </span>
-                                                                    {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
-                                                                </div>
-                                                            </div>
+                                                        return (
+                                                            <AccordionItem value={groupId} key={`desk-group-${groupId}`} className="w-full bg-white rounded-xl shadow-md outline outline-1 outline-offset-[-1px] outline-violet-100 flex flex-col justify-start items-start overflow-hidden border-none">
+                                                                {/* Category Header */}
+                                                                <AccordionTrigger 
+                                                                    showArrow={false}
+                                                                    className="w-full flex justify-between items-center cursor-pointer px-5 py-4 m-0 hover:no-underline"
+                                                                >
+                                                                    <div className="flex justify-start items-center gap-2">
+                                                                        {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
+                                                                        <h3 className="text-gray-900 text-sm font-semibold font-['DM_Sans'] leading-5">{groupData.groupName}</h3>
+                                                                        <span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">{groupData.items.length}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className="text-sm font-black font-['DM_Sans'] text-gray-900">
+                                                                            K{groupData.totals.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                                        </span>
+                                                                    </div>
+                                                                </AccordionTrigger>
 
-                                                            {isExpanded && (
-                                                                <div className="w-full flex flex-col gap-4 mt-3">
+                                                                <AccordionContent className="w-full">
+                                                                    <div className="w-full flex flex-col gap-4 px-5 pb-6">
+                                                                        <div className="h-px bg-violet-100 w-[calc(100%+40px)] -ml-5" />
                                                                     {groupData.totals.budgeted_amount > 0 && (
                                                                         <div className="w-full space-y-2 pb-1">
                                                                             <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -1231,17 +1278,14 @@ export const Reporting: React.FC = () => {
 
                                                                     {/* Subaccounts list */}
                                                                     <div className="w-full space-y-5 mt-1">
-                                                                        {groupData.items.map((row: any) => {
+                                                                        {groupData.items
+                                                                            .filter((row: any) => {
+                                                                                const curr = Number(row.total_amount) || 0;
+                                                                                return curr !== 0; // Hide if current balance is zero
+                                                                            })
+                                                                            .map((row: any) => {
                                                                             const isRowExpanded = expandedAccount === row.account_id;
-                                                                            const prev = Number(row.prev_total_amount) || 0;
                                                                             const curr = Number(row.total_amount) || 0;
-                                                                            const maxAmt = Math.max(prev, curr, 1);
-                                                                            const changed = Math.abs(curr - prev) > 0.005;
-                                                                            const isIncrease = curr > prev;
-                                                                            const basePct = (Math.min(prev, curr) / maxAmt) * 100;
-                                                                            const deltaPct = (Math.abs(curr - prev) / maxAmt) * 100;
-                                                                            const deltaAmt = curr - prev;
-                                                                            const rowChange = getPercentageChange(curr, prev);
                                                                             const items = accountItems[row.account_id] || [];
                                                                             const hasNew = items.some(it => isNewTxn(it.date));
 
@@ -1262,43 +1306,10 @@ export const Reporting: React.FC = () => {
                                                                                             </span>
                                                                                         </div>
 
-                                                                                        <div className="w-full h-1.5 rounded-full bg-zinc-100 overflow-hidden flex">
-                                                                                            {changed ? (
-                                                                                                <>
-                                                                                                    <div className="h-full bg-gray-300" style={{ width: `${basePct}%` }} />
-                                                                                                    <div
-                                                                                                        className="h-full"
-                                                                                                        style={{
-                                                                                                            width: `${deltaPct}%`,
-                                                                                                            backgroundColor: isIncrease ? '#3B82F6' : '#E88E8E',
-                                                                                                        }}
-                                                                                                    />
-                                                                                                </>
-                                                                                            ) : (
-                                                                                                <div className="h-full bg-gray-300" style={{ width: '100%' }} />
-                                                                                            )}
-                                                                                        </div>
-
-                                                                                        <div className="w-full flex justify-between items-center text-[10px] font-normal font-['DM_Sans']">
-                                                                                            <div className="flex items-center gap-1.5 text-neutral-500 opacity-50">
-                                                                                                <span>{prev.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                                                                                                <ChevronRight size={10} className="text-slate-400" />
-                                                                                                <span>{curr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                                                                                            </div>
-                                                                                            <div className="flex items-center gap-1 text-neutral-500">
-                                                                                                {changed ? (
-                                                                                                    <>
-                                                                                                        {isIncrease ? <ArrowUpRight size={10} className="text-blue-500" /> : <ArrowDownRight size={10} className="text-red-400" />}
-                                                                                                        <span className={isIncrease ? 'text-blue-500' : 'text-red-400'}>
-                                                                                                            {isIncrease ? '+' : '-'}K{Math.abs(deltaAmt).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
-                                                                                                            (<span className="font-bold">{isIncrease ? '+' : '-'}{rowChange.value}%</span>)
-                                                                                                        </span>
-                                                                                                    </>
-                                                                                                ) : (
-                                                                                                    <span>– (<span className="font-bold">-%</span>)</span>
-                                                                                                )}
-                                                                                            </div>
-                                                                                        </div>
+                                                                                        {isRowExpanded && (
+                                                                                            <BucketProgressBar items={items} currTotal={curr} groupId={groupId} />
+                                                                                        
+                                                                                        )}
                                                                                     </div>
 
                                                                                     {/* Transaction details cascade */}
@@ -1352,11 +1363,12 @@ export const Reporting: React.FC = () => {
                                                                             );
                                                                         })}
                                                                     </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })}
+                                                                    </div>
+                                                                </AccordionContent>
+                                                            </AccordionItem>
+                                                        );
+                                                    })}
+                                                </Accordion>
                                             </>
                                         )}
                                     </div>
@@ -1476,7 +1488,7 @@ export const Reporting: React.FC = () => {
                 )}
 
                 {/* Financial Highlights — headline weekly figures, records and AI cards */}
-                {!isChartOpen && <FinancialHighlights className="mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4" />}
+                {!isChartOpen && <FinancialHighlights className="mx-5 mb-5 h-24 flex flex-col justify-between rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-2.5" />}
 
                 {/* Month Dropdown / Timeframe Buttons & Pill Controls Row */}
                 <div className={`mx-6 ${isChartOpen ? 'mb-3' : 'mb-5'} flex items-center justify-between relative`}>
@@ -1965,8 +1977,12 @@ export const Reporting: React.FC = () => {
                         No financial records found for this period.
                     </div>
                 ) : (
-                    <div className="space-y-6">
-                        {/* Rendering Grouped Categories */}
+                        <Accordion 
+                            type="multiple"
+                            value={Array.from(expandedGroups)}
+                            onValueChange={(val) => setExpandedGroups(new Set(val))}
+                            className="space-y-6"
+                        >
                         {displayData.isGrouped && displayData.groups && Object.entries(displayData.groups).map(([groupId, groupData]) => {
                             if (groupData.items.length === 0) return null;
                             
@@ -1975,11 +1991,11 @@ export const Reporting: React.FC = () => {
                             const isExpanded = expandedGroups.has(groupId);
 
                             return (
-                                <div key={`mob-group-${groupId}`} className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-md p-6 space-y-4">
+                                <AccordionItem value={groupId} key={`mob-group-${groupId}`} className="mx-6 bg-white border border-gray-100 rounded-[28px] shadow-md border-none overflow-hidden">
                                     {/* Category Header - Clickable to collapse/expand card */}
-                                    <div 
-                                        onClick={() => toggleGroupExpand(groupId)}
-                                        className="flex justify-between items-center pb-2 cursor-pointer"
+                                    <AccordionTrigger 
+                                        showArrow={false}
+                                        className="flex justify-between items-center cursor-pointer p-6 hover:no-underline"
                                     >
                                         <h3 className="font-extrabold text-sm text-brand-navy leading-tight flex items-center gap-1.5">
                                             {groupData.groupName}
@@ -1993,10 +2009,10 @@ export const Reporting: React.FC = () => {
                                             </span>
                                             {isExpanded ? <ChevronUp size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
                                         </div>
-                                    </div>
+                                    </AccordionTrigger>
 
-                                    {isExpanded && (
-                                        <>
+                                    <AccordionContent className="w-full">
+                                        <div className="space-y-4 px-6 pb-6 pt-0">
                                             {/* Category Progress and variance */}
                                             {groupData.totals.budgeted_amount > 0 && (
                                                 <div className="space-y-2 pb-1">
@@ -2024,24 +2040,16 @@ export const Reporting: React.FC = () => {
 
                                             {/* Subaccounts list */}
                                             <div className="space-y-5">
-                                                {groupData.items.map((row: any) => {
-                                                    const rowChange = getPercentageChange(row.total_amount, row.prev_total_amount);
+                                                {groupData.items
+                                                    .filter((row: any) => {
+                                                        const curr = Number(row.total_amount) || 0;
+                                                        return curr !== 0; // Hide if current balance is zero
+                                                    })
+                                                    .map((row: any) => {
                                                     const isRowExpanded = expandedAccount === row.account_id;
 
-                                                    // Delta bar: grey baseline = the amount already there last time we
-                                                    // rendered; the coloured segment = the change since then. Blue when
-                                                    // the balance grew, a desaturated red when it shrank, all-grey when
-                                                    // it's unchanged. Widths are proportional to the larger of the two
-                                                    // amounts so both increases and decreases fill to the same endpoint.
-                                                    const prev = Number(row.prev_total_amount) || 0;
                                                     const curr = Number(row.total_amount) || 0;
-                                                    const maxAmt = Math.max(prev, curr, 1);
-                                                    const changed = Math.abs(curr - prev) > 0.005;
-                                                    const isIncrease = curr > prev;
-                                                    const basePct = (Math.min(prev, curr) / maxAmt) * 100;
-                                                    const deltaPct = (Math.abs(curr - prev) / maxAmt) * 100;
-                                                    const deltaAmt = curr - prev;
-
+                                                    
                                                     const items = accountItems[row.account_id] || [];
                                                     const hasNew = items.some(it => isNewTxn(it.date));
 
@@ -2063,42 +2071,11 @@ export const Reporting: React.FC = () => {
                                                                     </span>
                                                                 </div>
 
-                                                                {/* Delta indicator bar */}
-                                                                <div className="h-1.5 w-full rounded-full bg-zinc-100 overflow-hidden flex">
-                                                                    {changed ? (
-                                                                        <>
-                                                                            <div className="h-full bg-gray-300" style={{ width: `${basePct}%` }} />
-                                                                            <div
-                                                                                className="h-full"
-                                                                                style={{
-                                                                                    width: `${deltaPct}%`,
-                                                                                    backgroundColor: isIncrease ? '#3B82F6' : '#E88E8E',
-                                                                                }}
-                                                                            />
-                                                                        </>
-                                                                    ) : (
-                                                                        <div className="h-full bg-gray-300" style={{ width: '100%' }} />
-                                                                    )}
-                                                                </div>
-
-                                                                {/* before → after · change (%) */}
-                                                                <div className="flex items-center justify-between">
-                                                                    <div className="flex items-center gap-1.5 text-neutral-500 text-[10px] font-normal">
-                                                                        <span>{prev.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
-                                                                        <ChevronRight size={11} className="text-slate-400" />
-                                                                        <span>{curr.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                                                                {isRowExpanded && (
+                                                                    <div className="mt-1">
+                                                                        <BucketProgressBar items={items} currTotal={curr} groupId={groupId} />
                                                                     </div>
-                                                                    <div className="text-[10px] font-normal text-neutral-500">
-                                                                        {changed ? (
-                                                                            <>
-                                                                                {isIncrease ? '+' : '-'}K{Math.abs(deltaAmt).toLocaleString(undefined, { maximumFractionDigits: 0 })}{' '}
-                                                                                (<span className="font-bold">{isIncrease ? '+' : '-'}{rowChange.value}%</span>)
-                                                                            </>
-                                                                        ) : (
-                                                                            <>– (<span className="font-bold">-%</span>)</>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
+                                                                )}
                                                             </div>
 
                                                             {/* Transaction details cascade */}
@@ -2156,12 +2133,12 @@ export const Reporting: React.FC = () => {
                                                     );
                                                 })}
                                             </div>
-                                        </>
-                                    )}
-                                </div>
-                            );
-                        })}
-                    </div>
+                                        </div>
+                                    </AccordionContent>
+                                </AccordionItem>
+                                );
+                            })}
+                        </Accordion>
                 )}
                 </AnimatedTabContent>
                 </>)}

@@ -94,11 +94,11 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
 
     if (loading) {
         return (
-            <div className={className || "mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4"}>
-                <div className="flex items-center gap-2 mb-3">
+            <div className={className || "mx-5 mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-2.5"}>
+                <div className="flex items-center gap-2 mb-1">
                     <span className="flex-1 text-[11px] font-medium uppercase text-gray-400 tracking-wide">Financial Highlights</span>
                 </div>
-                <div className="h-3 w-full rounded bg-gray-100 animate-pulse mb-2" />
+                <div className="h-3 w-full rounded bg-gray-100 animate-pulse mb-1" />
                 <div className="h-3 w-2/3 rounded bg-gray-100 animate-pulse" />
             </div>
         );
@@ -122,9 +122,9 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
                 />
             )}
 
-            <div ref={containerRef} className={className || "mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-4 w-full"}>
+            <div ref={containerRef} className={className || "mb-5 rounded-2xl bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.05)] outline outline-1 outline-offset-[-1px] outline-gray-200 px-5 py-2.5 w-full"}>
                 {/* Header */}
-                <div className="flex items-center gap-2 mb-3">
+                <div className="flex items-center gap-2 mb-1">
                     <span className="flex-1 text-[11px] font-medium uppercase text-black tracking-wide">Financial Highlights</span>
                     {unread > 0 && (
                         <span className="min-w-5 h-5 px-2 bg-red-600 rounded-full flex items-center justify-center">
@@ -141,7 +141,7 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
                     onScroll={handleScroll}
                     onPointerDown={pauseAuto}
                     onTouchStart={pauseAuto}
-                    className="flex overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-1"
+                    className="flex flex-1 items-center overflow-x-auto no-scrollbar snap-x snap-mandatory -mx-1"
                 >
                     {cards.map((card) => {
                         const achievement = isAchievementCard(card)
@@ -151,9 +151,9 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
                         if (achievement) {
                             return (
                                 <div key={card.id} className="snap-center shrink-0 w-full px-1">
-                                    <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-gradient-to-r from-[#006AFF] to-[#0A4FBF] shadow-[0_10px_24px_-12px_rgba(0,106,255,0.9)]">
-                                        <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                                            <Trophy size={18} className="text-white" strokeWidth={2} />
+                                    <div className="flex items-center gap-3 px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#006AFF] to-[#0A4FBF] shadow-[0_10px_24px_-12px_rgba(0,106,255,0.9)]">
+                                        <div className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center shrink-0">
+                                            <Trophy size={14} className="text-white" strokeWidth={2} />
                                         </div>
                                         <div className="min-w-0">
                                             <div className="text-[10px] font-bold uppercase tracking-widest text-white/70">New record</div>
@@ -168,8 +168,10 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
 
                         return (
                             <div key={card.id} className="snap-center shrink-0 w-full px-1">
-                                <p className="text-sm font-normal text-black leading-5">
-                                    {card.body}
+                                <p className="text-xs font-normal text-black leading-[18px]">
+                                    {card.body.split(/((?:[K$€£¥]\s*)?[-+]?\d[\d,]*(?:\.\d+)?(?:%)?)/).map((part, i) => 
+                                        i % 2 === 1 ? <span key={i} className="font-bold">{part}</span> : part
+                                    )}
                                 </p>
                             </div>
                         );
@@ -177,30 +179,30 @@ export const FinancialHighlights: React.FC<{ className?: string }> = ({ classNam
                 </div>
 
                 {/* See more + dots */}
-                <div className="flex items-center gap-1 mt-3">
+                <div className="flex items-center justify-between mt-1">
                     <button
                         onClick={() => sendPromptSafe(cards[active])}
-                        className="flex items-center gap-1 text-sm font-normal text-blue-600 active:opacity-70 transition-opacity"
+                        className="flex items-center gap-1 text-xs font-normal text-blue-600 active:opacity-70 transition-opacity"
                     >
                         See more
-                        <ArrowRight size={16} className="text-blue-600" />
+                        <ArrowRight size={14} className="text-blue-600" />
                     </button>
-                </div>
 
-                {cards.length > 1 && (
-                    <div className="flex justify-center items-center gap-2.5 mt-2">
-                        {cards.map((_, i) => (
-                            <button
-                                key={i}
-                                onClick={() => { pauseAuto(); goTo(i); }}
-                                aria-label={`Highlight card ${i + 1}`}
-                                className={`w-2 h-2 rounded-full transition-all duration-300 ${
-                                    i === active ? 'bg-blue-700 scale-110' : 'bg-zinc-300'
-                                }`}
-                            />
-                        ))}
-                    </div>
-                )}
+                    {cards.length > 1 && (
+                        <div className="flex justify-center items-center gap-2.5">
+                            {cards.map((_, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => { pauseAuto(); goTo(i); }}
+                                    aria-label={`Highlight card ${i + 1}`}
+                                    className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                                        i === active ? 'bg-blue-700 scale-110' : 'bg-zinc-300'
+                                    }`}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
             </div>
         </>
     );
