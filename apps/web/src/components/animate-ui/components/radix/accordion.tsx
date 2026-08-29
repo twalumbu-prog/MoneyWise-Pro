@@ -24,7 +24,7 @@ const AccordionTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> & { showArrow?: boolean }
 >(({ className, children, showArrow = true, ...props }, ref) => (
   <AccordionPrimitive.Header className="flex w-full">
-    <AccordionPrimitive.Trigger ref={ref} className={className} {...props}>
+    <AccordionPrimitive.Trigger ref={ref} className={cn("flex-1 w-full", className)} {...props}>
       {children}
       {showArrow && (
         <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200" />
