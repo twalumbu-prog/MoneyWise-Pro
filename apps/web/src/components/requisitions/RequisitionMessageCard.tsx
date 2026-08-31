@@ -2221,7 +2221,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         id={`scan-upload-${requisitionData?.id}`}
                                         type="file" 
                                         multiple 
-                                        accept="image/*" 
+                                        accept=".pdf,application/pdf,image/jpeg,image/jpg,image/png,image/webp,.heic,.heif" 
                                         className="hidden" 
                                         onChange={handleScanUpload}
                                     />
@@ -2536,7 +2536,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             id={`manual-scan-upload-${requisitionData?.id}`}
                                             type="file" 
                                             multiple 
-                                            accept="image/*" 
+                                            accept=".pdf,application/pdf,image/jpeg,image/jpg,image/png,image/webp,.heic,.heif" 
                                             className="hidden" 
                                             onChange={handleManualScanUpload}
                                         />

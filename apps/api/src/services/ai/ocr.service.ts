@@ -123,8 +123,29 @@ export const ocrService = {
                 throw new Error('Either imageUrl or imageData must be provided');
             }
 
+            let mimeType = 'image/jpeg';
+            if (imageData) {
+                const buf = Buffer.from(imageData);
+                const headerHex = buf.subarray(0, 12).toString('hex');
+                if (headerHex.startsWith('25504446')) { // %PDF
+                    mimeType = 'application/pdf';
+                } else if (headerHex.startsWith('89504e47')) { // \x89PNG
+                    mimeType = 'image/png';
+                } else if (headerHex.startsWith('52494646') && headerHex.substring(16, 24) === '57454250') { // RIFF ... WEBP
+                    mimeType = 'image/webp';
+                }
+            }
+            if (mimeType === 'image/jpeg' && imageUrl) {
+                const ext = imageUrl.split('?')[0].split('.').pop()?.toLowerCase();
+                if (ext === 'pdf') mimeType = 'application/pdf';
+                else if (ext === 'png') mimeType = 'image/png';
+                else if (ext === 'webp') mimeType = 'image/webp';
+                else if (ext === 'heic') mimeType = 'image/heic';
+                else if (ext === 'heif') mimeType = 'image/heif';
+            }
+
             // Run all configured vision providers in parallel; use the first valid response.
-            const responses = await callAllOcrProviders(RECEIPT_ANALYSIS_PROMPT, base64Data, 'image/jpeg');
+            const responses = await callAllOcrProviders(RECEIPT_ANALYSIS_PROMPT, base64Data, mimeType);
 
             if (responses.length === 0) {
                 throw new Error('All OCR providers failed to respond');

@@ -61,114 +61,87 @@ export const INVEST_PROVIDERS = [
 
 // ── InvestHome ────────────────────────────────────────────────────────────────
 export const InvestHome: React.FC = () => {
+    const [search, setSearch] = React.useState('');
+
+    const filtered = INVEST_PROVIDERS.filter(p =>
+        search === '' ||
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        p.products.some(pr => pr.name.toLowerCase().includes(search.toLowerCase()))
+    );
+
     return (
-        <Layout noPadding={true} backgroundColor="bg-slate-100">
-            <div className="flex flex-col h-full bg-slate-100">
-                {/* Top Tabs */}
-                <div className="px-6 py-4">
-                    <div className="inline-flex justify-start items-start gap-2">
-                        <div className="w-28 h-7 px-1 py-2 rounded-tl-lg rounded-tr-lg inline-flex flex-col justify-center items-center gap-3 overflow-hidden cursor-pointer hover:bg-gray-200 transition-colors">
-                            <div className="inline-flex justify-center items-center gap-5">
-                                <div className="flex justify-center items-center gap-2">
-                                    <div className="justify-center text-black text-xs font-medium font-['DM_Sans'] leading-4">Marketplace</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="px-6 py-1.5 bg-white rounded-tl-xl rounded-tr-xl border-l border-r inline-flex flex-col justify-center items-center gap-3 overflow-hidden cursor-pointer">
-                            <div className="self-stretch inline-flex justify-center items-center">
-                                <div className="flex justify-center items-center gap-2">
-                                    <div className="w-2 h-2 rounded-full bg-blue-600"></div>
-                                    <div className="justify-center text-black text-xs font-semibold font-['DM_Sans'] leading-4">Invest</div>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="w-28 h-7 px-1 py-2 rounded-tl-lg rounded-tr-lg inline-flex flex-col justify-center items-center gap-3 overflow-hidden cursor-pointer hover:bg-gray-200 transition-colors">
-                            <div className="self-stretch inline-flex justify-center items-center gap-5">
-                                <div className="flex justify-center items-center gap-2">
-                                    <div className="justify-center text-black text-xs font-normal font-['DM_Sans'] leading-4">Loans</div>
-                                </div>
-                            </div>
-                        </div>
+        <Layout noPadding={true} backgroundColor="bg-[#F5FAFF]">
+            <div className="flex flex-col h-full overflow-hidden">
+                {/* Search bar — home page style but thinner */}
+                <div className="px-4 md:px-6 pt-3 pb-3 shrink-0">
+                    <div className="flex items-center bg-white rounded-[32px] pl-5 pr-3 py-2 shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-black/5">
+                        <Search className="text-zinc-500 mr-3 flex-shrink-0" size={18} strokeWidth={1.5} />
+                        <input
+                            type="text"
+                            value={search}
+                            onChange={e => setSearch(e.target.value)}
+                            placeholder="Search products or companies…"
+                            className="flex-1 min-w-0 bg-transparent border-none outline-none text-xs text-brand-navy placeholder:text-stone-300 font-normal"
+                        />
                     </div>
+                </div>
 
-                    {/* Main Content Area */}
-                    <div className="w-full bg-white rounded-[20px] p-6 shadow-sm flex flex-col gap-8 min-h-[600px]">
-
-                        {/* Search Bar */}
-                        <div className="w-96 h-8">
-                            <div className="h-full px-4 bg-neutral-100 rounded-full flex items-center gap-3">
-                                <Search className="w-4 h-4 text-gray-500" />
-                                <input
-                                    type="text"
-                                    placeholder="Search investment products or companies..."
-                                    className="bg-transparent border-none outline-none w-full text-sm placeholder:text-gray-400"
-                                />
-                            </div>
-                        </div>
-
-                        {/* Companies List */}
-                        <div className="flex flex-col gap-9">
-                            {INVEST_PROVIDERS.map(provider => (
-                                <div key={provider.id} className="flex flex-col gap-4">
-                                    {/* Company Header */}
-                                    <div className="flex justify-between items-center pb-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-md border border-violet-100 shadow-sm flex items-center justify-center overflow-hidden p-0.5">
-                                                <img
-                                                    src={provider.logo}
-                                                    alt={provider.name}
-                                                    className="w-full h-full object-contain"
-                                                />
-                                            </div>
-                                            <div className="text-black text-sm font-semibold font-['DM_Sans']">{provider.name}</div>
-                                            <div className="w-4 h-4 flex items-center justify-center text-blue-600">
-                                                <VerifiedIcon />
-                                            </div>
+                {/* Scrollable content */}
+                <div className="flex-1 overflow-y-auto px-4 md:px-6 pb-6">
+                    <div className="bg-white rounded-[20px] p-4 md:p-6 shadow-sm flex flex-col gap-8">
+                        {filtered.length === 0 ? (
+                            <div className="py-12 text-center text-sm text-gray-400">No results for "{search}"</div>
+                        ) : filtered.map(provider => (
+                            <div key={provider.id} className="flex flex-col gap-3">
+                                {/* Company header */}
+                                <div className="flex justify-between items-center">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="w-8 h-8 rounded-md border border-violet-100 shadow-sm flex items-center justify-center overflow-hidden p-0.5 flex-shrink-0">
+                                            <img src={provider.logo} alt={provider.name} className="w-full h-full object-contain" />
                                         </div>
-                                        <Link to={provider.route} className="text-neutral-700 text-xs font-normal hover:underline">
-                                            See more &rarr;
-                                        </Link>
+                                        <span className="text-sm font-semibold text-gray-900 font-['DM_Sans'] truncate">{provider.name}</span>
+                                        <div className="w-4 h-4 flex items-center justify-center text-blue-600 flex-shrink-0">
+                                            <VerifiedIcon />
+                                        </div>
                                     </div>
+                                    <Link to={provider.route} className="text-[#006AFF] text-xs font-semibold flex-shrink-0 ml-2">
+                                        See all →
+                                    </Link>
+                                </div>
 
-                                    {/* Product Cards */}
-                                    <div className="flex gap-5 overflow-x-auto pb-4">
-                                        {provider.products.map(product => (
-                                            <Link
-                                                to={`/invest/product/${product.id}`}
-                                                key={product.id}
-                                                className="min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[#E8EEF8] flex flex-col justify-between hover:shadow-md transition-shadow cursor-pointer"
-                                            >
-                                                <div className="flex flex-col gap-3">
-                                                    <div>
-                                                        <div className="text-black text-base font-medium font-['DM_Sans']">{product.name}</div>
-                                                        <div className="text-stone-500 text-[10px]">{provider.name}</div>
-                                                    </div>
-                                                    <div>
-                                                        <div className="text-black text-lg font-bold">{product.price}</div>
-                                                        <div className="text-green-600 text-xs font-bold flex items-center gap-1 mt-1">
-                                                            <TrendingUpIcon /> {product.ytd}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex justify-between items-end mt-0.5 gap-8">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="text-black text-[10px] flex items-center gap-1">
-                                                                <StarIcon /> {provider.reviews}
-                                                            </div>
-                                                            <div className="text-black text-[10px] flex items-center gap-1">
-                                                                <UsersIcon /> {provider.investors}
-                                                            </div>
-                                                        </div>
-                                                        <div className="w-8 h-8 bg-neutral-100 rounded-full flex items-center justify-center">
-                                                            &rarr;
-                                                        </div>
+                                {/* Product cards — horizontal scroll on mobile */}
+                                <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:flex-wrap">
+                                    {provider.products.map(product => (
+                                        <Link
+                                            to={`/invest/product/${product.id}`}
+                                            key={product.id}
+                                            className="min-w-[180px] md:min-w-[224px] p-4 bg-white rounded-xl shadow-sm border border-[#E8EEF8] flex flex-col justify-between active:shadow-md transition-shadow"
+                                        >
+                                            <div className="flex flex-col gap-2.5">
+                                                <div>
+                                                    <div className="text-gray-900 text-sm font-semibold font-['DM_Sans'] leading-tight">{product.name}</div>
+                                                    <div className="text-gray-400 text-[10px] mt-0.5">{provider.name}</div>
+                                                </div>
+                                                <div>
+                                                    <div className="text-gray-900 text-base font-bold">{product.price}</div>
+                                                    <div className="text-green-600 text-xs font-bold flex items-center gap-1 mt-0.5">
+                                                        <TrendingUpIcon /> {product.ytd}
                                                     </div>
                                                 </div>
-                                            </Link>
-                                        ))}
-                                    </div>
+                                                <div className="flex justify-between items-center mt-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[10px] text-gray-500 flex items-center gap-0.5">
+                                                            <StarIcon /> {provider.reviews}
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-7 h-7 bg-neutral-100 rounded-full flex items-center justify-center text-xs">→</div>
+                                                </div>
+                                            </div>
+                                        </Link>
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

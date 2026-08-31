@@ -19,7 +19,7 @@ export const Audit: React.FC = () => {
     const loading = isLoading || !organizationId;
 
     const filteredTransactions = report?.transactions?.filter((t: any) => {
-        const matchesSearch = t.description?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        const matchesSearch = t.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                              t.reference_number?.toLowerCase().includes(searchTerm.toLowerCase());
         const matchesStatus = statusFilter === 'ALL' || t.rating === statusFilter;
         return matchesSearch && matchesStatus;
@@ -36,72 +36,76 @@ export const Audit: React.FC = () => {
 
     return (
         <Layout>
-            <div className="space-y-8">
+            <div className="space-y-6 md:space-y-8">
                 {/* Summary Widgets */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <div className="bg-brand-navy p-8 rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl shadow-brand-navy/20">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+                    <div className="bg-brand-navy p-6 md:p-8 rounded-3xl md:rounded-[2.5rem] text-white relative overflow-hidden shadow-2xl shadow-brand-navy/20">
                         <div className="relative z-10">
                             <p className="text-white/60 font-bold uppercase tracking-widest text-xs mb-2">Overall Accuracy</p>
                             <div className="flex items-baseline space-x-2">
-                                <h2 className="text-6xl font-black">{report?.summary?.average_score || 0}%</h2>
+                                <h2 className="text-5xl md:text-6xl font-black">{report?.summary?.average_score || 0}%</h2>
                                 <TrendingUp className="h-6 w-6 text-emerald-400" />
                             </div>
-                            <p className="text-white/40 text-sm mt-4 font-medium">Average score across {report?.summary?.total_audited || 0} transactions.</p>
+                            <p className="text-white/40 text-sm mt-3 md:mt-4 font-medium">Average score across {report?.summary?.total_audited || 0} transactions.</p>
                         </div>
-                        <ShieldCheck className="absolute -bottom-10 -right-10 h-48 w-48 text-white/5" />
+                        <ShieldCheck className="absolute -bottom-10 -right-10 h-40 md:h-48 w-40 md:w-48 text-white/5" />
                     </div>
 
-                    <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-                        <div>
-                            <div className="h-12 w-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-4">
-                                <ShieldCheck className="h-6 w-6 text-emerald-600" />
+                    {/* Mobile: show these two side-by-side */}
+                    <div className="grid grid-cols-2 gap-4 md:contents">
+                        <div className="bg-white p-5 md:p-8 rounded-3xl md:rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+                            <div>
+                                <div className="h-10 w-10 md:h-12 md:w-12 bg-emerald-50 rounded-2xl flex items-center justify-center mb-3 md:mb-4">
+                                    <ShieldCheck className="h-5 w-5 md:h-6 md:w-6 text-emerald-600" />
+                                </div>
+                                <h3 className="text-sm md:text-lg font-black text-brand-navy">Compliance Health</h3>
+                                <p className="text-gray-500 text-xs md:text-sm font-medium hidden md:block">Receipt documentation and OCR matching status.</p>
                             </div>
-                            <h3 className="text-lg font-black text-brand-navy">Compliance Health</h3>
-                            <p className="text-gray-500 text-sm font-medium">Receipt documentation and OCR matching status.</p>
+                            <div className="mt-4 md:mt-6 flex items-center space-x-2">
+                                <span className="text-xl md:text-2xl font-black text-brand-navy">Good</span>
+                                <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full">Optimal</span>
+                            </div>
                         </div>
-                        <div className="mt-6 flex items-center space-x-2">
-                            <span className="text-2xl font-black text-brand-navy">Good</span>
-                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full">Optimal</span>
-                        </div>
-                    </div>
 
-                    <div className="bg-white p-8 rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-between">
-                        <div>
-                            <div className="h-12 w-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-4">
-                                <AlertTriangle className="h-6 w-6 text-amber-600" />
+                        <div className="bg-white p-5 md:p-8 rounded-3xl md:rounded-[2.5rem] border border-gray-100 shadow-sm flex flex-col justify-between">
+                            <div>
+                                <div className="h-10 w-10 md:h-12 md:w-12 bg-amber-50 rounded-2xl flex items-center justify-center mb-3 md:mb-4">
+                                    <AlertTriangle className="h-5 w-5 md:h-6 md:w-6 text-amber-600" />
+                                </div>
+                                <h3 className="text-sm md:text-lg font-black text-brand-navy">Efficiency</h3>
+                                <p className="text-gray-500 text-xs md:text-sm font-medium hidden md:block">Average time from Draft to final accounting.</p>
                             </div>
-                            <h3 className="text-lg font-black text-brand-navy">Efficiency Tracking</h3>
-                            <p className="text-gray-500 text-sm font-medium">Average time from Draft to final accounting.</p>
-                        </div>
-                        <div className="mt-6 flex items-center space-x-2">
-                            <span className="text-2xl font-black text-brand-navy">~31h</span>
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">Needs Work</span>
+                            <div className="mt-4 md:mt-6 flex items-center space-x-2">
+                                <span className="text-xl md:text-2xl font-black text-brand-navy">~31h</span>
+                                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">Needs Work</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                {/* Main Table Section */}
-                <div className="bg-white rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
-                    <div className="p-8 border-b border-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                        <h3 className="text-xl font-black text-brand-navy">Transaction Audit Log</h3>
-                        
-                        <div className="flex flex-col md:flex-row items-center gap-4">
+                {/* Main Log Section */}
+                <div className="bg-white rounded-3xl md:rounded-[2.5rem] shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="p-5 md:p-8 border-b border-gray-50">
+                        <h3 className="text-base md:text-xl font-black text-brand-navy mb-4">Transaction Audit Log</h3>
+                        <div className="flex flex-col gap-3">
+                            {/* Search */}
                             <div className="relative">
                                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                                <input 
-                                    type="text" 
+                                <input
+                                    type="text"
                                     placeholder="Search reference..."
-                                    className="pl-11 pr-6 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-brand-navy/10 w-full md:w-64"
+                                    className="pl-11 pr-4 py-2.5 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-brand-navy/10 w-full"
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                 />
                             </div>
-                            <div className="flex items-center space-x-2 bg-gray-50 p-1.5 rounded-2xl">
+                            {/* Filter pills */}
+                            <div className="flex items-center gap-2 bg-gray-50 p-1.5 rounded-2xl self-start">
                                 {['ALL', 'Brilliant', 'Average', 'Bad'].map(f => (
                                     <button
                                         key={f}
                                         onClick={() => setStatusFilter(f)}
-                                        className={`px-4 py-2 text-xs font-bold rounded-xl transition-all ${statusFilter === f ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+                                        className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${statusFilter === f ? 'bg-white text-brand-navy shadow-sm' : 'text-gray-400'}`}
                                     >
                                         {f}
                                     </button>
@@ -110,7 +114,46 @@ export const Audit: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="overflow-x-auto">
+                    {/* Mobile: cards */}
+                    <div className="md:hidden divide-y divide-gray-50">
+                        {loading ? (
+                            <div className="py-12 flex flex-col items-center gap-3 text-gray-400">
+                                <div className="animate-spin h-6 w-6 border-2 border-brand-navy border-t-transparent rounded-full" />
+                                <span className="text-sm">Loading audit data…</span>
+                            </div>
+                        ) : filteredTransactions?.length === 0 ? (
+                            <div className="py-12 text-center text-sm text-gray-400">No transactions match your filters.</div>
+                        ) : filteredTransactions?.map((t: any) => (
+                            <div key={t.id} className="p-4 flex items-start gap-3">
+                                {/* Avatar */}
+                                <div className="flex-shrink-0 h-10 w-10 rounded-xl bg-brand-navy/5 flex items-center justify-center text-[11px] font-bold text-brand-navy uppercase">
+                                    {t.requestor_name?.split(' ').map((n: string) => n[0]).join('') || '?'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="text-sm font-black text-brand-navy truncate">{t.reference_number || `REQ-${t.id.slice(0, 8)}`}</span>
+                                        <span className="text-sm font-black text-brand-navy flex-shrink-0">{Math.round(t.audit_score)}%</span>
+                                    </div>
+                                    <span className="text-xs text-gray-400 truncate block mt-0.5">{t.description}</span>
+                                    <div className="flex items-center gap-2 mt-2">
+                                        <span className="text-xs font-bold text-gray-600">{t.requestor_name || 'System'}</span>
+                                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${getRatingColor(t.rating)}`}>
+                                            {t.rating}
+                                        </span>
+                                        <Link
+                                            to={`/requisitions?id=${t.id}`}
+                                            className="ml-auto p-1.5 rounded-lg text-gray-400 hover:text-brand-green transition-colors"
+                                        >
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* Desktop: table */}
+                    <div className="hidden md:block overflow-x-auto">
                         <table className="w-full">
                             <thead>
                                 <tr className="bg-gray-50/50">
@@ -161,7 +204,7 @@ export const Audit: React.FC = () => {
                                         </td>
                                         <td className="px-8 py-6">
                                             <div className="flex justify-center">
-                                                <Link 
+                                                <Link
                                                     to={`/requisitions?id=${t.id}`}
                                                     className="p-2 hover:bg-white hover:shadow-sm rounded-xl transition-all text-gray-400 hover:text-brand-green"
                                                 >

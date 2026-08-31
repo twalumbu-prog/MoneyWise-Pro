@@ -3,6 +3,8 @@ import { requisitionService, RequisitionMessage, Requisition } from '../../servi
 import RequisitionMessageCard from './RequisitionMessageCard';
 import RequisitionInput from './RequisitionInput';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabase';
+import { compressImage } from '../../utils/file_utils';
 import { Loader2 } from 'lucide-react';
 
 interface RequisitionChatProps {
@@ -193,6 +195,48 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
     }, [messages, isTyping]);
 
 
+
+    const handleFileUpload = async (files: FileList) => {
+        if (!files || files.length === 0) return;
+        
+        try {
+            // We can reuse the typing indicator to show it's "scanning/uploading"
+            setIsTyping(true);
+            const urls: string[] = [];
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                let fileToUpload: File | Blob = file;
+                let fileName = file.name;
+                
+                if (file.type.startsWith('image/') || file.name.toLowerCase().endsWith('.heic') || file.name.toLowerCase().endsWith('.heif')) {
+                    fileToUpload = await compressImage(file);
+                    fileName = (fileToUpload as File).name || fileName;
+                }
+
+                const fileExt = fileName.split('.').pop();
+                const storageName = `${requisition.id}/scans/${Date.now()}_${i}.${fileExt}`;
+
+                const { error } = await supabase.storage
+                    .from('receipts')
+                    .upload(storageName, fileToUpload);
+
+                if (error) throw error;
+                urls.push(storageName);
+            }
+
+            // Call scanReceipts which processes it and adds messages
+            await requisitionService.scanReceipts(requisition.id, urls);
+            
+            if (onStatusChange) onStatusChange();
+        } catch (err: any) {
+            console.error('File upload/scan failed:', err);
+            window.alert('File upload failed: ' + (err.message || 'Please try again.'));
+        } finally {
+            setIsTyping(false);
+        }
+    };
+
     const handleSendMessage = async (content: string) => {
         try {
             const newMessage = await requisitionService.sendMessage(requisition.id, content);
@@ -334,7 +378,8 @@ const RequisitionChat: React.FC<RequisitionChatProps> = ({ requisition, canActio
             </div>
 
             <RequisitionInput 
-                onSend={handleSendMessage} 
+                onSend={handleSendMessage}
+                onFileUpload={handleFileUpload} 
                 disabled={
                     requisition.status === 'ACCOUNTED' || 
                     (!(userRole === 'ADMIN' || userRole === 'ACCOUNTANT' || userRole === 'CASHIER' || userRole === 'MANAGER') && (requisition.status === 'CHANGE_SUBMITTED' || requisition.status === 'COMPLETED' || requisition.status === 'CATEGORIZED'))

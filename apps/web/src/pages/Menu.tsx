@@ -17,15 +17,90 @@ import {
     LogOut,
     User,
     ShoppingBag,
-    Share2,
     Users,
     ChevronRight,
     ChevronLeft,
     GraduationCap,
     Plus,
+    LayoutGrid,
+    TrendingUp,
+    Landmark,
+    Store,
 } from 'lucide-react';
 
 type MenuDetail = 'integrations' | 'profile' | 'general' | 'users' | 'other' | null;
+
+interface OtherServiceButtonProps {
+    icon: React.ElementType;
+    label: string;
+    onClick: () => void;
+    id: string;
+    comingSoon?: boolean;
+}
+
+const OtherServiceButton: React.FC<OtherServiceButtonProps> = ({ icon: Icon, label, onClick, id }) => {
+    const filterId = `noise-${id}`;
+    const outerGradId = `grad-outer-${id}`;
+    const innerGradId = `grad-inner-${id}`;
+
+    return (
+        <button
+            onClick={onClick}
+            className="flex flex-col items-center gap-2 active:scale-95 transition-transform"
+            aria-label={label}
+        >
+            {/* Icon box — extra padding so shadow isn't clipped */}
+            <div className="relative w-16 h-16" style={{ overflow: 'visible' }}>
+                <svg
+                    width="64" height="64"
+                    viewBox="0 0 64 64"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="absolute inset-0"
+                    style={{ overflow: 'visible' }}
+                    aria-hidden="true"
+                >
+                    <defs>
+                        {/* Outer fill gradient: BL blue → TR white */}
+                        <linearGradient id={outerGradId} x1="0%" y1="100%" x2="100%" y2="0%">
+                            <stop offset="0%" stopColor="#006AFF" />
+                            <stop offset="100%" stopColor="#ffffff" />
+                        </linearGradient>
+                        {/* Inner fill gradient: TR blue → BL white (alternating) */}
+                        <linearGradient id={innerGradId} x1="100%" y1="0%" x2="0%" y2="100%">
+                            <stop offset="0%" stopColor="#006AFF" />
+                            <stop offset="100%" stopColor="#ffffff" />
+                        </linearGradient>
+                        {/* Noise filter */}
+                        <filter id={filterId} x="0%" y="0%" width="100%" height="100%">
+                            <feTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="4" stitchTiles="stitch" result="noise" />
+                            <feColorMatrix type="saturate" values="0" in="noise" result="grayNoise" />
+                            <feBlend in="SourceGraphic" in2="grayNoise" mode="overlay" result="blended" />
+                            <feComposite in="blended" in2="SourceGraphic" operator="in" />
+                        </filter>
+                    </defs>
+                    {/* Drop shadow — tight, low-spread */}
+                    <rect x="6" y="7" width="52" height="52" rx="16" fill="rgba(0,0,0,0.12)" style={{ filter: 'blur(3px)' }} />
+                    {/* Outer rounded square — alternating gradient fill */}
+                    <rect x="4" y="4" width="56" height="56" rx="16" fill={`url(#${outerGradId})`} />
+                    {/* Noise texture overlay on outer */}
+                    <rect x="4" y="4" width="56" height="56" rx="16" fill={`url(#${outerGradId})`} filter={`url(#${filterId})`} opacity="0.25" />
+                    {/* White border spacer */}
+                    <rect x="9" y="9" width="46" height="46" rx="12" fill="white" />
+                    {/* Inner rounded square — opposite gradient */}
+                    <rect x="9" y="9" width="46" height="46" rx="12" fill={`url(#${innerGradId})`} />
+                    {/* Noise on inner */}
+                    <rect x="9" y="9" width="46" height="46" rx="12" fill={`url(#${innerGradId})`} filter={`url(#${filterId})`} opacity="0.2" />
+                </svg>
+                {/* Icon centered over the SVG box */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <Icon size={22} color="white" strokeWidth={2} />
+                </div>
+            </div>
+            {/* Label — matches settings item title style */}
+            <span className="text-black text-center leading-tight" style={{ fontSize: '12px', fontWeight: 400 }}>{label}</span>
+        </button>
+    );
+};
 
 export const Menu: React.FC = () => {
     const navigate = useNavigate();
@@ -34,6 +109,7 @@ export const Menu: React.FC = () => {
     // Which full-screen detail panel (if any) is currently open.
     const [detail, setDetail] = useState<MenuDetail>(null);
     const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | null>(null);
+    const [comingSoon, setComingSoon] = useState<string | null>(null);
 
     // Ref to open the Add Member modal from the navbar button
     const openAddMemberRef = useRef<(() => void) | null>(null);
@@ -58,33 +134,6 @@ export const Menu: React.FC = () => {
         setDetail(null);
         setActiveIntegration(null);
     };
-
-    const OPTIONS_ITEMS = [
-        {
-            id: 'audit',
-            label: 'Audit Log',
-            description: 'Compliance & audit history',
-            icon: ShieldCheck,
-            onClick: () => navigate('/audit'),
-            show: true,
-        },
-        {
-            id: 'products',
-            label: 'Products & Services',
-            description: 'Catalog, pricing & payment links',
-            icon: ShoppingBag,
-            onClick: () => navigate('/products'),
-            show: true,
-        },
-        {
-            id: 'integrations',
-            label: 'Integrations',
-            description: 'QuickBooks, Lenco & Master Fees',
-            icon: Share2,
-            onClick: () => setDetail('integrations'),
-            show: userRole === 'ADMIN',
-        },
-    ].filter(item => item.show);
 
     const SETTINGS_ITEMS = [
         {
@@ -141,29 +190,22 @@ export const Menu: React.FC = () => {
                     </div>
                 </div>
 
-                {/* Options card */}
+                {/* Other Services card */}
                 <div className="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm">
-                    <div className="text-neutral-900 text-base font-bold mb-2">Options</div>
-                    <div className="divide-y divide-gray-50">
-                        {OPTIONS_ITEMS.map(item => {
-                            const Icon = item.icon;
-                            return (
-                                <button
-                                    key={item.id}
-                                    onClick={item.onClick}
-                                    className="w-full flex items-center gap-4 py-3.5 text-left active:bg-gray-50 rounded-xl transition-colors -mx-1 px-1"
-                                >
-                                    <div className="p-2.5 rounded-2xl bg-white text-[#006AFF] flex-shrink-0">
-                                        <Icon size={18} />
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-black text-sm font-bold">{item.label}</div>
-                                        <div className="text-xs text-gray-400 mt-0.5">{item.description}</div>
-                                    </div>
-                                    <ChevronRight size={16} className="text-gray-300 flex-shrink-0" />
-                                </button>
-                            );
-                        })}
+                    <div className="text-neutral-900 text-base font-bold mb-2">Other Services</div>
+                    <div className="flex flex-col gap-7">
+                        {/* Row 1 */}
+                        <div className="grid grid-cols-3 gap-4">
+                            <OtherServiceButton icon={ShieldCheck} label="Audit" onClick={() => navigate('/audit')} id="audit" />
+                            <OtherServiceButton icon={ShoppingBag} label="Products" onClick={() => navigate('/products')} id="products" />
+                            <OtherServiceButton icon={LayoutGrid} label="Apps" onClick={() => navigate('/apps')} id="apps" />
+                        </div>
+                        {/* Row 2 */}
+                        <div className="grid grid-cols-3 gap-4">
+                            <OtherServiceButton icon={TrendingUp} label="Invest" onClick={() => navigate('/invest')} id="invest" />
+                            <OtherServiceButton icon={Landmark} label="Business Loans" onClick={() => setComingSoon('Business Loans')} id="loans" />
+                            <OtherServiceButton icon={Store} label="Marketplace" onClick={() => setComingSoon('Marketplace')} id="marketplace" />
+                        </div>
                     </div>
                 </div>
 
@@ -204,6 +246,31 @@ export const Menu: React.FC = () => {
                     Sign Out
                 </button>
             </div>
+
+            {/* Coming Soon overlay */}
+            {comingSoon && (
+                <div className="fixed inset-0 z-[90] bg-black/40 flex items-end justify-center" onClick={() => setComingSoon(null)}>
+                    <div
+                        className="w-full max-w-md bg-white rounded-t-3xl p-8 flex flex-col items-center gap-4 pb-12"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className="w-12 h-1.5 bg-gray-200 rounded-full mb-2" />
+                        <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mb-1">
+                            {comingSoon === 'Business Loans' ? <Landmark size={28} className="text-[#006AFF]" /> : <Store size={28} className="text-[#006AFF]" />}
+                        </div>
+                        <div className="text-center">
+                            <h2 className="text-lg font-bold text-gray-900">{comingSoon}</h2>
+                            <p className="text-sm text-gray-400 mt-1">This feature is coming soon. We're working on it!</p>
+                        </div>
+                        <button
+                            onClick={() => setComingSoon(null)}
+                            className="mt-2 w-full py-3.5 bg-[#006AFF] text-white font-bold rounded-2xl active:opacity-80 transition-opacity"
+                        >
+                            Got it
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Full-screen detail panel */}
             {detail && (

@@ -11,9 +11,10 @@ interface LayoutProps {
     backgroundColor?: string;
     noPadding?: boolean;
     title?: string;
+    mobileHeaderAction?: React.ReactNode;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title, mobileHeaderAction }) => {
     const { user, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId } = useAuth();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const location = useLocation();
@@ -28,6 +29,20 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
     const activeOrgs = userOrganizations.filter((uo: any) => uo.status === 'ACTIVE');
     const isInboxPage = location.pathname === '/' || location.pathname === '/requisitions';
     const isSchedulesPage = location.pathname === '/schedules';
+    // Pages that show a back button and hide the bottom nav bar
+    const isBackButtonPage = isSchedulesPage ||
+        location.pathname === '/audit' ||
+        location.pathname === '/products' ||
+        location.pathname === '/apps' ||
+        location.pathname.startsWith('/apps/') ||
+        location.pathname === '/invest' ||
+        location.pathname.startsWith('/invest/');
+    // Subset that also need the flex-column/overflow-hidden main chain (no outer scroll)
+    const isFlexPage = isSchedulesPage ||
+        location.pathname === '/invest' ||
+        location.pathname.startsWith('/invest/') ||
+        location.pathname === '/apps' ||
+        location.pathname.startsWith('/apps/');
 
     const getPageTitle = () => {
         if (title) return title;
@@ -67,22 +82,27 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             {/* Mobile Header */}
             <div className="md:hidden sticky top-0 z-20">
                 <div className={`${backgroundColor} px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80`}>
-                    {/* Back button for Schedules page, title for all others */}
-                    {isSchedulesPage ? (
-                        <div className="flex items-center gap-3">
-                            <button
-                                type="button"
-                                onClick={() => navigate(-1)}
-                                aria-label="Go back"
-                                className="flex items-center justify-center text-gray-500 active:opacity-50 transition-opacity"
-                            >
-                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <path d="M15 18l-6-6 6-6" />
-                                </svg>
-                            </button>
-                            <h1 className="font-advercase text-3xl font-normal text-black">
-                                {getPageTitle()}
-                            </h1>
+                    {/* Back button for back-button pages, title for all others */}
+                    {isBackButtonPage ? (
+                        <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => navigate(-1)}
+                                    aria-label="Go back"
+                                    className="flex items-center justify-center text-gray-500 active:opacity-50 transition-opacity"
+                                >
+                                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M15 18l-6-6 6-6" />
+                                    </svg>
+                                </button>
+                                <h1 className="text-xl font-bold font-['DM_Sans'] text-gray-900 leading-tight">
+                                    {getPageTitle()}
+                                </h1>
+                            </div>
+                            {mobileHeaderAction && (
+                                <div className="flex-shrink-0">{mobileHeaderAction}</div>
+                            )}
                         </div>
                     ) : (
                         <h1 className="font-advercase text-3xl font-normal text-black">
@@ -90,8 +110,8 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                         </h1>
                     )}
 
-                    {/* Right-side actions — hidden on Schedules */}
-                    {!isSchedulesPage && (
+                    {/* Right-side actions — hidden on back-button pages */}
+                    {!isBackButtonPage && (
                         <div className="flex items-center gap-2">
                             {isInboxPage && (
                                 <button
@@ -206,19 +226,19 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                 card truly fills the remaining viewport without a scroll container
                 breaking the height chain. */}
             <main className={`flex-1 overflow-x-hidden md:pb-0 md:min-h-0 md:overflow-y-auto
-                ${isSchedulesPage
+                ${isFlexPage
                     ? 'flex flex-col overflow-hidden pb-0'
-                    : `overflow-y-auto ${isRequestor ? 'h-screen md:h-auto' : 'h-[calc(100vh-60px)] md:h-auto'} pb-28`
+                    : `overflow-y-auto ${isRequestor ? 'h-screen md:h-auto' : 'h-[calc(100vh-60px)] md:h-auto'} ${isBackButtonPage ? 'pb-4' : 'pb-28'}`
                 }`}>
                 <div className={noPadding
-                    ? `w-full ${isSchedulesPage ? 'flex-1 min-h-0 flex flex-col' : 'h-full'}`
+                    ? `w-full ${isFlexPage ? 'flex-1 min-h-0 flex flex-col' : 'h-full'}`
                     : 'max-w-[1440px] mx-auto px-4 md:px-12 py-4 md:py-8'}>
                     {children}
                 </div>
             </main>
 
             {/* Mobile Bottom Navigation Bar — hidden on full-screen pages like Schedules */}
-            <div className={`md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)] ${isSchedulesPage ? 'hidden' : ''}`}>
+            <div className={`md:hidden fixed bottom-0 left-0 right-0 h-[88px] bg-white border-t border-gray-100 flex items-center justify-around z-40 pb-safe shadow-[0_-2px_10px_rgba(0,0,0,0.02)] ${isBackButtonPage ? 'hidden' : ''}`}>
                 {[
                     { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
                     { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook', hide: isRequestor },

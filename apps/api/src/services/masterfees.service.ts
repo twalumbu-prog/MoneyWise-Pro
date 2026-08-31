@@ -1227,7 +1227,7 @@ export async function syncMasterfees(organizationId: string, deadline: number = 
 export async function syncMasterfeesPayments(
     organizationId: string,
     deadline: number = Date.now() + 35_000,
-    opts: { onlyMissing?: boolean } = {}
+    opts: { onlyMissing?: boolean; onlyTransactionIds?: Set<string> } = {}
 ): Promise<SyncSummary> {
     const integration = await getMasterFeesIntegration(organizationId);
     if (!integration) throw new Error('Master Fees is not connected for this organization.');
@@ -1267,9 +1267,16 @@ export async function syncMasterfeesPayments(
             organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id'
         );
 
-        const queue = opts.onlyMissing
+        let queue = opts.onlyMissing
             ? transactions.filter(t => !priorMap.has(t.transaction_id))
             : transactions;
+        // Scope to an explicit, pre-identified set of transaction_ids — for a
+        // targeted backfill (e.g. "just this recent gap") without touching the
+        // rest of whatever else onlyMissing would otherwise pick up (a large
+        // historical backlog can span many months and thousands of rows).
+        if (opts.onlyTransactionIds) {
+            queue = queue.filter(t => opts.onlyTransactionIds!.has(t.transaction_id));
+        }
 
         let deferredByBudget = false;
         for (const txn of queue) {

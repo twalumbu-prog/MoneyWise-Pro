@@ -52,15 +52,15 @@ export const Apps: React.FC = () => {
 
     return (
         <Layout noPadding={true}>
-        <div className="flex flex-col h-full min-h-0 px-5 pb-5">
-            <div className="flex-1 bg-white rounded-[20px] border border-gray-200 overflow-y-auto p-6">
+        <div className="flex flex-col h-full min-h-0 px-4 md:px-5 pb-5">
+            <div className="flex-1 bg-white rounded-[20px] border border-gray-200 overflow-y-auto p-4 md:p-6">
                 <div className="max-w-[1200px] mx-auto">
-                    <div className="mb-6">
-                        <h1 className="text-xl font-bold text-gray-900">Apps</h1>
+                    <div className="mb-5">
+                        <h1 className="text-lg md:text-xl font-bold text-gray-900">Apps</h1>
                         <p className="text-sm text-gray-500 mt-0.5">Extend MoneyWise with powerful business tools</p>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-4">
                         {APPS.map(app => {
                             const Icon = app.icon;
                             const isActive = activated[app.id];
