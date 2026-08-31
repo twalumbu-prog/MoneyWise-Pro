@@ -110,6 +110,52 @@ const codeForCategory = (categoryId: string) =>
     `QB-MF-INC-${String(categoryId).replace(/[^a-zA-Z0-9]/g, '').slice(0, 24).toUpperCase()}`;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Per-bank external wallets (cashbook grouping) for manual payments.
+//
+// An org can create a dedicated `external_wallets` row for a specific bank
+// (e.g. "Zanaco", "Natsave") so that bank's manual payments get their own
+// wallet balance in the cashbook UI instead of landing in the single generic
+// "Master Fees Manual" bucket. This is purely a cashbook_entries.account_type
+// grouping concern — the GL journal already routes by mf_payment_channel
+// (see ledger.service.ts's resolveCashAccount), so a wallet MUST have its
+// `qb_account_id` pointed at the matching QB-MF-MANUAL-BANK-<slug> account for
+// GL continuity to hold once account_type becomes that wallet's UUID.
+// ─────────────────────────────────────────────────────────────────────────────
+const normalizeBankName = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+const BANK_WALLET_CACHE_TTL_MS = 60_000;
+const bankWalletCache = new Map<string, { map: Map<string, string>; fetchedAt: number }>();
+
+async function getBankWalletMap(organizationId: string): Promise<Map<string, string>> {
+    const cached = bankWalletCache.get(organizationId);
+    if (cached && Date.now() - cached.fetchedAt < BANK_WALLET_CACHE_TTL_MS) return cached.map;
+
+    const { data } = await supabase
+        .from('external_wallets')
+        .select('id, name, provider_name')
+        .eq('organization_id', organizationId)
+        .eq('provider_type', 'BANK');
+
+    const map = new Map<string, string>();
+    for (const w of data || []) {
+        const key = normalizeBankName(w.provider_name || w.name);
+        if (key) map.set(key, w.id);
+    }
+    bankWalletCache.set(organizationId, { map, fetchedAt: Date.now() });
+    return map;
+}
+
+/**
+ * Resolve the cashbook_entries.account_type a manual MF payment on this
+ * channel should land in: a dedicated external wallet if the org has one for
+ * this specific bank, otherwise the generic 'MASTERFEES_MANUAL' bucket.
+ */
+async function resolveManualAccountType(organizationId: string, channel: ManualChannelInfo): Promise<string> {
+    if (channel.bucket !== 'BANK' || !channel.bankSlug) return 'MASTERFEES_MANUAL';
+    const map = await getBankWalletMap(organizationId);
+    return map.get(normalizeBankName(channel.bankDisplay || channel.bankSlug)) || 'MASTERFEES_MANUAL';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Types (defensive — the MF API varies field names slightly across resources).
 // ─────────────────────────────────────────────────────────────────────────────
 export interface MasterFeesConfig {
@@ -906,17 +952,35 @@ async function postPayment(
             // journal, not cashbook_entries.balance_after. Recompute both in full.
             await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, oldType);
             await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, desiredType);
-        } else if (ce && ce.account_type === 'MASTERFEES_MANUAL' && !isLencoProcessed(txn) && (!ce.mf_payment_channel || ce.mf_payment_channel === 'BANK')) {
-            // Bucket already correct, but this row either predates per-channel
-            // routing (null) or predates per-bank routing (generic 'BANK', from
-            // before Master Fees started returning account_name) — tag/upgrade
-            // and repost it in place so it moves onto its specific bank's account
-            // (or the channel bucket, if still no specific bank is known).
+        } else if (ce && ce.account_type === 'MASTERFEES_MANUAL' && !isLencoProcessed(txn)) {
             const channel = classifyManualChannel(txn);
-            if (channel.key !== ce.mf_payment_channel) {
+            const resolvedAccountType = await resolveManualAccountType(organizationId, channel);
+
+            if (resolvedAccountType !== 'MASTERFEES_MANUAL') {
+                // The org has since created a dedicated wallet for this bank (e.g.
+                // Zanaco, Natsave) — move this row off the generic bucket onto it,
+                // same as the MASTERFEES<->MASTERFEES_MANUAL move above. The GL
+                // journal is unaffected (still resolves via mf_payment_channel /
+                // the wallet's qb_account_id to the same asset account), so no
+                // repost is needed — only the two running-balance chains.
                 await getManualCollectionsAccountForChannel(organizationId, channel);
-                await supabase.from('cashbook_entries').update({ mf_payment_channel: channel.key }).eq('id', prior!.cashbook_entry_id);
-                await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
+                await supabase.from('cashbook_entries').update({
+                    account_type: resolvedAccountType,
+                    mf_payment_channel: channel.key,
+                }).eq('id', prior!.cashbook_entry_id);
+                await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, 'MASTERFEES_MANUAL');
+                await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, resolvedAccountType);
+            } else if (!ce.mf_payment_channel || ce.mf_payment_channel === 'BANK') {
+                // Bucket already correct, but this row either predates per-channel
+                // routing (null) or predates per-bank routing (generic 'BANK', from
+                // before Master Fees started returning account_name) — tag/upgrade
+                // and repost it in place so it moves onto its specific bank's account
+                // (or the channel bucket, if still no specific bank is known).
+                if (channel.key !== ce.mf_payment_channel) {
+                    await getManualCollectionsAccountForChannel(organizationId, channel);
+                    await supabase.from('cashbook_entries').update({ mf_payment_channel: channel.key }).eq('id', prior!.cashbook_entry_id);
+                    await ledgerService.repostForCashbookEntry(prior!.cashbook_entry_id);
+                }
             }
         }
         return 'skipped';
@@ -972,6 +1036,7 @@ async function postPayment(
 
         const channel = classifyManualChannel(txn);
         await getManualCollectionsAccountForChannel(organizationId, channel); // ensure the contra-resolvable account exists
+        const accountType = await resolveManualAccountType(organizationId, channel); // dedicated bank wallet if the org has one, else the generic bucket
         const manualLabel = `Master Fees Manual Payment (${manualChannelLabel(channel)}) ${txn.reference || txn.transaction_id.slice(0, 8)}${studentName ? ` — ${studentName}` : ''}`;
         const entry = await cashbookService.createEntry(organizationId, {
             date: dateOnly(txn.completed_at),
@@ -980,7 +1045,7 @@ async function postPayment(
             credit: 0,
             entry_type: 'INFLOW',
             status: 'COMPLETED',
-            account_type: 'MASTERFEES_MANUAL',
+            account_type: accountType,
             account_id: receivableId,
             external_reference: txn.reference || txn.transaction_id,
             mf_payment_channel: channel.key,

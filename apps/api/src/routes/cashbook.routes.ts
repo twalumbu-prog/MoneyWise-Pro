@@ -19,7 +19,12 @@ import {
     getWallets,
     createWallet,
     transferSubwalletFunds,
-    transferCashToWallet
+    transferCashToWallet,
+    getExternalWallets,
+    createExternalWallet,
+    deleteExternalWallet,
+    previewStatementImport,
+    importStatement
 } from '../controllers/cashbook.controller';
 
 const router = Router();
@@ -38,6 +43,15 @@ router.post('/wallets/transfer', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN'])
 
 // Transfer from an external account (cash/mobile money/bank) into a MoneyWise wallet
 router.post('/transfer-to-wallet', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), transferCashToWallet);
+
+// External wallets management
+router.get('/external-wallets', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getExternalWallets);
+router.post('/external-wallets', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), createExternalWallet);
+router.delete('/external-wallets/:id', requireRole(['ADMIN']), deleteExternalWallet);
+
+// Bank statement import routes
+router.post('/external-wallets/:id/import-preview', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), previewStatementImport);
+router.post('/external-wallets/:id/import-statement', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), importStatement);
 
 // Get cashbook entries (All roles can view for transparency)
 router.get('/', requireRole(['REQUESTOR', 'AUTHORISER', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), getCashbookEntries);

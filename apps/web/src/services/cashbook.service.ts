@@ -258,5 +258,41 @@ export const cashbookService = {
             body: JSON.stringify({ amount, reference, sourceAccountType, walletName }),
         });
         return response.json();
+    },
+
+    async getExternalWallets() {
+        const response = await apiFetch('/cashbook/external-wallets');
+        return response.json();
+    },
+
+    async createExternalWallet(payload: { name: string; providerType: string; providerName?: string; qbAccountId?: string }) {
+        const response = await apiFetch('/cashbook/external-wallets', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        return response.json();
+    },
+
+    async deleteExternalWallet(id: string) {
+        const response = await apiFetch(`/cashbook/external-wallets/${id}`, {
+            method: 'DELETE',
+        });
+        return response.json();
+    },
+
+    async previewStatementImport(id: string, rows: any[]) {
+        const response = await apiFetch(`/cashbook/external-wallets/${id}/import-preview`, {
+            method: 'POST',
+            body: JSON.stringify({ rows }),
+        });
+        return response.json();
+    },
+
+    async importStatement(id: string, items: any[]) {
+        const response = await apiFetch(`/cashbook/external-wallets/${id}/import-statement`, {
+            method: 'POST',
+            body: JSON.stringify({ items }),
+        });
+        return response.json();
     }
 };

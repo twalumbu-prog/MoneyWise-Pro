@@ -185,6 +185,28 @@ async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
             ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
 
+    // If it's a custom external wallet (where account_type is a UUID)
+    if (ce.account_type && ce.account_type.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i)) {
+        const { data: extWallet } = await supabase
+            .from('external_wallets')
+            .select('name, qb_account_id')
+            .eq('id', ce.account_type)
+            .maybeSingle();
+
+        if (extWallet) {
+            let q = supabase
+                .from('accounts')
+                .select('id')
+                .eq('organization_id', orgId)
+                .eq('type', 'ASSET');
+            q = extWallet.qb_account_id
+                ? q.or(`name.eq.${extWallet.name},qb_account_id.eq.${extWallet.qb_account_id}`)
+                : q.eq('name', extWallet.name);
+            const { data: assetAcct } = await q.limit(1).maybeSingle();
+            if (assetAcct) return assetAcct.id;
+        }
+    }
+
     if (ce.account_type === 'CASH') {
         const { data: cashAcct } = await supabase
             .from('accounts')

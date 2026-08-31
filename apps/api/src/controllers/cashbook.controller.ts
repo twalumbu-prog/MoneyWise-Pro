@@ -858,10 +858,21 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
 
         const effectiveWalletId = accountType === 'MONEYWISE_WALLET' ? (walletId as string | undefined) : undefined;
 
+        // Fetch custom external wallets first
+        const { data: extWallets } = await supabase
+            .from('external_wallets')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('name', { ascending: true });
+
+        const extWalletList = extWallets || [];
+
         const [
             entries, balance, cashBal, airtelBal, bankBal, wallets,
             recentMoneywise, recentCash, recentAirtel, recentBank,
             mfIntegration,
+            extBalances,
+            recentExts
         ] = await Promise.all([
             cashbookService.getEntries(organizationId, {
                 startDate: startDate as string,
@@ -880,6 +891,8 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             cashbookService.getEntries(organizationId, { accountType: 'AIRTEL_MONEY', limit: 10 }),
             cashbookService.getEntries(organizationId, { accountType: 'BANK', limit: 10 }),
             supabase.from('integrations').select('config').eq('provider', 'MASTERFEES').eq('organization_id', organizationId).maybeSingle(),
+            Promise.all(extWalletList.map(w => cashbookService.getCurrentBalance(organizationId, w.id))),
+            Promise.all(extWalletList.map(w => cashbookService.getEntries(organizationId, { accountType: w.id, limit: 10 })))
         ]);
 
         // Master Fees external accounts are only relevant to orgs that actually use
@@ -907,18 +920,34 @@ export const getCashbookOverview = async (req: any, res: any): Promise<any> => {
             additionalExternalAccounts.push({ id: 'MASTERFEES_MANUAL', name: 'Master Fees Manual' });
         }
 
+        // Add custom external wallets to additionalExternalAccounts so frontend renders them
+        extWalletList.forEach(w => {
+            additionalExternalAccounts.push({ id: w.id, name: w.name });
+        });
+
+        // Construct external balances map
+        const externalBalancesMap: Record<string, number> = {
+            CASH: cashBal,
+            AIRTEL_MONEY: airtelBal,
+            BANK: bankBal,
+            MASTERFEES: masterFeesBal,
+            MASTERFEES_MANUAL: masterFeesManualBal,
+        };
+        extWalletList.forEach((w, idx) => {
+            externalBalancesMap[w.id] = extBalances[idx];
+        });
+
+        const flatRecentExt = recentExts.flat();
+
         res.json({
             entries: entries.map(sanitizeEntry),
             balance,
-            externalBalances: {
-                CASH: cashBal, AIRTEL_MONEY: airtelBal, BANK: bankBal,
-                MASTERFEES: masterFeesBal, MASTERFEES_MANUAL: masterFeesManualBal,
-            },
+            externalBalances: externalBalancesMap,
             additionalExternalAccounts,
             wallets,
             recent: {
                 moneywise: recentMoneywise.map(sanitizeEntry),
-                external: [...recentCash, ...recentAirtel, ...recentBank, ...recentMasterFees, ...recentMasterFeesManual].map(sanitizeEntry),
+                external: [...recentCash, ...recentAirtel, ...recentBank, ...recentMasterFees, ...recentMasterFeesManual, ...flatRecentExt].map(sanitizeEntry),
             },
         });
     } catch (error: any) {
@@ -1180,5 +1209,311 @@ export const transferCashToWallet = async (req: any, res: any): Promise<any> => 
     } catch (error: any) {
         console.error('Error recording cash transfer leg:', error);
         res.status(500).json({ error: 'Failed to record cash transfer', details: error.message });
+    }
+};
+
+// External wallets CRUD
+export const getExternalWallets = async (req: any, res: any): Promise<any> => {
+    try {
+        const organizationId = req.user.organization_id;
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const { data: wallets, error } = await supabase
+            .from('external_wallets')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .order('name', { ascending: true });
+
+        if (error) throw error;
+
+        // Fetch balances dynamically
+        const walletsWithBalances = await Promise.all((wallets || []).map(async (wallet: any) => {
+            const balance = await cashbookService.getCurrentBalance(organizationId, wallet.id);
+            return {
+                ...wallet,
+                balance
+            };
+        }));
+
+        res.json(walletsWithBalances);
+    } catch (error: any) {
+        console.error('Error fetching external wallets:', error);
+        res.status(500).json({ error: 'Failed to fetch external wallets', details: error.message });
+    }
+};
+
+export const createExternalWallet = async (req: any, res: any): Promise<any> => {
+    try {
+        const { name, providerType, providerName, qbAccountId } = req.body;
+        const organizationId = req.user.organization_id;
+
+        if (!name || name.trim() === '') {
+            return res.status(400).json({ error: 'Wallet name is required' });
+        }
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const { data: wallet, error } = await supabase
+            .from('external_wallets')
+            .insert({
+                organization_id: organizationId,
+                name: name.trim(),
+                provider_type: providerType || 'CUSTOM',
+                provider_name: providerName || null,
+                qb_account_id: qbAccountId || null
+            })
+            .select()
+            .single();
+
+        if (error) {
+            if (error.code === '23505') {
+                return res.status(400).json({ error: 'A wallet with this name already exists' });
+            }
+            throw error;
+        }
+
+        res.status(201).json(wallet);
+    } catch (error: any) {
+        console.error('Error creating external wallet:', error);
+        res.status(500).json({ error: 'Failed to create external wallet', details: error.message });
+    }
+};
+
+export const deleteExternalWallet = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organizationId = req.user.organization_id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        const { error } = await supabase
+            .from('external_wallets')
+            .delete()
+            .eq('id', id)
+            .eq('organization_id', organizationId);
+
+        if (error) throw error;
+
+        res.json({ message: 'Wallet deleted successfully' });
+    } catch (error: any) {
+        console.error('Error deleting external wallet:', error);
+        res.status(500).json({ error: 'Failed to delete external wallet', details: error.message });
+    }
+};
+
+// Bank statement import preview and confirmation
+export const previewStatementImport = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id: externalWalletId } = req.params;
+        const { rows } = req.body;
+        const organizationId = req.user.organization_id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        if (!rows || !Array.isArray(rows)) {
+            return res.status(400).json({ error: 'Invalid rows data' });
+        }
+
+        const { data: wallet, error: walletError } = await supabase
+            .from('external_wallets')
+            .select('*')
+            .eq('id', externalWalletId)
+            .eq('organization_id', organizationId)
+            .maybeSingle();
+
+        if (walletError || !wallet) {
+            return res.status(404).json({ error: 'External wallet not found' });
+        }
+
+        const dates = rows.map(r => new Date(r.date)).filter(d => !isNaN(d.getTime()));
+        if (dates.length === 0) {
+            return res.status(400).json({ error: 'No valid dates found in statement' });
+        }
+        const minDate = new Date(Math.min(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+        const maxDate = new Date(Math.max(...dates.map(d => d.getTime()))).toISOString().split('T')[0];
+
+        const { data: existingEntries, error: entriesError } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('account_type', externalWalletId)
+            .gte('date', minDate)
+            .lte('date', maxDate)
+            .neq('status', 'PENDING');
+
+        if (entriesError) throw entriesError;
+
+        const results = [];
+        const dateDiffDays = (d1: string, d2: string) => {
+            const diffTime = Math.abs(new Date(d1).getTime() - new Date(d2).getTime());
+            return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        };
+
+        for (const row of rows) {
+            const rowDate = row.date;
+            const rowDebit = parseFloat(row.debit) || 0;
+            const rowCredit = parseFloat(row.credit) || 0;
+            const rowBalance = parseFloat(row.balance) || 0;
+
+            const expectedDebit = rowCredit;
+            const expectedCredit = rowDebit;
+
+            const exactDup = existingEntries?.find(e => 
+                e.date === rowDate &&
+                parseFloat(e.debit) === expectedDebit &&
+                parseFloat(e.credit) === expectedCredit &&
+                e.description === row.details &&
+                e.external_reference !== null
+            );
+
+            if (exactDup) {
+                results.push({
+                    row,
+                    status: 'DUPLICATE',
+                    reason: 'Transaction already imported'
+                });
+                continue;
+            }
+
+            const manualMatch = existingEntries?.find(e => 
+                dateDiffDays(e.date, rowDate) <= 3 &&
+                parseFloat(e.debit) === expectedDebit &&
+                parseFloat(e.credit) === expectedCredit &&
+                e.external_reference === null
+            );
+
+            if (manualMatch) {
+                results.push({
+                    row,
+                    status: 'MATCHED',
+                    matchId: manualMatch.id,
+                    matchDescription: manualMatch.description,
+                    matchDate: manualMatch.date,
+                    reason: 'Matches manual transaction'
+                });
+                continue;
+            }
+
+            results.push({
+                row,
+                status: 'NEW',
+                reason: 'Will be imported'
+            });
+        }
+
+        res.json({ results });
+    } catch (err: any) {
+        console.error('Error previewing statement:', err);
+        res.status(500).json({ error: 'Failed to preview statement', details: err.message });
+    }
+};
+
+export const importStatement = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id: externalWalletId } = req.params;
+        const { items } = req.body;
+        const organizationId = req.user.organization_id;
+        const userId = req.user.id;
+
+        if (!organizationId) {
+            return res.status(400).json({ error: 'User organization context missing' });
+        }
+
+        if (!items || !Array.isArray(items)) {
+            return res.status(400).json({ error: 'Invalid items data' });
+        }
+
+        const { data: wallet } = await supabase
+            .from('external_wallets')
+            .select('*')
+            .eq('id', externalWalletId)
+            .eq('organization_id', organizationId)
+            .single();
+
+        if (!wallet) return res.status(404).json({ error: 'Wallet not found' });
+
+        let earliestDate = '9999-12-31';
+        let earliestCreatedAt = new Date().toISOString();
+
+        for (const item of items) {
+            if (item.status === 'DUPLICATE') continue;
+
+            const row = item.row;
+            const rowDate = row.date;
+            const rowDebit = parseFloat(row.debit) || 0;
+            const rowCredit = parseFloat(row.credit) || 0;
+
+            if (rowDate < earliestDate) {
+                earliestDate = rowDate;
+            }
+
+            if (item.status === 'MATCHED' && item.matchId) {
+                const { data: existing } = await supabase
+                    .from('cashbook_entries')
+                    .select('description, created_at')
+                    .eq('id', item.matchId)
+                    .single();
+
+                const desc = existing 
+                    ? `${existing.description} (Matched to statement)`
+                    : `${row.details} (Matched to statement)`;
+
+                const { data: updatedEntry } = await supabase
+                    .from('cashbook_entries')
+                    .update({
+                        external_reference: `STMT:${externalWalletId}:${rowDate}:${Date.now()}`,
+                        description: desc
+                    })
+                    .eq('id', item.matchId)
+                    .select('created_at')
+                    .single();
+                
+                if (updatedEntry && updatedEntry.created_at < earliestCreatedAt) {
+                    earliestCreatedAt = updatedEntry.created_at;
+                }
+            } else if (item.status === 'NEW') {
+                const entryType = rowCredit > 0 ? 'INFLOW' : 'EXPENSE';
+                const debit = rowCredit;
+                const credit = rowDebit;
+
+                const newEntry = await cashbookService.createEntry(organizationId, {
+                    entry_type: entryType,
+                    description: row.details,
+                    debit,
+                    credit,
+                    date: rowDate,
+                    created_by: userId,
+                    account_type: externalWalletId,
+                    external_reference: `STMT:${externalWalletId}:${rowDate}:${Date.now()}`,
+                    status: 'COMPLETED'
+                } as any);
+
+                if ((newEntry as any).created_at < earliestCreatedAt) {
+                    earliestCreatedAt = (newEntry as any).created_at;
+                }
+            }
+        }
+
+        if (earliestDate !== '9999-12-31') {
+            await cashbookService.recalculateBalancesFrom(
+                organizationId,
+                earliestDate,
+                earliestCreatedAt,
+                externalWalletId
+            );
+        }
+
+        res.json({ success: true, message: 'Statement imported successfully' });
+    } catch (err: any) {
+        console.error('Error importing statement:', err);
+        res.status(500).json({ error: 'Failed to import statement', details: err.message });
     }
 };

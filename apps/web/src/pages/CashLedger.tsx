@@ -23,6 +23,7 @@ import {
     Check,
     RefreshCw,
     Download,
+    Upload,
     Flag,
     Link2,
     ArrowDownToLine,
@@ -33,6 +34,8 @@ import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
 import CashInflowModal from '../components/CashInflowModal';
 import CreateWalletModal from '../components/CreateWalletModal';
+import CreateExternalWalletModal from '../components/CreateExternalWalletModal';
+import ImportStatementModal from '../components/ImportStatementModal';
 import TransferModal from '../components/TransferModal';
 import TransferToWalletModal from '../components/TransferToWalletModal';
 import ShareWalletLinkModal from '../components/ShareWalletLinkModal';
@@ -267,6 +270,8 @@ const CashLedger: React.FC = () => {
     const [selectedWalletId, setSelectedWalletId] = useState<string | undefined>(undefined);
     const [categoryGroup, setCategoryGroup] = useState<'MONEYWISE' | 'EXTERNAL'>('MONEYWISE');
     const [isCreateWalletModalOpen, setIsCreateWalletModalOpen] = useState(false);
+    const [isCreateExtWalletOpen, setIsCreateExtWalletOpen] = useState(false);
+    const [isImportStatementOpen, setIsImportStatementOpen] = useState(false);
     const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
     const [isCashTransferModalOpen, setIsCashTransferModalOpen] = useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = useState(false);
@@ -1111,8 +1116,6 @@ Status: VERIFIED`;
     ];
     const externalAccounts: { id: string; name: string }[] = [
         { id: 'CASH', name: 'Cash Account' },
-        { id: 'AIRTEL_MONEY', name: 'Airtel Money' },
-        { id: 'BANK', name: 'Bank Account' },
         ...(overview?.additionalExternalAccounts ?? []).filter(a => a.id !== 'MASTERFEES'),
     ];
     const slideCount = categoryGroup === 'MONEYWISE'
@@ -1593,30 +1596,44 @@ Status: VERIFIED`;
                     </div>
 
                     {!isRequestor && (
-                        <div className="h-8 px-1 bg-white rounded-lg shadow-[0px_2px_8px_0px_rgba(17,24,39,0.08)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center">
-                            <ToolbarAction icon={ArrowDownToLine} label="Deposit" onClick={() => setIsInflowModalOpen(true)} />
-                            <div className="w-[1px] h-4 bg-[#E8EEF8]" />
-                            <ToolbarAction
-                                icon={ArrowLeftRight}
-                                label="Transfer"
-                                disabled={!mobileCanTransfer}
-                                onClick={() => {
-                                    if (!mobileCanTransfer) return;
-                                    if (categoryGroup === 'MONEYWISE') setIsTransferModalOpen(true);
-                                    else setIsCashTransferModalOpen(true);
-                                }}
-                            />
-                            <div className="w-[1px] h-4 bg-[#E8EEF8]" />
-                            <ToolbarAction
-                                icon={Link2}
-                                label="Pay Link"
-                                disabled={!mobileCanPayLink}
-                                onClick={() => {
-                                    if (!mobileCanPayLink) return;
-                                    setShareWalletId(selectedWalletId ?? null);
-                                    setIsShareModalOpen(true);
-                                }}
-                            />
+                        <div className="h-8 px-1 bg-white rounded-lg shadow-[0px_2px_8px_0px_rgba(17,24,39,0.08)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center font-bold">
+                            {categoryGroup === 'MONEYWISE' ? (
+                                <>
+                                    <ToolbarAction icon={ArrowDownToLine} label="Deposit" onClick={() => setIsInflowModalOpen(true)} />
+                                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                                    <ToolbarAction
+                                        icon={ArrowLeftRight}
+                                        label="Transfer"
+                                        disabled={!mobileCanTransfer}
+                                        onClick={() => {
+                                            if (!mobileCanTransfer) return;
+                                            setIsTransferModalOpen(true);
+                                        }}
+                                    />
+                                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                                    <ToolbarAction
+                                        icon={Link2}
+                                        label="Pay Link"
+                                        disabled={!mobileCanPayLink}
+                                        onClick={() => {
+                                            if (!mobileCanPayLink) return;
+                                            setShareWalletId(selectedWalletId ?? null);
+                                            setIsShareModalOpen(true);
+                                        }}
+                                    />
+                                </>
+                            ) : (
+                                <>
+                                    <ToolbarAction icon={PlusCircle} label="Add Wallet" onClick={() => setIsCreateExtWalletOpen(true)} />
+                                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
+                                    <ToolbarAction
+                                        icon={Upload}
+                                        label="Import Statement"
+                                        disabled={!selectedWalletId || selectedWalletId === 'CASH'}
+                                        onClick={() => setIsImportStatementOpen(true)}
+                                    />
+                                </>
+                            )}
                         </div>
                     )}
                 </div>
@@ -2182,6 +2199,24 @@ Status: VERIFIED`;
                     setSelectedWalletId(undefined);
                     await loadData();
                 }}
+            />
+
+            <CreateExternalWalletModal
+                isOpen={isCreateExtWalletOpen}
+                onClose={() => setIsCreateExtWalletOpen(false)}
+                onSuccess={async () => {
+                    await loadData();
+                }}
+            />
+
+            <ImportStatementModal
+                isOpen={isImportStatementOpen}
+                onClose={() => setIsImportStatementOpen(false)}
+                onSuccess={async () => {
+                    await loadData();
+                }}
+                walletId={selectedWalletId || ''}
+                walletName={externalAccounts.find(a => a.id === selectedWalletId)?.name || ''}
             />
 
             <TransferModal
