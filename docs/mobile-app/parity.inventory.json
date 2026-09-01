@@ -1222,10 +1222,10 @@
   ],
   "services": [
     {
-      "id": "apps/web/src/services/account.service.ts",
+      "id": "packages/core/src/services/account.service.ts",
       "name": "account.service",
-      "home": "web",
-      "loc": 130,
+      "home": "core",
+      "loc": 80,
       "methods": [
         "getAll",
         "create",
@@ -1237,9 +1237,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/ai.service.ts",
+      "id": "packages/core/src/services/ai.service.ts",
       "name": "ai.service",
-      "home": "web",
+      "home": "core",
       "loc": 90,
       "methods": [
         "getRules",
@@ -1254,10 +1254,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/budget.service.ts",
+      "id": "packages/core/src/services/budget.service.ts",
       "name": "budget.service",
-      "home": "web",
-      "loc": 54,
+      "home": "core",
+      "loc": 41,
       "methods": [
         "getBudgets",
         "setBudget"
@@ -1265,9 +1265,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/cashbook.service.ts",
+      "id": "packages/core/src/services/cashbook.service.ts",
       "name": "cashbook.service",
-      "home": "web",
+      "home": "core",
       "loc": 299,
       "methods": [
         "getEntries",
@@ -1297,10 +1297,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/department.service.ts",
+      "id": "packages/core/src/services/department.service.ts",
       "name": "department.service",
-      "home": "web",
-      "loc": 45,
+      "home": "core",
+      "loc": 39,
       "methods": [
         "list",
         "create",
@@ -1310,10 +1310,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/highlights.service.ts",
+      "id": "packages/core/src/services/highlights.service.ts",
       "name": "highlights.service",
-      "home": "web",
-      "loc": 73,
+      "home": "core",
+      "loc": 66,
       "methods": [
         "getHighlights",
         "acknowledgeAchievements"
@@ -1321,10 +1321,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/integration.service.ts",
+      "id": "packages/core/src/services/integration.service.ts",
       "name": "integration.service",
-      "home": "web",
-      "loc": 200,
+      "home": "core",
+      "loc": 146,
       "methods": [
         "getStatus",
         "getConnectUrl",
@@ -1364,9 +1364,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/onboarding.service.ts",
+      "id": "packages/core/src/services/onboarding.service.ts",
       "name": "onboarding.service",
-      "home": "web",
+      "home": "core",
       "loc": 131,
       "methods": [
         "getState",
@@ -1383,10 +1383,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/organization.service.ts",
+      "id": "packages/core/src/services/organization.service.ts",
       "name": "organization.service",
-      "home": "web",
-      "loc": 87,
+      "home": "core",
+      "loc": 42,
       "methods": [
         "getOrganization",
         "updateOrganization",
@@ -1441,10 +1441,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/report.service.ts",
+      "id": "packages/core/src/services/report.service.ts",
       "name": "report.service",
-      "home": "web",
-      "loc": 65,
+      "home": "core",
+      "loc": 44,
       "methods": [
         "getExpenditures",
         "getExpenditureItems"
@@ -1489,10 +1489,10 @@
       "touchesSupabaseDirectly": true
     },
     {
-      "id": "apps/web/src/services/schedule.service.ts",
+      "id": "packages/core/src/services/schedule.service.ts",
       "name": "schedule.service",
-      "home": "web",
-      "loc": 130,
+      "home": "core",
+      "loc": 98,
       "methods": [
         "getAll",
         "getCounts",
@@ -1519,10 +1519,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/voucher.service.ts",
+      "id": "packages/core/src/services/voucher.service.ts",
       "name": "voucher.service",
-      "home": "web",
-      "loc": 133,
+      "home": "core",
+      "loc": 83,
       "methods": [
         "getAll",
         "getById",
@@ -4085,406 +4085,406 @@
       "kind": "service",
       "label": "account.service.getAll()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:account.service.create",
       "kind": "service",
       "label": "account.service.create()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:account.service.update",
       "kind": "service",
       "label": "account.service.update()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:account.service.importFromQuickBooks",
       "kind": "service",
       "label": "account.service.importFromQuickBooks()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:account.service.suggestAccount",
       "kind": "service",
       "label": "account.service.suggestAccount()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:account.service.suggestBatch",
       "kind": "service",
       "label": "account.service.suggestBatch()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.getRules",
       "kind": "service",
       "label": "ai.service.getRules()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.createRule",
       "kind": "service",
       "label": "ai.service.createRule()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.updateRule",
       "kind": "service",
       "label": "ai.service.updateRule()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.deleteRule",
       "kind": "service",
       "label": "ai.service.deleteRule()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.getDailyMetrics",
       "kind": "service",
       "label": "ai.service.getDailyMetrics()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.getStats",
       "kind": "service",
       "label": "ai.service.getStats()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.getModelSettings",
       "kind": "service",
       "label": "ai.service.getModelSettings()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:ai.service.updateModelSettings",
       "kind": "service",
       "label": "ai.service.updateModelSettings()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:budget.service.getBudgets",
       "kind": "service",
       "label": "budget.service.getBudgets()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:budget.service.setBudget",
       "kind": "service",
       "label": "budget.service.setBudget()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.getEntries",
       "kind": "service",
       "label": "cashbook.service.getEntries()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.getOverview",
       "kind": "service",
       "label": "cashbook.service.getOverview()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.getBalance",
       "kind": "service",
       "label": "cashbook.service.getBalance()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.getSummary",
       "kind": "service",
       "label": "cashbook.service.getSummary()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.reconcile",
       "kind": "service",
       "label": "cashbook.service.reconcile()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.returnCash",
       "kind": "service",
       "label": "cashbook.service.returnCash()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.closeBook",
       "kind": "service",
       "label": "cashbook.service.closeBook()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.logInflow",
       "kind": "service",
       "label": "cashbook.service.logInflow()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.recordManualSale",
       "kind": "service",
       "label": "cashbook.service.recordManualSale()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.logWalletDepositIntent",
       "kind": "service",
       "label": "cashbook.service.logWalletDepositIntent()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.classifyBulk",
       "kind": "service",
       "label": "cashbook.service.classifyBulk()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.postToQuickBooks",
       "kind": "service",
       "label": "cashbook.service.postToQuickBooks()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.updateAccount",
       "kind": "service",
       "label": "cashbook.service.updateAccount()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.narrateEntry",
       "kind": "service",
       "label": "cashbook.service.narrateEntry()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.getWallets",
       "kind": "service",
       "label": "cashbook.service.getWallets()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.createWallet",
       "kind": "service",
       "label": "cashbook.service.createWallet()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.transfer",
       "kind": "service",
       "label": "cashbook.service.transfer()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.transferToWallet",
       "kind": "service",
       "label": "cashbook.service.transferToWallet()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.getExternalWallets",
       "kind": "service",
       "label": "cashbook.service.getExternalWallets()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.createExternalWallet",
       "kind": "service",
       "label": "cashbook.service.createExternalWallet()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.deleteExternalWallet",
       "kind": "service",
       "label": "cashbook.service.deleteExternalWallet()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.previewStatementImport",
       "kind": "service",
       "label": "cashbook.service.previewStatementImport()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:cashbook.service.importStatement",
       "kind": "service",
       "label": "cashbook.service.importStatement()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:department.service.list",
       "kind": "service",
       "label": "department.service.list()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:department.service.create",
       "kind": "service",
       "label": "department.service.create()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:department.service.update",
       "kind": "service",
       "label": "department.service.update()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:department.service.delete",
       "kind": "service",
       "label": "department.service.delete()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:highlights.service.getHighlights",
       "kind": "service",
       "label": "highlights.service.getHighlights()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:highlights.service.acknowledgeAchievements",
       "kind": "service",
       "label": "highlights.service.acknowledgeAchievements()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.getStatus",
       "kind": "service",
       "label": "integration.service.getStatus()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.getConnectUrl",
       "kind": "service",
       "label": "integration.service.getConnectUrl()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.disconnect",
       "kind": "service",
       "label": "integration.service.disconnect()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.getAccounts",
       "kind": "service",
       "label": "integration.service.getAccounts()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.getAccountTransactions",
       "kind": "service",
       "label": "integration.service.getAccountTransactions()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.retrySync",
       "kind": "service",
       "label": "integration.service.retrySync()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.getOAuthUrl",
       "kind": "service",
       "label": "integration.service.getOAuthUrl()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.connect",
       "kind": "service",
       "label": "integration.service.connect()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.getFeeCategories",
       "kind": "service",
       "label": "integration.service.getFeeCategories()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.mapCategory",
       "kind": "service",
       "label": "integration.service.mapCategory()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.setLencoMode",
       "kind": "service",
       "label": "integration.service.setLencoMode()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.sync",
       "kind": "service",
       "label": "integration.service.sync()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:integration.service.reconcile",
       "kind": "service",
       "label": "integration.service.reconcile()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.getAccounts",
@@ -4575,98 +4575,98 @@
       "kind": "service",
       "label": "onboarding.service.getState()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.saveProgress",
       "kind": "service",
       "label": "onboarding.service.saveProgress()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.updateOrganizationName",
       "kind": "service",
       "label": "onboarding.service.updateOrganizationName()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.saveProfile",
       "kind": "service",
       "label": "onboarding.service.saveProfile()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.generateChartOfAccounts",
       "kind": "service",
       "label": "onboarding.service.generateChartOfAccounts()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.saveChartOfAccounts",
       "kind": "service",
       "label": "onboarding.service.saveChartOfAccounts()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.getWalletStatus",
       "kind": "service",
       "label": "onboarding.service.getWalletStatus()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.claimWallet",
       "kind": "service",
       "label": "onboarding.service.claimWallet()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.confirmActivation",
       "kind": "service",
       "label": "onboarding.service.confirmActivation()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.complete",
       "kind": "service",
       "label": "onboarding.service.complete()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:organization.service.getOrganization",
       "kind": "service",
       "label": "organization.service.getOrganization()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:organization.service.updateOrganization",
       "kind": "service",
       "label": "organization.service.updateOrganization()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:organization.service.deleteOrganization",
       "kind": "service",
       "label": "organization.service.deleteOrganization()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:organization.service.getOrCreateQuickLinkUsername",
       "kind": "service",
       "label": "organization.service.getOrCreateQuickLinkUsername()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.listStaff",
@@ -4862,14 +4862,14 @@
       "kind": "service",
       "label": "report.service.getExpenditures()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:report.service.getExpenditureItems",
       "kind": "service",
       "label": "report.service.getExpenditureItems()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.autoDisburse",
@@ -5072,49 +5072,49 @@
       "kind": "service",
       "label": "schedule.service.getAll()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:schedule.service.getCounts",
       "kind": "service",
       "label": "schedule.service.getCounts()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:schedule.service.create",
       "kind": "service",
       "label": "schedule.service.create()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:schedule.service.update",
       "kind": "service",
       "label": "schedule.service.update()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:schedule.service.delete",
       "kind": "service",
       "label": "schedule.service.delete()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:schedule.service.getRuns",
       "kind": "service",
       "label": "schedule.service.getRuns()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:schedule.service.runNow",
       "kind": "service",
       "label": "schedule.service.runNow()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:user.service.getAll",
@@ -5156,35 +5156,35 @@
       "kind": "service",
       "label": "voucher.service.getAll()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:voucher.service.getById",
       "kind": "service",
       "label": "voucher.service.getById()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:voucher.service.createFromRequisition",
       "kind": "service",
       "label": "voucher.service.createFromRequisition()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:voucher.service.post",
       "kind": "service",
       "label": "voucher.service.post()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:voucher.service.postVoucherWithClassification",
       "kind": "service",
       "label": "voucher.service.postVoucherWithClassification()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /accounts",

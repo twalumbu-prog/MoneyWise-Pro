@@ -350,294 +350,294 @@
     "note": "Unrouted stub"
   },
   "service:account.service.getAll": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:account.service.create": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:account.service.update": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:account.service.importFromQuickBooks": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:account.service.suggestAccount": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:account.service.suggestBatch": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.getRules": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.createRule": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.updateRule": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.deleteRule": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.getDailyMetrics": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.getStats": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.getModelSettings": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:ai.service.updateModelSettings": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:budget.service.getBudgets": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:budget.service.setBudget": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.getEntries": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.getOverview": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.getBalance": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.getSummary": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.reconcile": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.returnCash": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.closeBook": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.logInflow": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.recordManualSale": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.logWalletDepositIntent": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.classifyBulk": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.postToQuickBooks": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.updateAccount": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.narrateEntry": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.getWallets": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.createWallet": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.transfer": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.transferToWallet": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.getExternalWallets": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.createExternalWallet": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.deleteExternalWallet": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.previewStatementImport": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:cashbook.service.importStatement": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:department.service.list": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:department.service.create": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:department.service.update": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:department.service.delete": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:highlights.service.getHighlights": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:highlights.service.acknowledgeAchievements": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.getStatus": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.getConnectUrl": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.disconnect": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.getAccounts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.getAccountTransactions": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.retrySync": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.getOAuthUrl": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.connect": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.getFeeCategories": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.mapCategory": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.setLencoMode": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.sync": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:integration.service.reconcile": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.getAccounts": {
     "state": "PLANNED",
@@ -700,74 +700,74 @@
     "note": ""
   },
   "service:onboarding.service.getState": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.saveProgress": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.updateOrganizationName": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.saveProfile": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.generateChartOfAccounts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.saveChartOfAccounts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.getWalletStatus": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.claimWallet": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.confirmActivation": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.complete": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:organization.service.getOrganization": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:organization.service.updateOrganization": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:organization.service.deleteOrganization": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:organization.service.getOrCreateQuickLinkUsername": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.listStaff": {
     "state": "PLANNED",
@@ -905,14 +905,14 @@
     "note": ""
   },
   "service:report.service.getExpenditures": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:report.service.getExpenditureItems": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.autoDisburse": {
     "state": "PLANNED",
@@ -1055,89 +1055,89 @@
     "note": "Storage/direct-supabase calls need a native file adapter"
   },
   "service:schedule.service.getAll": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:schedule.service.getCounts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:schedule.service.create": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:schedule.service.update": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:schedule.service.delete": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:schedule.service.getRuns": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:schedule.service.runNow": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:user.service.getAll": {
     "state": "DONE",
     "phase": "P0",
-    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:user.service.create": {
     "state": "DONE",
     "phase": "P0",
-    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:user.service.update": {
     "state": "DONE",
     "phase": "P0",
-    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:user.service.delete": {
     "state": "DONE",
     "phase": "P0",
-    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:user.service.resendInvite": {
     "state": "DONE",
     "phase": "P0",
-    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:voucher.service.getAll": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:voucher.service.getById": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:voucher.service.createFromRequisition": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:voucher.service.post": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:voucher.service.postVoucherWithClassification": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "api:GET /accounts": {
     "state": "PLANNED",

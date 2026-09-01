@@ -8,6 +8,7 @@
  */
 
 import { getCore } from '../platform';
+import { ApiError } from './ApiError';
 
 // ── In-memory access-token cache ─────────────────────────────────────────────
 // supabase.auth.getSession() serializes on an auth lock (navigator.locks). A
@@ -211,11 +212,16 @@ async function doApiFetch(path: string, options: RequestInit = {}): Promise<Resp
             } else {
                 errorMsg = rawError || `API Error: ${response.status}`;
             }
-            throw new Error(errorMsg);
+            throw new ApiError(errorMsg, response.status, errorData, path);
         } else {
             const text = await response.text();
             console.error('[API Client] Non-JSON error response:', text.slice(0, 500));
-            throw new Error(`API Error: ${response.status} ${response.statusText}`);
+            throw new ApiError(
+                `API Error: ${response.status} ${response.statusText}`,
+                response.status,
+                { error: text.slice(0, 500) },
+                path,
+            );
         }
     }
 

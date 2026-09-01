@@ -8,9 +8,9 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 428 | 90.7% |
+| **PLANNED** | 342 | 72.5% |
+| **DONE** | 96 | 20.3% |
 | **WEB_ONLY** | 27 | 5.7% |
-| **DONE** | 10 | 2.1% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
 
 **472** trackable units · **0** untriaged.
@@ -123,23 +123,23 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | Service | Lives in | Methods | Transport | Status |
 | --- | --- | --- | --- | --- |
-| account.service | web | 6 | apiFetch only | P0 |
-| ai.service | web | 8 | apiFetch only | P0 |
-| budget.service | web | 2 | apiFetch only | P0 |
-| cashbook.service | web | 23 | apiFetch only | P0 |
-| department.service | web | 4 | apiFetch only | P0 |
-| highlights.service | web | 2 | apiFetch only | P0 |
-| integration.service | web | 13 | apiFetch only | P0 |
+| account.service | **core** | 6 | apiFetch only | DONE |
+| ai.service | **core** | 8 | apiFetch only | DONE |
+| budget.service | **core** | 2 | apiFetch only | DONE |
+| cashbook.service | **core** | 23 | apiFetch only | DONE |
+| department.service | **core** | 4 | apiFetch only | DONE |
+| highlights.service | **core** | 2 | apiFetch only | DONE |
+| integration.service | **core** | 13 | apiFetch only | DONE |
 | lenco.service | web | 12 | apiFetch only | P0 |
-| onboarding.service | web | 10 | apiFetch only | P0 |
-| organization.service | web | 4 | apiFetch only | P0 |
+| onboarding.service | **core** | 10 | apiFetch only | DONE |
+| organization.service | **core** | 4 | apiFetch only | DONE |
 | payroll.service | web | 14 | apiFetch only | P0 |
 | product.service | web | 13 | apiFetch only | P0 |
-| report.service | web | 2 | apiFetch only | P0 |
+| report.service | **core** | 2 | apiFetch only | DONE |
 | requisition.service | web | 28 | ⚠️ direct supabase/storage | P0 |
-| schedule.service | web | 7 | apiFetch only | P0 |
+| schedule.service | **core** | 7 | apiFetch only | DONE |
 | user.service | **core** | 5 | apiFetch only | DONE |
-| voucher.service | web | 5 | apiFetch only | P0 |
+| voucher.service | **core** | 5 | apiFetch only | DONE |
 
 ## 5. Backend endpoints (244)
 

@@ -30,6 +30,7 @@ export type {
 } from './platform';
 
 export { apiFetch, apiJson } from './api/apiFetch';
+export { ApiError, isApiError } from './api/ApiError';
 
 export { userService } from './services/user.service';
 export type {
@@ -40,3 +41,60 @@ export type {
     CreateUserResult,
     MutationAck,
 } from './services/user.service';
+
+export { accountService } from './services/account.service';
+export type { Account } from './services/account.service';
+
+export { budgetService } from './services/budget.service';
+export type { Budget, SetBudgetPayload } from './services/budget.service';
+
+export { departmentService } from './services/department.service';
+export type { Department, DepartmentConfig } from './services/department.service';
+
+export { highlightsService } from './services/highlights.service';
+export type {
+    HighlightCard,
+    HighlightHeadline,
+    HighlightsPayload,
+    Achievement,
+} from './services/highlights.service';
+
+export { reportService } from './services/report.service';
+export type {
+    ExpenditureAggregation,
+    ExpenditureItem,
+    ExpenditureMode,
+} from './services/report.service';
+
+export { scheduleService } from './services/schedule.service';
+export type {
+    ScheduledItem,
+    ScheduledItemRun,
+    ScheduleCategory,
+    ScheduleCadence,
+    CategoryCounts,
+    CreateScheduledItemPayload,
+} from './services/schedule.service';
+
+export { voucherService } from './services/voucher.service';
+export type { Voucher, VoucherLine } from './services/voucher.service';
+
+export { aiService } from './services/ai.service';
+export type { AccountingRule, AIMetric } from './services/ai.service';
+
+export { cashbookService } from './services/cashbook.service';
+export type { CashbookEntry, CashbookSummary } from './services/cashbook.service';
+
+export { PL_SECTIONS, onboardingService } from './services/onboarding.service';
+export type { OnboardingProgress, BusinessProfile, OnboardingState, PlSection, CoaAccount, WalletStatus } from './services/onboarding.service';
+
+export { organizationService } from './services/organization.service';
+export type { Organization } from './services/organization.service';
+
+export { integrationService, masterFeesService } from './services/integration.service';
+export type {
+    IntegrationStatus,
+    MasterFeesStatus,
+    MasterFeesCategory,
+    MasterFeesReconciliation,
+} from './services/integration.service';
