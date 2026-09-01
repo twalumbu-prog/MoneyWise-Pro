@@ -35,8 +35,8 @@ interface SegmentedControlProps {
     options: SegOption[];
     value: string;
     onChange: (value: string) => void;
-    /** 'pill' = filled white chip on a gray track; 'outline' = blue-outlined chip on transparent track; 'capsule' = fully-rounded pill on a rounded-full track. */
-    variant?: 'pill' | 'outline' | 'capsule';
+    /** 'pill' = filled white chip on a gray track; 'outline' = blue-outlined chip on transparent track; 'capsule' = fully-rounded pill on a rounded-full track; 'flat' = gray chip, no shadow, ~6px radius, on a transparent gapped track. */
+    variant?: 'pill' | 'outline' | 'capsule' | 'flat';
     className?: string;
     /** Override the track's background (defaults to the variant's own bg-*). */
     trackBgClassName?: string;
@@ -94,17 +94,22 @@ export function SegmentedControl({
 
     const isPill = variant === 'pill';
     const isCapsule = variant === 'capsule';
+    const isFlat = variant === 'flat';
 
     const trackClass = isPill
         ? `relative flex ${trackBgClassName || 'bg-gray-100'} p-1 rounded-xl border border-gray-200`
         : isCapsule
         ? `relative flex ${trackBgClassName || 'bg-gray-50'} p-0.5 rounded-[80px]`
+        : isFlat
+        ? `relative flex items-center gap-6 ${trackBgClassName || ''}`
         : 'relative flex items-center gap-1.5';
 
     const highlightClass = isPill
         ? 'bg-white shadow-sm rounded-lg'
         : isCapsule
         ? 'bg-white rounded-[80px] shadow-[0px_3px_1px_0px_rgba(0,0,0,0.04),0px_3px_8px_0px_rgba(0,0,0,0.12)] outline outline-[0.5px] outline-black/5'
+        : isFlat
+        ? 'bg-gray-100 rounded-md'
         : 'bg-white rounded-xl border-[1.5px] border-[#006AFF]';
 
     return (
@@ -132,6 +137,10 @@ export function SegmentedControl({
                     : isCapsule
                     ? `relative z-10 flex-1 py-2 px-2.5 text-xs text-center leading-4 transition-colors duration-200 ${
                           active ? 'text-gray-900' : (inactiveTextClassName || 'text-gray-400')
+                      }`
+                    : isFlat
+                    ? `relative z-10 flex-1 flex items-center justify-center px-1 text-center transition-colors duration-200 ${
+                          active ? 'text-black' : (inactiveTextClassName || 'text-neutral-400')
                       }`
                     : `relative z-10 px-3 py-1.5 rounded-xl text-sm transition-colors duration-200 ${
                           active ? 'text-[#006AFF] font-bold' : 'text-[#7C8FA2] font-normal'

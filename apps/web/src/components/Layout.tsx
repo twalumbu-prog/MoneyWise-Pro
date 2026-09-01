@@ -12,9 +12,11 @@ interface LayoutProps {
     noPadding?: boolean;
     title?: string;
     mobileHeaderAction?: React.ReactNode;
+    /** Hides the mobile sticky header entirely (back button + title). Bottom nav is still hidden on isBackButtonPage routes. */
+    mobileHeaderHidden?: boolean;
 }
 
-export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title, mobileHeaderAction }) => {
+export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title, mobileHeaderAction, mobileHeaderHidden = false }) => {
     const { user, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId } = useAuth();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const location = useLocation();
@@ -75,12 +77,15 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             {/* Right column: desktop header + content, or the full mobile stack.
                 Desktop background is forced to #F3F5FC (the workspace canvas) with `!`
                 so per-page backgroundColor props only steer the mobile view. The
-                sidebar + header share this color so they sit seamlessly against it. */}
-            <div className={`flex-1 flex flex-col min-h-screen md:h-screen md:overflow-hidden ${backgroundColor} md:!bg-[#F3F5FC]`}>
+                sidebar + header share this color so they sit seamlessly against it.
+                isFlexPage routes need a hard mobile viewport cap (h-screen, not
+                min-h-screen) so their internal flex-1/min-h-0 chain can pin a
+                sticky footer — otherwise the column just grows past the viewport. */}
+            <div className={`flex-1 flex flex-col ${isFlexPage ? 'h-screen' : 'min-h-screen'} md:h-screen md:overflow-hidden ${backgroundColor} md:!bg-[#F3F5FC]`}>
             <DesktopHeader title={getPageTitle()} />
 
             {/* Mobile Header */}
-            <div className="md:hidden sticky top-0 z-20">
+            {!mobileHeaderHidden && <div className="md:hidden sticky top-0 z-20">
                 <div className={`${backgroundColor} px-6 py-4 flex items-center justify-between backdrop-blur-md bg-opacity-80`}>
                     {/* Back button for back-button pages, title for all others */}
                     {isBackButtonPage ? (
@@ -96,7 +101,10 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                                         <path d="M15 18l-6-6 6-6" />
                                     </svg>
                                 </button>
-                                <h1 className="text-xl font-bold font-['DM_Sans'] text-gray-900 leading-tight">
+                                <h1 className={location.pathname.startsWith('/invest')
+                                    ? 'font-advercase text-2xl font-bold text-black'
+                                    : "text-xl font-bold font-['DM_Sans'] text-gray-900 leading-tight"
+                                }>
                                     {getPageTitle()}
                                 </h1>
                             </div>
@@ -218,7 +226,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                         </div>
                     </>
                 )}
-            </div>
+            </div>}
 
             {/* Main Content Area
                 On the mobile Schedules page we flip to a flex-column/overflow-hidden
@@ -227,7 +235,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                 breaking the height chain. */}
             <main className={`flex-1 overflow-x-hidden md:pb-0 md:min-h-0 md:overflow-y-auto
                 ${isFlexPage
-                    ? 'flex flex-col overflow-hidden pb-0'
+                    ? 'flex flex-col overflow-hidden pb-0 min-h-0'
                     : `overflow-y-auto ${isRequestor ? 'h-screen md:h-auto' : 'h-[calc(100vh-60px)] md:h-auto'} ${isBackButtonPage ? 'pb-4' : 'pb-28'}`
                 }`}>
                 <div className={noPadding
