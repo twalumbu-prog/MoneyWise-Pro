@@ -1343,10 +1343,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/lenco.service.ts",
+      "id": "packages/core/src/services/lenco.service.ts",
       "name": "lenco.service",
-      "home": "web",
-      "loc": 243,
+      "home": "core",
+      "loc": 80,
       "methods": [
         "getAccounts",
         "provisionOrganizationSubaccount",
@@ -1396,10 +1396,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/payroll.service.ts",
+      "id": "packages/core/src/services/payroll.service.ts",
       "name": "payroll.service",
-      "home": "web",
-      "loc": 259,
+      "home": "core",
+      "loc": 253,
       "methods": [
         "listStaff",
         "getStaffMember",
@@ -1419,10 +1419,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/product.service.ts",
+      "id": "packages/core/src/services/product.service.ts",
       "name": "product.service",
-      "home": "web",
-      "loc": 329,
+      "home": "core",
+      "loc": 249,
       "methods": [
         "getProducts",
         "createProduct",
@@ -1452,9 +1452,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "apps/web/src/services/requisition.service.ts",
+      "id": "packages/core/src/services/requisition.service.ts",
       "name": "requisition.service",
-      "home": "web",
+      "home": "core",
       "loc": 577,
       "methods": [
         "autoDisburse",
@@ -4491,84 +4491,84 @@
       "kind": "service",
       "label": "lenco.service.getAccounts()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.provisionOrganizationSubaccount",
       "kind": "service",
       "label": "lenco.service.provisionOrganizationSubaccount()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.getAvailableAccounts",
       "kind": "service",
       "label": "lenco.service.getAvailableAccounts()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.linkOrganizationSubaccount",
       "kind": "service",
       "label": "lenco.service.linkOrganizationSubaccount()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.verifyStatus",
       "kind": "service",
       "label": "lenco.service.verifyStatus()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.getReconciliationSummary",
       "kind": "service",
       "label": "lenco.service.getReconciliationSummary()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.getBanks",
       "kind": "service",
       "label": "lenco.service.getBanks()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.resolveBankAccount",
       "kind": "service",
       "label": "lenco.service.resolveBankAccount()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.resolveMobileMoney",
       "kind": "service",
       "label": "lenco.service.resolveMobileMoney()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.verifyDisbursementStatus",
       "kind": "service",
       "label": "lenco.service.verifyDisbursementStatus()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.getSaleReceiptDetails",
       "kind": "service",
       "label": "lenco.service.getSaleReceiptDetails()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:lenco.service.calculatePayoutFee",
       "kind": "service",
       "label": "lenco.service.calculatePayoutFee()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:onboarding.service.getState",
@@ -4673,189 +4673,189 @@
       "kind": "service",
       "label": "payroll.service.listStaff()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.getStaffMember",
       "kind": "service",
       "label": "payroll.service.getStaffMember()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.createStaffMember",
       "kind": "service",
       "label": "payroll.service.createStaffMember()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.updateStaffMember",
       "kind": "service",
       "label": "payroll.service.updateStaffMember()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.archiveStaffMember",
       "kind": "service",
       "label": "payroll.service.archiveStaffMember()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.getStaffPayrollHistory",
       "kind": "service",
       "label": "payroll.service.getStaffPayrollHistory()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.getStaffDepartments",
       "kind": "service",
       "label": "payroll.service.getStaffDepartments()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.listRuns",
       "kind": "service",
       "label": "payroll.service.listRuns()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.getRun",
       "kind": "service",
       "label": "payroll.service.getRun()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.createRun",
       "kind": "service",
       "label": "payroll.service.createRun()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.approveRun",
       "kind": "service",
       "label": "payroll.service.approveRun()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.getSuggestedDeductions",
       "kind": "service",
       "label": "payroll.service.getSuggestedDeductions()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.getPayrollConfig",
       "kind": "service",
       "label": "payroll.service.getPayrollConfig()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:payroll.service.upsertPayrollConfig",
       "kind": "service",
       "label": "payroll.service.upsertPayrollConfig()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.getProducts",
       "kind": "service",
       "label": "product.service.getProducts()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.createProduct",
       "kind": "service",
       "label": "product.service.createProduct()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.updateProduct",
       "kind": "service",
       "label": "product.service.updateProduct()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.deleteProduct",
       "kind": "service",
       "label": "product.service.deleteProduct()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.getProductSales",
       "kind": "service",
       "label": "product.service.getProductSales()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.getAvailability",
       "kind": "service",
       "label": "product.service.getAvailability()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.createPaymentLink",
       "kind": "service",
       "label": "product.service.createPaymentLink()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.createInvoiceLink",
       "kind": "service",
       "label": "product.service.createInvoiceLink()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.listPaymentLinks",
       "kind": "service",
       "label": "product.service.listPaymentLinks()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.listInvoiceLinks",
       "kind": "service",
       "label": "product.service.listInvoiceLinks()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.deactivatePaymentLink",
       "kind": "service",
       "label": "product.service.deactivatePaymentLink()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.archiveInvoiceLink",
       "kind": "service",
       "label": "product.service.archiveInvoiceLink()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:product.service.updateInvoiceLink",
       "kind": "service",
       "label": "product.service.updateInvoiceLink()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:report.service.getExpenditures",
@@ -4876,196 +4876,196 @@
       "kind": "service",
       "label": "requisition.service.autoDisburse()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.disburse",
       "kind": "service",
       "label": "requisition.service.disburse()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.disburseExcess",
       "kind": "service",
       "label": "requisition.service.disburseExcess()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.verifyDisbursement",
       "kind": "service",
       "label": "requisition.service.verifyDisbursement()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.acknowledge",
       "kind": "service",
       "label": "requisition.service.acknowledge()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.getAll",
       "kind": "service",
       "label": "requisition.service.getAll()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.getById",
       "kind": "service",
       "label": "requisition.service.getById()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.create",
       "kind": "service",
       "label": "requisition.service.create()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.update",
       "kind": "service",
       "label": "requisition.service.update()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.getFileUrl",
       "kind": "service",
       "label": "requisition.service.getFileUrl()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.analyzeReceipt",
       "kind": "service",
       "label": "requisition.service.analyzeReceipt()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.getDisbursementHistory",
       "kind": "service",
       "label": "requisition.service.getDisbursementHistory()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.updateDisbursement",
       "kind": "service",
       "label": "requisition.service.updateDisbursement()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.analyzeDisbursementProof",
       "kind": "service",
       "label": "requisition.service.analyzeDisbursementProof()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.getMessages",
       "kind": "service",
       "label": "requisition.service.getMessages()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.sendMessage",
       "kind": "service",
       "label": "requisition.service.sendMessage()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.approveCategorization",
       "kind": "service",
       "label": "requisition.service.approveCategorization()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.retriggerAI",
       "kind": "service",
       "label": "requisition.service.retriggerAI()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.postToQuickBooks",
       "kind": "service",
       "label": "requisition.service.postToQuickBooks()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.scanReceipts",
       "kind": "service",
       "label": "requisition.service.scanReceipts()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.acknowledgeReceipt",
       "kind": "service",
       "label": "requisition.service.acknowledgeReceipt()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.deleteReceipt",
       "kind": "service",
       "label": "requisition.service.deleteReceipt()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.updateLineItemAccount",
       "kind": "service",
       "label": "requisition.service.updateLineItemAccount()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.revertToDraft",
       "kind": "service",
       "label": "requisition.service.revertToDraft()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.getAuditReport",
       "kind": "service",
       "label": "requisition.service.getAuditReport()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.disbursePayroll",
       "kind": "service",
       "label": "requisition.service.disbursePayroll()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.updateLineItemDetails",
       "kind": "service",
       "label": "requisition.service.updateLineItemDetails()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:requisition.service.delete",
       "kind": "service",
       "label": "requisition.service.delete()",
       "detail": "direct supabase",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:schedule.service.getAll",

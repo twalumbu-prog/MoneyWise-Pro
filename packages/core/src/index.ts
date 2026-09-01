@@ -98,3 +98,54 @@ export type {
     MasterFeesCategory,
     MasterFeesReconciliation,
 } from './services/integration.service';
+
+export { lencoService } from './services/lenco.service';
+
+export { payrollService } from './services/payroll.service';
+export type {
+    StaffAllowance,
+    StaffDeduction,
+    AllowanceConfig,
+    DeductionConfig,
+    PayrollConfig,
+    StaffMember,
+    PayrollRun,
+    PayrollRunItem,
+    PayrollRunDetail,
+    PayrollDocument,
+    StaffPayrollHistoryItem,
+    CreatePayrollRunItem,
+    CreatePayrollRunPayload,
+} from './services/payroll.service';
+
+export {
+    PRODUCT_TYPE_OPTIONS,
+    isBookingProductType,
+    getBookingTerminology,
+    formatBookingDuration,
+    productService,
+    paymentLinkService,
+} from './services/product.service';
+export type {
+    ProductType,
+    DigitalAsset,
+    BookingRange,
+    BookingTerminology,
+    Product,
+    OrderDeliveryDetails,
+    InvoiceLinkSnapshotItem,
+    PaymentLink,
+    UpdateInvoiceLinkPayload,
+    InvoiceLinkItem,
+    InvoiceLinkPayload,
+} from './services/product.service';
+
+export {
+    REQUISITION_STATUS_CONFIG,
+    getStatusConfig,
+    requisitionService,
+} from './services/requisition.service';
+export type {
+    Requisition,
+    RequisitionMessage,
+} from './services/requisition.service';

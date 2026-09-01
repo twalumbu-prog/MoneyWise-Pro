@@ -8,8 +8,8 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 342 | 72.5% |
-| **DONE** | 96 | 20.3% |
+| **PLANNED** | 275 | 58.3% |
+| **DONE** | 163 | 34.5% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
 
@@ -130,13 +130,13 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | department.service | **core** | 4 | apiFetch only | DONE |
 | highlights.service | **core** | 2 | apiFetch only | DONE |
 | integration.service | **core** | 13 | apiFetch only | DONE |
-| lenco.service | web | 12 | apiFetch only | P0 |
+| lenco.service | **core** | 12 | apiFetch only | DONE |
 | onboarding.service | **core** | 10 | apiFetch only | DONE |
 | organization.service | **core** | 4 | apiFetch only | DONE |
-| payroll.service | web | 14 | apiFetch only | P0 |
-| product.service | web | 13 | apiFetch only | P0 |
+| payroll.service | **core** | 14 | apiFetch only | DONE |
+| product.service | **core** | 13 | apiFetch only | DONE |
 | report.service | **core** | 2 | apiFetch only | DONE |
-| requisition.service | web | 28 | ⚠️ direct supabase/storage | P0 |
+| requisition.service | **core** | 28 | ⚠️ direct supabase/storage | DONE |
 | schedule.service | **core** | 7 | apiFetch only | DONE |
 | user.service | **core** | 5 | apiFetch only | DONE |
 | voucher.service | **core** | 5 | apiFetch only | DONE |

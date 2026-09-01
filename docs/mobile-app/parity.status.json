@@ -640,64 +640,64 @@
     "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.getAccounts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.provisionOrganizationSubaccount": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.getAvailableAccounts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.linkOrganizationSubaccount": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.verifyStatus": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.getReconciliationSummary": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.getBanks": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.resolveBankAccount": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.resolveMobileMoney": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.verifyDisbursementStatus": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.getSaleReceiptDetails": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:lenco.service.calculatePayoutFee": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:onboarding.service.getState": {
     "state": "DONE",
@@ -770,139 +770,139 @@
     "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.listStaff": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.getStaffMember": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.createStaffMember": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.updateStaffMember": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.archiveStaffMember": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.getStaffPayrollHistory": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.getStaffDepartments": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.listRuns": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.getRun": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.createRun": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.approveRun": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.getSuggestedDeductions": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.getPayrollConfig": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:payroll.service.upsertPayrollConfig": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.getProducts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.createProduct": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.updateProduct": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.deleteProduct": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.getProductSales": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.getAvailability": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.createPaymentLink": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.createInvoiceLink": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.listPaymentLinks": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.listInvoiceLinks": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.deactivatePaymentLink": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.archiveInvoiceLink": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:product.service.updateInvoiceLink": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:report.service.getExpenditures": {
     "state": "DONE",
@@ -915,144 +915,144 @@
     "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.autoDisburse": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.disburse": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.disburseExcess": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.verifyDisbursement": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.acknowledge": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.getAll": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.getById": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.create": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.update": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.getFileUrl": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.analyzeReceipt": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.getDisbursementHistory": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.updateDisbursement": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.analyzeDisbursementProof": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.getMessages": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.sendMessage": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.approveCategorization": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.retriggerAI": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.postToQuickBooks": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.scanReceipts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.acknowledgeReceipt": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.deleteReceipt": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.updateLineItemAccount": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.revertToDraft": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.getAuditReport": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.disbursePayroll": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.updateLineItemDetails": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:requisition.service.delete": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Storage/direct-supabase calls need a native file adapter"
+    "note": "Moved to packages/core; web file is a re-export."
   },
   "service:schedule.service.getAll": {
     "state": "DONE",
