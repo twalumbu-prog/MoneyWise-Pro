@@ -1,0 +1,6879 @@
+{
+  "generatedAt": "2026-09-01",
+  "routes": [
+    {
+      "path": "/login",
+      "component": "Login",
+      "file": "pages/Login",
+      "auth": "public"
+    },
+    {
+      "path": "/join",
+      "component": "Join",
+      "file": "pages/Join",
+      "auth": "public"
+    },
+    {
+      "path": "/reset-password",
+      "component": "ResetPassword",
+      "file": "pages/ResetPassword",
+      "auth": "public"
+    },
+    {
+      "path": "/privacy",
+      "component": "PrivacyPolicy",
+      "file": "pages/PrivacyPolicy",
+      "auth": "public"
+    },
+    {
+      "path": "/terms",
+      "component": "TermsOfService",
+      "file": "pages/TermsOfService",
+      "auth": "public"
+    },
+    {
+      "path": "/disconnect",
+      "component": "Disconnect",
+      "file": "pages/Disconnect",
+      "auth": "public"
+    },
+    {
+      "path": "/pay/:wallet_id",
+      "component": "PayEntry",
+      "file": "pages/PayEntry",
+      "auth": "public"
+    },
+    {
+      "path": "/pl/:token",
+      "component": "PublicPaymentLink",
+      "file": "pages/PublicPaymentLink",
+      "auth": "public"
+    },
+    {
+      "path": "/onboarding",
+      "component": "Onboarding",
+      "file": "pages/Onboarding",
+      "auth": "protected"
+    },
+    {
+      "path": "/",
+      "component": "HomeRedirect",
+      "file": null,
+      "auth": "protected"
+    },
+    {
+      "path": "/requisitions",
+      "component": "RequisitionList",
+      "file": "pages/RequisitionList",
+      "auth": "protected"
+    },
+    {
+      "path": "/requisitions/new",
+      "component": "RequisitionCreate",
+      "file": "pages/RequisitionCreate",
+      "auth": "protected"
+    },
+    {
+      "path": "/sales/new",
+      "component": "NewSale",
+      "file": "pages/NewSale",
+      "auth": "protected"
+    },
+    {
+      "path": "/approvals",
+      "component": "Approvals",
+      "file": "pages/Approvals",
+      "auth": "protected"
+    },
+    {
+      "path": "/disbursements",
+      "component": "CashierDashboard",
+      "file": "pages/CashierDashboard",
+      "auth": "protected"
+    },
+    {
+      "path": "/vouchers",
+      "component": "Vouchers",
+      "file": "pages/Vouchers",
+      "auth": "protected"
+    },
+    {
+      "path": "/vouchers/:id",
+      "component": "VoucherDetail",
+      "file": "pages/VoucherDetail",
+      "auth": "protected"
+    },
+    {
+      "path": "/cashbook",
+      "component": "CashLedger",
+      "file": "pages/CashLedger",
+      "auth": "protected"
+    },
+    {
+      "path": "/reporting",
+      "component": "Reporting",
+      "file": "pages/Reporting",
+      "auth": "protected"
+    },
+    {
+      "path": "/settings",
+      "component": "Settings",
+      "file": "pages/Settings",
+      "auth": "protected"
+    },
+    {
+      "path": "/products",
+      "component": "ProductsServices",
+      "file": "pages/ProductsServices",
+      "auth": "protected"
+    },
+    {
+      "path": "/intelligence",
+      "component": "Intelligence",
+      "file": "pages/Intelligence",
+      "auth": "protected"
+    },
+    {
+      "path": "/audit",
+      "component": "Audit",
+      "file": "pages/Audit",
+      "auth": "protected"
+    },
+    {
+      "path": "/menu",
+      "component": "Menu",
+      "file": "pages/Menu",
+      "auth": "protected"
+    },
+    {
+      "path": "/apps",
+      "component": "Apps",
+      "file": "pages/Apps",
+      "auth": "protected"
+    },
+    {
+      "path": "/apps/payroll",
+      "component": "Payroll",
+      "file": "pages/Payroll",
+      "auth": "protected"
+    },
+    {
+      "path": "/apps/payroll/run",
+      "component": "RunPayrollPage",
+      "file": "pages/RunPayrollPage",
+      "auth": "protected"
+    },
+    {
+      "path": "/schedules",
+      "component": "Schedules",
+      "file": "pages/Schedules",
+      "auth": "protected"
+    },
+    {
+      "path": "/invest",
+      "component": "InvestHome",
+      "file": "pages/invest/InvestHome",
+      "auth": "protected"
+    },
+    {
+      "path": "/invest/company/:id",
+      "component": "InvestCompany",
+      "file": "pages/invest/InvestCompany",
+      "auth": "protected"
+    },
+    {
+      "path": "/invest/product/:id",
+      "component": "InvestProductDetail",
+      "file": "pages/invest/InvestProductDetail",
+      "auth": "protected"
+    }
+  ],
+  "screens": [
+    {
+      "id": "pages/PublicPay.tsx",
+      "name": "PublicPay",
+      "loc": 3880,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/CashLedger.tsx",
+      "name": "CashLedger",
+      "loc": 2848,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": [
+        "CloseBalanceModal",
+        "CashInflowModal",
+        "RequisitionModal",
+        "ExportLedgerModal",
+        "CreateWalletModal",
+        "CreateExternalWalletModal",
+        "ImportStatementModal",
+        "TransferModal",
+        "TransferToWalletModal",
+        "ShareWalletLinkModal"
+      ]
+    },
+    {
+      "id": "pages/Reporting.tsx",
+      "name": "Reporting",
+      "loc": 2138,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": [
+        "BudgetModal"
+      ]
+    },
+    {
+      "id": "pages/RequisitionList.tsx",
+      "name": "RequisitionList",
+      "loc": 1504,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": [
+        "InflowDetailDrawer",
+        "InvoiceDetailModal",
+        "InvoiceEditModal",
+        "RequisitionModal",
+        "MobileStaffLoanWizard",
+        "MobileSalaryAdvanceWizard",
+        "MobilePayrollWizard",
+        "MobileInvestWizard",
+        "MobileRequisitionWizard"
+      ]
+    },
+    {
+      "id": "pages/PublicPaymentLink.tsx",
+      "name": "PublicPaymentLink",
+      "loc": 1379,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/NewSale.tsx",
+      "name": "NewSale",
+      "loc": 1284,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Schedules.tsx",
+      "name": "Schedules",
+      "loc": 1208,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": [
+        "ScheduleModal"
+      ]
+    },
+    {
+      "id": "pages/RequisitionCreate.tsx",
+      "name": "RequisitionCreate",
+      "loc": 1164,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/CashierDashboard.tsx",
+      "name": "CashierDashboard",
+      "loc": 996,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": [
+        "DisbursementDetailOverlay"
+      ]
+    },
+    {
+      "id": "pages/RunPayrollPage.tsx",
+      "name": "RunPayrollPage",
+      "loc": 957,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/QuickPay.tsx",
+      "name": "QuickPay",
+      "loc": 951,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/invest/InvestPaymentFlow.tsx",
+      "name": "InvestPaymentFlow",
+      "loc": 655,
+      "hasMobileBranch": true,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Login.tsx",
+      "name": "Login",
+      "loc": 639,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Payroll.tsx",
+      "name": "Payroll",
+      "loc": 518,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": [
+        "AddStaffWizard",
+        "PayrollConfigModal"
+      ]
+    },
+    {
+      "id": "pages/invest/InvestHome.tsx",
+      "name": "InvestHome",
+      "loc": 381,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/Menu.tsx",
+      "name": "Menu",
+      "loc": 376,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/invest/InvestProductDetail.tsx",
+      "name": "InvestProductDetail",
+      "loc": 292,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/Onboarding.tsx",
+      "name": "Onboarding",
+      "loc": 288,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Approvals.tsx",
+      "name": "Approvals",
+      "loc": 241,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/VoucherDetail.tsx",
+      "name": "VoucherDetail",
+      "loc": 234,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/Audit.tsx",
+      "name": "Audit",
+      "loc": 225,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/ResetPassword.tsx",
+      "name": "ResetPassword",
+      "loc": 208,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Vouchers.tsx",
+      "name": "Vouchers",
+      "loc": 206,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": [
+        "AccountingModal"
+      ]
+    },
+    {
+      "id": "pages/Settings.tsx",
+      "name": "Settings",
+      "loc": 196,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/invest/InvestCompany.tsx",
+      "name": "InvestCompany",
+      "loc": 192,
+      "hasMobileBranch": true,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/invest/investCertificate.ts",
+      "name": "investCertificate.ts",
+      "loc": 184,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Join.tsx",
+      "name": "Join",
+      "loc": 182,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/PrivacyPolicy.tsx",
+      "name": "PrivacyPolicy",
+      "loc": 177,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/invest/InvestChart.tsx",
+      "name": "InvestChart",
+      "loc": 168,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/invest/investChartData.ts",
+      "name": "investChartData.ts",
+      "loc": 167,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/TermsOfService.tsx",
+      "name": "TermsOfService",
+      "loc": 123,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Dashboard.tsx",
+      "name": "Dashboard",
+      "loc": 118,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/Apps.tsx",
+      "name": "Apps",
+      "loc": 116,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/StaffPortfolio.tsx",
+      "name": "StaffPortfolio",
+      "loc": 91,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/Intelligence.tsx",
+      "name": "Intelligence",
+      "loc": 82,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/Disconnect.tsx",
+      "name": "Disconnect",
+      "loc": 32,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/ProductsServices.tsx",
+      "name": "ProductsServices",
+      "loc": 28,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    },
+    {
+      "id": "pages/PayEntry.tsx",
+      "name": "PayEntry",
+      "loc": 26,
+      "hasMobileBranch": false,
+      "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/ComingSoonPage.tsx",
+      "name": "ComingSoonPage",
+      "loc": 18,
+      "hasMobileBranch": false,
+      "usesLayout": true,
+      "modals": []
+    }
+  ],
+  "components": [
+    {
+      "id": "components/AnimatedTabs.tsx",
+      "name": "AnimatedTabs",
+      "loc": 194,
+      "surface": "shared"
+    },
+    {
+      "id": "components/AuditScoreBreakdown.tsx",
+      "name": "AuditScoreBreakdown",
+      "loc": 143,
+      "surface": "shared"
+    },
+    {
+      "id": "components/BankSelect.tsx",
+      "name": "BankSelect",
+      "loc": 233,
+      "surface": "shared"
+    },
+    {
+      "id": "components/BookingCalendar.tsx",
+      "name": "BookingCalendar",
+      "loc": 312,
+      "surface": "shared"
+    },
+    {
+      "id": "components/BucketLegend.tsx",
+      "name": "BucketLegend",
+      "loc": 36,
+      "surface": "shared"
+    },
+    {
+      "id": "components/BucketProgressBar.tsx",
+      "name": "BucketProgressBar",
+      "loc": 87,
+      "surface": "shared"
+    },
+    {
+      "id": "components/BudgetModal.tsx",
+      "name": "BudgetModal",
+      "loc": 129,
+      "surface": "shared"
+    },
+    {
+      "id": "components/CashInflowModal.tsx",
+      "name": "CashInflowModal",
+      "loc": 655,
+      "surface": "shared"
+    },
+    {
+      "id": "components/CloseBalanceModal.tsx",
+      "name": "CloseBalanceModal",
+      "loc": 233,
+      "surface": "shared"
+    },
+    {
+      "id": "components/ComingSoon.tsx",
+      "name": "ComingSoon",
+      "loc": 28,
+      "surface": "shared"
+    },
+    {
+      "id": "components/Confetti.tsx",
+      "name": "Confetti",
+      "loc": 187,
+      "surface": "shared"
+    },
+    {
+      "id": "components/CreateExternalWalletModal.tsx",
+      "name": "CreateExternalWalletModal",
+      "loc": 289,
+      "surface": "shared"
+    },
+    {
+      "id": "components/CreateWalletModal.tsx",
+      "name": "CreateWalletModal",
+      "loc": 198,
+      "surface": "shared"
+    },
+    {
+      "id": "components/DenominationInput.tsx",
+      "name": "DenominationInput",
+      "loc": 58,
+      "surface": "shared"
+    },
+    {
+      "id": "components/DesktopHeader.tsx",
+      "name": "DesktopHeader",
+      "loc": 136,
+      "surface": "desktop-only"
+    },
+    {
+      "id": "components/DesktopLayout.tsx",
+      "name": "DesktopLayout",
+      "loc": 22,
+      "surface": "desktop-only"
+    },
+    {
+      "id": "components/DesktopLineChart.tsx",
+      "name": "DesktopLineChart",
+      "loc": 199,
+      "surface": "desktop-only"
+    },
+    {
+      "id": "components/DisbursementDetailOverlay.tsx",
+      "name": "DisbursementDetailOverlay",
+      "loc": 331,
+      "surface": "shared"
+    },
+    {
+      "id": "components/ExportLedgerModal.tsx",
+      "name": "ExportLedgerModal",
+      "loc": 118,
+      "surface": "shared"
+    },
+    {
+      "id": "components/FinancialHighlights.tsx",
+      "name": "FinancialHighlights",
+      "loc": 222,
+      "surface": "shared"
+    },
+    {
+      "id": "components/ImportStatementModal.tsx",
+      "name": "ImportStatementModal",
+      "loc": 430,
+      "surface": "shared"
+    },
+    {
+      "id": "components/InboxCard.tsx",
+      "name": "InboxCard",
+      "loc": 247,
+      "surface": "shared"
+    },
+    {
+      "id": "components/InflowDetailDrawer.tsx",
+      "name": "InflowDetailDrawer",
+      "loc": 331,
+      "surface": "shared"
+    },
+    {
+      "id": "components/InflowInbox.tsx",
+      "name": "InflowInbox",
+      "loc": 142,
+      "surface": "shared"
+    },
+    {
+      "id": "components/InvoiceDetailModal.tsx",
+      "name": "InvoiceDetailModal",
+      "loc": 343,
+      "surface": "responsive"
+    },
+    {
+      "id": "components/InvoiceEditModal.tsx",
+      "name": "InvoiceEditModal",
+      "loc": 178,
+      "surface": "shared"
+    },
+    {
+      "id": "components/InvoiceInbox.tsx",
+      "name": "InvoiceInbox",
+      "loc": 267,
+      "surface": "shared"
+    },
+    {
+      "id": "components/Layout.tsx",
+      "name": "Layout",
+      "loc": 279,
+      "surface": "responsive"
+    },
+    {
+      "id": "components/LoadingSpinner.tsx",
+      "name": "LoadingSpinner",
+      "loc": 18,
+      "surface": "shared"
+    },
+    {
+      "id": "components/Modal.tsx",
+      "name": "Modal",
+      "loc": 54,
+      "surface": "shared"
+    },
+    {
+      "id": "components/PWAInstallPrompt.tsx",
+      "name": "PWAInstallPrompt",
+      "loc": 85,
+      "surface": "shared"
+    },
+    {
+      "id": "components/PaymentWaitingScreen.tsx",
+      "name": "PaymentWaitingScreen",
+      "loc": 339,
+      "surface": "shared"
+    },
+    {
+      "id": "components/RealtimeCacheSync.tsx",
+      "name": "RealtimeCacheSync",
+      "loc": 58,
+      "surface": "shared"
+    },
+    {
+      "id": "components/ReceiptInsightsPanel.tsx",
+      "name": "ReceiptInsightsPanel",
+      "loc": 297,
+      "surface": "shared"
+    },
+    {
+      "id": "components/RequisitionDetailOverlay.tsx",
+      "name": "RequisitionDetailOverlay",
+      "loc": 184,
+      "surface": "shared"
+    },
+    {
+      "id": "components/RequisitionInbox.tsx",
+      "name": "RequisitionInbox",
+      "loc": 166,
+      "surface": "shared"
+    },
+    {
+      "id": "components/ShareProductLinkModal.tsx",
+      "name": "ShareProductLinkModal",
+      "loc": 214,
+      "surface": "shared"
+    },
+    {
+      "id": "components/ShareWalletLinkModal.tsx",
+      "name": "ShareWalletLinkModal",
+      "loc": 421,
+      "surface": "shared"
+    },
+    {
+      "id": "components/Sidebar.tsx",
+      "name": "Sidebar",
+      "loc": 279,
+      "surface": "shared"
+    },
+    {
+      "id": "components/SubNavbar.tsx",
+      "name": "SubNavbar",
+      "loc": 42,
+      "surface": "shared"
+    },
+    {
+      "id": "components/TopNavbar.tsx",
+      "name": "TopNavbar",
+      "loc": 141,
+      "surface": "shared"
+    },
+    {
+      "id": "components/TransferModal.tsx",
+      "name": "TransferModal",
+      "loc": 221,
+      "surface": "shared"
+    },
+    {
+      "id": "components/TransferToWalletModal.tsx",
+      "name": "TransferToWalletModal",
+      "loc": 299,
+      "surface": "shared"
+    },
+    {
+      "id": "components/UpdatePrompt.tsx",
+      "name": "UpdatePrompt",
+      "loc": 52,
+      "surface": "shared"
+    },
+    {
+      "id": "components/WalletSelect.tsx",
+      "name": "WalletSelect",
+      "loc": 131,
+      "surface": "shared"
+    },
+    {
+      "id": "components/accounting/AccountingModal.tsx",
+      "name": "AccountingModal",
+      "loc": 454,
+      "surface": "shared"
+    },
+    {
+      "id": "components/animate-ui/components/radix/accordion.tsx",
+      "name": "accordion",
+      "loc": 74,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/ActivityIndicator.tsx",
+      "name": "ActivityIndicator",
+      "loc": 94,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/ApprovalCard.tsx",
+      "name": "ApprovalCard",
+      "loc": 145,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/AssistantChat.tsx",
+      "name": "AssistantChat",
+      "loc": 595,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/Composer.tsx",
+      "name": "Composer",
+      "loc": 391,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/MessageBubble.tsx",
+      "name": "MessageBubble",
+      "loc": 150,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/ThinkingTrace.tsx",
+      "name": "ThinkingTrace",
+      "loc": 77,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/ToolTimeline.tsx",
+      "name": "ToolTimeline",
+      "loc": 91,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/VendorLogos.tsx",
+      "name": "VendorLogos",
+      "loc": 235,
+      "surface": "shared"
+    },
+    {
+      "id": "components/assistant/widgets/WidgetRenderer.tsx",
+      "name": "WidgetRenderer",
+      "loc": 317,
+      "surface": "shared"
+    },
+    {
+      "id": "components/icons/BrandIcons.tsx",
+      "name": "BrandIcons",
+      "loc": 44,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/CompletionScreen.tsx",
+      "name": "CompletionScreen",
+      "loc": 117,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/CountryOptionList.tsx",
+      "name": "CountryOptionList",
+      "loc": 68,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/CountrySelect.tsx",
+      "name": "CountrySelect",
+      "loc": 71,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/PhoneCountrySelect.tsx",
+      "name": "PhoneCountrySelect",
+      "loc": 70,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/ProductTypeSelect.tsx",
+      "name": "ProductTypeSelect",
+      "loc": 86,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepAddress.tsx",
+      "name": "StepAddress",
+      "loc": 266,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepCategories.tsx",
+      "name": "StepCategories",
+      "loc": 100,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepChartOfAccounts.tsx",
+      "name": "StepChartOfAccounts",
+      "loc": 365,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepContact.tsx",
+      "name": "StepContact",
+      "loc": 105,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepIndustries.tsx",
+      "name": "StepIndustries",
+      "loc": 97,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepLogo.tsx",
+      "name": "StepLogo",
+      "loc": 311,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepProducts.tsx",
+      "name": "StepProducts",
+      "loc": 439,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepWalletActivation.tsx",
+      "name": "StepWalletActivation",
+      "loc": 418,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/StepWelcome.tsx",
+      "name": "StepWelcome",
+      "loc": 107,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/constants.ts",
+      "name": "constants.ts",
+      "loc": 61,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/phoneCountryCodes.ts",
+      "name": "phoneCountryCodes.ts",
+      "loc": 207,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/ui.tsx",
+      "name": "ui",
+      "loc": 215,
+      "surface": "shared"
+    },
+    {
+      "id": "components/onboarding/useAnchoredPopover.ts",
+      "name": "useAnchoredPopover.ts",
+      "loc": 54,
+      "surface": "shared"
+    },
+    {
+      "id": "components/payroll/AddStaffWizard.tsx",
+      "name": "AddStaffWizard",
+      "loc": 610,
+      "surface": "shared"
+    },
+    {
+      "id": "components/payroll/BatchImportStaff.tsx",
+      "name": "BatchImportStaff",
+      "loc": 478,
+      "surface": "shared"
+    },
+    {
+      "id": "components/payroll/PayrollConfigModal.tsx",
+      "name": "PayrollConfigModal",
+      "loc": 281,
+      "surface": "shared"
+    },
+    {
+      "id": "components/payroll/PayrollRunDetail.tsx",
+      "name": "PayrollRunDetail",
+      "loc": 262,
+      "surface": "shared"
+    },
+    {
+      "id": "components/payroll/RunPayrollWizard.tsx",
+      "name": "RunPayrollWizard",
+      "loc": 455,
+      "surface": "shared"
+    },
+    {
+      "id": "components/payroll/StaffMemberDetail.tsx",
+      "name": "StaffMemberDetail",
+      "loc": 458,
+      "surface": "shared"
+    },
+    {
+      "id": "components/requisitions/DesktopPayrollWorkspace.tsx",
+      "name": "DesktopPayrollWorkspace",
+      "loc": 829,
+      "surface": "desktop-only"
+    },
+    {
+      "id": "components/requisitions/DesktopRequisitionWorkspace.tsx",
+      "name": "DesktopRequisitionWorkspace",
+      "loc": 830,
+      "surface": "desktop-only"
+    },
+    {
+      "id": "components/requisitions/DesktopSalaryAdvanceWorkspace.tsx",
+      "name": "DesktopSalaryAdvanceWorkspace",
+      "loc": 237,
+      "surface": "desktop-only"
+    },
+    {
+      "id": "components/requisitions/DesktopStaffLoanWorkspace.tsx",
+      "name": "DesktopStaffLoanWorkspace",
+      "loc": 251,
+      "surface": "desktop-only"
+    },
+    {
+      "id": "components/requisitions/MobileInvestWizard.tsx",
+      "name": "MobileInvestWizard",
+      "loc": 586,
+      "surface": "mobile-only"
+    },
+    {
+      "id": "components/requisitions/MobilePayrollWizard.tsx",
+      "name": "MobilePayrollWizard",
+      "loc": 825,
+      "surface": "mobile-only"
+    },
+    {
+      "id": "components/requisitions/MobileRequisitionWizard.tsx",
+      "name": "MobileRequisitionWizard",
+      "loc": 893,
+      "surface": "mobile-only"
+    },
+    {
+      "id": "components/requisitions/MobileSalaryAdvanceWizard.tsx",
+      "name": "MobileSalaryAdvanceWizard",
+      "loc": 246,
+      "surface": "mobile-only"
+    },
+    {
+      "id": "components/requisitions/MobileStaffLoanWizard.tsx",
+      "name": "MobileStaffLoanWizard",
+      "loc": 375,
+      "surface": "mobile-only"
+    },
+    {
+      "id": "components/requisitions/RequisitionAttachments.tsx",
+      "name": "RequisitionAttachments",
+      "loc": 247,
+      "surface": "shared"
+    },
+    {
+      "id": "components/requisitions/RequisitionChat.tsx",
+      "name": "RequisitionChat",
+      "loc": 393,
+      "surface": "shared"
+    },
+    {
+      "id": "components/requisitions/RequisitionDocumentPreview.tsx",
+      "name": "RequisitionDocumentPreview",
+      "loc": 164,
+      "surface": "shared"
+    },
+    {
+      "id": "components/requisitions/RequisitionDocumentTemplates.tsx",
+      "name": "RequisitionDocumentTemplates",
+      "loc": 664,
+      "surface": "shared"
+    },
+    {
+      "id": "components/requisitions/RequisitionInput.tsx",
+      "name": "RequisitionInput",
+      "loc": 96,
+      "surface": "shared"
+    },
+    {
+      "id": "components/requisitions/RequisitionMessageCard.tsx",
+      "name": "RequisitionMessageCard",
+      "loc": 3626,
+      "surface": "shared"
+    },
+    {
+      "id": "components/requisitions/RequisitionModal.tsx",
+      "name": "RequisitionModal",
+      "loc": 270,
+      "surface": "responsive"
+    },
+    {
+      "id": "components/requisitions/RequisitionProgress.tsx",
+      "name": "RequisitionProgress",
+      "loc": 96,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/AIMetrics.tsx",
+      "name": "AIMetrics",
+      "loc": 149,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/AIModelSettings.tsx",
+      "name": "AIModelSettings",
+      "loc": 419,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/ChartOfAccounts.tsx",
+      "name": "ChartOfAccounts",
+      "loc": 442,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/DebugSettings.tsx",
+      "name": "DebugSettings",
+      "loc": 128,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/GeneralSettings.tsx",
+      "name": "GeneralSettings",
+      "loc": 721,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/InvoicePaymentModal.tsx",
+      "name": "InvoicePaymentModal",
+      "loc": 453,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/MyProfileSettings.tsx",
+      "name": "MyProfileSettings",
+      "loc": 264,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/ProductSettings.tsx",
+      "name": "ProductSettings",
+      "loc": 1313,
+      "surface": "responsive"
+    },
+    {
+      "id": "components/settings/RuleManagement.tsx",
+      "name": "RuleManagement",
+      "loc": 197,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/SubscriptionBilling.tsx",
+      "name": "SubscriptionBilling",
+      "loc": 568,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/UserManagement.tsx",
+      "name": "UserManagement",
+      "loc": 529,
+      "surface": "responsive"
+    },
+    {
+      "id": "components/settings/integrations/LencoIntegration.tsx",
+      "name": "LencoIntegration",
+      "loc": 399,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/integrations/MasterfeesIntegration.tsx",
+      "name": "MasterfeesIntegration",
+      "loc": 516,
+      "surface": "shared"
+    },
+    {
+      "id": "components/settings/integrations/QuickBooksIntegration.tsx",
+      "name": "QuickBooksIntegration",
+      "loc": 620,
+      "surface": "shared"
+    },
+    {
+      "id": "components/wallets/CashDepositProof.tsx",
+      "name": "CashDepositProof",
+      "loc": 113,
+      "surface": "shared"
+    },
+    {
+      "id": "components/wallets/DepositProofPreview.tsx",
+      "name": "DepositProofPreview",
+      "loc": 101,
+      "surface": "shared"
+    }
+  ],
+  "services": [
+    {
+      "id": "services/account.service.ts",
+      "name": "account.service",
+      "loc": 130,
+      "methods": [
+        "getAll",
+        "create",
+        "update",
+        "importFromQuickBooks",
+        "suggestAccount",
+        "suggestBatch"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/ai.service.ts",
+      "name": "ai.service",
+      "loc": 90,
+      "methods": [
+        "getRules",
+        "createRule",
+        "updateRule",
+        "deleteRule",
+        "getDailyMetrics",
+        "getStats",
+        "getModelSettings",
+        "updateModelSettings"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/budget.service.ts",
+      "name": "budget.service",
+      "loc": 54,
+      "methods": [
+        "getBudgets",
+        "setBudget"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/cashbook.service.ts",
+      "name": "cashbook.service",
+      "loc": 299,
+      "methods": [
+        "getEntries",
+        "getOverview",
+        "getBalance",
+        "getSummary",
+        "reconcile",
+        "returnCash",
+        "closeBook",
+        "logInflow",
+        "recordManualSale",
+        "logWalletDepositIntent",
+        "classifyBulk",
+        "postToQuickBooks",
+        "updateAccount",
+        "narrateEntry",
+        "getWallets",
+        "createWallet",
+        "transfer",
+        "transferToWallet",
+        "getExternalWallets",
+        "createExternalWallet",
+        "deleteExternalWallet",
+        "previewStatementImport",
+        "importStatement"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/department.service.ts",
+      "name": "department.service",
+      "loc": 45,
+      "methods": [
+        "list",
+        "create",
+        "update",
+        "delete"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/highlights.service.ts",
+      "name": "highlights.service",
+      "loc": 73,
+      "methods": [
+        "getHighlights",
+        "acknowledgeAchievements"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/integration.service.ts",
+      "name": "integration.service",
+      "loc": 200,
+      "methods": [
+        "getStatus",
+        "getConnectUrl",
+        "disconnect",
+        "getAccounts",
+        "getAccountTransactions",
+        "retrySync",
+        "getOAuthUrl",
+        "connect",
+        "getFeeCategories",
+        "mapCategory",
+        "setLencoMode",
+        "sync",
+        "reconcile"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/lenco.service.ts",
+      "name": "lenco.service",
+      "loc": 243,
+      "methods": [
+        "getAccounts",
+        "provisionOrganizationSubaccount",
+        "getAvailableAccounts",
+        "linkOrganizationSubaccount",
+        "verifyStatus",
+        "getReconciliationSummary",
+        "getBanks",
+        "resolveBankAccount",
+        "resolveMobileMoney",
+        "verifyDisbursementStatus",
+        "getSaleReceiptDetails",
+        "calculatePayoutFee"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/onboarding.service.ts",
+      "name": "onboarding.service",
+      "loc": 131,
+      "methods": [
+        "getState",
+        "saveProgress",
+        "updateOrganizationName",
+        "saveProfile",
+        "generateChartOfAccounts",
+        "saveChartOfAccounts",
+        "getWalletStatus",
+        "claimWallet",
+        "confirmActivation",
+        "complete"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/organization.service.ts",
+      "name": "organization.service",
+      "loc": 87,
+      "methods": [
+        "getOrganization",
+        "updateOrganization",
+        "deleteOrganization",
+        "getOrCreateQuickLinkUsername"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/payroll.service.ts",
+      "name": "payroll.service",
+      "loc": 259,
+      "methods": [
+        "listStaff",
+        "getStaffMember",
+        "createStaffMember",
+        "updateStaffMember",
+        "archiveStaffMember",
+        "getStaffPayrollHistory",
+        "getStaffDepartments",
+        "listRuns",
+        "getRun",
+        "createRun",
+        "approveRun",
+        "getSuggestedDeductions",
+        "getPayrollConfig",
+        "upsertPayrollConfig"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/product.service.ts",
+      "name": "product.service",
+      "loc": 329,
+      "methods": [
+        "getProducts",
+        "createProduct",
+        "updateProduct",
+        "deleteProduct",
+        "getProductSales",
+        "getAvailability",
+        "createPaymentLink",
+        "createInvoiceLink",
+        "listPaymentLinks",
+        "listInvoiceLinks",
+        "deactivatePaymentLink",
+        "archiveInvoiceLink",
+        "updateInvoiceLink"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/report.service.ts",
+      "name": "report.service",
+      "loc": 65,
+      "methods": [
+        "getExpenditures",
+        "getExpenditureItems"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/requisition.service.ts",
+      "name": "requisition.service",
+      "loc": 577,
+      "methods": [
+        "autoDisburse",
+        "disburse",
+        "disburseExcess",
+        "verifyDisbursement",
+        "acknowledge",
+        "getAll",
+        "getById",
+        "create",
+        "update",
+        "getFileUrl",
+        "analyzeReceipt",
+        "getDisbursementHistory",
+        "updateDisbursement",
+        "analyzeDisbursementProof",
+        "getMessages",
+        "sendMessage",
+        "approveCategorization",
+        "retriggerAI",
+        "postToQuickBooks",
+        "scanReceipts",
+        "acknowledgeReceipt",
+        "deleteReceipt",
+        "updateLineItemAccount",
+        "revertToDraft",
+        "getAuditReport",
+        "disbursePayroll",
+        "updateLineItemDetails",
+        "delete"
+      ],
+      "touchesSupabaseDirectly": true
+    },
+    {
+      "id": "services/schedule.service.ts",
+      "name": "schedule.service",
+      "loc": 130,
+      "methods": [
+        "getAll",
+        "getCounts",
+        "create",
+        "update",
+        "delete",
+        "getRuns",
+        "runNow"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/user.service.ts",
+      "name": "user.service",
+      "loc": 117,
+      "methods": [
+        "getAll",
+        "create",
+        "update",
+        "delete",
+        "resendInvite"
+      ],
+      "touchesSupabaseDirectly": false
+    },
+    {
+      "id": "services/voucher.service.ts",
+      "name": "voucher.service",
+      "loc": 133,
+      "methods": [
+        "getAll",
+        "getById",
+        "createFromRequisition",
+        "post",
+        "postVoucherWithClassification"
+      ],
+      "touchesSupabaseDirectly": false
+    }
+  ],
+  "endpoints": [
+    {
+      "method": "GET",
+      "path": "/accounts",
+      "file": "account.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/accounts",
+      "file": "account.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/accounts/:id",
+      "file": "account.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/import",
+      "file": "account.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/accounts/suggest",
+      "file": "account.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/analytics/payment-links",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/analytics/payment-links/attempts",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/analytics/posthog-key",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/logs",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/me",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/reconciliation",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/reconciliation/:orgId",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/admin/reconciliation/:orgId/heal-platform-fees",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/reconciliation/:orgId/raw-lenco-txns",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/admin/reconciliation/heal-platform-fees",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/admin/test-collection/initiate",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/test-collection/status/:reference",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/wallet-pool",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/admin/wallet-pool",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/admin/wallet-pool/:id",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/admin/wallet-pool/settings",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/admin/wallet-pool/settings",
+      "file": "admin.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/ai/agent/approve",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/ai/agent/chat",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/agent/models",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/agent/threads",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/agent/threads/:id",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/ai/agent/threads/:id",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/ai/assistant",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/digest",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/highlights",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/ai/highlights/acknowledge",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/ai/highlights/weekly-email",
+      "file": "ai.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/metrics/daily",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN",
+        "ACCOUNTANT"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/metrics/stats",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN",
+        "ACCOUNTANT"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/model-settings",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN",
+        "ACCOUNTANT"
+      ],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/ai/model-settings",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/ai/rules",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN",
+        "ACCOUNTANT"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/ai/rules",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN",
+        "ACCOUNTANT"
+      ],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/ai/rules/:id",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN",
+        "ACCOUNTANT"
+      ],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/ai/rules/:id",
+      "file": "ai.routes.ts",
+      "roles": [
+        "ADMIN",
+        "ACCOUNTANT"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/auth/complete-invitation",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/auth/forgot-password",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/auth/join-request",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/auth/my-organizations",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/auth/organizations/search",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/auth/register",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/auth/resolve-username",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/auth/signup",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/auth/switch-organization",
+      "file": "auth.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/billing/downgrade",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/billing/generate-invoice",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/billing/invoice/:invoiceId/receipt",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/billing/pay/:invoiceId",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/billing/pay/:invoiceId/mobile-money",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/billing/pay/:invoiceId/mobile-money/status",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/billing/subscription",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/billing/upgrade",
+      "file": "billing.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/budgets",
+      "file": "budget.routes.ts",
+      "roles": [
+        "AUTHORISER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/budgets",
+      "file": "budget.routes.ts",
+      "roles": [
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/cashbook",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "REQUESTOR",
+        "AUTHORISER",
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/cashbook/:entryId/account",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/cashbook/:entryId/narrate",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/cashbook/balance",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "REQUESTOR",
+        "AUTHORISER",
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/classify-bulk",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/close",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/create-qb-account",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/cashbook/external-wallets",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "REQUESTOR",
+        "AUTHORISER",
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/external-wallets",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/cashbook/external-wallets/:id",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/external-wallets/:id/import-preview",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/external-wallets/:id/import-statement",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/inflow",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/manual-sale",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "REQUESTOR",
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/cashbook/overview",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "REQUESTOR",
+        "AUTHORISER",
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/post-to-qb",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/reconcile",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/return",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/cashbook/summary",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "AUTHORISER",
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/transfer-to-wallet",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/wallet-deposit-intent",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/cashbook/wallets",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "REQUESTOR",
+        "AUTHORISER",
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/wallets",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/cashbook/wallets/transfer",
+      "file": "cashbook.routes.ts",
+      "roles": [
+        "CASHIER",
+        "ACCOUNTANT",
+        "ADMIN"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/departments",
+      "file": "department.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/departments",
+      "file": "department.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/departments/:id",
+      "file": "department.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/departments/:id",
+      "file": "department.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/integrations/masterfees",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/masterfees/backfill-payments",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/masterfees/connect",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/masterfees/correct-dates",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/masterfees/diag",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/masterfees/fee-categories",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/integrations/masterfees/fee-categories",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/integrations/masterfees/lenco-mode",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/masterfees/oauth/callback",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/masterfees/oauth/url",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/masterfees/recategorize-invoices",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/masterfees/reconcile",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/masterfees/status",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/masterfees/sync",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/masterfees/sync-all",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/integrations/quickbooks",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/quickbooks/accounts",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/quickbooks/accounts/:qbAccountId/transactions",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/quickbooks/callback",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/quickbooks/connect",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/quickbooks/invoices",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/integrations/quickbooks/sync/:id",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/integrations/status",
+      "file": "integrations.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/accounts",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/available-accounts",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/banks",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/organizations/:id/link",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/organizations/:id/provision",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/public-collection-finalize/:reference",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-collection-longpoll/:reference",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/public-collection/cancel",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/public-collection/mobile-money",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/public-collection/resolve-momo",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-context/:wallet_id",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/public-diagnostics/report",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-payment-link/:token",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-product-availability/:productId",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-quicklink-context/:username",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/public-quicklink-intent",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-quicklink-purposes/:username",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-sale-receipt/:reference",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-sales/by-phone/:phone",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/public-verify-status/:reference",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/public-wallet-deposit-intent",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/reconcile/:organizationId",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/resolve-bank",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/resolve-momo",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/sale-receipt/:entryId",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/sync",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/test-collection/initiate",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/test-collection/status/:reference",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/lenco/verify-status/:reference",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/wallet-deposit-intent",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/lenco/webhook",
+      "file": "lenco.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/onboarding/chart-of-accounts",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/onboarding/chart-of-accounts/generate",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/onboarding/complete",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/onboarding/organization",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/onboarding/profile",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/onboarding/progress",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/onboarding/state",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/onboarding/wallet",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/onboarding/wallet/activation-confirm",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/onboarding/wallet/claim",
+      "file": "onboarding.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/organizations",
+      "file": "organization.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/organizations",
+      "file": "organization.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/organizations",
+      "file": "organization.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/organizations/payment-links",
+      "file": "payment_link.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/organizations/payment-links",
+      "file": "payment_link.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/organizations/payment-links/:id",
+      "file": "payment_link.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/organizations/payment-links/:id/archive",
+      "file": "payment_link.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/organizations/payment-links/:id/deactivate",
+      "file": "payment_link.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/organizations/payment-links/invoice",
+      "file": "payment_link.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/organizations/products",
+      "file": "product.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/organizations/products",
+      "file": "product.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/organizations/products/:id",
+      "file": "product.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/organizations/products/:id",
+      "file": "product.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/organizations/products/:id/sales",
+      "file": "product.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/organizations/products/sales-by-reference/:reference",
+      "file": "product.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/organizations/quick-link-username",
+      "file": "organization.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/config",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/payroll/config",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/runs",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/runs/:id",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/runs/:id/approve",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/runs/suggested-deductions",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/staff",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/payroll/staff",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/staff/:id",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/payroll/staff/:id",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/payroll/staff/:id",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/staff/:id/history",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/staff/departments",
+      "file": "payroll.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/reports/expenditure",
+      "file": "report.routes.ts",
+      "roles": [
+        "AUTHORISER",
+        "ACCOUNTANT",
+        "ADMIN",
+        "MANAGEMENT"
+      ],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/reports/expenditure/:accountId/items",
+      "file": "report.routes.ts",
+      "roles": [
+        "AUTHORISER",
+        "ACCOUNTANT",
+        "ADMIN",
+        "MANAGEMENT"
+      ],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions/:id",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/requisitions/:id",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/requisitions/:id",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/acknowledge",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/approve-categorization",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/auto-complete",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/auto-disburse",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/confirm-change",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/disburse",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/disburse-excess",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/disburse-payroll",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/requisitions/:id/expenses",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/items/:itemId/analyze-receipt",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/mark-read",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions/:id/messages",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/messages",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/requisitions/:id/messages/:messageId",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/post-quickbooks",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/post-voucher",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/requisitions/:id/receipts/:receiptId",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions/:id/resolve-recipient",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/retrigger-ai",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/revert-to-draft",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/scan-receipts",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/requisitions/:id/status",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/:id/submit-change",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions/:id/verify-disbursement",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions/admin/all",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/auto-reminder",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/requisitions/disbursements/:id",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/disbursements/:id/analyze-proof",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions/disbursements/history",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/requisitions/items/:itemId/account",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/requisitions/items/:itemId/details",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/maintenance/backfill-audit",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/requisitions/poll-processing",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/requisitions/reports/audit",
+      "file": "requisition.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/schedules",
+      "file": "schedule.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/schedules",
+      "file": "schedule.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PATCH",
+      "path": "/schedules/:id",
+      "file": "schedule.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/schedules/:id",
+      "file": "schedule.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/schedules/:id/run-now",
+      "file": "schedule.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/schedules/:id/runs",
+      "file": "schedule.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/schedules/counts",
+      "file": "schedule.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/users",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/users/:id",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "DELETE",
+      "path": "/users/:id",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/users/:id/resend-invite",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/users/me",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "PUT",
+      "path": "/users/me/payment-info",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/users/notifications",
+      "file": "user.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/vouchers",
+      "file": "voucher.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/vouchers",
+      "file": "voucher.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/vouchers/:id",
+      "file": "voucher.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "POST",
+      "path": "/vouchers/:id/post",
+      "file": "voucher.routes.ts",
+      "roles": [],
+      "public": false
+    },
+    {
+      "method": "GET",
+      "path": "/webhooks/vercel-log-drain",
+      "file": "webhooks.routes.ts",
+      "roles": [],
+      "public": true
+    },
+    {
+      "method": "POST",
+      "path": "/webhooks/vercel-log-drain",
+      "file": "webhooks.routes.ts",
+      "roles": [],
+      "public": true
+    }
+  ],
+  "hazards": [
+    {
+      "hazard": "window/document DOM",
+      "replacement": "Dimensions / RN primitives",
+      "files": [
+        "components/AnimatedTabs.tsx",
+        "components/BankSelect.tsx",
+        "components/Confetti.tsx",
+        "components/FinancialHighlights.tsx",
+        "components/InboxCard.tsx",
+        "components/InvoiceDetailModal.tsx",
+        "components/InvoiceInbox.tsx",
+        "components/PWAInstallPrompt.tsx",
+        "components/PaymentWaitingScreen.tsx",
+        "components/RequisitionInbox.tsx",
+        "components/ShareProductLinkModal.tsx",
+        "components/ShareWalletLinkModal.tsx",
+        "components/WalletSelect.tsx",
+        "components/assistant/Composer.tsx",
+        "components/onboarding/CompletionScreen.tsx",
+        "components/onboarding/CountrySelect.tsx",
+        "components/onboarding/PhoneCountrySelect.tsx",
+        "components/onboarding/ProductTypeSelect.tsx",
+        "components/onboarding/StepAddress.tsx",
+        "components/onboarding/StepLogo.tsx",
+        "components/onboarding/StepProducts.tsx",
+        "components/onboarding/ui.tsx",
+        "components/onboarding/useAnchoredPopover.ts",
+        "components/requisitions/DesktopPayrollWorkspace.tsx",
+        "components/requisitions/MobilePayrollWizard.tsx",
+        "components/requisitions/RequisitionChat.tsx",
+        "components/requisitions/RequisitionDocumentPreview.tsx",
+        "components/requisitions/RequisitionMessageCard.tsx",
+        "components/requisitions/RequisitionModal.tsx",
+        "components/settings/AIModelSettings.tsx",
+        "components/settings/GeneralSettings.tsx",
+        "components/settings/ProductSettings.tsx",
+        "components/settings/RuleManagement.tsx",
+        "components/settings/SubscriptionBilling.tsx",
+        "components/settings/UserManagement.tsx",
+        "components/settings/integrations/MasterfeesIntegration.tsx",
+        "components/settings/integrations/QuickBooksIntegration.tsx",
+        "components/wallets/DepositProofPreview.tsx",
+        "context/AuthContext.tsx",
+        "hooks/useNewnessTracker.ts",
+        "lib/queryClient.ts",
+        "main.tsx",
+        "pages/CashLedger.tsx",
+        "pages/CashierDashboard.tsx",
+        "pages/Dashboard.tsx",
+        "pages/NewSale.tsx",
+        "pages/Onboarding.tsx",
+        "pages/Payroll.tsx",
+        "pages/PublicPay.tsx",
+        "pages/PublicPaymentLink.tsx",
+        "pages/QuickPay.tsx",
+        "pages/Reporting.tsx",
+        "pages/RequisitionCreate.tsx",
+        "pages/RequisitionList.tsx",
+        "pages/RunPayrollPage.tsx",
+        "pages/Schedules.tsx",
+        "pages/VoucherDetail.tsx",
+        "pages/invest/investCertificate.ts",
+        "utils/checkoutError.ts",
+        "utils/export.utils.ts"
+      ]
+    },
+    {
+      "hazard": "file input + FileReader",
+      "replacement": "expo-image-picker / expo-document-picker",
+      "files": [
+        "components/ImportStatementModal.tsx",
+        "components/assistant/Composer.tsx",
+        "components/onboarding/StepLogo.tsx",
+        "components/onboarding/StepProducts.tsx",
+        "components/payroll/BatchImportStaff.tsx",
+        "components/requisitions/DesktopPayrollWorkspace.tsx",
+        "components/requisitions/MobilePayrollWizard.tsx",
+        "components/requisitions/RequisitionInput.tsx",
+        "components/requisitions/RequisitionMessageCard.tsx",
+        "components/settings/GeneralSettings.tsx",
+        "components/settings/ProductSettings.tsx",
+        "pages/CashierDashboard.tsx",
+        "pages/RequisitionCreate.tsx"
+      ]
+    },
+    {
+      "hazard": "Blob/createObjectURL",
+      "replacement": "expo-file-system + base64",
+      "files": [
+        "components/ShareWalletLinkModal.tsx",
+        "components/onboarding/StepLogo.tsx",
+        "components/requisitions/DesktopPayrollWorkspace.tsx",
+        "components/requisitions/MobilePayrollWizard.tsx",
+        "components/requisitions/RequisitionMessageCard.tsx",
+        "components/settings/ProductSettings.tsx",
+        "components/settings/integrations/QuickBooksIntegration.tsx",
+        "pages/RequisitionCreate.tsx",
+        "pages/invest/investCertificate.ts",
+        "utils/export.utils.ts"
+      ]
+    },
+    {
+      "hazard": "localStorage",
+      "replacement": "expo-secure-store / react-native-mmkv",
+      "files": [
+        "components/Sidebar.tsx",
+        "components/requisitions/DesktopRequisitionWorkspace.tsx",
+        "components/requisitions/MobileRequisitionWizard.tsx",
+        "context/AuthContext.tsx",
+        "hooks/useNewnessTracker.ts",
+        "lib/paymentRecovery.ts",
+        "lib/queryClient.ts",
+        "pages/Apps.tsx",
+        "pages/CashLedger.tsx",
+        "pages/Reporting.tsx"
+      ]
+    },
+    {
+      "hazard": "SheetJS xlsx",
+      "replacement": "server-side export + expo-sharing",
+      "files": [
+        "components/ImportStatementModal.tsx",
+        "components/payroll/BatchImportStaff.tsx",
+        "components/requisitions/DesktopPayrollWorkspace.tsx",
+        "components/requisitions/MobilePayrollWizard.tsx",
+        "pages/RequisitionCreate.tsx",
+        "utils/export.utils.ts"
+      ]
+    },
+    {
+      "hazard": "jsPDF",
+      "replacement": "server-side PDF (API already has pdfkit)",
+      "files": [
+        "pages/NewSale.tsx",
+        "pages/PublicPay.tsx",
+        "pages/PublicPaymentLink.tsx",
+        "utils/export.utils.ts"
+      ]
+    },
+    {
+      "hazard": "recharts (SVG/DOM)",
+      "replacement": "victory-native / react-native-svg",
+      "files": [
+        "components/assistant/widgets/WidgetRenderer.tsx",
+        "components/requisitions/MobileInvestWizard.tsx",
+        "pages/Reporting.tsx"
+      ]
+    },
+    {
+      "hazard": "browser-image-compression",
+      "replacement": "expo-image-manipulator",
+      "files": [
+        "components/onboarding/StepLogo.tsx",
+        "components/onboarding/StepProducts.tsx",
+        "utils/file_utils.ts"
+      ]
+    },
+    {
+      "hazard": "heic2any",
+      "replacement": "server-side convert (API has heic-convert)",
+      "files": [
+        "components/requisitions/RequisitionMessageCard.tsx",
+        "utils/file_utils.ts"
+      ]
+    },
+    {
+      "hazard": "qrcode.react",
+      "replacement": "react-native-qrcode-svg",
+      "files": [
+        "components/ShareWalletLinkModal.tsx"
+      ]
+    },
+    {
+      "hazard": "framer-motion",
+      "replacement": "react-native-reanimated",
+      "files": [
+        "components/animate-ui/components/radix/accordion.tsx"
+      ]
+    },
+    {
+      "hazard": "getUserMedia (audio)",
+      "replacement": "expo-audio",
+      "files": [
+        "components/assistant/Composer.tsx"
+      ]
+    },
+    {
+      "hazard": "react-markdown",
+      "replacement": "react-native-markdown-display",
+      "files": [
+        "components/assistant/MessageBubble.tsx"
+      ]
+    },
+    {
+      "hazard": "fetch stream reader (SSE)",
+      "replacement": "expo/fetch streaming or react-native-sse",
+      "files": [
+        "lib/agentClient.ts"
+      ]
+    }
+  ],
+  "units": [
+    {
+      "key": "route:/login",
+      "kind": "route",
+      "label": "`/login`",
+      "detail": "Login · public",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/join",
+      "kind": "route",
+      "label": "`/join`",
+      "detail": "Join · public",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/reset-password",
+      "kind": "route",
+      "label": "`/reset-password`",
+      "detail": "ResetPassword · public",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/privacy",
+      "kind": "route",
+      "label": "`/privacy`",
+      "detail": "PrivacyPolicy · public",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "route:/terms",
+      "kind": "route",
+      "label": "`/terms`",
+      "detail": "TermsOfService · public",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "route:/disconnect",
+      "kind": "route",
+      "label": "`/disconnect`",
+      "detail": "Disconnect · public",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "route:/pay/:wallet_id",
+      "kind": "route",
+      "label": "`/pay/:wallet_id`",
+      "detail": "PayEntry · public",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "route:/pl/:token",
+      "kind": "route",
+      "label": "`/pl/:token`",
+      "detail": "PublicPaymentLink · public",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "route:/onboarding",
+      "kind": "route",
+      "label": "`/onboarding`",
+      "detail": "Onboarding · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/",
+      "kind": "route",
+      "label": "`/`",
+      "detail": "HomeRedirect · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/requisitions",
+      "kind": "route",
+      "label": "`/requisitions`",
+      "detail": "RequisitionList · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/requisitions/new",
+      "kind": "route",
+      "label": "`/requisitions/new`",
+      "detail": "RequisitionCreate · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/sales/new",
+      "kind": "route",
+      "label": "`/sales/new`",
+      "detail": "NewSale · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/approvals",
+      "kind": "route",
+      "label": "`/approvals`",
+      "detail": "Approvals · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/disbursements",
+      "kind": "route",
+      "label": "`/disbursements`",
+      "detail": "CashierDashboard · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/vouchers",
+      "kind": "route",
+      "label": "`/vouchers`",
+      "detail": "Vouchers · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/vouchers/:id",
+      "kind": "route",
+      "label": "`/vouchers/:id`",
+      "detail": "VoucherDetail · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/cashbook",
+      "kind": "route",
+      "label": "`/cashbook`",
+      "detail": "CashLedger · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/reporting",
+      "kind": "route",
+      "label": "`/reporting`",
+      "detail": "Reporting · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/settings",
+      "kind": "route",
+      "label": "`/settings`",
+      "detail": "Settings · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/products",
+      "kind": "route",
+      "label": "`/products`",
+      "detail": "ProductsServices · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/intelligence",
+      "kind": "route",
+      "label": "`/intelligence`",
+      "detail": "Intelligence · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/audit",
+      "kind": "route",
+      "label": "`/audit`",
+      "detail": "Audit · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/menu",
+      "kind": "route",
+      "label": "`/menu`",
+      "detail": "Menu · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/apps",
+      "kind": "route",
+      "label": "`/apps`",
+      "detail": "Apps · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/apps/payroll",
+      "kind": "route",
+      "label": "`/apps/payroll`",
+      "detail": "Payroll · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/apps/payroll/run",
+      "kind": "route",
+      "label": "`/apps/payroll/run`",
+      "detail": "RunPayrollPage · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/schedules",
+      "kind": "route",
+      "label": "`/schedules`",
+      "detail": "Schedules · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/invest",
+      "kind": "route",
+      "label": "`/invest`",
+      "detail": "InvestHome · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/invest/company/:id",
+      "kind": "route",
+      "label": "`/invest/company/:id`",
+      "detail": "InvestCompany · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "route:/invest/product/:id",
+      "kind": "route",
+      "label": "`/invest/product/:id`",
+      "detail": "InvestProductDetail · protected",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Approvals",
+      "kind": "screen",
+      "label": "Approvals",
+      "detail": "241 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Apps",
+      "kind": "screen",
+      "label": "Apps",
+      "detail": "116 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Audit",
+      "kind": "screen",
+      "label": "Audit",
+      "detail": "225 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:CashLedger",
+      "kind": "screen",
+      "label": "CashLedger",
+      "detail": "2848 LOC · 10 overlays",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:CashierDashboard",
+      "kind": "screen",
+      "label": "CashierDashboard",
+      "detail": "996 LOC · 1 overlays",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:ComingSoonPage",
+      "kind": "screen",
+      "label": "ComingSoonPage",
+      "detail": "18 LOC",
+      "state": "NOT_APPLICABLE"
+    },
+    {
+      "key": "screen:Dashboard",
+      "kind": "screen",
+      "label": "Dashboard",
+      "detail": "118 LOC",
+      "state": "NOT_APPLICABLE"
+    },
+    {
+      "key": "screen:Disconnect",
+      "kind": "screen",
+      "label": "Disconnect",
+      "detail": "32 LOC",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "screen:Intelligence",
+      "kind": "screen",
+      "label": "Intelligence",
+      "detail": "82 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Join",
+      "kind": "screen",
+      "label": "Join",
+      "detail": "182 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Login",
+      "kind": "screen",
+      "label": "Login",
+      "detail": "639 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Menu",
+      "kind": "screen",
+      "label": "Menu",
+      "detail": "376 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:NewSale",
+      "kind": "screen",
+      "label": "NewSale",
+      "detail": "1284 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Onboarding",
+      "kind": "screen",
+      "label": "Onboarding",
+      "detail": "288 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:PayEntry",
+      "kind": "screen",
+      "label": "PayEntry",
+      "detail": "26 LOC",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "screen:Payroll",
+      "kind": "screen",
+      "label": "Payroll",
+      "detail": "518 LOC · 2 overlays",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:PrivacyPolicy",
+      "kind": "screen",
+      "label": "PrivacyPolicy",
+      "detail": "177 LOC",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "screen:ProductsServices",
+      "kind": "screen",
+      "label": "ProductsServices",
+      "detail": "28 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:PublicPay",
+      "kind": "screen",
+      "label": "PublicPay",
+      "detail": "3880 LOC",
+      "state": "NOT_APPLICABLE"
+    },
+    {
+      "key": "screen:PublicPaymentLink",
+      "kind": "screen",
+      "label": "PublicPaymentLink",
+      "detail": "1379 LOC",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "screen:QuickPay",
+      "kind": "screen",
+      "label": "QuickPay",
+      "detail": "951 LOC",
+      "state": "NOT_APPLICABLE"
+    },
+    {
+      "key": "screen:Reporting",
+      "kind": "screen",
+      "label": "Reporting",
+      "detail": "2138 LOC · 1 overlays",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:RequisitionCreate",
+      "kind": "screen",
+      "label": "RequisitionCreate",
+      "detail": "1164 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:RequisitionList",
+      "kind": "screen",
+      "label": "RequisitionList",
+      "detail": "1504 LOC · 9 overlays",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:ResetPassword",
+      "kind": "screen",
+      "label": "ResetPassword",
+      "detail": "208 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:RunPayrollPage",
+      "kind": "screen",
+      "label": "RunPayrollPage",
+      "detail": "957 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Schedules",
+      "kind": "screen",
+      "label": "Schedules",
+      "detail": "1208 LOC · 1 overlays",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Settings",
+      "kind": "screen",
+      "label": "Settings",
+      "detail": "196 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:StaffPortfolio",
+      "kind": "screen",
+      "label": "StaffPortfolio",
+      "detail": "91 LOC",
+      "state": "NOT_APPLICABLE"
+    },
+    {
+      "key": "screen:TermsOfService",
+      "kind": "screen",
+      "label": "TermsOfService",
+      "detail": "123 LOC",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "screen:VoucherDetail",
+      "kind": "screen",
+      "label": "VoucherDetail",
+      "detail": "234 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:Vouchers",
+      "kind": "screen",
+      "label": "Vouchers",
+      "detail": "206 LOC · 1 overlays",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:InvestChart",
+      "kind": "screen",
+      "label": "InvestChart",
+      "detail": "168 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:InvestCompany",
+      "kind": "screen",
+      "label": "InvestCompany",
+      "detail": "192 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:InvestHome",
+      "kind": "screen",
+      "label": "InvestHome",
+      "detail": "381 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:InvestPaymentFlow",
+      "kind": "screen",
+      "label": "InvestPaymentFlow",
+      "detail": "655 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:InvestProductDetail",
+      "kind": "screen",
+      "label": "InvestProductDetail",
+      "detail": "292 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:investCertificate.ts",
+      "kind": "screen",
+      "label": "investCertificate.ts",
+      "detail": "184 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "screen:investChartData.ts",
+      "kind": "screen",
+      "label": "investChartData.ts",
+      "detail": "167 LOC",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:account.service.getAll",
+      "kind": "service",
+      "label": "account.service.getAll()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:account.service.create",
+      "kind": "service",
+      "label": "account.service.create()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:account.service.update",
+      "kind": "service",
+      "label": "account.service.update()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:account.service.importFromQuickBooks",
+      "kind": "service",
+      "label": "account.service.importFromQuickBooks()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:account.service.suggestAccount",
+      "kind": "service",
+      "label": "account.service.suggestAccount()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:account.service.suggestBatch",
+      "kind": "service",
+      "label": "account.service.suggestBatch()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.getRules",
+      "kind": "service",
+      "label": "ai.service.getRules()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.createRule",
+      "kind": "service",
+      "label": "ai.service.createRule()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.updateRule",
+      "kind": "service",
+      "label": "ai.service.updateRule()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.deleteRule",
+      "kind": "service",
+      "label": "ai.service.deleteRule()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.getDailyMetrics",
+      "kind": "service",
+      "label": "ai.service.getDailyMetrics()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.getStats",
+      "kind": "service",
+      "label": "ai.service.getStats()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.getModelSettings",
+      "kind": "service",
+      "label": "ai.service.getModelSettings()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:ai.service.updateModelSettings",
+      "kind": "service",
+      "label": "ai.service.updateModelSettings()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:budget.service.getBudgets",
+      "kind": "service",
+      "label": "budget.service.getBudgets()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:budget.service.setBudget",
+      "kind": "service",
+      "label": "budget.service.setBudget()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.getEntries",
+      "kind": "service",
+      "label": "cashbook.service.getEntries()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.getOverview",
+      "kind": "service",
+      "label": "cashbook.service.getOverview()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.getBalance",
+      "kind": "service",
+      "label": "cashbook.service.getBalance()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.getSummary",
+      "kind": "service",
+      "label": "cashbook.service.getSummary()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.reconcile",
+      "kind": "service",
+      "label": "cashbook.service.reconcile()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.returnCash",
+      "kind": "service",
+      "label": "cashbook.service.returnCash()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.closeBook",
+      "kind": "service",
+      "label": "cashbook.service.closeBook()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.logInflow",
+      "kind": "service",
+      "label": "cashbook.service.logInflow()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.recordManualSale",
+      "kind": "service",
+      "label": "cashbook.service.recordManualSale()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.logWalletDepositIntent",
+      "kind": "service",
+      "label": "cashbook.service.logWalletDepositIntent()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.classifyBulk",
+      "kind": "service",
+      "label": "cashbook.service.classifyBulk()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.postToQuickBooks",
+      "kind": "service",
+      "label": "cashbook.service.postToQuickBooks()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.updateAccount",
+      "kind": "service",
+      "label": "cashbook.service.updateAccount()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.narrateEntry",
+      "kind": "service",
+      "label": "cashbook.service.narrateEntry()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.getWallets",
+      "kind": "service",
+      "label": "cashbook.service.getWallets()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.createWallet",
+      "kind": "service",
+      "label": "cashbook.service.createWallet()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.transfer",
+      "kind": "service",
+      "label": "cashbook.service.transfer()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.transferToWallet",
+      "kind": "service",
+      "label": "cashbook.service.transferToWallet()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.getExternalWallets",
+      "kind": "service",
+      "label": "cashbook.service.getExternalWallets()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.createExternalWallet",
+      "kind": "service",
+      "label": "cashbook.service.createExternalWallet()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.deleteExternalWallet",
+      "kind": "service",
+      "label": "cashbook.service.deleteExternalWallet()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.previewStatementImport",
+      "kind": "service",
+      "label": "cashbook.service.previewStatementImport()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:cashbook.service.importStatement",
+      "kind": "service",
+      "label": "cashbook.service.importStatement()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:department.service.list",
+      "kind": "service",
+      "label": "department.service.list()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:department.service.create",
+      "kind": "service",
+      "label": "department.service.create()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:department.service.update",
+      "kind": "service",
+      "label": "department.service.update()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:department.service.delete",
+      "kind": "service",
+      "label": "department.service.delete()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:highlights.service.getHighlights",
+      "kind": "service",
+      "label": "highlights.service.getHighlights()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:highlights.service.acknowledgeAchievements",
+      "kind": "service",
+      "label": "highlights.service.acknowledgeAchievements()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.getStatus",
+      "kind": "service",
+      "label": "integration.service.getStatus()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.getConnectUrl",
+      "kind": "service",
+      "label": "integration.service.getConnectUrl()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.disconnect",
+      "kind": "service",
+      "label": "integration.service.disconnect()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.getAccounts",
+      "kind": "service",
+      "label": "integration.service.getAccounts()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.getAccountTransactions",
+      "kind": "service",
+      "label": "integration.service.getAccountTransactions()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.retrySync",
+      "kind": "service",
+      "label": "integration.service.retrySync()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.getOAuthUrl",
+      "kind": "service",
+      "label": "integration.service.getOAuthUrl()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.connect",
+      "kind": "service",
+      "label": "integration.service.connect()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.getFeeCategories",
+      "kind": "service",
+      "label": "integration.service.getFeeCategories()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.mapCategory",
+      "kind": "service",
+      "label": "integration.service.mapCategory()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.setLencoMode",
+      "kind": "service",
+      "label": "integration.service.setLencoMode()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.sync",
+      "kind": "service",
+      "label": "integration.service.sync()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:integration.service.reconcile",
+      "kind": "service",
+      "label": "integration.service.reconcile()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.getAccounts",
+      "kind": "service",
+      "label": "lenco.service.getAccounts()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.provisionOrganizationSubaccount",
+      "kind": "service",
+      "label": "lenco.service.provisionOrganizationSubaccount()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.getAvailableAccounts",
+      "kind": "service",
+      "label": "lenco.service.getAvailableAccounts()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.linkOrganizationSubaccount",
+      "kind": "service",
+      "label": "lenco.service.linkOrganizationSubaccount()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.verifyStatus",
+      "kind": "service",
+      "label": "lenco.service.verifyStatus()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.getReconciliationSummary",
+      "kind": "service",
+      "label": "lenco.service.getReconciliationSummary()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.getBanks",
+      "kind": "service",
+      "label": "lenco.service.getBanks()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.resolveBankAccount",
+      "kind": "service",
+      "label": "lenco.service.resolveBankAccount()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.resolveMobileMoney",
+      "kind": "service",
+      "label": "lenco.service.resolveMobileMoney()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.verifyDisbursementStatus",
+      "kind": "service",
+      "label": "lenco.service.verifyDisbursementStatus()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.getSaleReceiptDetails",
+      "kind": "service",
+      "label": "lenco.service.getSaleReceiptDetails()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:lenco.service.calculatePayoutFee",
+      "kind": "service",
+      "label": "lenco.service.calculatePayoutFee()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.getState",
+      "kind": "service",
+      "label": "onboarding.service.getState()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.saveProgress",
+      "kind": "service",
+      "label": "onboarding.service.saveProgress()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.updateOrganizationName",
+      "kind": "service",
+      "label": "onboarding.service.updateOrganizationName()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.saveProfile",
+      "kind": "service",
+      "label": "onboarding.service.saveProfile()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.generateChartOfAccounts",
+      "kind": "service",
+      "label": "onboarding.service.generateChartOfAccounts()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.saveChartOfAccounts",
+      "kind": "service",
+      "label": "onboarding.service.saveChartOfAccounts()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.getWalletStatus",
+      "kind": "service",
+      "label": "onboarding.service.getWalletStatus()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.claimWallet",
+      "kind": "service",
+      "label": "onboarding.service.claimWallet()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.confirmActivation",
+      "kind": "service",
+      "label": "onboarding.service.confirmActivation()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:onboarding.service.complete",
+      "kind": "service",
+      "label": "onboarding.service.complete()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:organization.service.getOrganization",
+      "kind": "service",
+      "label": "organization.service.getOrganization()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:organization.service.updateOrganization",
+      "kind": "service",
+      "label": "organization.service.updateOrganization()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:organization.service.deleteOrganization",
+      "kind": "service",
+      "label": "organization.service.deleteOrganization()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:organization.service.getOrCreateQuickLinkUsername",
+      "kind": "service",
+      "label": "organization.service.getOrCreateQuickLinkUsername()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.listStaff",
+      "kind": "service",
+      "label": "payroll.service.listStaff()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.getStaffMember",
+      "kind": "service",
+      "label": "payroll.service.getStaffMember()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.createStaffMember",
+      "kind": "service",
+      "label": "payroll.service.createStaffMember()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.updateStaffMember",
+      "kind": "service",
+      "label": "payroll.service.updateStaffMember()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.archiveStaffMember",
+      "kind": "service",
+      "label": "payroll.service.archiveStaffMember()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.getStaffPayrollHistory",
+      "kind": "service",
+      "label": "payroll.service.getStaffPayrollHistory()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.getStaffDepartments",
+      "kind": "service",
+      "label": "payroll.service.getStaffDepartments()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.listRuns",
+      "kind": "service",
+      "label": "payroll.service.listRuns()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.getRun",
+      "kind": "service",
+      "label": "payroll.service.getRun()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.createRun",
+      "kind": "service",
+      "label": "payroll.service.createRun()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.approveRun",
+      "kind": "service",
+      "label": "payroll.service.approveRun()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.getSuggestedDeductions",
+      "kind": "service",
+      "label": "payroll.service.getSuggestedDeductions()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.getPayrollConfig",
+      "kind": "service",
+      "label": "payroll.service.getPayrollConfig()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:payroll.service.upsertPayrollConfig",
+      "kind": "service",
+      "label": "payroll.service.upsertPayrollConfig()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.getProducts",
+      "kind": "service",
+      "label": "product.service.getProducts()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.createProduct",
+      "kind": "service",
+      "label": "product.service.createProduct()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.updateProduct",
+      "kind": "service",
+      "label": "product.service.updateProduct()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.deleteProduct",
+      "kind": "service",
+      "label": "product.service.deleteProduct()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.getProductSales",
+      "kind": "service",
+      "label": "product.service.getProductSales()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.getAvailability",
+      "kind": "service",
+      "label": "product.service.getAvailability()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.createPaymentLink",
+      "kind": "service",
+      "label": "product.service.createPaymentLink()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.createInvoiceLink",
+      "kind": "service",
+      "label": "product.service.createInvoiceLink()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.listPaymentLinks",
+      "kind": "service",
+      "label": "product.service.listPaymentLinks()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.listInvoiceLinks",
+      "kind": "service",
+      "label": "product.service.listInvoiceLinks()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.deactivatePaymentLink",
+      "kind": "service",
+      "label": "product.service.deactivatePaymentLink()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.archiveInvoiceLink",
+      "kind": "service",
+      "label": "product.service.archiveInvoiceLink()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:product.service.updateInvoiceLink",
+      "kind": "service",
+      "label": "product.service.updateInvoiceLink()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:report.service.getExpenditures",
+      "kind": "service",
+      "label": "report.service.getExpenditures()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:report.service.getExpenditureItems",
+      "kind": "service",
+      "label": "report.service.getExpenditureItems()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.autoDisburse",
+      "kind": "service",
+      "label": "requisition.service.autoDisburse()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.disburse",
+      "kind": "service",
+      "label": "requisition.service.disburse()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.disburseExcess",
+      "kind": "service",
+      "label": "requisition.service.disburseExcess()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.verifyDisbursement",
+      "kind": "service",
+      "label": "requisition.service.verifyDisbursement()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.acknowledge",
+      "kind": "service",
+      "label": "requisition.service.acknowledge()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.getAll",
+      "kind": "service",
+      "label": "requisition.service.getAll()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.getById",
+      "kind": "service",
+      "label": "requisition.service.getById()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.create",
+      "kind": "service",
+      "label": "requisition.service.create()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.update",
+      "kind": "service",
+      "label": "requisition.service.update()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.getFileUrl",
+      "kind": "service",
+      "label": "requisition.service.getFileUrl()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.analyzeReceipt",
+      "kind": "service",
+      "label": "requisition.service.analyzeReceipt()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.getDisbursementHistory",
+      "kind": "service",
+      "label": "requisition.service.getDisbursementHistory()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.updateDisbursement",
+      "kind": "service",
+      "label": "requisition.service.updateDisbursement()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.analyzeDisbursementProof",
+      "kind": "service",
+      "label": "requisition.service.analyzeDisbursementProof()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.getMessages",
+      "kind": "service",
+      "label": "requisition.service.getMessages()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.sendMessage",
+      "kind": "service",
+      "label": "requisition.service.sendMessage()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.approveCategorization",
+      "kind": "service",
+      "label": "requisition.service.approveCategorization()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.retriggerAI",
+      "kind": "service",
+      "label": "requisition.service.retriggerAI()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.postToQuickBooks",
+      "kind": "service",
+      "label": "requisition.service.postToQuickBooks()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.scanReceipts",
+      "kind": "service",
+      "label": "requisition.service.scanReceipts()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.acknowledgeReceipt",
+      "kind": "service",
+      "label": "requisition.service.acknowledgeReceipt()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.deleteReceipt",
+      "kind": "service",
+      "label": "requisition.service.deleteReceipt()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.updateLineItemAccount",
+      "kind": "service",
+      "label": "requisition.service.updateLineItemAccount()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.revertToDraft",
+      "kind": "service",
+      "label": "requisition.service.revertToDraft()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.getAuditReport",
+      "kind": "service",
+      "label": "requisition.service.getAuditReport()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.disbursePayroll",
+      "kind": "service",
+      "label": "requisition.service.disbursePayroll()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.updateLineItemDetails",
+      "kind": "service",
+      "label": "requisition.service.updateLineItemDetails()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:requisition.service.delete",
+      "kind": "service",
+      "label": "requisition.service.delete()",
+      "detail": "direct supabase",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:schedule.service.getAll",
+      "kind": "service",
+      "label": "schedule.service.getAll()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:schedule.service.getCounts",
+      "kind": "service",
+      "label": "schedule.service.getCounts()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:schedule.service.create",
+      "kind": "service",
+      "label": "schedule.service.create()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:schedule.service.update",
+      "kind": "service",
+      "label": "schedule.service.update()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:schedule.service.delete",
+      "kind": "service",
+      "label": "schedule.service.delete()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:schedule.service.getRuns",
+      "kind": "service",
+      "label": "schedule.service.getRuns()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:schedule.service.runNow",
+      "kind": "service",
+      "label": "schedule.service.runNow()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:user.service.getAll",
+      "kind": "service",
+      "label": "user.service.getAll()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:user.service.create",
+      "kind": "service",
+      "label": "user.service.create()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:user.service.update",
+      "kind": "service",
+      "label": "user.service.update()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:user.service.delete",
+      "kind": "service",
+      "label": "user.service.delete()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:user.service.resendInvite",
+      "kind": "service",
+      "label": "user.service.resendInvite()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:voucher.service.getAll",
+      "kind": "service",
+      "label": "voucher.service.getAll()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:voucher.service.getById",
+      "kind": "service",
+      "label": "voucher.service.getById()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:voucher.service.createFromRequisition",
+      "kind": "service",
+      "label": "voucher.service.createFromRequisition()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:voucher.service.post",
+      "kind": "service",
+      "label": "voucher.service.post()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "service:voucher.service.postVoucherWithClassification",
+      "kind": "service",
+      "label": "voucher.service.postVoucherWithClassification()",
+      "detail": "api",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /accounts",
+      "kind": "endpoint",
+      "label": "GET /accounts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /accounts",
+      "kind": "endpoint",
+      "label": "POST /accounts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /accounts/:id",
+      "kind": "endpoint",
+      "label": "PUT /accounts/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /accounts/import",
+      "kind": "endpoint",
+      "label": "POST /accounts/import",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /accounts/suggest",
+      "kind": "endpoint",
+      "label": "POST /accounts/suggest",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /admin/analytics/payment-links",
+      "kind": "endpoint",
+      "label": "GET /admin/analytics/payment-links",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/analytics/payment-links/attempts",
+      "kind": "endpoint",
+      "label": "GET /admin/analytics/payment-links/attempts",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:PUT /admin/analytics/posthog-key",
+      "kind": "endpoint",
+      "label": "PUT /admin/analytics/posthog-key",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/logs",
+      "kind": "endpoint",
+      "label": "GET /admin/logs",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/me",
+      "kind": "endpoint",
+      "label": "GET /admin/me",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/reconciliation",
+      "kind": "endpoint",
+      "label": "GET /admin/reconciliation",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/reconciliation/:orgId",
+      "kind": "endpoint",
+      "label": "GET /admin/reconciliation/:orgId",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:POST /admin/reconciliation/:orgId/heal-platform-fees",
+      "kind": "endpoint",
+      "label": "POST /admin/reconciliation/:orgId/heal-platform-fees",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/reconciliation/:orgId/raw-lenco-txns",
+      "kind": "endpoint",
+      "label": "GET /admin/reconciliation/:orgId/raw-lenco-txns",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:POST /admin/reconciliation/heal-platform-fees",
+      "kind": "endpoint",
+      "label": "POST /admin/reconciliation/heal-platform-fees",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:POST /admin/test-collection/initiate",
+      "kind": "endpoint",
+      "label": "POST /admin/test-collection/initiate",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/test-collection/status/:reference",
+      "kind": "endpoint",
+      "label": "GET /admin/test-collection/status/:reference",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/wallet-pool",
+      "kind": "endpoint",
+      "label": "GET /admin/wallet-pool",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:POST /admin/wallet-pool",
+      "kind": "endpoint",
+      "label": "POST /admin/wallet-pool",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:PATCH /admin/wallet-pool/:id",
+      "kind": "endpoint",
+      "label": "PATCH /admin/wallet-pool/:id",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:GET /admin/wallet-pool/settings",
+      "kind": "endpoint",
+      "label": "GET /admin/wallet-pool/settings",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:PUT /admin/wallet-pool/settings",
+      "kind": "endpoint",
+      "label": "PUT /admin/wallet-pool/settings",
+      "detail": "any",
+      "state": "WEB_ONLY"
+    },
+    {
+      "key": "api:POST /ai/agent/approve",
+      "kind": "endpoint",
+      "label": "POST /ai/agent/approve",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /ai/agent/chat",
+      "kind": "endpoint",
+      "label": "POST /ai/agent/chat",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/agent/models",
+      "kind": "endpoint",
+      "label": "GET /ai/agent/models",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/agent/threads",
+      "kind": "endpoint",
+      "label": "GET /ai/agent/threads",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/agent/threads/:id",
+      "kind": "endpoint",
+      "label": "GET /ai/agent/threads/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /ai/agent/threads/:id",
+      "kind": "endpoint",
+      "label": "DELETE /ai/agent/threads/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /ai/assistant",
+      "kind": "endpoint",
+      "label": "POST /ai/assistant",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/digest",
+      "kind": "endpoint",
+      "label": "GET /ai/digest",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/highlights",
+      "kind": "endpoint",
+      "label": "GET /ai/highlights",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /ai/highlights/acknowledge",
+      "kind": "endpoint",
+      "label": "POST /ai/highlights/acknowledge",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /ai/highlights/weekly-email",
+      "kind": "endpoint",
+      "label": "POST /ai/highlights/weekly-email",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/metrics/daily",
+      "kind": "endpoint",
+      "label": "GET /ai/metrics/daily",
+      "detail": "ADMIN/ACCOUNTANT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/metrics/stats",
+      "kind": "endpoint",
+      "label": "GET /ai/metrics/stats",
+      "detail": "ADMIN/ACCOUNTANT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/model-settings",
+      "kind": "endpoint",
+      "label": "GET /ai/model-settings",
+      "detail": "ADMIN/ACCOUNTANT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /ai/model-settings",
+      "kind": "endpoint",
+      "label": "PUT /ai/model-settings",
+      "detail": "ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /ai/rules",
+      "kind": "endpoint",
+      "label": "GET /ai/rules",
+      "detail": "ADMIN/ACCOUNTANT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /ai/rules",
+      "kind": "endpoint",
+      "label": "POST /ai/rules",
+      "detail": "ADMIN/ACCOUNTANT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /ai/rules/:id",
+      "kind": "endpoint",
+      "label": "PATCH /ai/rules/:id",
+      "detail": "ADMIN/ACCOUNTANT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /ai/rules/:id",
+      "kind": "endpoint",
+      "label": "DELETE /ai/rules/:id",
+      "detail": "ADMIN/ACCOUNTANT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /auth/complete-invitation",
+      "kind": "endpoint",
+      "label": "POST /auth/complete-invitation",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /auth/forgot-password",
+      "kind": "endpoint",
+      "label": "POST /auth/forgot-password",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /auth/join-request",
+      "kind": "endpoint",
+      "label": "POST /auth/join-request",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /auth/my-organizations",
+      "kind": "endpoint",
+      "label": "GET /auth/my-organizations",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /auth/organizations/search",
+      "kind": "endpoint",
+      "label": "GET /auth/organizations/search",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /auth/register",
+      "kind": "endpoint",
+      "label": "POST /auth/register",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /auth/resolve-username",
+      "kind": "endpoint",
+      "label": "POST /auth/resolve-username",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /auth/signup",
+      "kind": "endpoint",
+      "label": "POST /auth/signup",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /auth/switch-organization",
+      "kind": "endpoint",
+      "label": "POST /auth/switch-organization",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /billing/downgrade",
+      "kind": "endpoint",
+      "label": "POST /billing/downgrade",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /billing/generate-invoice",
+      "kind": "endpoint",
+      "label": "POST /billing/generate-invoice",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /billing/invoice/:invoiceId/receipt",
+      "kind": "endpoint",
+      "label": "GET /billing/invoice/:invoiceId/receipt",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /billing/pay/:invoiceId",
+      "kind": "endpoint",
+      "label": "POST /billing/pay/:invoiceId",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /billing/pay/:invoiceId/mobile-money",
+      "kind": "endpoint",
+      "label": "POST /billing/pay/:invoiceId/mobile-money",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /billing/pay/:invoiceId/mobile-money/status",
+      "kind": "endpoint",
+      "label": "GET /billing/pay/:invoiceId/mobile-money/status",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /billing/subscription",
+      "kind": "endpoint",
+      "label": "GET /billing/subscription",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /billing/upgrade",
+      "kind": "endpoint",
+      "label": "POST /billing/upgrade",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /budgets",
+      "kind": "endpoint",
+      "label": "GET /budgets",
+      "detail": "AUTHORISER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /budgets",
+      "kind": "endpoint",
+      "label": "POST /budgets",
+      "detail": "ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /cashbook",
+      "kind": "endpoint",
+      "label": "GET /cashbook",
+      "detail": "REQUESTOR/AUTHORISER/CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /cashbook/:entryId/account",
+      "kind": "endpoint",
+      "label": "PATCH /cashbook/:entryId/account",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /cashbook/:entryId/narrate",
+      "kind": "endpoint",
+      "label": "PATCH /cashbook/:entryId/narrate",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /cashbook/balance",
+      "kind": "endpoint",
+      "label": "GET /cashbook/balance",
+      "detail": "REQUESTOR/AUTHORISER/CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/classify-bulk",
+      "kind": "endpoint",
+      "label": "POST /cashbook/classify-bulk",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/close",
+      "kind": "endpoint",
+      "label": "POST /cashbook/close",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/create-qb-account",
+      "kind": "endpoint",
+      "label": "POST /cashbook/create-qb-account",
+      "detail": "ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /cashbook/external-wallets",
+      "kind": "endpoint",
+      "label": "GET /cashbook/external-wallets",
+      "detail": "REQUESTOR/AUTHORISER/CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/external-wallets",
+      "kind": "endpoint",
+      "label": "POST /cashbook/external-wallets",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /cashbook/external-wallets/:id",
+      "kind": "endpoint",
+      "label": "DELETE /cashbook/external-wallets/:id",
+      "detail": "ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/external-wallets/:id/import-preview",
+      "kind": "endpoint",
+      "label": "POST /cashbook/external-wallets/:id/import-preview",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/external-wallets/:id/import-statement",
+      "kind": "endpoint",
+      "label": "POST /cashbook/external-wallets/:id/import-statement",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/inflow",
+      "kind": "endpoint",
+      "label": "POST /cashbook/inflow",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/manual-sale",
+      "kind": "endpoint",
+      "label": "POST /cashbook/manual-sale",
+      "detail": "REQUESTOR/CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /cashbook/overview",
+      "kind": "endpoint",
+      "label": "GET /cashbook/overview",
+      "detail": "REQUESTOR/AUTHORISER/CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/post-to-qb",
+      "kind": "endpoint",
+      "label": "POST /cashbook/post-to-qb",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/reconcile",
+      "kind": "endpoint",
+      "label": "POST /cashbook/reconcile",
+      "detail": "CASHIER/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/return",
+      "kind": "endpoint",
+      "label": "POST /cashbook/return",
+      "detail": "CASHIER/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /cashbook/summary",
+      "kind": "endpoint",
+      "label": "GET /cashbook/summary",
+      "detail": "AUTHORISER/CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/transfer-to-wallet",
+      "kind": "endpoint",
+      "label": "POST /cashbook/transfer-to-wallet",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/wallet-deposit-intent",
+      "kind": "endpoint",
+      "label": "POST /cashbook/wallet-deposit-intent",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /cashbook/wallets",
+      "kind": "endpoint",
+      "label": "GET /cashbook/wallets",
+      "detail": "REQUESTOR/AUTHORISER/CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/wallets",
+      "kind": "endpoint",
+      "label": "POST /cashbook/wallets",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /cashbook/wallets/transfer",
+      "kind": "endpoint",
+      "label": "POST /cashbook/wallets/transfer",
+      "detail": "CASHIER/ACCOUNTANT/ADMIN",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /departments",
+      "kind": "endpoint",
+      "label": "GET /departments",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /departments",
+      "kind": "endpoint",
+      "label": "POST /departments",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /departments/:id",
+      "kind": "endpoint",
+      "label": "PATCH /departments/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /departments/:id",
+      "kind": "endpoint",
+      "label": "DELETE /departments/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /integrations/masterfees",
+      "kind": "endpoint",
+      "label": "DELETE /integrations/masterfees",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /integrations/masterfees/backfill-payments",
+      "kind": "endpoint",
+      "label": "POST /integrations/masterfees/backfill-payments",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /integrations/masterfees/connect",
+      "kind": "endpoint",
+      "label": "POST /integrations/masterfees/connect",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /integrations/masterfees/correct-dates",
+      "kind": "endpoint",
+      "label": "POST /integrations/masterfees/correct-dates",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/masterfees/diag",
+      "kind": "endpoint",
+      "label": "GET /integrations/masterfees/diag",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/masterfees/fee-categories",
+      "kind": "endpoint",
+      "label": "GET /integrations/masterfees/fee-categories",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /integrations/masterfees/fee-categories",
+      "kind": "endpoint",
+      "label": "PUT /integrations/masterfees/fee-categories",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /integrations/masterfees/lenco-mode",
+      "kind": "endpoint",
+      "label": "PUT /integrations/masterfees/lenco-mode",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/masterfees/oauth/callback",
+      "kind": "endpoint",
+      "label": "GET /integrations/masterfees/oauth/callback",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/masterfees/oauth/url",
+      "kind": "endpoint",
+      "label": "GET /integrations/masterfees/oauth/url",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /integrations/masterfees/recategorize-invoices",
+      "kind": "endpoint",
+      "label": "POST /integrations/masterfees/recategorize-invoices",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/masterfees/reconcile",
+      "kind": "endpoint",
+      "label": "GET /integrations/masterfees/reconcile",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/masterfees/status",
+      "kind": "endpoint",
+      "label": "GET /integrations/masterfees/status",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /integrations/masterfees/sync",
+      "kind": "endpoint",
+      "label": "POST /integrations/masterfees/sync",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /integrations/masterfees/sync-all",
+      "kind": "endpoint",
+      "label": "POST /integrations/masterfees/sync-all",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /integrations/quickbooks",
+      "kind": "endpoint",
+      "label": "DELETE /integrations/quickbooks",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/quickbooks/accounts",
+      "kind": "endpoint",
+      "label": "GET /integrations/quickbooks/accounts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/quickbooks/accounts/:qbAccountId/transactions",
+      "kind": "endpoint",
+      "label": "GET /integrations/quickbooks/accounts/:qbAccountId/transactions",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/quickbooks/callback",
+      "kind": "endpoint",
+      "label": "GET /integrations/quickbooks/callback",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/quickbooks/connect",
+      "kind": "endpoint",
+      "label": "GET /integrations/quickbooks/connect",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/quickbooks/invoices",
+      "kind": "endpoint",
+      "label": "GET /integrations/quickbooks/invoices",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /integrations/quickbooks/sync/:id",
+      "kind": "endpoint",
+      "label": "POST /integrations/quickbooks/sync/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /integrations/status",
+      "kind": "endpoint",
+      "label": "GET /integrations/status",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/accounts",
+      "kind": "endpoint",
+      "label": "GET /lenco/accounts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/available-accounts",
+      "kind": "endpoint",
+      "label": "GET /lenco/available-accounts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/banks",
+      "kind": "endpoint",
+      "label": "GET /lenco/banks",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/organizations/:id/link",
+      "kind": "endpoint",
+      "label": "POST /lenco/organizations/:id/link",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/organizations/:id/provision",
+      "kind": "endpoint",
+      "label": "POST /lenco/organizations/:id/provision",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/public-collection-finalize/:reference",
+      "kind": "endpoint",
+      "label": "POST /lenco/public-collection-finalize/:reference",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-collection-longpoll/:reference",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-collection-longpoll/:reference",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/public-collection/cancel",
+      "kind": "endpoint",
+      "label": "POST /lenco/public-collection/cancel",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/public-collection/mobile-money",
+      "kind": "endpoint",
+      "label": "POST /lenco/public-collection/mobile-money",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/public-collection/resolve-momo",
+      "kind": "endpoint",
+      "label": "POST /lenco/public-collection/resolve-momo",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-context/:wallet_id",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-context/:wallet_id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/public-diagnostics/report",
+      "kind": "endpoint",
+      "label": "POST /lenco/public-diagnostics/report",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-payment-link/:token",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-payment-link/:token",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-product-availability/:productId",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-product-availability/:productId",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-quicklink-context/:username",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-quicklink-context/:username",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/public-quicklink-intent",
+      "kind": "endpoint",
+      "label": "POST /lenco/public-quicklink-intent",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-quicklink-purposes/:username",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-quicklink-purposes/:username",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-sale-receipt/:reference",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-sale-receipt/:reference",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-sales/by-phone/:phone",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-sales/by-phone/:phone",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/public-verify-status/:reference",
+      "kind": "endpoint",
+      "label": "GET /lenco/public-verify-status/:reference",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/public-wallet-deposit-intent",
+      "kind": "endpoint",
+      "label": "POST /lenco/public-wallet-deposit-intent",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/reconcile/:organizationId",
+      "kind": "endpoint",
+      "label": "GET /lenco/reconcile/:organizationId",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/resolve-bank",
+      "kind": "endpoint",
+      "label": "POST /lenco/resolve-bank",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/resolve-momo",
+      "kind": "endpoint",
+      "label": "POST /lenco/resolve-momo",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/sale-receipt/:entryId",
+      "kind": "endpoint",
+      "label": "GET /lenco/sale-receipt/:entryId",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/sync",
+      "kind": "endpoint",
+      "label": "POST /lenco/sync",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/test-collection/initiate",
+      "kind": "endpoint",
+      "label": "POST /lenco/test-collection/initiate",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/test-collection/status/:reference",
+      "kind": "endpoint",
+      "label": "GET /lenco/test-collection/status/:reference",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /lenco/verify-status/:reference",
+      "kind": "endpoint",
+      "label": "GET /lenco/verify-status/:reference",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/wallet-deposit-intent",
+      "kind": "endpoint",
+      "label": "POST /lenco/wallet-deposit-intent",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /lenco/webhook",
+      "kind": "endpoint",
+      "label": "POST /lenco/webhook",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /onboarding/chart-of-accounts",
+      "kind": "endpoint",
+      "label": "POST /onboarding/chart-of-accounts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /onboarding/chart-of-accounts/generate",
+      "kind": "endpoint",
+      "label": "POST /onboarding/chart-of-accounts/generate",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /onboarding/complete",
+      "kind": "endpoint",
+      "label": "POST /onboarding/complete",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /onboarding/organization",
+      "kind": "endpoint",
+      "label": "PUT /onboarding/organization",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /onboarding/profile",
+      "kind": "endpoint",
+      "label": "PUT /onboarding/profile",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /onboarding/progress",
+      "kind": "endpoint",
+      "label": "PUT /onboarding/progress",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /onboarding/state",
+      "kind": "endpoint",
+      "label": "GET /onboarding/state",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /onboarding/wallet",
+      "kind": "endpoint",
+      "label": "GET /onboarding/wallet",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /onboarding/wallet/activation-confirm",
+      "kind": "endpoint",
+      "label": "POST /onboarding/wallet/activation-confirm",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /onboarding/wallet/claim",
+      "kind": "endpoint",
+      "label": "POST /onboarding/wallet/claim",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /organizations",
+      "kind": "endpoint",
+      "label": "GET /organizations",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /organizations",
+      "kind": "endpoint",
+      "label": "PUT /organizations",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /organizations",
+      "kind": "endpoint",
+      "label": "DELETE /organizations",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /organizations/payment-links",
+      "kind": "endpoint",
+      "label": "GET /organizations/payment-links",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /organizations/payment-links",
+      "kind": "endpoint",
+      "label": "POST /organizations/payment-links",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /organizations/payment-links/:id",
+      "kind": "endpoint",
+      "label": "PATCH /organizations/payment-links/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /organizations/payment-links/:id/archive",
+      "kind": "endpoint",
+      "label": "PATCH /organizations/payment-links/:id/archive",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /organizations/payment-links/:id/deactivate",
+      "kind": "endpoint",
+      "label": "POST /organizations/payment-links/:id/deactivate",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /organizations/payment-links/invoice",
+      "kind": "endpoint",
+      "label": "POST /organizations/payment-links/invoice",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /organizations/products",
+      "kind": "endpoint",
+      "label": "GET /organizations/products",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /organizations/products",
+      "kind": "endpoint",
+      "label": "POST /organizations/products",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /organizations/products/:id",
+      "kind": "endpoint",
+      "label": "PUT /organizations/products/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /organizations/products/:id",
+      "kind": "endpoint",
+      "label": "DELETE /organizations/products/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /organizations/products/:id/sales",
+      "kind": "endpoint",
+      "label": "GET /organizations/products/:id/sales",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /organizations/products/sales-by-reference/:reference",
+      "kind": "endpoint",
+      "label": "GET /organizations/products/sales-by-reference/:reference",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /organizations/quick-link-username",
+      "kind": "endpoint",
+      "label": "GET /organizations/quick-link-username",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/config",
+      "kind": "endpoint",
+      "label": "GET /payroll/config",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /payroll/config",
+      "kind": "endpoint",
+      "label": "PUT /payroll/config",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/runs",
+      "kind": "endpoint",
+      "label": "GET /payroll/runs",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /payroll/runs",
+      "kind": "endpoint",
+      "label": "POST /payroll/runs",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/runs/:id",
+      "kind": "endpoint",
+      "label": "GET /payroll/runs/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /payroll/runs/:id/approve",
+      "kind": "endpoint",
+      "label": "POST /payroll/runs/:id/approve",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/runs/suggested-deductions",
+      "kind": "endpoint",
+      "label": "GET /payroll/runs/suggested-deductions",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/staff",
+      "kind": "endpoint",
+      "label": "GET /payroll/staff",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /payroll/staff",
+      "kind": "endpoint",
+      "label": "POST /payroll/staff",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/staff/:id",
+      "kind": "endpoint",
+      "label": "GET /payroll/staff/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /payroll/staff/:id",
+      "kind": "endpoint",
+      "label": "PATCH /payroll/staff/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /payroll/staff/:id",
+      "kind": "endpoint",
+      "label": "DELETE /payroll/staff/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/staff/:id/history",
+      "kind": "endpoint",
+      "label": "GET /payroll/staff/:id/history",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /payroll/staff/departments",
+      "kind": "endpoint",
+      "label": "GET /payroll/staff/departments",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /reports/expenditure",
+      "kind": "endpoint",
+      "label": "GET /reports/expenditure",
+      "detail": "AUTHORISER/ACCOUNTANT/ADMIN/MANAGEMENT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /reports/expenditure/:accountId/items",
+      "kind": "endpoint",
+      "label": "GET /reports/expenditure/:accountId/items",
+      "detail": "AUTHORISER/ACCOUNTANT/ADMIN/MANAGEMENT",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions",
+      "kind": "endpoint",
+      "label": "POST /requisitions",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions",
+      "kind": "endpoint",
+      "label": "GET /requisitions",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions/:id",
+      "kind": "endpoint",
+      "label": "GET /requisitions/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /requisitions/:id",
+      "kind": "endpoint",
+      "label": "PUT /requisitions/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /requisitions/:id",
+      "kind": "endpoint",
+      "label": "DELETE /requisitions/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/acknowledge",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/acknowledge",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/approve-categorization",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/approve-categorization",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/auto-complete",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/auto-complete",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/auto-disburse",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/auto-disburse",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/confirm-change",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/confirm-change",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/disburse",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/disburse",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/disburse-excess",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/disburse-excess",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/disburse-payroll",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/disburse-payroll",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /requisitions/:id/expenses",
+      "kind": "endpoint",
+      "label": "PUT /requisitions/:id/expenses",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/items/:itemId/analyze-receipt",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/items/:itemId/analyze-receipt",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/mark-read",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/mark-read",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions/:id/messages",
+      "kind": "endpoint",
+      "label": "GET /requisitions/:id/messages",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/messages",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/messages",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /requisitions/:id/messages/:messageId",
+      "kind": "endpoint",
+      "label": "DELETE /requisitions/:id/messages/:messageId",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/post-quickbooks",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/post-quickbooks",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/post-voucher",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/post-voucher",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /requisitions/:id/receipts/:receiptId",
+      "kind": "endpoint",
+      "label": "DELETE /requisitions/:id/receipts/:receiptId",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions/:id/resolve-recipient",
+      "kind": "endpoint",
+      "label": "GET /requisitions/:id/resolve-recipient",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/retrigger-ai",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/retrigger-ai",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/revert-to-draft",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/revert-to-draft",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/scan-receipts",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/scan-receipts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /requisitions/:id/status",
+      "kind": "endpoint",
+      "label": "PATCH /requisitions/:id/status",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/:id/submit-change",
+      "kind": "endpoint",
+      "label": "POST /requisitions/:id/submit-change",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions/:id/verify-disbursement",
+      "kind": "endpoint",
+      "label": "GET /requisitions/:id/verify-disbursement",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions/admin/all",
+      "kind": "endpoint",
+      "label": "GET /requisitions/admin/all",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/auto-reminder",
+      "kind": "endpoint",
+      "label": "POST /requisitions/auto-reminder",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /requisitions/disbursements/:id",
+      "kind": "endpoint",
+      "label": "PATCH /requisitions/disbursements/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/disbursements/:id/analyze-proof",
+      "kind": "endpoint",
+      "label": "POST /requisitions/disbursements/:id/analyze-proof",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions/disbursements/history",
+      "kind": "endpoint",
+      "label": "GET /requisitions/disbursements/history",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /requisitions/items/:itemId/account",
+      "kind": "endpoint",
+      "label": "PATCH /requisitions/items/:itemId/account",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /requisitions/items/:itemId/details",
+      "kind": "endpoint",
+      "label": "PATCH /requisitions/items/:itemId/details",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/maintenance/backfill-audit",
+      "kind": "endpoint",
+      "label": "POST /requisitions/maintenance/backfill-audit",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /requisitions/poll-processing",
+      "kind": "endpoint",
+      "label": "POST /requisitions/poll-processing",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /requisitions/reports/audit",
+      "kind": "endpoint",
+      "label": "GET /requisitions/reports/audit",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /schedules",
+      "kind": "endpoint",
+      "label": "GET /schedules",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /schedules",
+      "kind": "endpoint",
+      "label": "POST /schedules",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PATCH /schedules/:id",
+      "kind": "endpoint",
+      "label": "PATCH /schedules/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /schedules/:id",
+      "kind": "endpoint",
+      "label": "DELETE /schedules/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /schedules/:id/run-now",
+      "kind": "endpoint",
+      "label": "POST /schedules/:id/run-now",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /schedules/:id/runs",
+      "kind": "endpoint",
+      "label": "GET /schedules/:id/runs",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /schedules/counts",
+      "kind": "endpoint",
+      "label": "GET /schedules/counts",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /users",
+      "kind": "endpoint",
+      "label": "GET /users",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /users",
+      "kind": "endpoint",
+      "label": "POST /users",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /users/:id",
+      "kind": "endpoint",
+      "label": "PUT /users/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:DELETE /users/:id",
+      "kind": "endpoint",
+      "label": "DELETE /users/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /users/:id/resend-invite",
+      "kind": "endpoint",
+      "label": "POST /users/:id/resend-invite",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /users/me",
+      "kind": "endpoint",
+      "label": "GET /users/me",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:PUT /users/me/payment-info",
+      "kind": "endpoint",
+      "label": "PUT /users/me/payment-info",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /users/notifications",
+      "kind": "endpoint",
+      "label": "GET /users/notifications",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /vouchers",
+      "kind": "endpoint",
+      "label": "GET /vouchers",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /vouchers",
+      "kind": "endpoint",
+      "label": "POST /vouchers",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /vouchers/:id",
+      "kind": "endpoint",
+      "label": "GET /vouchers/:id",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:POST /vouchers/:id/post",
+      "kind": "endpoint",
+      "label": "POST /vouchers/:id/post",
+      "detail": "any",
+      "state": "PLANNED"
+    },
+    {
+      "key": "api:GET /webhooks/vercel-log-drain",
+      "kind": "endpoint",
+      "label": "GET /webhooks/vercel-log-drain",
+      "detail": "any",
+      "state": "NOT_APPLICABLE"
+    },
+    {
+      "key": "api:POST /webhooks/vercel-log-drain",
+      "kind": "endpoint",
+      "label": "POST /webhooks/vercel-log-drain",
+      "detail": "any",
+      "state": "NOT_APPLICABLE"
+    }
+  ]
+}
