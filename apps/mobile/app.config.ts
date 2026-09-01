@@ -71,6 +71,22 @@ const config: ExpoConfig = {
                     'MoneyWise uses the camera so you can photograph receipts and attach them to a request.',
             },
         ],
+        // Sets the iOS deployment target to 16.4 -- expo-speech-recognition's
+        // native module requires it (Apple's on-device Speech APIs used there
+        // were introduced across 16.x). Every other native dependency here
+        // supports the default 15.1, so this floor exists solely for
+        // dictation. Reasonable for a 2026 app: iOS 16 shipped September
+        // 2022, so this excludes only very old, unsupported hardware.
+        ['expo-build-properties', { ios: { deploymentTarget: '16.4' } }],
+        [
+            'expo-speech-recognition',
+            {
+                microphonePermission:
+                    'MoneyWise uses the microphone so you can dictate a question to the Assistant.',
+                speechRecognitionPermission:
+                    'MoneyWise uses speech recognition to turn your dictation into text for the Assistant.',
+            },
+        ],
     ],
 
     experiments: {

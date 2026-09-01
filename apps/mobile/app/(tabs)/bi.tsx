@@ -1,19 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    View, Text, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Pressable,
+    View, Text, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Pressable, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from 'expo-router';
-import { BarChart3, Zap, Sparkles, PenSquare, ChevronLeft } from 'lucide-react-native';
-import { agentClient } from 'core';
+import { BarChart3, Zap, PenSquare, ChevronLeft } from 'lucide-react-native';
+import { useQuery } from '@tanstack/react-query';
+import { agentClient, requireCapability } from 'core';
 import type { AgentEvent, Widget } from 'core';
 import { MessageBubble, type ChatMessage } from '../../src/components/assistant/MessageBubble';
 import { ApprovalCard } from '../../src/components/assistant/ApprovalCard';
-import { Composer } from '../../src/components/assistant/Composer';
+import { Composer, type ComposerAttachment } from '../../src/components/assistant/Composer';
+import { uploadToBucket } from '../../src/lib/uploads';
+import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts } from '../../src/theme/tokens';
 
 const uid = () => Math.random().toString(36).slice(2);
-const DEFAULT_MODEL = 'default';
+const ATTACHMENT_EXTENSIONS = /\.(csv|xlsx|xls)$/i;
+const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024; // matches the bank-statements bucket's own limit
 
 type TabId = 'assistant' | 'insights' | 'automations';
 const TABS: { id: TabId; label: string }[] = [
@@ -39,6 +43,7 @@ interface PendingApproval {
 export default function BiScreen() {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation();
+    const { organizationId } = useAuth();
     const [tab, setTab] = useState<TabId>('assistant');
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -46,8 +51,21 @@ export default function BiScreen() {
     const [pending, setPending] = useState<PendingApproval | null>(null);
     const [input, setInput] = useState('');
     const [busy, setBusy] = useState(false);
+    const [attachment, setAttachment] = useState<ComposerAttachment | null>(null);
+    const [attaching, setAttaching] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
     const listRef = useRef<FlatList<ChatMessage>>(null);
+
+    const { data: modelData } = useQuery({
+        queryKey: ['agent-models'],
+        queryFn: () => agentClient.models(),
+        staleTime: Infinity, // the catalogue doesn't change within a session
+    });
+    const models = modelData?.models ?? [];
+    const [selectedModel, setSelectedModel] = useState('');
+    useEffect(() => {
+        if (!selectedModel && modelData?.default) setSelectedModel(modelData.default);
+    }, [modelData, selectedModel]);
 
     // Web keeps the shared tab row visible until a conversation has actually
     // started, then swaps it for AssistantChat's own back button. Same rule here.
@@ -112,25 +130,64 @@ export default function BiScreen() {
 
     const send = useCallback(() => {
         const trimmed = input.trim();
-        if (!trimmed || busy) return;
+        if ((!trimmed && !attachment) || busy) return;
 
+        const outgoing = attachment;
         const assistantId = uid();
         setInput('');
+        setAttachment(null);
         setBusy(true);
+        const displayContent = outgoing
+            ? [trimmed, `📎 ${outgoing.filename}`].filter(Boolean).join('\n\n')
+            : trimmed;
         setMessages((prev) => [
             ...prev,
-            { id: uid(), role: 'user', content: trimmed, widgets: [] },
+            { id: uid(), role: 'user', content: displayContent, widgets: [] },
             { id: assistantId, role: 'assistant', content: '', widgets: [], streaming: true, activity: 'thinking' },
         ]);
 
         const controller = new AbortController();
         abortRef.current = controller;
         agentClient.chat(
-            { message: trimmed, threadId, model: DEFAULT_MODEL },
+            {
+                message: trimmed || `I've attached ${outgoing?.filename}.`,
+                threadId,
+                model: selectedModel,
+                attachment: outgoing,
+            },
             (event) => applyEvent(assistantId, event),
             controller.signal,
         );
-    }, [input, busy, threadId, applyEvent]);
+    }, [input, attachment, busy, threadId, selectedModel, applyEvent]);
+
+    const pickAttachment = useCallback(async () => {
+        if (!organizationId) return;
+        try {
+            const [file] = await requireCapability('files').pick({
+                kind: 'document',
+                accept: ['text/csv', 'text/comma-separated-values', 'public.comma-separated-values-text',
+                         'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+            });
+            if (!file) return;
+            if (!ATTACHMENT_EXTENSIONS.test(file.name)) {
+                Alert.alert('Unsupported file', 'Please attach a CSV or Excel (.xlsx/.xls) bank statement export.');
+                return;
+            }
+            if (file.size != null && file.size > MAX_ATTACHMENT_BYTES) {
+                Alert.alert('File too large', 'That file is larger than 20MB. Export a shorter date range and try again.');
+                return;
+            }
+            setAttaching(true);
+            const safeName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+            const path = `${organizationId}/${Date.now()}-${safeName}`;
+            await uploadToBucket('bank-statements', path, file);
+            setAttachment({ path, filename: file.name });
+        } catch (e: any) {
+            Alert.alert('Could not attach that file', e?.message ?? 'Please try again.');
+        } finally {
+            setAttaching(false);
+        }
+    }, [organizationId]);
 
     const stop = () => {
         abortRef.current?.abort();
@@ -146,7 +203,7 @@ export default function BiScreen() {
             { id: assistantId, role: 'assistant', content: '', widgets: [], streaming: true, activity: 'working' },
         ]);
         agentClient.approve(
-            { threadId: pending.threadId, callId: pending.callId, approved, model: DEFAULT_MODEL },
+            { threadId: pending.threadId, callId: pending.callId, approved, model: selectedModel },
             (event) => {
                 applyEvent(assistantId, event);
                 if (event.type === 'done') {
@@ -161,6 +218,7 @@ export default function BiScreen() {
         setThreadId(null);
         setPending(null);
         setInput('');
+        setAttachment(null);
     };
 
     return (
@@ -204,8 +262,7 @@ export default function BiScreen() {
                 <>
                     {messages.length === 0 ? (
                         <View style={styles.hero}>
-                            <View style={styles.heroIcon}><Sparkles size={26} color={colors.blue} /></View>
-                            <Text style={styles.heroTitle}>Ask about your business</Text>
+                            <Text style={styles.heroTitle}>How can I help you today?</Text>
                             <Text style={styles.heroBody}>
                                 Spending trends, category breakdowns, a chart for the board meeting — ask in plain language.
                             </Text>
@@ -232,7 +289,12 @@ export default function BiScreen() {
                         </View>
                     )}
 
-                    <Composer value={input} onChange={setInput} onSend={send} onStop={stop} busy={busy} />
+                    <Composer
+                        value={input} onChange={setInput} onSend={send} onStop={stop} busy={busy}
+                        models={models} selectedModel={selectedModel} onSelectModel={setSelectedModel}
+                        attachment={attachment} attaching={attaching}
+                        onAttach={pickAttachment} onRemoveAttachment={() => setAttachment(null)}
+                    />
                     <View style={{ height: insets.bottom + 12 }} />
                 </>
             )}
@@ -284,10 +346,6 @@ const styles = StyleSheet.create({
     },
     chatHeaderTitle: { flex: 1, textAlign: 'center', fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
     hero: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 48, gap: 12 },
-    heroIcon: {
-        width: 56, height: 56, borderRadius: 28, backgroundColor: colors.tabActiveBg,
-        alignItems: 'center', justifyContent: 'center',
-    },
     heroTitle: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.text, textAlign: 'center' },
     heroBody: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 19 },
     list: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12 },

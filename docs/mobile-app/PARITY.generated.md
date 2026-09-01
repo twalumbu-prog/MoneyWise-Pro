@@ -40,7 +40,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/reporting` | Reporting | protected | P4 | DONE | Headline card, Month/Quarter/YTD toggle, grouped category breakdown with budget progress and prior-period change. Trend chart and budget editing stay web-only for now. |
 | `/settings` | Settings | protected | P5 | DONE | Split into three focused screens (profile/general/team) reached from Menu, rather than one tabbed page — matches how the app already navigates. |
 | `/products` | ProductsServices | protected | P5 | DONE | List + create/edit for name, type, price, image. Digital assets, delivery options and additional-image carousel stay web-only. |
-| `/intelligence` | Intelligence | protected | P4 | DONE | Redesigned to match web exactly: "Business Intelligence" title, Assistant/Data Insights/Automations tab row, matching placeholder screens, composer card matching web shape. Tab bar hides once a chat starts, mirroring web collapsing its own tab row into AssistantChat's back button. |
+| `/intelligence` | Intelligence | protected | P4 | DONE | Full composer parity: vendor-logo model picker (native SVG port of VendorLogos.tsx), bank-statement attachment upload (bank-statements bucket, same path convention), and dictation via expo-speech-recognition. Hero copy matches web request ("How can I help you today?"), sparkle icon removed per request. |
 | `/audit` | Audit | protected | P5 | DONE | Score hero, search, per-transaction rating -> requisition detail. |
 | `/menu` | Menu | protected | P3 | DONE | Menu tab: profile, role-gated queues, Other Services grid, sign out. Settings land in P5. |
 | `/apps` | Apps | protected | P6 | PLANNED | Payroll + Invest -- P6. |

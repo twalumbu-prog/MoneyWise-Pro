@@ -72,7 +72,7 @@
   "route:/intelligence": {
     "state": "DONE",
     "phase": "P4",
-    "note": "Redesigned to match web exactly: \"Business Intelligence\" title, Assistant/Data Insights/Automations tab row, matching placeholder screens, composer card matching web shape. Tab bar hides once a chat starts, mirroring web collapsing its own tab row into AssistantChat's back button."
+    "note": "Full composer parity: vendor-logo model picker (native SVG port of VendorLogos.tsx), bank-statement attachment upload (bank-statements bucket, same path convention), and dictation via expo-speech-recognition. Hero copy matches web request (\"How can I help you today?\"), sparkle icon removed per request."
   },
   "route:/settings": {
     "state": "DONE",
