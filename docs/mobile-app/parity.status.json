@@ -72,7 +72,7 @@
   "route:/intelligence": {
     "state": "DONE",
     "phase": "P4",
-    "note": "Streaming assistant: text, widgets (kpi/table/chart/file), approval flow. Insights/Automations remain placeholders on web too."
+    "note": "Redesigned to match web exactly: \"Business Intelligence\" title, Assistant/Data Insights/Automations tab row, matching placeholder screens, composer card matching web shape. Tab bar hides once a chat starts, mirroring web collapsing its own tab row into AssistantChat's back button."
   },
   "route:/settings": {
     "state": "DONE",

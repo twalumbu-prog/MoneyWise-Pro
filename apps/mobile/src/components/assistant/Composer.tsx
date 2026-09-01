@@ -1,11 +1,13 @@
 import { View, TextInput, Pressable, StyleSheet } from 'react-native';
 import { ArrowUp, Square } from 'lucide-react-native';
-import { colors, radius, fonts } from '../../theme/tokens';
+import { colors, fonts } from '../../theme/tokens';
 
 /**
- * Text-only for now: the web composer also supports voice capture and a bank
- * statement attachment, both of which land with camera/audio work in a later
- * phase. Text is the primary path either way.
+ * Matches the web composer's actual shape: one rounded card with the textarea
+ * on top and a control row underneath, not a pill input beside a circular
+ * send button. Model picker, attach and mic sit on that bottom row on web;
+ * this app has none of those yet, so the row is just the send/stop control,
+ * kept in the same position so the card reads as the same component.
  */
 export const Composer: React.FC<{
     value: string;
@@ -17,48 +19,56 @@ export const Composer: React.FC<{
     const canSend = value.trim().length > 0 && !busy;
 
     return (
-        <View style={styles.root}>
+        <View style={styles.card}>
             <TextInput
                 style={styles.input}
                 value={value}
                 onChangeText={onChange}
-                placeholder="Ask about your finances…"
+                placeholder="Ask about your finances, or ask me to make a change…"
                 placeholderTextColor={colors.textFaint}
                 multiline
                 maxLength={4000}
             />
-            {busy ? (
-                <Pressable style={[styles.send, styles.stop]} onPress={onStop} accessibilityLabel="Stop generating">
-                    <Square size={14} color="#FFFFFF" fill="#FFFFFF" />
-                </Pressable>
-            ) : (
-                <Pressable
-                    style={[styles.send, !canSend && styles.sendDisabled]}
-                    onPress={onSend}
-                    disabled={!canSend}
-                    accessibilityLabel="Send"
-                >
-                    <ArrowUp size={18} color="#FFFFFF" />
-                </Pressable>
-            )}
+            <View style={styles.controlRow}>
+                <View style={{ flex: 1 }} />
+                {busy ? (
+                    <Pressable style={[styles.send, styles.stop]} onPress={onStop} accessibilityLabel="Stop generating">
+                        <Square size={13} color="#FFFFFF" fill="#FFFFFF" />
+                    </Pressable>
+                ) : (
+                    <Pressable
+                        style={[styles.send, !canSend && styles.sendDisabled]}
+                        onPress={onSend}
+                        disabled={!canSend}
+                        accessibilityLabel="Send"
+                    >
+                        <ArrowUp size={17} color="#FFFFFF" />
+                    </Pressable>
+                )}
+            </View>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
-    root: {
-        flexDirection: 'row', alignItems: 'flex-end', gap: 10,
-        paddingHorizontal: 16, paddingTop: 10,
+    card: {
+        marginHorizontal: 16, marginTop: 8,
+        borderRadius: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.07)',
+        backgroundColor: colors.surface,
+        shadowColor: '#000', shadowOpacity: 0.06, shadowRadius: 20, shadowOffset: { width: 0, height: 4 },
+        elevation: 3,
     },
     input: {
-        flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text, maxHeight: 120,
-        backgroundColor: colors.canvasAlt, borderRadius: radius.lg,
-        paddingHorizontal: 16, paddingVertical: 12, borderWidth: 1, borderColor: colors.border,
+        fontFamily: fonts.body, fontSize: 15, color: colors.text, lineHeight: 21,
+        paddingHorizontal: 18, paddingTop: 15, paddingBottom: 6, maxHeight: 140,
+    },
+    controlRow: {
+        flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingBottom: 10, paddingTop: 2,
     },
     send: {
-        width: 44, height: 44, borderRadius: 22, backgroundColor: colors.blue,
+        width: 36, height: 36, borderRadius: 18, backgroundColor: colors.blue,
         alignItems: 'center', justifyContent: 'center',
     },
-    sendDisabled: { opacity: 0.35 },
+    sendDisabled: { opacity: 0.3 },
     stop: { backgroundColor: colors.navy },
 });
