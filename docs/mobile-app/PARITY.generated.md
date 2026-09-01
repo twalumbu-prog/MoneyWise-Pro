@@ -8,8 +8,8 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 248 | 52.5% |
-| **DONE** | 189 | 40.0% |
+| **PLANNED** | 232 | 49.2% |
+| **DONE** | 205 | 43.4% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
 | **IN_PROGRESS** | 1 | 0.2% |
@@ -33,17 +33,17 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/requisitions` | RequisitionList | protected | P1 | DONE | Inbox: day-grouped cards, status tabs from core config, search, sort, pull-to-refresh. |
 | `/requisitions/new` | RequisitionCreate | protected | P1 | DONE | New request form with line items and live total; handles the one-open-request API block. |
 | `/sales/new` | NewSale | protected | P2 | PLANNED | POS / New Sale |
-| `/approvals` | Approvals | protected | P3 | PLANNED |  |
-| `/disbursements` | CashierDashboard | protected | P3 | PLANNED | Cashier queue + payout confirmation |
-| `/vouchers` | Vouchers | protected | P3 | PLANNED |  |
-| `/vouchers/:id` | VoucherDetail | protected | P3 | PLANNED | Voucher PDF must render server-side |
+| `/approvals` | Approvals | protected | P3 | DONE | Native queue; approve/reject on the requisition detail, gated by core.canAuthoriseRequisition. |
+| `/disbursements` | CashierDashboard | protected | P3 | DONE | Native queue; payout sheet on the detail screen (cash settles, Lenco returns PROCESSING). |
+| `/vouchers` | Vouchers | protected | P3 | DONE | Voucher list grouped by day. |
+| `/vouchers/:id` | VoucherDetail | protected | P3 | DONE | Journal lines, balance check, post-to-ledger for ACCOUNTANT/ADMIN. |
 | `/cashbook` | CashLedger | protected | P2 | DONE | Wallet carousel, ledger, entry detail, deposit, transfers, wallet/external-account creation, CSV statement import. Pay-link deferred to P5. |
 | `/reporting` | Reporting | protected | P4 | PLANNED | Charts → victory-native; exports → server-side |
 | `/settings` | Settings | protected | P5 | PLANNED |  |
 | `/products` | ProductsServices | protected | P5 | PLANNED | Image upload → expo-image-picker |
 | `/intelligence` | Intelligence | protected | P4 | PLANNED | Streaming assistant — SSE needs expo/fetch |
 | `/audit` | Audit | protected | P5 | PLANNED |  |
-| `/menu` | Menu | protected | P1 | PLANNED | Menu tab — hub for Other Services |
+| `/menu` | Menu | protected | P3 | DONE | Menu tab: profile, role-gated queues, Other Services grid, sign out. Settings land in P5. |
 | `/apps` | Apps | protected | P6 | PLANNED |  |
 | `/apps/payroll` | Payroll | protected | P6 | PLANNED |  |
 | `/apps/payroll/run` | RunPayrollPage | protected | P6 | PLANNED | Batch payroll — 30s ceiling applies |
@@ -57,28 +57,28 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | Screen | LOC | Mobile branch | Overlays | Phase | Status | Note |
 | --- | --- | --- | --- | --- | --- | --- |
 | PublicPay | 3880 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy pay page (superseded by PublicPaymentLink) |
-| CashLedger | 2848 | yes | 10 | P2 | DONE | app/(tabs)/wallet.tsx + app/wallet/* |
+| CashLedger | 2850 | yes | 10 | P2 | DONE | app/(tabs)/wallet.tsx + app/wallet/* |
 | Reporting | 2138 | yes | 1 | P4 | PLANNED | Charts → victory-native; exports → server-side |
-| RequisitionList | 1504 | yes | 9 | P1 | DONE | app/(tabs)/index.tsx |
+| RequisitionList | 1454 | yes | 9 | P1 | DONE | app/(tabs)/index.tsx |
 | PublicPaymentLink | 1379 | — | 0 | — | WEB_ONLY | One-time payment link for customers |
 | NewSale | 1284 | — | 0 | P2 | PLANNED | POS / New Sale |
-| Schedules | 1208 | yes | 1 | P5 | PLANNED |  |
+| Schedules | 1207 | yes | 1 | P5 | PLANNED |  |
 | RequisitionCreate | 1164 | yes | 0 | P1 | DONE | app/requisition/new.tsx |
-| CashierDashboard | 996 | — | 1 | P3 | PLANNED | Cashier queue + payout confirmation |
+| CashierDashboard | 996 | — | 1 | P3 | DONE | app/disbursements.tsx + DisburseSheet |
 | RunPayrollPage | 957 | — | 0 | P6 | PLANNED | Batch payroll — 30s ceiling applies |
 | QuickPay | 951 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
 | InvestPaymentFlow | 655 | yes | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
 | Login | 639 | — | 0 | P0 | DONE | app/(auth)/login.tsx |
 | Payroll | 518 | — | 2 | P6 | PLANNED |  |
 | InvestHome | 381 | yes | 0 | P6 | PLANNED |  |
-| Menu | 376 | — | 0 | P1 | PLANNED | Menu tab — hub for Other Services |
+| Menu | 376 | — | 0 | P3 | DONE | app/(tabs)/menu.tsx |
 | InvestProductDetail | 292 | yes | 0 | P6 | PLANNED |  |
 | Onboarding | 288 | — | 0 | P5 | PLANNED | Full signup wizard incl. wallet activation |
-| Approvals | 241 | yes | 0 | P3 | PLANNED |  |
-| VoucherDetail | 234 | — | 0 | P3 | PLANNED | Voucher PDF must render server-side |
+| Approvals | 241 | yes | 0 | P3 | DONE | app/approvals.tsx |
+| VoucherDetail | 234 | — | 0 | P3 | DONE | app/vouchers/[id].tsx |
 | Audit | 225 | yes | 0 | P5 | PLANNED |  |
 | ResetPassword | 208 | — | 0 | P0 | PLANNED | Must handle the Supabase recovery deep link |
-| Vouchers | 206 | — | 1 | P3 | PLANNED |  |
+| Vouchers | 206 | — | 1 | P3 | DONE | app/vouchers/index.tsx |
 | Settings | 196 | — | 0 | P5 | PLANNED |  |
 | InvestCompany | 192 | yes | 0 | P6 | PLANNED |  |
 | investCertificate.ts | 184 | — | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
@@ -102,7 +102,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | --- | --- | --- | --- |
 | mobile-only | 5 | 2925 | MobileInvestWizard, MobilePayrollWizard, MobileRequisitionWizard, MobileSalaryAdvanceWizard, MobileStaffLoanWizard |
 | responsive | 5 | 2734 | InvoiceDetailModal, Layout, RequisitionModal, ProductSettings, UserManagement |
-| shared | 97 | 26793 | AnimatedTabs, AuditScoreBreakdown, BankSelect, BookingCalendar, BucketLegend, BucketProgressBar, … |
+| shared | 97 | 26720 | AnimatedTabs, AuditScoreBreakdown, BankSelect, BookingCalendar, BucketLegend, BucketProgressBar, … |
 | desktop-only | 7 | 2504 | DesktopHeader, DesktopLayout, DesktopLineChart, DesktopPayrollWorkspace, DesktopRequisitionWorkspace, DesktopSalaryAdvanceWorkspace, … |
 
 ### Mobile-specific components (direct visual spec for the native build)
@@ -342,7 +342,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | POST | `/requisitions/:id/auto-complete` | — | PLANNED |
 | POST | `/requisitions/:id/auto-disburse` | — | PLANNED |
 | POST | `/requisitions/:id/confirm-change` | — | PLANNED |
-| POST | `/requisitions/:id/disburse` | — | PLANNED |
+| POST | `/requisitions/:id/disburse` | — | DONE |
 | POST | `/requisitions/:id/disburse-excess` | — | PLANNED |
 | POST | `/requisitions/:id/disburse-payroll` | — | PLANNED |
 | PUT | `/requisitions/:id/expenses` | — | PLANNED |
@@ -358,7 +358,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | POST | `/requisitions/:id/retrigger-ai` | — | PLANNED |
 | POST | `/requisitions/:id/revert-to-draft` | — | PLANNED |
 | POST | `/requisitions/:id/scan-receipts` | — | DONE |
-| PATCH | `/requisitions/:id/status` | — | PLANNED |
+| PATCH | `/requisitions/:id/status` | — | DONE |
 | POST | `/requisitions/:id/submit-change` | — | PLANNED |
 | GET | `/requisitions/:id/verify-disbursement` | — | PLANNED |
 | GET | `/requisitions/admin/all` | — | PLANNED |
@@ -386,10 +386,10 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | GET | `/users/me` | — | PLANNED |
 | PUT | `/users/me/payment-info` | — | PLANNED |
 | GET | `/users/notifications` | — | PLANNED |
-| GET | `/vouchers` | — | PLANNED |
-| POST | `/vouchers` | — | PLANNED |
-| GET | `/vouchers/:id` | — | PLANNED |
-| POST | `/vouchers/:id/post` | — | PLANNED |
+| GET | `/vouchers` | — | DONE |
+| POST | `/vouchers` | — | DONE |
+| GET | `/vouchers/:id` | — | DONE |
+| POST | `/vouchers/:id/post` | — | DONE |
 | GET | `/webhooks/vercel-log-drain` | — | NOT_APPLICABLE |
 | POST | `/webhooks/vercel-log-drain` | — | NOT_APPLICABLE |
 

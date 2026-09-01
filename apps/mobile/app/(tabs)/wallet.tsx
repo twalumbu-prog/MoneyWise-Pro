@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
     Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet,
 } from 'lucide-react-native';
-import { cashbookService, groupByDate } from 'core';
+import { cashbookService, groupByDate, isRequestorRole } from 'core';
 import type { CashbookEntry } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import {
@@ -24,7 +24,7 @@ export default function WalletScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { userRole, organizationName } = useAuth();
-    const isRequestor = userRole === 'REQUESTOR';
+    const isRequestor = isRequestorRole(userRole);
     const cardWidth = useCardWidth();
 
     const [group, setGroup] = useState<Group>('MONEYWISE');

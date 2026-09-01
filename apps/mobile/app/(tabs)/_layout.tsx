@@ -1,6 +1,7 @@
 import { Tabs } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Navigation, Wallet, Sparkles, TrendingUp, Menu } from 'lucide-react-native';
+import { isRequestorRole } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors } from '../../src/theme/tokens';
 
@@ -13,7 +14,7 @@ import { colors } from '../../src/theme/tokens';
 export default function TabsLayout() {
     const { userRole } = useAuth();
     const insets = useSafeAreaInsets();
-    const isRequestor = userRole === 'REQUESTOR';
+    const isRequestor = isRequestorRole(userRole);
 
     return (
         <Tabs

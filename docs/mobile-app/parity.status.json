@@ -30,9 +30,9 @@
     "note": "New request form with line items and live total; handles the one-open-request API block."
   },
   "route:/menu": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": "Menu tab \u2014 hub for Other Services"
+    "state": "DONE",
+    "phase": "P3",
+    "note": "Menu tab: profile, role-gated queues, Other Services grid, sign out. Settings land in P5."
   },
   "route:/cashbook": {
     "state": "DONE",
@@ -45,24 +45,24 @@
     "note": "POS / New Sale"
   },
   "route:/approvals": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "Native queue; approve/reject on the requisition detail, gated by core.canAuthoriseRequisition."
   },
   "route:/disbursements": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": "Cashier queue + payout confirmation"
+    "note": "Native queue; payout sheet on the detail screen (cash settles, Lenco returns PROCESSING)."
   },
   "route:/vouchers": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "Voucher list grouped by day."
   },
   "route:/vouchers/:id": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": "Voucher PDF must render server-side"
+    "note": "Journal lines, balance check, post-to-ledger for ACCOUNTANT/ADMIN."
   },
   "route:/reporting": {
     "state": "PLANNED",
@@ -195,9 +195,9 @@
     "note": "app/requisition/new.tsx"
   },
   "screen:CashierDashboard": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": "Cashier queue + payout confirmation"
+    "note": "app/disbursements.tsx + DisburseSheet"
   },
   "screen:RunPayrollPage": {
     "state": "PLANNED",
@@ -230,9 +230,9 @@
     "note": ""
   },
   "screen:Menu": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": "Menu tab \u2014 hub for Other Services"
+    "state": "DONE",
+    "phase": "P3",
+    "note": "app/(tabs)/menu.tsx"
   },
   "screen:InvestProductDetail": {
     "state": "PLANNED",
@@ -245,14 +245,14 @@
     "note": "Full signup wizard incl. wallet activation"
   },
   "screen:Approvals": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "app/approvals.tsx"
   },
   "screen:VoucherDetail": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": "Voucher PDF must render server-side"
+    "note": "app/vouchers/[id].tsx"
   },
   "screen:Audit": {
     "state": "PLANNED",
@@ -265,9 +265,9 @@
     "note": "Must handle the Supabase recovery deep link"
   },
   "screen:Vouchers": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "app/vouchers/index.tsx"
   },
   "screen:Settings": {
     "state": "PLANNED",
@@ -2110,9 +2110,9 @@
     "note": ""
   },
   "api:POST /requisitions/:id/disburse": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
+    "state": "DONE",
+    "phase": "P3",
+    "note": "Consumed by the native approval chain."
   },
   "api:POST /requisitions/:id/disburse-excess": {
     "state": "PLANNED",
@@ -2190,9 +2190,9 @@
     "note": "Native detail screen: receipts + activity thread."
   },
   "api:PATCH /requisitions/:id/status": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
+    "state": "DONE",
+    "phase": "P3",
+    "note": "Consumed by the native approval chain."
   },
   "api:POST /requisitions/:id/submit-change": {
     "state": "PLANNED",
@@ -2330,24 +2330,24 @@
     "note": ""
   },
   "api:GET /vouchers": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "Consumed by the native approval chain."
   },
   "api:POST /vouchers": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "Consumed by the native approval chain."
   },
   "api:GET /vouchers/:id": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "Consumed by the native approval chain."
   },
   "api:POST /vouchers/:id/post": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P3",
-    "note": ""
+    "note": "Consumed by the native approval chain."
   },
   "api:GET /webhooks/vercel-log-drain": {
     "state": "NOT_APPLICABLE",

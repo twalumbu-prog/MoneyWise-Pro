@@ -6,11 +6,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Paperclip } from 'lucide-react-native';
-import { requisitionService, getStatusConfig, formatKwacha, formatShortDate } from 'core';
+import {
+    requisitionService, getStatusConfig, formatKwacha, formatShortDate,
+    canAuthoriseRequisition, canDisburse,
+} from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { StatusIcon } from '../../src/components/StatusIcon';
 import { ReceiptCapture } from '../../src/components/requisitions/ReceiptCapture';
 import { RequisitionThread } from '../../src/components/requisitions/RequisitionThread';
+import { DisburseSheet } from '../../src/components/requisitions/DisburseSheet';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 export default function RequisitionDetailScreen() {
@@ -50,11 +54,16 @@ export default function RequisitionDetailScreen() {
         ]);
     };
 
-    // Mirrors the web approval chain: only an AUTHORISER/ADMIN acts on a pending
-    // request, and only while it is still pending.
+    // Gate comes from core, which mirrors updateRequisitionStatus in the API:
+    // ACCOUNTANT, ADMIN or MANAGER. An earlier version of this screen checked
+    // AUTHORISER || ADMIN, which was wrong both ways — AUTHORISER would have hit
+    // a 403, and ACCOUNTANT/MANAGER never saw the buttons they were entitled to.
     const canApprove =
-        req?.status === 'PENDING_APPROVAL' &&
-        (userRole === 'AUTHORISER' || userRole === 'ADMIN');
+        req?.status === 'PENDING_APPROVAL' && canAuthoriseRequisition(userRole);
+
+    // Payout is the next step after authorisation, and a separate permission:
+    // ACCOUNTANT, CASHIER or ADMIN (see core/reference/roles).
+    const canPayOut = req?.status === 'AUTHORISED' && canDisburse(userRole);
 
     // Receipts belong to the spending phase: once funds are out and before the
     // request is closed off. Matches when the web app offers receipt scanning.
@@ -139,6 +148,18 @@ export default function RequisitionDetailScreen() {
                                     </View>
                                 </View>
                             ))}
+                        </View>
+                    )}
+
+                    {canPayOut && req && (
+                        <View style={styles.card}>
+                            <DisburseSheet
+                                requisitionId={String(id)}
+                                amount={req.actual_total ?? req.estimated_total}
+                                recipientName={req.recipient_name}
+                                recipientAccount={req.recipient_account}
+                                onDone={() => router.back()}
+                            />
                         </View>
                     )}
 

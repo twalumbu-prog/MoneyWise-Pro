@@ -200,7 +200,7 @@
     {
       "id": "pages/CashLedger.tsx",
       "name": "CashLedger",
-      "loc": 2848,
+      "loc": 2850,
       "hasMobileBranch": true,
       "usesLayout": true,
       "modals": [
@@ -229,7 +229,7 @@
     {
       "id": "pages/RequisitionList.tsx",
       "name": "RequisitionList",
-      "loc": 1504,
+      "loc": 1454,
       "hasMobileBranch": true,
       "usesLayout": true,
       "modals": [
@@ -263,7 +263,7 @@
     {
       "id": "pages/Schedules.tsx",
       "name": "Schedules",
-      "loc": 1208,
+      "loc": 1207,
       "hasMobileBranch": true,
       "usesLayout": true,
       "modals": [
@@ -604,7 +604,7 @@
     {
       "id": "components/CreateExternalWalletModal.tsx",
       "name": "CreateExternalWalletModal",
-      "loc": 289,
+      "loc": 274,
       "surface": "shared"
     },
     {
@@ -658,7 +658,7 @@
     {
       "id": "components/ImportStatementModal.tsx",
       "name": "ImportStatementModal",
-      "loc": 430,
+      "loc": 372,
       "surface": "shared"
     },
     {
@@ -1508,7 +1508,7 @@
       "id": "packages/core/src/services/user.service.ts",
       "name": "user.service",
       "home": "core",
-      "loc": 80,
+      "loc": 81,
       "methods": [
         "getAll",
         "create",
@@ -3686,28 +3686,28 @@
       "kind": "route",
       "label": "`/approvals`",
       "detail": "Approvals · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/disbursements",
       "kind": "route",
       "label": "`/disbursements`",
       "detail": "CashierDashboard · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/vouchers",
       "kind": "route",
       "label": "`/vouchers`",
       "detail": "Vouchers · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/vouchers/:id",
       "kind": "route",
       "label": "`/vouchers/:id`",
       "detail": "VoucherDetail · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/cashbook",
@@ -3756,7 +3756,7 @@
       "kind": "route",
       "label": "`/menu`",
       "detail": "Menu · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/apps",
@@ -3812,7 +3812,7 @@
       "kind": "screen",
       "label": "Approvals",
       "detail": "241 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:Apps",
@@ -3832,7 +3832,7 @@
       "key": "screen:CashLedger",
       "kind": "screen",
       "label": "CashLedger",
-      "detail": "2848 LOC · 10 overlays",
+      "detail": "2850 LOC · 10 overlays",
       "state": "DONE"
     },
     {
@@ -3840,7 +3840,7 @@
       "kind": "screen",
       "label": "CashierDashboard",
       "detail": "996 LOC · 1 overlays",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:ComingSoonPage",
@@ -3889,7 +3889,7 @@
       "kind": "screen",
       "label": "Menu",
       "detail": "376 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:NewSale",
@@ -3972,7 +3972,7 @@
       "key": "screen:RequisitionList",
       "kind": "screen",
       "label": "RequisitionList",
-      "detail": "1504 LOC · 9 overlays",
+      "detail": "1454 LOC · 9 overlays",
       "state": "DONE"
     },
     {
@@ -3993,7 +3993,7 @@
       "key": "screen:Schedules",
       "kind": "screen",
       "label": "Schedules",
-      "detail": "1208 LOC · 1 overlays",
+      "detail": "1207 LOC · 1 overlays",
       "state": "PLANNED"
     },
     {
@@ -4022,14 +4022,14 @@
       "kind": "screen",
       "label": "VoucherDetail",
       "detail": "234 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:Vouchers",
       "kind": "screen",
       "label": "Vouchers",
       "detail": "206 LOC · 1 overlays",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:InvestChart",
@@ -6549,7 +6549,7 @@
       "kind": "endpoint",
       "label": "POST /requisitions/:id/disburse",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /requisitions/:id/disburse-excess",
@@ -6661,7 +6661,7 @@
       "kind": "endpoint",
       "label": "PATCH /requisitions/:id/status",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /requisitions/:id/submit-change",
@@ -6857,28 +6857,28 @@
       "kind": "endpoint",
       "label": "GET /vouchers",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /vouchers",
       "kind": "endpoint",
       "label": "POST /vouchers",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /vouchers/:id",
       "kind": "endpoint",
       "label": "GET /vouchers/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /vouchers/:id/post",
       "kind": "endpoint",
       "label": "POST /vouchers/:id/post",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /webhooks/vercel-log-drain",

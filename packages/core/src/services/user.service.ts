@@ -10,7 +10,8 @@
 
 import { apiJson } from '../api/apiFetch';
 
-export type UserRole = 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
+import type { UserRole } from '../reference/roles';
+export type { UserRole };
 export type UserStatus = 'ACTIVE' | 'INVITED' | 'DISABLED' | 'PENDING_APPROVAL';
 
 export interface UserProfile {

@@ -35,7 +35,6 @@ export { ApiError, isApiError } from './api/ApiError';
 export { userService } from './services/user.service';
 export type {
     UserProfile,
-    UserRole,
     UserStatus,
     CreateUserInput,
     CreateUserResult,
@@ -164,3 +163,12 @@ export type { ParsedStatementRow } from './statements';
 
 export { PROVIDER_BANKS, PROVIDER_MOMO, providersFor } from './reference/providers';
 export type { Provider, ExternalProviderType } from './reference/providers';
+
+export {
+    canAuthoriseRequisition,
+    canDisburse,
+    canManageVouchers,
+    isPrivilegedRole,
+    isRequestorRole,
+} from './reference/roles';
+export type { UserRole } from './reference/roles';

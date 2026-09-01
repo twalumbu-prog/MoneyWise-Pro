@@ -4,7 +4,8 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { clearCache } from '../platform/storage';
 
-export type UserRole = 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
+import type { UserRole } from 'core';
+export type { UserRole };
 
 interface AuthContextValue {
     user: User | null;

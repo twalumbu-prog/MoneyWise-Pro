@@ -57,6 +57,10 @@ const AuthGate: React.FC = () => {
             <Stack.Screen name="wallet/new" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="wallet/pay-link" options={{ animation: 'slide_from_bottom' }} />
             <Stack.Screen name="wallet/import" options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="approvals" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="disbursements" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="vouchers/index" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="vouchers/[id]" options={{ animation: 'slide_from_right' }} />
         </Stack>
     );
 };

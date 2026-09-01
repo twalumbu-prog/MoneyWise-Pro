@@ -8,7 +8,6 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Search, Plus, ArrowUpDown, X, CalendarDays } from 'lucide-react-native';
 import { requisitionService, getStatusConfig, groupByDate } from 'core';
-import { useAuth } from '../../src/context/AuthContext';
 import { RequisitionRow, type RequisitionRowData } from '../../src/components/requisitions/RequisitionRow';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -25,7 +24,6 @@ const TABS: { label: string; value: string }[] = [
 export default function InboxScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { userRole } = useAuth();
 
     const [tab, setTab] = useState('ALL');
     const [search, setSearch] = useState('');
@@ -176,15 +174,15 @@ export default function InboxScreen() {
                 }
             />
 
-            {userRole !== 'ACCOUNTANT' && (
-                <Pressable
+            {/* No role gate: POST /requisitions has none, so anyone in the org
+                may raise a request. */}
+            <Pressable
                     style={[styles.fab, { bottom: 16 }]}
                     onPress={() => router.push('/requisition/new')}
                     accessibilityLabel="New request"
                 >
                     <Plus size={24} color="#FFFFFF" />
-                </Pressable>
-            )}
+            </Pressable>
         </View>
     );
 }
