@@ -1,14 +1,15 @@
 /**
- * agentClient.ts — Typed client for the streaming assistant.
+ * agentClient — typed streaming client for the Intelligence assistant.
  *
- * EventSource can't carry a bearer token or a JSON body, so this reads the SSE
- * frames off a normal fetch response instead. Same wire format, full control
- * over headers and cancellation.
+ * Moved from apps/web/src/lib/agentClient.ts. Web read the SSE body via
+ * `response.body.getReader()`; native has no such stream on its stock fetch,
+ * which is exactly why P0 built a `stream` adapter around expo/fetch. Frame
+ * parsing (splitting on blank lines, stripping `data:`, JSON-decoding) is
+ * identical either way and lives here once, so both clients agree on the wire
+ * format without re-deriving it.
  */
 
-import { supabase } from './supabase';
-
-const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+import { getCore, requireCapability } from '../platform';
 
 // ─── Mirror of the server's event and widget contracts ───────────────────────
 
@@ -92,7 +93,7 @@ export interface ThreadSummary {
 }
 
 async function authHeaders(): Promise<Record<string, string>> {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await getCore().supabase.auth.getSession();
     return {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${data.session?.access_token ?? ''}`,
@@ -107,67 +108,37 @@ async function streamPost(
     path: string,
     body: Record<string, any>,
     onEvent: (event: AgentEvent) => void,
-    signal?: AbortSignal
+    signal?: AbortSignal,
 ): Promise<void> {
-    let resp: Response;
+    const core = getCore();
+    const apiUrl = core.env.apiUrl;
+    const stream = requireCapability('stream');
+
+    let frames: AsyncIterable<string>;
+    let buffer = '';
     try {
-        resp = await fetch(`${API_URL}${path}`, {
+        // Web's XHR-backed fetch throws its own network errors before the first
+        // byte; native's stream adapter does the same via expo/fetch, so both
+        // paths funnel through this one catch.
+        frames = stream(`${apiUrl}${path}`, {
             method: 'POST',
             headers: await authHeaders(),
             body: JSON.stringify(body),
             signal,
-        });
+        } as any);
     } catch (err: any) {
         if (err?.name === 'AbortError') return;
         onEvent({ type: 'error', message: 'Could not reach the assistant. Check your connection and try again.' });
         return;
     }
 
-    if (!resp.ok) {
-        // Errors before the stream opens come back as ordinary JSON.
-        const detail = await resp.json().catch(() => null);
-
-        // 409 with a `pending` payload means the server refused to start a
-        // new turn because an earlier write proposal in this thread never got
-        // a decision — most often because the SSE event that would have shown
-        // it was dropped mid-stream. Re-synthesizing it as an approval_request
-        // here means the same ApprovalCard UI just re-appears with the real
-        // pending change, rather than the user seeing a dead-end error while
-        // the card silently reattaches to whatever they type next.
-        if (resp.status === 409 && detail?.pending) {
-            onEvent({
-                type: 'approval_request',
-                callId: detail.pending.callId,
-                toolName: detail.pending.toolName,
-                proposal: detail.pending.proposal,
-                args: detail.pending.args,
-            });
-            return;
-        }
-
-        onEvent({ type: 'error', message: detail?.error ?? `Request failed (${resp.status}).` });
-        return;
-    }
-    if (!resp.body) {
-        onEvent({ type: 'error', message: 'The assistant returned an empty response.' });
-        return;
-    }
-
-    const reader = resp.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
     try {
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+        for await (const chunk of frames) {
+            buffer += chunk;
+            const parts = buffer.split('\n\n');
+            buffer = parts.pop() ?? '';
 
-            buffer += decoder.decode(value, { stream: true });
-            const frames = buffer.split('\n\n');
-            // The trailing fragment is an incomplete frame; keep it buffered.
-            buffer = frames.pop() ?? '';
-
-            for (const frame of frames) {
+            for (const frame of parts) {
                 const line = frame.trim();
                 if (!line.startsWith('data:')) continue;
                 const payload = line.slice(5).trim();
@@ -180,9 +151,27 @@ async function streamPost(
             }
         }
     } catch (err: any) {
-        if (err?.name !== 'AbortError') {
-            onEvent({ type: 'error', message: 'The connection dropped mid-response.' });
+        if (err?.name === 'AbortError') return;
+
+        // A non-2xx response reaches here as a thrown error from the stream
+        // adapter, carrying the parsed body when the caller attached one.
+        const detail = (err as any)?.body;
+        if ((err as any)?.status === 409 && detail?.pending) {
+            onEvent({
+                type: 'approval_request',
+                callId: detail.pending.callId,
+                toolName: detail.pending.toolName,
+                proposal: detail.pending.proposal,
+                args: detail.pending.args,
+            });
+            return;
         }
+        onEvent({
+            type: 'error',
+            message: detail?.error ?? (err?.message?.startsWith('Stream failed')
+                ? err.message
+                : 'The connection dropped mid-response.'),
+        });
     }
 }
 
@@ -196,7 +185,7 @@ export const agentClient = {
             attachment?: { path: string; filename: string } | null;
         },
         onEvent: (e: AgentEvent) => void,
-        signal?: AbortSignal
+        signal?: AbortSignal,
     ) {
         return streamPost(
             '/ai/agent/chat',
@@ -207,26 +196,28 @@ export const agentClient = {
                 attachment: params.attachment ?? undefined,
             },
             onEvent,
-            signal
+            signal,
         );
     },
 
     approve(
         params: { threadId: string; callId: string; approved: boolean; model: string },
         onEvent: (e: AgentEvent) => void,
-        signal?: AbortSignal
+        signal?: AbortSignal,
     ) {
         return streamPost('/ai/agent/approve', params, onEvent, signal);
     },
 
     async models(): Promise<{ models: AssistantModel[]; default: string }> {
-        const resp = await fetch(`${API_URL}/ai/agent/models`, { headers: await authHeaders() });
+        const apiUrl = getCore().env.apiUrl;
+        const resp = await fetch(`${apiUrl}/ai/agent/models`, { headers: await authHeaders() });
         if (!resp.ok) throw new Error('Could not load models');
         return resp.json();
     },
 
     async threads(): Promise<ThreadSummary[]> {
-        const resp = await fetch(`${API_URL}/ai/agent/threads`, { headers: await authHeaders() });
+        const apiUrl = getCore().env.apiUrl;
+        const resp = await fetch(`${apiUrl}/ai/agent/threads`, { headers: await authHeaders() });
         if (!resp.ok) return [];
         const data = await resp.json();
         return data.threads ?? [];
@@ -238,12 +229,17 @@ export const agentClient = {
         messages: StoredMessage[];
         pending: { callId: string; toolName: string; args: Record<string, any>; proposal: Proposal } | null;
     }> {
-        const resp = await fetch(`${API_URL}/ai/agent/threads/${id}`, { headers: await authHeaders() });
+        const apiUrl = getCore().env.apiUrl;
+        const resp = await fetch(`${apiUrl}/ai/agent/threads/${id}`, { headers: await authHeaders() });
         if (!resp.ok) throw new Error('Conversation not found');
         return resp.json();
     },
 
     async deleteThread(id: string): Promise<void> {
-        await fetch(`${API_URL}/ai/agent/threads/${id}`, { method: 'DELETE', headers: await authHeaders() });
+        const apiUrl = getCore().env.apiUrl;
+        await fetch(`${apiUrl}/ai/agent/threads/${id}`, {
+            method: 'DELETE',
+            headers: await authHeaders(),
+        });
     },
 };

@@ -172,3 +172,15 @@ export {
     isRequestorRole,
 } from './reference/roles';
 export type { UserRole } from './reference/roles';
+
+export { agentClient } from './agent/client';
+export type {
+    ChartSpec, TableSpec, KpiSpec, FileSpec, Widget, Proposal,
+    AgentEvent, AssistantModel, StoredMessage, ThreadSummary,
+} from './agent/client';
+
+export { buildReportGroups, computeReportTotals, getPercentageChange } from './reporting/aggregate';
+export type {
+    ReportView, ReportLineItem, ReportGroup, ReportGroups,
+    BuildReportGroupsOptions, ReportTotals, PercentageChange,
+} from './reporting/aggregate';

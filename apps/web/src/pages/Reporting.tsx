@@ -20,6 +20,7 @@ import {
 } from '../components/animate-ui/components/radix/accordion';
 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { buildReportGroups, computeReportTotals, getPercentageChange } from 'core';
 
 type PeriodType = 'MONTHLY' | 'WEEKLY' | 'QUARTERLY';
 type ModeType = 'EXPENSE' | 'CASH_OUTFLOW';
@@ -37,19 +38,6 @@ interface ReportGroup {
 // devices in different timezones. (buildChartPeriods already uses this same fix.)
 const toLocalISODate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-
-// Helper to calculate percentage change
-const getPercentageChange = (current: number, previous: number) => {
-    if (previous === 0) {
-        return current > 0 ? { value: 100, isIncrease: true } : { value: 0, isIncrease: false };
-    }
-    const diff = current - previous;
-    const pct = (diff / previous) * 100;
-    return {
-        value: Math.round(Math.abs(pct)),
-        isIncrease: pct > 0
-    };
-};
 
 export const Reporting: React.FC = () => {
         // State
@@ -633,155 +621,19 @@ export const Reporting: React.FC = () => {
 
 
     // Calculate integrated data for display
+    // Aggregation lives in `core` so the web report and the native report agree
+    // byte-for-byte on what a profit or net-worth figure means -- matching
+    // accounts to expenditures, merging budgets, and grouping by type is not
+    // logic either client should carry an independent copy of.
     const displayData = useMemo(() => {
-        // Build base map from accounts matching current view
-        const activeTypes = reportView === 'PROFIT_LOSS' 
-            ? ['INCOME', 'EXPENSE'] 
-            : ['ASSET', 'LIABILITY', 'EQUITY'];
-
-        const integrationMap = new Map<string, any>();
-
-        allAccounts
-            .filter(acc => activeTypes.includes(acc.type))
-            .forEach(acc => {
-                integrationMap.set(acc.id, {
-                    account_id: acc.id,
-                    account_name: acc.name,
-                    type: acc.type,
-                    total_amount: 0,
-                    transaction_count: 0
-                });
-            });
-
-        // Merge in expenditures (actual balances from backend)
-        expenditures.forEach(exp => {
-            if (integrationMap.has(exp.account_id)) {
-                const existing = integrationMap.get(exp.account_id);
-                existing.total_amount = exp.total_amount;
-                existing.transaction_count = exp.transaction_count;
-                if (exp.account_name !== 'Uncategorized Expense') {
-                    existing.account_name = exp.account_name;
-                }
-            } else if (activeTypes.includes(exp.type)) {
-                integrationMap.set(exp.account_id, exp);
-            }
-        });
-
-        const integrated = Array.from(integrationMap.values()).map(exp => {
-            const budget = budgets.find(b => b.qb_account_id === exp.account_id);
-            const budgetedAmount = budget ? budget.amount : 0;
-            const variance = budgetedAmount > 0 ? budgetedAmount - exp.total_amount : null;
-            
-            // Find previous amount
-            const prevExp = prevExpenditures.find(p => p.account_id === exp.account_id);
-            const prevTotalAmount = prevExp ? prevExp.total_amount : 0;
-            
-            return {
-                ...exp,
-                budgeted_amount: budgetedAmount,
-                variance: variance,
-                variancePercentage: budgetedAmount > 0 ? (exp.total_amount / budgetedAmount) * 100 : null,
-                prev_total_amount: prevTotalAmount
-            };
-        });
-
-        // Apply filters
-        const filtered = integrated.filter(item => {
-            if (hiddenAccounts.has(item.account_id)) return false;
-            if (excludeZeroSpend && item.total_amount === 0) return false;
-            return true;
-        });
-
-        // Sorting
-        const sorted = filtered.sort((a, b) => {
-            let valA, valB;
-            if (sortField === 'name') {
-                valA = a.account_name;
-                valB = b.account_name;
-            } else if (sortField === 'amount') {
-                valA = a.total_amount;
-                valB = b.total_amount;
-            } else {
-                valA = a.variance || 0;
-                valB = b.variance || 0;
-            }
-
-            if (valA < valB) return sortDesc ? 1 : -1;
-            if (valA > valB) return sortDesc ? -1 : 1;
-            return 0;
-        });
-
-        // Always group by standard categories
-        const groupedData: Record<string, { groupName: string; items: any[]; totals: any }> = {};
-        
-        if (reportView === 'PROFIT_LOSS') {
-            groupedData['INCOME'] = { groupName: 'Income', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
-            groupedData['EXPENSE'] = { groupName: 'Expenses', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
-        } else {
-            groupedData['ASSET'] = { groupName: 'Assets', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
-            groupedData['LIABILITY'] = { groupName: 'Liabilities', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
-            groupedData['EQUITY'] = { groupName: 'Equity', items: [], totals: { total_amount: 0, budgeted_amount: 0, prev_total_amount: 0 } };
-        }
-
-        sorted.forEach(item => {
-            const targetGroup = groupedData[item.type];
-            if (targetGroup) {
-                targetGroup.items.push(item);
-                targetGroup.totals.total_amount += item.total_amount;
-                targetGroup.totals.budgeted_amount += (item.budgeted_amount || 0);
-                targetGroup.totals.prev_total_amount += (item.prev_total_amount || 0);
-            }
-        });
-
-        // Calculate variance totals for groups
-        Object.values(groupedData).forEach(group => {
-            const variance = group.totals.budgeted_amount > 0 ? group.totals.budgeted_amount - group.totals.total_amount : null;
-            group.totals.variance = variance;
-        });
-
-        return { isGrouped: true, groups: groupedData, data: sorted, flatData: sorted };
-
+        const { groups, flatData } = buildReportGroups(
+            allAccounts, expenditures, budgets, prevExpenditures, reportView,
+            { hiddenAccountIds: hiddenAccounts, excludeZeroSpend, sortField, sortDesc },
+        );
+        return { isGrouped: true as const, groups, data: flatData, flatData };
     }, [expenditures, budgets, allAccounts, sortField, sortDesc, hiddenAccounts, excludeZeroSpend, prevExpenditures, reportView]);
 
-    const totals = useMemo(() => {
-        const groups = displayData.groups || {};
-        
-        const totalRevenue = groups['INCOME']?.totals.total_amount || 0;
-        const totalExpenses = groups['EXPENSE']?.totals.total_amount || 0;
-        const totalProfit = totalRevenue - totalExpenses;
-        
-        const prevTotalRevenue = groups['INCOME']?.totals.prev_total_amount || 0;
-        const prevTotalExpenses = groups['EXPENSE']?.totals.prev_total_amount || 0;
-        const prevTotalProfit = prevTotalRevenue - prevTotalExpenses;
-        
-        const profitChange = getPercentageChange(totalProfit, prevTotalProfit);
-        
-        const totalAssets = groups['ASSET']?.totals.total_amount || 0;
-        const totalLiabilities = groups['LIABILITY']?.totals.total_amount || 0;
-        const totalEquity = groups['EQUITY']?.totals.total_amount || 0;
-        const netWorth = totalAssets - totalLiabilities;
-        
-        const prevTotalAssets = groups['ASSET']?.totals.prev_total_amount || 0;
-        const prevTotalLiabilities = groups['LIABILITY']?.totals.prev_total_amount || 0;
-        const prevNetWorth = prevTotalAssets - prevTotalLiabilities;
-        
-        const netWorthChange = getPercentageChange(netWorth, prevNetWorth);
-        
-        return {
-            totalRevenue,
-            totalExpenses,
-            totalProfit,
-            prevTotalProfit,
-            profitChange,
-            
-            totalAssets,
-            totalLiabilities,
-            totalEquity,
-            netWorth,
-            prevNetWorth,
-            netWorthChange
-        };
-    }, [displayData]);
+    const totals = useMemo(() => computeReportTotals(displayData.groups), [displayData]);
 
     const toggleAccountVisibility = (accountId: string) => {
         setHiddenAccounts(prev => {

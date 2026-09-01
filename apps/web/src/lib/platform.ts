@@ -6,7 +6,7 @@
  * `localStorage` on behalf of core belongs in this file and nowhere else.
  */
 
-import { configureCore, type KeyValueStore } from 'core';
+import { configureCore, type KeyValueStore, type StreamAdapter } from 'core';
 import { supabase } from './supabase';
 import { trackEvent } from './analytics';
 
@@ -20,6 +20,48 @@ const localStore: KeyValueStore = {
     async remove(key) {
         try { window.localStorage.removeItem(key); } catch { /* no-op */ }
     },
+};
+
+/**
+ * SSE transport for the streaming assistant. Reads the fetch body directly —
+ * this is the code agentClient used to own before it moved into core.
+ * A non-2xx response is thrown as an Error carrying `status` and the parsed
+ * JSON `body`, which is what lets core recover a dropped 409-pending approval
+ * instead of just surfacing a dead-end error.
+ */
+const webStream: StreamAdapter = async function* (url, init) {
+    let response: Response;
+    try {
+        response = await fetch(url, init);
+    } catch (err: any) {
+        if (err?.name === 'AbortError') throw err;
+        throw new Error('Stream failed: network error');
+    }
+
+    if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const err: any = new Error(body?.error ?? `Stream failed: ${response.status}`);
+        err.status = response.status;
+        err.body = body;
+        throw err;
+    }
+    if (!response.body) {
+        throw new Error('Stream failed: no readable body');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            yield decoder.decode(value, { stream: true });
+        }
+        const tail = decoder.decode();
+        if (tail) yield tail;
+    } finally {
+        await reader.cancel().catch(() => {});
+    }
 };
 
 export function initCore(): void {
@@ -39,5 +81,6 @@ export function initCore(): void {
         telemetry: { track: trackEvent },
         randomUUID: () => crypto.randomUUID(),
         now: () => performance.now(),
+        stream: webStream,
     });
 }

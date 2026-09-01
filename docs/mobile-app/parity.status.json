@@ -65,14 +65,14 @@
     "note": "Journal lines, balance check, post-to-ledger for ACCOUNTANT/ADMIN."
   },
   "route:/reporting": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": "Charts \u2192 victory-native; exports \u2192 server-side"
+    "note": "Headline card, Month/Quarter/YTD toggle, grouped category breakdown with budget progress and prior-period change. Trend chart and budget editing stay web-only for now."
   },
   "route:/intelligence": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": "Streaming assistant \u2014 SSE needs expo/fetch"
+    "note": "Streaming assistant: text, widgets (kpi/table/chart/file), approval flow. Insights/Automations remain placeholders on web too."
   },
   "route:/settings": {
     "state": "PLANNED",
@@ -165,9 +165,9 @@
     "note": "app/(tabs)/wallet.tsx + app/wallet/*"
   },
   "screen:Reporting": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": "Charts \u2192 victory-native; exports \u2192 server-side"
+    "note": "app/(tabs)/reporting.tsx"
   },
   "screen:RequisitionList": {
     "state": "DONE",
@@ -325,9 +325,9 @@
     "note": "Unrouted legacy"
   },
   "screen:Intelligence": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": "Streaming assistant \u2014 SSE needs expo/fetch"
+    "note": "app/(tabs)/bi.tsx"
   },
   "screen:Disconnect": {
     "state": "WEB_ONLY",
@@ -1140,9 +1140,9 @@
     "note": "Moved to packages/core; web file is a re-export."
   },
   "api:GET /accounts": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
+    "state": "DONE",
+    "phase": "P4",
+    "note": "Consumed by the native assistant / reporting screens."
   },
   "api:POST /accounts": {
     "state": "PLANNED",
@@ -1250,24 +1250,24 @@
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:POST /ai/agent/approve": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": ""
+    "note": "Consumed by the native assistant / reporting screens."
   },
   "api:POST /ai/agent/chat": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": ""
+    "note": "Consumed by the native assistant / reporting screens."
   },
   "api:GET /ai/agent/models": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": ""
+    "note": "Consumed by the native assistant / reporting screens."
   },
   "api:GET /ai/agent/threads": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": ""
+    "note": "Consumed by the native assistant / reporting screens."
   },
   "api:GET /ai/agent/threads/:id": {
     "state": "PLANNED",
@@ -1430,9 +1430,9 @@
     "note": ""
   },
   "api:GET /budgets": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": ""
+    "note": "Consumed by the native assistant / reporting screens."
   },
   "api:POST /budgets": {
     "state": "PLANNED",
@@ -2050,9 +2050,9 @@
     "note": ""
   },
   "api:GET /reports/expenditure": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P4",
-    "note": ""
+    "note": "Consumed by the native assistant / reporting screens."
   },
   "api:GET /reports/expenditure/:accountId/items": {
     "state": "PLANNED",

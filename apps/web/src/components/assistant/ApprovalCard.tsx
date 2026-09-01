@@ -10,7 +10,7 @@
 
 import React, { useState } from 'react';
 import { AlertTriangle, Check, ChevronDown, Loader2, ShieldCheck, X } from 'lucide-react';
-import type { Proposal } from '../../lib/agentClient';
+import type { Proposal } from 'core';
 
 /** Tool names are internal; users get plain language. */
 const ACTION_LABELS: Record<string, string> = {

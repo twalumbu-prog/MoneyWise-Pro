@@ -219,7 +219,7 @@
     {
       "id": "pages/Reporting.tsx",
       "name": "Reporting",
-      "loc": 2138,
+      "loc": 1990,
       "hasMobileBranch": true,
       "usesLayout": true,
       "modals": [
@@ -3585,7 +3585,7 @@
       "hazard": "fetch stream reader (SSE)",
       "replacement": "expo/fetch streaming or react-native-sse",
       "files": [
-        "lib/agentClient.ts"
+        "lib/platform.ts"
       ]
     }
   ],
@@ -3721,7 +3721,7 @@
       "kind": "route",
       "label": "`/reporting`",
       "detail": "Reporting · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/settings",
@@ -3742,7 +3742,7 @@
       "kind": "route",
       "label": "`/intelligence`",
       "detail": "Intelligence · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/audit",
@@ -3868,7 +3868,7 @@
       "kind": "screen",
       "label": "Intelligence",
       "detail": "82 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:Join",
@@ -3958,8 +3958,8 @@
       "key": "screen:Reporting",
       "kind": "screen",
       "label": "Reporting",
-      "detail": "2138 LOC · 1 overlays",
-      "state": "PLANNED"
+      "detail": "1990 LOC · 1 overlays",
+      "state": "DONE"
     },
     {
       "key": "screen:RequisitionCreate",
@@ -5191,7 +5191,7 @@
       "kind": "endpoint",
       "label": "GET /accounts",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /accounts",
@@ -5345,28 +5345,28 @@
       "kind": "endpoint",
       "label": "POST /ai/agent/approve",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /ai/agent/chat",
       "kind": "endpoint",
       "label": "POST /ai/agent/chat",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /ai/agent/models",
       "kind": "endpoint",
       "label": "GET /ai/agent/models",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /ai/agent/threads",
       "kind": "endpoint",
       "label": "GET /ai/agent/threads",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /ai/agent/threads/:id",
@@ -5597,7 +5597,7 @@
       "kind": "endpoint",
       "label": "GET /budgets",
       "detail": "AUTHORISER/ACCOUNTANT/ADMIN",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /budgets",
@@ -6465,7 +6465,7 @@
       "kind": "endpoint",
       "label": "GET /reports/expenditure",
       "detail": "AUTHORISER/ACCOUNTANT/ADMIN/MANAGEMENT",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /reports/expenditure/:accountId/items",

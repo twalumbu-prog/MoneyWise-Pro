@@ -8,8 +8,8 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 232 | 49.2% |
-| **DONE** | 205 | 43.4% |
+| **PLANNED** | 221 | 46.8% |
+| **DONE** | 216 | 45.8% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
 | **IN_PROGRESS** | 1 | 0.2% |
@@ -38,10 +38,10 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/vouchers` | Vouchers | protected | P3 | DONE | Voucher list grouped by day. |
 | `/vouchers/:id` | VoucherDetail | protected | P3 | DONE | Journal lines, balance check, post-to-ledger for ACCOUNTANT/ADMIN. |
 | `/cashbook` | CashLedger | protected | P2 | DONE | Wallet carousel, ledger, entry detail, deposit, transfers, wallet/external-account creation, CSV statement import. Pay-link deferred to P5. |
-| `/reporting` | Reporting | protected | P4 | PLANNED | Charts → victory-native; exports → server-side |
+| `/reporting` | Reporting | protected | P4 | DONE | Headline card, Month/Quarter/YTD toggle, grouped category breakdown with budget progress and prior-period change. Trend chart and budget editing stay web-only for now. |
 | `/settings` | Settings | protected | P5 | PLANNED |  |
 | `/products` | ProductsServices | protected | P5 | PLANNED | Image upload → expo-image-picker |
-| `/intelligence` | Intelligence | protected | P4 | PLANNED | Streaming assistant — SSE needs expo/fetch |
+| `/intelligence` | Intelligence | protected | P4 | DONE | Streaming assistant: text, widgets (kpi/table/chart/file), approval flow. Insights/Automations remain placeholders on web too. |
 | `/audit` | Audit | protected | P5 | PLANNED |  |
 | `/menu` | Menu | protected | P3 | DONE | Menu tab: profile, role-gated queues, Other Services grid, sign out. Settings land in P5. |
 | `/apps` | Apps | protected | P6 | PLANNED |  |
@@ -58,7 +58,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | --- | --- | --- | --- | --- | --- | --- |
 | PublicPay | 3880 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy pay page (superseded by PublicPaymentLink) |
 | CashLedger | 2850 | yes | 10 | P2 | DONE | app/(tabs)/wallet.tsx + app/wallet/* |
-| Reporting | 2138 | yes | 1 | P4 | PLANNED | Charts → victory-native; exports → server-side |
+| Reporting | 1990 | yes | 1 | P4 | DONE | app/(tabs)/reporting.tsx |
 | RequisitionList | 1454 | yes | 9 | P1 | DONE | app/(tabs)/index.tsx |
 | PublicPaymentLink | 1379 | — | 0 | — | WEB_ONLY | One-time payment link for customers |
 | NewSale | 1284 | — | 0 | P2 | PLANNED | POS / New Sale |
@@ -90,7 +90,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | Dashboard | 118 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
 | Apps | 116 | — | 0 | P6 | PLANNED |  |
 | StaffPortfolio | 91 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
-| Intelligence | 82 | — | 0 | P4 | PLANNED | Streaming assistant — SSE needs expo/fetch |
+| Intelligence | 82 | — | 0 | P4 | DONE | app/(tabs)/bi.tsx |
 | Disconnect | 32 | — | 0 | — | WEB_ONLY | OAuth disconnect callback — browser only |
 | ProductsServices | 28 | — | 0 | P5 | PLANNED | Image upload → expo-image-picker |
 | PayEntry | 26 | — | 0 | — | WEB_ONLY | Customer payment page; app shares the URL, never renders it |
@@ -148,7 +148,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 
 | Method | Path | Roles | Consumed by app |
 | --- | --- | --- | --- |
-| GET | `/accounts` | — | PLANNED |
+| GET | `/accounts` | — | DONE |
 | POST | `/accounts` | — | PLANNED |
 | PUT | `/accounts/:id` | — | PLANNED |
 | POST | `/accounts/import` | — | PLANNED |
@@ -170,10 +170,10 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | PATCH | `/admin/wallet-pool/:id` | — | WEB_ONLY |
 | GET | `/admin/wallet-pool/settings` | — | WEB_ONLY |
 | PUT | `/admin/wallet-pool/settings` | — | WEB_ONLY |
-| POST | `/ai/agent/approve` | — | PLANNED |
-| POST | `/ai/agent/chat` | — | PLANNED |
-| GET | `/ai/agent/models` | — | PLANNED |
-| GET | `/ai/agent/threads` | — | PLANNED |
+| POST | `/ai/agent/approve` | — | DONE |
+| POST | `/ai/agent/chat` | — | DONE |
+| GET | `/ai/agent/models` | — | DONE |
+| GET | `/ai/agent/threads` | — | DONE |
 | GET | `/ai/agent/threads/:id` | — | PLANNED |
 | DELETE | `/ai/agent/threads/:id` | — | PLANNED |
 | POST | `/ai/assistant` | — | PLANNED |
@@ -206,7 +206,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | GET | `/billing/pay/:invoiceId/mobile-money/status` | — | PLANNED |
 | GET | `/billing/subscription` | — | PLANNED |
 | POST | `/billing/upgrade` | — | PLANNED |
-| GET | `/budgets` | AUTHORISER / ACCOUNTANT / ADMIN | PLANNED |
+| GET | `/budgets` | AUTHORISER / ACCOUNTANT / ADMIN | DONE |
 | POST | `/budgets` | ACCOUNTANT / ADMIN | PLANNED |
 | GET | `/cashbook` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | PATCH | `/cashbook/:entryId/account` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
@@ -330,7 +330,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | DELETE | `/payroll/staff/:id` | — | PLANNED |
 | GET | `/payroll/staff/:id/history` | — | PLANNED |
 | GET | `/payroll/staff/departments` | — | PLANNED |
-| GET | `/reports/expenditure` | AUTHORISER / ACCOUNTANT / ADMIN / MANAGEMENT | PLANNED |
+| GET | `/reports/expenditure` | AUTHORISER / ACCOUNTANT / ADMIN / MANAGEMENT | DONE |
 | GET | `/reports/expenditure/:accountId/items` | AUTHORISER / ACCOUNTANT / ADMIN / MANAGEMENT | PLANNED |
 | POST | `/requisitions` | — | DONE |
 | GET | `/requisitions` | — | DONE |
@@ -412,7 +412,7 @@ Browser APIs with no React Native equivalent, by blast radius.
 | framer-motion | 1 | react-native-reanimated | components/animate-ui/components/radix/accordion.tsx |
 | getUserMedia (audio) | 1 | expo-audio | components/assistant/Composer.tsx |
 | react-markdown | 1 | react-native-markdown-display | components/assistant/MessageBubble.tsx |
-| fetch stream reader (SSE) | 1 | expo/fetch streaming or react-native-sse | lib/agentClient.ts |
+| fetch stream reader (SSE) | 1 | expo/fetch streaming or react-native-sse | lib/platform.ts |
 
 ## 7. Untriaged (0)
 

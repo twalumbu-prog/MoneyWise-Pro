@@ -22,8 +22,11 @@ export const streamAdapter: StreamAdapter = async function* (url, init) {
     const response = await expoFetch(url, init as any);
 
     if (!response.ok) {
-        const text = await response.text().catch(() => '');
-        throw new Error(text || `Stream failed: ${response.status} ${response.statusText}`);
+        const body = await response.json().catch(() => null);
+        const err: any = new Error(body?.error ?? `Stream failed: ${response.status} ${response.statusText}`);
+        err.status = response.status;
+        err.body = body;
+        throw err;
     }
     if (!response.body) {
         // Guards against a future SDK regression rather than a condition we

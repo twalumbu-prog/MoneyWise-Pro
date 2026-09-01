@@ -1,17 +1,240 @@
-import { View, StyleSheet } from 'react-native';
-import { PhasePlaceholder } from '../../src/components/PhasePlaceholder';
-import { colors } from '../../src/theme/tokens';
+import { useMemo, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, ChevronRight } from 'lucide-react-native';
+import {
+    reportService, budgetService, accountService,
+    buildReportGroups, computeReportTotals, formatKwacha,
+} from 'core';
+import type { ReportView, ExpenditureMode } from 'core';
+import { colors, fonts, radius } from '../../src/theme/tokens';
 
+/** Local-time ISO date — matches core/format's date handling, so period
+ * boundaries don't shift a day for a Lusaka user (UTC+2). */
+const toLocalISODate = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+type Period = 'MONTH' | 'QUARTER' | 'YTD';
+
+function periodRange(period: Period): { start: string; end: string; prevStart: string; prevEnd: string } {
+    const now = new Date();
+    let start: Date, end: Date;
+    if (period === 'MONTH') {
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    } else if (period === 'QUARTER') {
+        const q = Math.floor(now.getMonth() / 3);
+        start = new Date(now.getFullYear(), q * 3, 1);
+        end = new Date(now.getFullYear(), q * 3 + 3, 0);
+    } else {
+        start = new Date(now.getFullYear(), 0, 1);
+        end = now;
+    }
+    const prevStart = new Date(start); prevStart.setFullYear(prevStart.getFullYear() - 1);
+    const prevEnd = new Date(end); prevEnd.setFullYear(prevEnd.getFullYear() - 1);
+    return {
+        start: toLocalISODate(start), end: toLocalISODate(end),
+        prevStart: toLocalISODate(prevStart), prevEnd: toLocalISODate(prevEnd),
+    };
+}
+
+/**
+ * Reporting — a focused subset of the web report. Ships the headline card,
+ * period toggle and the grouped category breakdown with budget variance and
+ * period-over-period change; the multi-point trend chart and budget-editing
+ * UI stay on web for now (P5 follow-up).
+ */
 export default function ReportingScreen() {
+    const insets = useSafeAreaInsets();
+    const [view, setView] = useState<ReportView>('PROFIT_LOSS');
+    const [period, setPeriod] = useState<Period>('MONTH');
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+    const range = useMemo(() => periodRange(period), [period]);
+
+    const { data, isLoading, isError } = useQuery({
+        queryKey: ['report', view, period],
+        queryFn: async () => {
+            const mode: ExpenditureMode = view === 'PROFIT_LOSS' ? 'EXPENSE' : 'CASH_OUTFLOW';
+            const [expData, budData, accData, prevExpData] = await Promise.all([
+                reportService.getExpenditures(range.start, range.end, mode),
+                budgetService.getBudgets(range.start, range.end, 'MONTHLY'),
+                accountService.getAll(),
+                reportService.getExpenditures(range.prevStart, range.prevEnd, mode),
+            ]);
+            return { expData, budData, accData, prevExpData };
+        },
+    });
+
+    const { groups } = useMemo(() => {
+        if (!data) return { groups: {} as any };
+        return buildReportGroups(data.accData, data.expData, data.budData, data.prevExpData, view);
+    }, [data, view]);
+
+    const totals = useMemo(() => computeReportTotals(groups), [groups]);
+    const headline = view === 'PROFIT_LOSS' ? totals.totalProfit : totals.netWorth;
+    const headlineChange = view === 'PROFIT_LOSS' ? totals.profitChange : totals.netWorthChange;
+
+    const toggle = (key: string) => setExpanded((prev) => {
+        const next = new Set(prev);
+        next.has(key) ? next.delete(key) : next.add(key);
+        return next;
+    });
+
     return (
-        <View style={styles.root}>
-        <PhasePlaceholder
-            title="Reporting"
-            phase="P4"
-            scope="Financial reports with native charts, plus PDF and Excel exports rendered server-side and shared through the OS share sheet."
-        />
-        </View>
+        <ScrollView style={styles.root} contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}>
+            <Text style={styles.title}>Reporting</Text>
+
+            <View style={styles.segment}>
+                {(['PROFIT_LOSS', 'NET_WORTH'] as ReportView[]).map((v) => (
+                    <Pressable
+                        key={v}
+                        onPress={() => setView(v)}
+                        style={[styles.segmentBtn, view === v && styles.segmentBtnActive]}
+                    >
+                        <Text style={[styles.segmentText, view === v && styles.segmentTextActive]}>
+                            {v === 'PROFIT_LOSS' ? 'Profit/Loss' : 'Net Worth'}
+                        </Text>
+                    </Pressable>
+                ))}
+            </View>
+
+            <View style={styles.hero}>
+                <View style={styles.heroTop}>
+                    <Text style={styles.heroLabel}>{view === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}</Text>
+                </View>
+                {isLoading ? (
+                    <ActivityIndicator color="#FFFFFF" style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+                ) : (
+                    <>
+                        <Text style={styles.heroValue}>{formatKwacha(headline)}</Text>
+                        <View style={styles.heroChange}>
+                            {headlineChange.isIncrease
+                                ? <ChevronRight size={13} color="#4ADE80" style={{ transform: [{ rotate: '-90deg' }] }} />
+                                : <ChevronRight size={13} color="#F87171" style={{ transform: [{ rotate: '90deg' }] }} />}
+                            <Text style={[styles.heroChangeText, { color: headlineChange.isIncrease ? '#4ADE80' : '#F87171' }]}>
+                                {headlineChange.value}% vs last year
+                            </Text>
+                        </View>
+                    </>
+                )}
+            </View>
+
+            <View style={styles.periodRow}>
+                {(['MONTH', 'QUARTER', 'YTD'] as Period[]).map((p) => (
+                    <Pressable
+                        key={p}
+                        onPress={() => setPeriod(p)}
+                        style={[styles.periodChip, period === p && styles.periodChipActive]}
+                    >
+                        <Text style={[styles.periodText, period === p && styles.periodTextActive]}>
+                            {p === 'MONTH' ? 'This month' : p === 'QUARTER' ? 'This quarter' : 'YTD'}
+                        </Text>
+                    </Pressable>
+                ))}
+            </View>
+
+            {isError && (
+                <View style={styles.errorCard}>
+                    <Text style={styles.errorTitle}>Couldn’t load the report</Text>
+                </View>
+            )}
+
+            {Object.entries(groups).map(([key, group]: [string, any]) => {
+                if (group.items.length === 0) return null;
+                const isOpen = expanded.has(key);
+                const progress = group.totals.budgeted_amount > 0
+                    ? Math.min((group.totals.total_amount / group.totals.budgeted_amount) * 100, 100)
+                    : 0;
+                return (
+                    <View key={key} style={styles.groupCard}>
+                        <Pressable style={styles.groupHeader} onPress={() => toggle(key)}>
+                            <View style={styles.groupHeaderMain}>
+                                <Text style={styles.groupName}>{group.groupName}</Text>
+                                <Text style={styles.groupTotal}>{formatKwacha(group.totals.total_amount)}</Text>
+                            </View>
+                            {isOpen
+                                ? <ChevronDown size={16} color={colors.textFaint} />
+                                : <ChevronRight size={16} color={colors.textFaint} />}
+                        </Pressable>
+
+                        {group.totals.budgeted_amount > 0 && (
+                            <View style={styles.progressTrack}>
+                                <View style={[styles.progressFill, { width: `${progress}%` },
+                                    progress > 100 && styles.progressOver]} />
+                            </View>
+                        )}
+
+                        {isOpen && group.items.map((item: any) => (
+                            <View key={item.account_id} style={styles.item}>
+                                <Text style={styles.itemName} numberOfLines={1}>{item.account_name}</Text>
+                                <Text style={styles.itemAmount}>{formatKwacha(item.total_amount)}</Text>
+                            </View>
+                        ))}
+                    </View>
+                );
+            })}
+
+            {!isLoading && !isError && Object.values(groups).every((g: any) => g.items.length === 0) && (
+                <View style={styles.empty}>
+                    <Text style={styles.emptyText}>No activity in this period.</Text>
+                </View>
+            )}
+        </ScrollView>
     );
 }
 
-const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.canvas } });
+const styles = StyleSheet.create({
+    root: { flex: 1, backgroundColor: colors.canvasAlt },
+    scroll: { paddingHorizontal: 20, paddingBottom: 100, gap: 14 },
+    title: { fontFamily: fonts.display, fontSize: 30, color: '#000000' },
+    segment: {
+        flexDirection: 'row', padding: 4, backgroundColor: colors.surface,
+        borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+    },
+    segmentBtn: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
+    segmentBtnActive: { backgroundColor: colors.tabActiveBg },
+    segmentText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
+    segmentTextActive: { color: colors.blue },
+    hero: {
+        backgroundColor: '#0F172A', borderRadius: 18, padding: 20, minHeight: 110,
+    },
+    heroTop: { flexDirection: 'row', justifyContent: 'space-between' },
+    heroLabel: { fontFamily: fonts.body, fontSize: 12, color: '#94A3B8', letterSpacing: 0.5 },
+    heroValue: { fontFamily: fonts.bodyBold, fontSize: 32, color: '#FFFFFF', marginTop: 4 },
+    heroChange: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 8 },
+    heroChangeText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
+    periodRow: { flexDirection: 'row', gap: 8 },
+    periodChip: {
+        paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
+        borderWidth: 1, borderColor: colors.borderStrong,
+    },
+    periodChipActive: { backgroundColor: colors.navy, borderColor: colors.navy },
+    periodText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
+    periodTextActive: { color: '#FFFFFF' },
+    groupCard: {
+        backgroundColor: colors.surface, borderRadius: radius.lg, padding: 16,
+        borderWidth: 1, borderColor: colors.border,
+    },
+    groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    groupHeaderMain: { flex: 1 },
+    groupName: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    groupTotal: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.navy, marginTop: 2 },
+    progressTrack: { height: 4, borderRadius: 2, backgroundColor: colors.canvasAlt, marginTop: 10, overflow: 'hidden' },
+    progressFill: { height: '100%', backgroundColor: colors.blue, borderRadius: 2 },
+    progressOver: { backgroundColor: colors.danger },
+    item: {
+        flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8,
+        borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: 8,
+    },
+    itemName: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, marginRight: 12 },
+    itemAmount: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.text },
+    empty: { paddingVertical: 48, alignItems: 'center' },
+    emptyText: { fontFamily: fonts.body, fontSize: 14, color: colors.textFaint },
+    errorCard: {
+        backgroundColor: colors.surface, borderRadius: radius.md, padding: 16,
+        borderWidth: 1, borderColor: colors.danger,
+    },
+    errorTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.danger },
+});
