@@ -5,6 +5,7 @@ import { configureCore } from 'core';
 import { supabase } from '../lib/supabase';
 import { cacheStore, secureStore } from './storage';
 import { streamAdapter } from './stream';
+import { filesAdapter } from './files';
 
 const extra = (Constants.expoConfig?.extra ?? {}) as Record<string, string>;
 
@@ -40,6 +41,7 @@ export function initCore(): void {
         randomUUID,
         // performance.now() exists in Hermes and is monotonic, matching web.
         now: () => performance.now(),
+        files: filesAdapter,
         stream: streamAdapter,
         openExternal: async (url: string) => {
             await Linking.openURL(url);

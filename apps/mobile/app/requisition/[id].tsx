@@ -9,6 +9,8 @@ import { ChevronLeft, Paperclip } from 'lucide-react-native';
 import { requisitionService, getStatusConfig, formatKwacha, formatShortDate } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { StatusIcon } from '../../src/components/StatusIcon';
+import { ReceiptCapture } from '../../src/components/requisitions/ReceiptCapture';
+import { RequisitionThread } from '../../src/components/requisitions/RequisitionThread';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 export default function RequisitionDetailScreen() {
@@ -53,6 +55,11 @@ export default function RequisitionDetailScreen() {
     const canApprove =
         req?.status === 'PENDING_APPROVAL' &&
         (userRole === 'AUTHORISER' || userRole === 'ADMIN');
+
+    // Receipts belong to the spending phase: once funds are out and before the
+    // request is closed off. Matches when the web app offers receipt scanning.
+    const canAttach =
+        !!req && ['DISBURSED', 'RECEIVED', 'EXPENSED', 'CHANGE_SUBMITTED', 'UNACCOUNTED'].includes(req.status);
 
     const status = req ? getStatusConfig(req.status) : null;
     const items = req?.items ?? [];
@@ -135,6 +142,27 @@ export default function RequisitionDetailScreen() {
                         </View>
                     )}
 
+                    {canAttach && (
+                        <View style={styles.card}>
+                            <Text style={styles.sectionTitle}>Receipts</Text>
+                            <Text style={styles.hint}>
+                                Photograph a receipt and it goes straight into the same OCR
+                                pipeline the web app uses.
+                            </Text>
+                            <ReceiptCapture
+                                requisitionId={String(id)}
+                                onUploaded={() => {
+                                    qc.invalidateQueries({ queryKey: ['requisitions', id] });
+                                    qc.invalidateQueries({ queryKey: ['requisitions', id, 'messages'] });
+                                }}
+                            />
+                        </View>
+                    )}
+
+                    <View style={styles.card}>
+                        <RequisitionThread requisitionId={String(id)} />
+                    </View>
+
                     {canApprove && (
                         <View style={styles.actions}>
                             <Pressable
@@ -195,6 +223,7 @@ const styles = StyleSheet.create({
     statusLine: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 },
     statusLabel: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted },
     sectionTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text, marginBottom: 8 },
+    hint: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, lineHeight: 17, marginBottom: 4 },
     field: {
         flexDirection: 'row', justifyContent: 'space-between', gap: 16, paddingVertical: 7,
         borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border,

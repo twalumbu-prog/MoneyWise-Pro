@@ -6493,7 +6493,7 @@
       "kind": "endpoint",
       "label": "GET /requisitions/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PUT /requisitions/:id",
@@ -6591,14 +6591,14 @@
       "kind": "endpoint",
       "label": "GET /requisitions/:id/messages",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /requisitions/:id/messages",
       "kind": "endpoint",
       "label": "POST /requisitions/:id/messages",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /requisitions/:id/messages/:messageId",
@@ -6654,7 +6654,7 @@
       "kind": "endpoint",
       "label": "POST /requisitions/:id/scan-receipts",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PATCH /requisitions/:id/status",

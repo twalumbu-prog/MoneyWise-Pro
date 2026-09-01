@@ -8,8 +8,8 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 264 | 55.9% |
-| **DONE** | 173 | 36.7% |
+| **PLANNED** | 260 | 55.1% |
+| **DONE** | 177 | 37.5% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
 | **IN_PROGRESS** | 1 | 0.2% |
@@ -334,7 +334,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | GET | `/reports/expenditure/:accountId/items` | AUTHORISER / ACCOUNTANT / ADMIN / MANAGEMENT | PLANNED |
 | POST | `/requisitions` | — | DONE |
 | GET | `/requisitions` | — | DONE |
-| GET | `/requisitions/:id` | — | PLANNED |
+| GET | `/requisitions/:id` | — | DONE |
 | PUT | `/requisitions/:id` | — | PLANNED |
 | DELETE | `/requisitions/:id` | — | PLANNED |
 | POST | `/requisitions/:id/acknowledge` | — | PLANNED |
@@ -348,8 +348,8 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | PUT | `/requisitions/:id/expenses` | — | PLANNED |
 | POST | `/requisitions/:id/items/:itemId/analyze-receipt` | — | PLANNED |
 | POST | `/requisitions/:id/mark-read` | — | PLANNED |
-| GET | `/requisitions/:id/messages` | — | PLANNED |
-| POST | `/requisitions/:id/messages` | — | PLANNED |
+| GET | `/requisitions/:id/messages` | — | DONE |
+| POST | `/requisitions/:id/messages` | — | DONE |
 | DELETE | `/requisitions/:id/messages/:messageId` | — | PLANNED |
 | POST | `/requisitions/:id/post-quickbooks` | — | PLANNED |
 | POST | `/requisitions/:id/post-voucher` | — | PLANNED |
@@ -357,7 +357,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | GET | `/requisitions/:id/resolve-recipient` | — | PLANNED |
 | POST | `/requisitions/:id/retrigger-ai` | — | PLANNED |
 | POST | `/requisitions/:id/revert-to-draft` | — | PLANNED |
-| POST | `/requisitions/:id/scan-receipts` | — | PLANNED |
+| POST | `/requisitions/:id/scan-receipts` | — | DONE |
 | PATCH | `/requisitions/:id/status` | — | PLANNED |
 | POST | `/requisitions/:id/submit-change` | — | PLANNED |
 | GET | `/requisitions/:id/verify-disbursement` | — | PLANNED |

@@ -2070,9 +2070,9 @@
     "note": "Consumed by the native Inbox."
   },
   "api:GET /requisitions/:id": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": ""
+    "note": "Native detail screen: receipts + activity thread."
   },
   "api:PUT /requisitions/:id": {
     "state": "PLANNED",
@@ -2140,14 +2140,14 @@
     "note": ""
   },
   "api:GET /requisitions/:id/messages": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": ""
+    "note": "Native detail screen: receipts + activity thread."
   },
   "api:POST /requisitions/:id/messages": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": ""
+    "note": "Native detail screen: receipts + activity thread."
   },
   "api:DELETE /requisitions/:id/messages/:messageId": {
     "state": "PLANNED",
@@ -2185,9 +2185,9 @@
     "note": ""
   },
   "api:POST /requisitions/:id/scan-receipts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": ""
+    "note": "Native detail screen: receipts + activity thread."
   },
   "api:PATCH /requisitions/:id/status": {
     "state": "PLANNED",
