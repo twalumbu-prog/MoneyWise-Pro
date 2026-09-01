@@ -61,7 +61,16 @@ const config: ExpoConfig = {
         ['expo-splash-screen', { backgroundColor: '#EEF5FF', resizeMode: 'contain' }],
     ],
 
-    experiments: { typedRoutes: true },
+    experiments: {
+        typedRoutes: true,
+        // Metro honours tsconfig `paths` by default. This app maps `react` ->
+        // ./node_modules/@types/react so tsc types RN 0.81 against React 19
+        // instead of the hoisted root's React 18 — but that mapping is a
+        // TYPE-only redirect, and at bundle time it made Metro try to load a
+        // types-only package as runtime code. Type resolution and module
+        // resolution must not share this config.
+        tsconfigPaths: false,
+    },
 
     extra: {
         // Mirrors apps/web's VITE_* vars. Values come from EAS env / .env at build

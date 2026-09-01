@@ -5,7 +5,15 @@
         "noUnusedLocals": true,
         "noUnusedParameters": true,
         "baseUrl": ".",
+        // React types must resolve to THIS app's copy (19.x, required by RN 0.81),
+        // not the hoisted root copy (18.x, which apps/web and apps/admin need).
+        // Without this, react-native's own .d.ts files pick up React 18 and every
+        // RN component fails as "not a valid JSX element type" — the giveaway is
+        // `Property 'refs' is missing`, which React 19 removed from Component.
         "paths": {
+            "react": ["./node_modules/@types/react"],
+            "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime"],
+            "react-dom": ["./node_modules/@types/react-dom"],
             "@/*": ["src/*"],
             "core": ["../../packages/core/src"],
             "shared": ["../../packages/shared/src"]
