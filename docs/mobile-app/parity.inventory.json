@@ -1222,8 +1222,9 @@
   ],
   "services": [
     {
-      "id": "services/account.service.ts",
+      "id": "apps/web/src/services/account.service.ts",
       "name": "account.service",
+      "home": "web",
       "loc": 130,
       "methods": [
         "getAll",
@@ -1236,8 +1237,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/ai.service.ts",
+      "id": "apps/web/src/services/ai.service.ts",
       "name": "ai.service",
+      "home": "web",
       "loc": 90,
       "methods": [
         "getRules",
@@ -1252,8 +1254,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/budget.service.ts",
+      "id": "apps/web/src/services/budget.service.ts",
       "name": "budget.service",
+      "home": "web",
       "loc": 54,
       "methods": [
         "getBudgets",
@@ -1262,8 +1265,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/cashbook.service.ts",
+      "id": "apps/web/src/services/cashbook.service.ts",
       "name": "cashbook.service",
+      "home": "web",
       "loc": 299,
       "methods": [
         "getEntries",
@@ -1293,8 +1297,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/department.service.ts",
+      "id": "apps/web/src/services/department.service.ts",
       "name": "department.service",
+      "home": "web",
       "loc": 45,
       "methods": [
         "list",
@@ -1305,8 +1310,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/highlights.service.ts",
+      "id": "apps/web/src/services/highlights.service.ts",
       "name": "highlights.service",
+      "home": "web",
       "loc": 73,
       "methods": [
         "getHighlights",
@@ -1315,8 +1321,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/integration.service.ts",
+      "id": "apps/web/src/services/integration.service.ts",
       "name": "integration.service",
+      "home": "web",
       "loc": 200,
       "methods": [
         "getStatus",
@@ -1336,8 +1343,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/lenco.service.ts",
+      "id": "apps/web/src/services/lenco.service.ts",
       "name": "lenco.service",
+      "home": "web",
       "loc": 243,
       "methods": [
         "getAccounts",
@@ -1356,8 +1364,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/onboarding.service.ts",
+      "id": "apps/web/src/services/onboarding.service.ts",
       "name": "onboarding.service",
+      "home": "web",
       "loc": 131,
       "methods": [
         "getState",
@@ -1374,8 +1383,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/organization.service.ts",
+      "id": "apps/web/src/services/organization.service.ts",
       "name": "organization.service",
+      "home": "web",
       "loc": 87,
       "methods": [
         "getOrganization",
@@ -1386,8 +1396,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/payroll.service.ts",
+      "id": "apps/web/src/services/payroll.service.ts",
       "name": "payroll.service",
+      "home": "web",
       "loc": 259,
       "methods": [
         "listStaff",
@@ -1408,8 +1419,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/product.service.ts",
+      "id": "apps/web/src/services/product.service.ts",
       "name": "product.service",
+      "home": "web",
       "loc": 329,
       "methods": [
         "getProducts",
@@ -1429,8 +1441,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/report.service.ts",
+      "id": "apps/web/src/services/report.service.ts",
       "name": "report.service",
+      "home": "web",
       "loc": 65,
       "methods": [
         "getExpenditures",
@@ -1439,8 +1452,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/requisition.service.ts",
+      "id": "apps/web/src/services/requisition.service.ts",
       "name": "requisition.service",
+      "home": "web",
       "loc": 577,
       "methods": [
         "autoDisburse",
@@ -1475,8 +1489,9 @@
       "touchesSupabaseDirectly": true
     },
     {
-      "id": "services/schedule.service.ts",
+      "id": "apps/web/src/services/schedule.service.ts",
       "name": "schedule.service",
+      "home": "web",
       "loc": 130,
       "methods": [
         "getAll",
@@ -1490,9 +1505,10 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/user.service.ts",
+      "id": "packages/core/src/services/user.service.ts",
       "name": "user.service",
-      "loc": 117,
+      "home": "core",
+      "loc": 80,
       "methods": [
         "getAll",
         "create",
@@ -1503,8 +1519,9 @@
       "touchesSupabaseDirectly": false
     },
     {
-      "id": "services/voucher.service.ts",
+      "id": "apps/web/src/services/voucher.service.ts",
       "name": "voucher.service",
+      "home": "web",
       "loc": 133,
       "methods": [
         "getAll",
@@ -3413,6 +3430,7 @@
         "components/wallets/DepositProofPreview.tsx",
         "context/AuthContext.tsx",
         "hooks/useNewnessTracker.ts",
+        "lib/platform.ts",
         "lib/queryClient.ts",
         "main.tsx",
         "pages/CashLedger.tsx",
@@ -3455,6 +3473,23 @@
       ]
     },
     {
+      "hazard": "localStorage",
+      "replacement": "expo-secure-store / react-native-mmkv",
+      "files": [
+        "components/Sidebar.tsx",
+        "components/requisitions/DesktopRequisitionWorkspace.tsx",
+        "components/requisitions/MobileRequisitionWizard.tsx",
+        "context/AuthContext.tsx",
+        "hooks/useNewnessTracker.ts",
+        "lib/paymentRecovery.ts",
+        "lib/platform.ts",
+        "lib/queryClient.ts",
+        "pages/Apps.tsx",
+        "pages/CashLedger.tsx",
+        "pages/Reporting.tsx"
+      ]
+    },
+    {
       "hazard": "Blob/createObjectURL",
       "replacement": "expo-file-system + base64",
       "files": [
@@ -3468,22 +3503,6 @@
         "pages/RequisitionCreate.tsx",
         "pages/invest/investCertificate.ts",
         "utils/export.utils.ts"
-      ]
-    },
-    {
-      "hazard": "localStorage",
-      "replacement": "expo-secure-store / react-native-mmkv",
-      "files": [
-        "components/Sidebar.tsx",
-        "components/requisitions/DesktopRequisitionWorkspace.tsx",
-        "components/requisitions/MobileRequisitionWizard.tsx",
-        "context/AuthContext.tsx",
-        "hooks/useNewnessTracker.ts",
-        "lib/paymentRecovery.ts",
-        "lib/queryClient.ts",
-        "pages/Apps.tsx",
-        "pages/CashLedger.tsx",
-        "pages/Reporting.tsx"
       ]
     },
     {
@@ -5102,35 +5121,35 @@
       "kind": "service",
       "label": "user.service.getAll()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:user.service.create",
       "kind": "service",
       "label": "user.service.create()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:user.service.update",
       "kind": "service",
       "label": "user.service.update()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:user.service.delete",
       "kind": "service",
       "label": "user.service.delete()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:user.service.resendInvite",
       "kind": "service",
       "label": "user.service.resendInvite()",
       "detail": "api",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:voucher.service.getAll",
@@ -6782,35 +6801,35 @@
       "kind": "endpoint",
       "label": "GET /users",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /users",
       "kind": "endpoint",
       "label": "POST /users",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PUT /users/:id",
       "kind": "endpoint",
       "label": "PUT /users/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /users/:id",
       "kind": "endpoint",
       "label": "DELETE /users/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /users/:id/resend-invite",
       "kind": "endpoint",
       "label": "POST /users/:id/resend-invite",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /users/me",

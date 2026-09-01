@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const WEB = join(ROOT, 'apps/web/src');
 const API_ROUTES = join(ROOT, 'apps/api/src/routes');
+const CORE = join(ROOT, 'packages/core/src');
 const OUT_MD = join(ROOT, 'docs/mobile-app/PARITY.generated.md');
 const OUT_JSON = join(ROOT, 'docs/mobile-app/parity.inventory.json');
 const STATUS_FILE = join(ROOT, 'docs/mobile-app/parity.status.json');
@@ -97,20 +98,40 @@ function collectComponents() {
 
 // ── 4. Service layer — the code that actually ports to packages/core ─────────
 function collectServices() {
-    return walk(join(WEB, 'services')).map((p) => {
+    // Scan BOTH locations. As each module migrates, its web file becomes a
+    // one-line re-export with no methods left to find — without the core sweep
+    // the inventory would silently shrink exactly as the port progressed, which
+    // is the drift this tool exists to prevent.
+    const files = [
+        ...walk(join(WEB, 'services')).map((p) => ({ p, home: 'web' })),
+        ...walk(join(CORE, 'services')).map((p) => ({ p, home: 'core' })),
+    ];
+    const byName = new Map();
+    for (const { p, home } of files) {
         const src = read(p);
+        const name = basename(p, '.ts');
         const methods = [
             ...[...src.matchAll(/^\s{4}(?:async\s+)?(\w+)\s*(?:<[^>]*>)?\s*\(/gm)].map((m) => m[1]),
             ...[...src.matchAll(/export (?:async )?function (\w+)/g)].map((m) => m[1]),
-        ];
-        return {
-            id: relative(WEB, p),
-            name: basename(p, '.ts'),
-            loc: loc(src),
-            methods: [...new Set(methods)].filter((m) => !['if', 'for', 'catch', 'switch', 'while'].includes(m)),
-            touchesSupabaseDirectly: /supabase\s*\n?\s*\.from\(|supabase\.storage/.test(src),
-        };
-    });
+        ].filter((m) => !['if', 'for', 'catch', 'switch', 'while', 'return'].includes(m));
+
+        const prev = byName.get(name);
+        // A migrated module lives in core; the web file is a shim. Core wins,
+        // and the module is recorded as ported.
+        if (home === 'core' || !prev) {
+            byName.set(name, {
+                id: relative(ROOT, p),
+                name,
+                home,
+                loc: loc(src),
+                methods: [...new Set([...(prev?.methods ?? []), ...methods])],
+                touchesSupabaseDirectly: /supabase\s*\n?\s*\.from\(|supabase\.storage/.test(src),
+            });
+        } else if (prev) {
+            prev.methods = [...new Set([...prev.methods, ...methods])];
+        }
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 // ── 5. Backend endpoints (the real contract both clients share) ──────────────
@@ -246,7 +267,7 @@ ${table(inventory.components.filter((c) => c.surface === 'mobile-only' || c.surf
 
 ## 4. Service layer → \`packages/core\` (${inventory.services.length} modules, ${inventory.services.reduce((n, s) => n + s.methods.length, 0)} methods)
 
-${table(inventory.services.map((s) => [s.name, String(s.methods.length), s.touchesSupabaseDirectly ? '⚠️ direct supabase/storage' : 'apiFetch only', statusOf(`service:${s.name}`)]), ['Service', 'Methods', 'Transport', 'Status'])}
+${table(inventory.services.map((s) => [s.name, s.home === 'core' ? '**core**' : 'web', String(s.methods.length), s.touchesSupabaseDirectly ? '⚠️ direct supabase/storage' : 'apiFetch only', statusOf(`service:${s.name}.${s.methods[0] ?? ''}`) === 'DONE' ? 'DONE' : phaseOf(`service:${s.name}.${s.methods[0] ?? ''}`)]), ['Service', 'Lives in', 'Methods', 'Transport', 'Status'])}
 
 ## 5. Backend endpoints (${inventory.endpoints.length})
 

@@ -17,12 +17,12 @@
   "route:/": {
     "state": "PLANNED",
     "phase": "P0",
-    "note": "HomeRedirect → role-based initial tab"
+    "note": "HomeRedirect \u2192 role-based initial tab"
   },
   "route:/requisitions": {
     "state": "PLANNED",
     "phase": "P1",
-    "note": "Inbox tab — primary surface"
+    "note": "Inbox tab \u2014 primary surface"
   },
   "route:/requisitions/new": {
     "state": "PLANNED",
@@ -32,12 +32,12 @@
   "route:/menu": {
     "state": "PLANNED",
     "phase": "P1",
-    "note": "Menu tab — hub for Other Services"
+    "note": "Menu tab \u2014 hub for Other Services"
   },
   "route:/cashbook": {
     "state": "PLANNED",
     "phase": "P2",
-    "note": "Wallet tab — largest screen (2.8k LOC), 10 overlays"
+    "note": "Wallet tab \u2014 largest screen (2.8k LOC), 10 overlays"
   },
   "route:/sales/new": {
     "state": "PLANNED",
@@ -67,12 +67,12 @@
   "route:/reporting": {
     "state": "PLANNED",
     "phase": "P4",
-    "note": "Charts → victory-native; exports → server-side"
+    "note": "Charts \u2192 victory-native; exports \u2192 server-side"
   },
   "route:/intelligence": {
     "state": "PLANNED",
     "phase": "P4",
-    "note": "Streaming assistant — SSE needs expo/fetch"
+    "note": "Streaming assistant \u2014 SSE needs expo/fetch"
   },
   "route:/settings": {
     "state": "PLANNED",
@@ -82,7 +82,7 @@
   "route:/products": {
     "state": "PLANNED",
     "phase": "P5",
-    "note": "Image upload → expo-image-picker"
+    "note": "Image upload \u2192 expo-image-picker"
   },
   "route:/audit": {
     "state": "PLANNED",
@@ -112,7 +112,7 @@
   "route:/apps/payroll/run": {
     "state": "PLANNED",
     "phase": "P6",
-    "note": "Batch payroll — 30s ceiling applies"
+    "note": "Batch payroll \u2014 30s ceiling applies"
   },
   "route:/invest": {
     "state": "PLANNED",
@@ -131,52 +131,52 @@
   },
   "route:/pay/:wallet_id": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Customer payment page; app shares the URL, never renders it"
   },
   "route:/pl/:token": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "One-time payment link for customers"
   },
   "route:/privacy": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Linked out from Settings (store listing also links here)"
   },
   "route:/terms": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Linked out from Settings"
   },
   "route:/disconnect": {
     "state": "WEB_ONLY",
-    "phase": "—",
-    "note": "OAuth disconnect callback — browser only"
+    "phase": "\u2014",
+    "note": "OAuth disconnect callback \u2014 browser only"
   },
   "screen:PublicPay": {
     "state": "NOT_APPLICABLE",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Unrouted legacy pay page (superseded by PublicPaymentLink)"
   },
   "screen:CashLedger": {
     "state": "PLANNED",
     "phase": "P2",
-    "note": "Wallet tab — largest screen (2.8k LOC), 10 overlays"
+    "note": "Wallet tab \u2014 largest screen (2.8k LOC), 10 overlays"
   },
   "screen:Reporting": {
     "state": "PLANNED",
     "phase": "P4",
-    "note": "Charts → victory-native; exports → server-side"
+    "note": "Charts \u2192 victory-native; exports \u2192 server-side"
   },
   "screen:RequisitionList": {
     "state": "PLANNED",
     "phase": "P1",
-    "note": "Inbox tab — primary surface"
+    "note": "Inbox tab \u2014 primary surface"
   },
   "screen:PublicPaymentLink": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "One-time payment link for customers"
   },
   "screen:NewSale": {
@@ -202,11 +202,11 @@
   "screen:RunPayrollPage": {
     "state": "PLANNED",
     "phase": "P6",
-    "note": "Batch payroll — 30s ceiling applies"
+    "note": "Batch payroll \u2014 30s ceiling applies"
   },
   "screen:QuickPay": {
     "state": "NOT_APPLICABLE",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Unrouted legacy"
   },
   "screen:InvestPaymentFlow": {
@@ -232,7 +232,7 @@
   "screen:Menu": {
     "state": "PLANNED",
     "phase": "P1",
-    "note": "Menu tab — hub for Other Services"
+    "note": "Menu tab \u2014 hub for Other Services"
   },
   "screen:InvestProductDetail": {
     "state": "PLANNED",
@@ -291,7 +291,7 @@
   },
   "screen:PrivacyPolicy": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Linked out from Settings (store listing also links here)"
   },
   "screen:InvestChart": {
@@ -306,12 +306,12 @@
   },
   "screen:TermsOfService": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Linked out from Settings"
   },
   "screen:Dashboard": {
     "state": "NOT_APPLICABLE",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Unrouted legacy"
   },
   "screen:Apps": {
@@ -321,32 +321,32 @@
   },
   "screen:StaffPortfolio": {
     "state": "NOT_APPLICABLE",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Unrouted legacy"
   },
   "screen:Intelligence": {
     "state": "PLANNED",
     "phase": "P4",
-    "note": "Streaming assistant — SSE needs expo/fetch"
+    "note": "Streaming assistant \u2014 SSE needs expo/fetch"
   },
   "screen:Disconnect": {
     "state": "WEB_ONLY",
-    "phase": "—",
-    "note": "OAuth disconnect callback — browser only"
+    "phase": "\u2014",
+    "note": "OAuth disconnect callback \u2014 browser only"
   },
   "screen:ProductsServices": {
     "state": "PLANNED",
     "phase": "P5",
-    "note": "Image upload → expo-image-picker"
+    "note": "Image upload \u2192 expo-image-picker"
   },
   "screen:PayEntry": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Customer payment page; app shares the URL, never renders it"
   },
   "screen:ComingSoonPage": {
     "state": "NOT_APPLICABLE",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Unrouted stub"
   },
   "service:account.service.getAll": {
@@ -1090,29 +1090,29 @@
     "note": ""
   },
   "service:user.service.getAll": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
   },
   "service:user.service.create": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
   },
   "service:user.service.update": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
   },
   "service:user.service.delete": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
   },
   "service:user.service.resendInvite": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Moved to packages/core; web re-exports. Now uses apiFetch (gains 401 refresh+retry)."
   },
   "service:voucher.service.getAll": {
     "state": "PLANNED",
@@ -1166,87 +1166,87 @@
   },
   "api:GET /admin/analytics/payment-links": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/analytics/payment-links/attempts": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:PUT /admin/analytics/posthog-key": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/logs": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/me": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/reconciliation": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/reconciliation/:orgId": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:POST /admin/reconciliation/:orgId/heal-platform-fees": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/reconciliation/:orgId/raw-lenco-txns": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:POST /admin/reconciliation/heal-platform-fees": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:POST /admin/test-collection/initiate": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/test-collection/status/:reference": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/wallet-pool": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:POST /admin/wallet-pool": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:PATCH /admin/wallet-pool/:id": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:GET /admin/wallet-pool/settings": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:PUT /admin/wallet-pool/settings": {
     "state": "WEB_ONLY",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Reconciliation console lives in apps/admin"
   },
   "api:POST /ai/agent/approve": {
@@ -2290,29 +2290,29 @@
     "note": ""
   },
   "api:GET /users": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Typed against the controller; consumed via core userService."
   },
   "api:POST /users": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Typed against the controller; consumed via core userService."
   },
   "api:PUT /users/:id": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Typed against the controller; consumed via core userService."
   },
   "api:DELETE /users/:id": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Typed against the controller; consumed via core userService."
   },
   "api:POST /users/:id/resend-invite": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": ""
+    "note": "Typed against the controller; consumed via core userService."
   },
   "api:GET /users/me": {
     "state": "PLANNED",
@@ -2351,12 +2351,12 @@
   },
   "api:GET /webhooks/vercel-log-drain": {
     "state": "NOT_APPLICABLE",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Server-to-server (Lenco); no client consumes it"
   },
   "api:POST /webhooks/vercel-log-drain": {
     "state": "NOT_APPLICABLE",
-    "phase": "—",
+    "phase": "\u2014",
     "note": "Server-to-server (Lenco); no client consumes it"
   }
 }

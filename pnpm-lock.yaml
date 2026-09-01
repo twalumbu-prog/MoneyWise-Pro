@@ -182,6 +182,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      core:
+        specifier: workspace:*
+        version: link:../../packages/core
       date-fns:
         specifier: ^4.4.0
         version: 4.4.0
@@ -267,6 +270,19 @@ importers:
       vite-plugin-pwa:
         specifier: ^1.3.0
         version: 1.3.0(vite@5.4.21(@types/node@20.19.25)(terser@5.48.0))(workbox-build@7.4.1(@types/babel__core@7.20.5))(workbox-window@7.4.1)
+
+  packages/core:
+    dependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.86.0
+        version: 2.86.0
+      shared:
+        specifier: workspace:*
+        version: link:../shared
+    devDependencies:
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
 
   packages/shared:
     devDependencies:

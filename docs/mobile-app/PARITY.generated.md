@@ -8,8 +8,9 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 438 | 92.8% |
+| **PLANNED** | 428 | 90.7% |
 | **WEB_ONLY** | 27 | 5.7% |
+| **DONE** | 10 | 2.1% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
 
 **472** trackable units · **0** untriaged.
@@ -120,25 +121,25 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 ## 4. Service layer → `packages/core` (17 modules, 158 methods)
 
-| Service | Methods | Transport | Status |
-| --- | --- | --- | --- |
-| account.service | 6 | apiFetch only | UNTRIAGED |
-| ai.service | 8 | apiFetch only | UNTRIAGED |
-| budget.service | 2 | apiFetch only | UNTRIAGED |
-| cashbook.service | 23 | apiFetch only | UNTRIAGED |
-| department.service | 4 | apiFetch only | UNTRIAGED |
-| highlights.service | 2 | apiFetch only | UNTRIAGED |
-| integration.service | 13 | apiFetch only | UNTRIAGED |
-| lenco.service | 12 | apiFetch only | UNTRIAGED |
-| onboarding.service | 10 | apiFetch only | UNTRIAGED |
-| organization.service | 4 | apiFetch only | UNTRIAGED |
-| payroll.service | 14 | apiFetch only | UNTRIAGED |
-| product.service | 13 | apiFetch only | UNTRIAGED |
-| report.service | 2 | apiFetch only | UNTRIAGED |
-| requisition.service | 28 | ⚠️ direct supabase/storage | UNTRIAGED |
-| schedule.service | 7 | apiFetch only | UNTRIAGED |
-| user.service | 5 | apiFetch only | UNTRIAGED |
-| voucher.service | 5 | apiFetch only | UNTRIAGED |
+| Service | Lives in | Methods | Transport | Status |
+| --- | --- | --- | --- | --- |
+| account.service | web | 6 | apiFetch only | P0 |
+| ai.service | web | 8 | apiFetch only | P0 |
+| budget.service | web | 2 | apiFetch only | P0 |
+| cashbook.service | web | 23 | apiFetch only | P0 |
+| department.service | web | 4 | apiFetch only | P0 |
+| highlights.service | web | 2 | apiFetch only | P0 |
+| integration.service | web | 13 | apiFetch only | P0 |
+| lenco.service | web | 12 | apiFetch only | P0 |
+| onboarding.service | web | 10 | apiFetch only | P0 |
+| organization.service | web | 4 | apiFetch only | P0 |
+| payroll.service | web | 14 | apiFetch only | P0 |
+| product.service | web | 13 | apiFetch only | P0 |
+| report.service | web | 2 | apiFetch only | P0 |
+| requisition.service | web | 28 | ⚠️ direct supabase/storage | P0 |
+| schedule.service | web | 7 | apiFetch only | P0 |
+| user.service | **core** | 5 | apiFetch only | DONE |
+| voucher.service | web | 5 | apiFetch only | P0 |
 
 ## 5. Backend endpoints (244)
 
@@ -376,11 +377,11 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | POST | `/schedules/:id/run-now` | — | PLANNED |
 | GET | `/schedules/:id/runs` | — | PLANNED |
 | GET | `/schedules/counts` | — | PLANNED |
-| GET | `/users` | — | PLANNED |
-| POST | `/users` | — | PLANNED |
-| PUT | `/users/:id` | — | PLANNED |
-| DELETE | `/users/:id` | — | PLANNED |
-| POST | `/users/:id/resend-invite` | — | PLANNED |
+| GET | `/users` | — | DONE |
+| POST | `/users` | — | DONE |
+| PUT | `/users/:id` | — | DONE |
+| DELETE | `/users/:id` | — | DONE |
+| POST | `/users/:id/resend-invite` | — | DONE |
 | GET | `/users/me` | — | PLANNED |
 | PUT | `/users/me/payment-info` | — | PLANNED |
 | GET | `/users/notifications` | — | PLANNED |
@@ -397,10 +398,10 @@ Browser APIs with no React Native equivalent, by blast radius.
 
 | Browser API | Files | Native replacement | Where |
 | --- | --- | --- | --- |
-| window/document DOM | 60 | Dimensions / RN primitives | components/AnimatedTabs.tsx, components/BankSelect.tsx, components/Confetti.tsx, components/FinancialHighlights.tsx +56 |
+| window/document DOM | 61 | Dimensions / RN primitives | components/AnimatedTabs.tsx, components/BankSelect.tsx, components/Confetti.tsx, components/FinancialHighlights.tsx +57 |
 | file input + FileReader | 13 | expo-image-picker / expo-document-picker | components/ImportStatementModal.tsx, components/assistant/Composer.tsx, components/onboarding/StepLogo.tsx, components/onboarding/StepProducts.tsx +9 |
+| localStorage | 11 | expo-secure-store / react-native-mmkv | components/Sidebar.tsx, components/requisitions/DesktopRequisitionWorkspace.tsx, components/requisitions/MobileRequisitionWizard.tsx, context/AuthContext.tsx +7 |
 | Blob/createObjectURL | 10 | expo-file-system + base64 | components/ShareWalletLinkModal.tsx, components/onboarding/StepLogo.tsx, components/requisitions/DesktopPayrollWorkspace.tsx, components/requisitions/MobilePayrollWizard.tsx +6 |
-| localStorage | 10 | expo-secure-store / react-native-mmkv | components/Sidebar.tsx, components/requisitions/DesktopRequisitionWorkspace.tsx, components/requisitions/MobileRequisitionWizard.tsx, context/AuthContext.tsx +6 |
 | SheetJS xlsx | 6 | server-side export + expo-sharing | components/ImportStatementModal.tsx, components/payroll/BatchImportStaff.tsx, components/requisitions/DesktopPayrollWorkspace.tsx, components/requisitions/MobilePayrollWizard.tsx +2 |
 | jsPDF | 4 | server-side PDF (API already has pdfkit) | pages/NewSale.tsx, pages/PublicPay.tsx, pages/PublicPaymentLink.tsx, utils/export.utils.ts |
 | recharts (SVG/DOM) | 3 | victory-native / react-native-svg | components/assistant/widgets/WidgetRenderer.tsx, components/requisitions/MobileInvestWizard.tsx, pages/Reporting.tsx |
