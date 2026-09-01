@@ -35,9 +35,9 @@
     "note": "Menu tab \u2014 hub for Other Services"
   },
   "route:/cashbook": {
-    "state": "PLANNED",
+    "state": "IN_PROGRESS",
     "phase": "P2",
-    "note": "Wallet tab \u2014 largest screen (2.8k LOC), 10 overlays"
+    "note": "Wallet carousel, balances, ledger with search/sort, entry detail and deposit. Transfers, sub-wallet creation and pay-link remain."
   },
   "route:/sales/new": {
     "state": "PLANNED",
@@ -160,9 +160,9 @@
     "note": "Unrouted legacy pay page (superseded by PublicPaymentLink)"
   },
   "screen:CashLedger": {
-    "state": "PLANNED",
+    "state": "IN_PROGRESS",
     "phase": "P2",
-    "note": "Wallet tab \u2014 largest screen (2.8k LOC), 10 overlays"
+    "note": "app/(tabs)/wallet.tsx + app/wallet/*"
   },
   "screen:Reporting": {
     "state": "PLANNED",
@@ -1475,9 +1475,9 @@
     "note": ""
   },
   "api:GET /cashbook/external-wallets": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P2",
-    "note": ""
+    "note": "Consumed by the native Wallet tab."
   },
   "api:POST /cashbook/external-wallets": {
     "state": "PLANNED",
@@ -1500,9 +1500,9 @@
     "note": ""
   },
   "api:POST /cashbook/inflow": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P2",
-    "note": ""
+    "note": "Consumed by the native Wallet tab."
   },
   "api:POST /cashbook/manual-sale": {
     "state": "PLANNED",
@@ -1510,9 +1510,9 @@
     "note": ""
   },
   "api:GET /cashbook/overview": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P2",
-    "note": ""
+    "note": "Consumed by the native Wallet tab."
   },
   "api:POST /cashbook/post-to-qb": {
     "state": "PLANNED",
@@ -1545,9 +1545,9 @@
     "note": ""
   },
   "api:GET /cashbook/wallets": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P2",
-    "note": ""
+    "note": "Consumed by the native Wallet tab."
   },
   "api:POST /cashbook/wallets": {
     "state": "PLANNED",

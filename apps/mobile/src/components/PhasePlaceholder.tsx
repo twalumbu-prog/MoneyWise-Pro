@@ -1,4 +1,3 @@
-import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, fonts, radius } from '../theme/tokens';
@@ -7,16 +6,20 @@ import { colors, fonts, radius } from '../theme/tokens';
  * An honest stub. Every screen not yet ported names the phase that will port it,
  * so a build handed to a tester never looks broken or finished when it is
  * neither. Removed as each phase lands.
+ *
+ * `compact` drops the safe-area padding and the heading for screens that already
+ * sit under a ScreenHeader, which would otherwise render the title twice.
  */
 export const PhasePlaceholder: React.FC<{
     title: string;
     phase: string;
     scope: string;
-}> = ({ title, phase, scope }) => {
+    compact?: boolean;
+}> = ({ title, phase, scope, compact = false }) => {
     const insets = useSafeAreaInsets();
     return (
-        <View style={[styles.root, { paddingTop: insets.top + 24 }]}>
-            <Text style={styles.title}>{title}</Text>
+        <View style={[styles.root, !compact && { paddingTop: insets.top + 24 }]}>
+            {!compact && <Text style={styles.title}>{title}</Text>}
             <View style={styles.card}>
                 <Text style={styles.phase}>{phase}</Text>
                 <Text style={styles.scope}>{scope}</Text>
@@ -26,7 +29,7 @@ export const PhasePlaceholder: React.FC<{
 };
 
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.canvas, paddingHorizontal: 24 },
+    root: { flex: 1, paddingHorizontal: 24 },
     title: { fontFamily: fonts.display, fontSize: 28, color: colors.navy, marginBottom: 20 },
     card: {
         backgroundColor: colors.surface, borderRadius: radius.lg, padding: 20,

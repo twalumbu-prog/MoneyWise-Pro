@@ -26,6 +26,9 @@ export const colors = {
     textFaint: '#9CA3AF',
 
     danger: '#EF4444',
+    positive: '#03D47C',
+    positiveInk: '#059669',
+    warn: '#B45309',
 } as const;
 
 export const radius = { sm: 8, md: 16, lg: 24, xl: 28, pill: 999 } as const;

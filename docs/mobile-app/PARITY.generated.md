@@ -8,11 +8,11 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 260 | 55.1% |
-| **DONE** | 177 | 37.5% |
+| **PLANNED** | 254 | 53.8% |
+| **DONE** | 181 | 38.3% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
-| **IN_PROGRESS** | 1 | 0.2% |
+| **IN_PROGRESS** | 3 | 0.6% |
 
 **472** trackable units · **0** untriaged.
 
@@ -37,7 +37,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/disbursements` | CashierDashboard | protected | P3 | PLANNED | Cashier queue + payout confirmation |
 | `/vouchers` | Vouchers | protected | P3 | PLANNED |  |
 | `/vouchers/:id` | VoucherDetail | protected | P3 | PLANNED | Voucher PDF must render server-side |
-| `/cashbook` | CashLedger | protected | P2 | PLANNED | Wallet tab — largest screen (2.8k LOC), 10 overlays |
+| `/cashbook` | CashLedger | protected | P2 | IN_PROGRESS | Wallet carousel, balances, ledger with search/sort, entry detail and deposit. Transfers, sub-wallet creation and pay-link remain. |
 | `/reporting` | Reporting | protected | P4 | PLANNED | Charts → victory-native; exports → server-side |
 | `/settings` | Settings | protected | P5 | PLANNED |  |
 | `/products` | ProductsServices | protected | P5 | PLANNED | Image upload → expo-image-picker |
@@ -57,7 +57,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | Screen | LOC | Mobile branch | Overlays | Phase | Status | Note |
 | --- | --- | --- | --- | --- | --- | --- |
 | PublicPay | 3880 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy pay page (superseded by PublicPaymentLink) |
-| CashLedger | 2848 | yes | 10 | P2 | PLANNED | Wallet tab — largest screen (2.8k LOC), 10 overlays |
+| CashLedger | 2848 | yes | 10 | P2 | IN_PROGRESS | app/(tabs)/wallet.tsx + app/wallet/* |
 | Reporting | 2138 | yes | 1 | P4 | PLANNED | Charts → victory-native; exports → server-side |
 | RequisitionList | 1504 | yes | 9 | P1 | DONE | app/(tabs)/index.tsx |
 | PublicPaymentLink | 1379 | — | 0 | — | WEB_ONLY | One-time payment link for customers |
@@ -215,21 +215,21 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | POST | `/cashbook/classify-bulk` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/close` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/create-qb-account` | ADMIN | PLANNED |
-| GET | `/cashbook/external-wallets` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | PLANNED |
+| GET | `/cashbook/external-wallets` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | DONE |
 | POST | `/cashbook/external-wallets` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | DELETE | `/cashbook/external-wallets/:id` | ADMIN | PLANNED |
 | POST | `/cashbook/external-wallets/:id/import-preview` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/external-wallets/:id/import-statement` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
-| POST | `/cashbook/inflow` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
+| POST | `/cashbook/inflow` | CASHIER / ACCOUNTANT / ADMIN | DONE |
 | POST | `/cashbook/manual-sale` | REQUESTOR / CASHIER / ACCOUNTANT / ADMIN | PLANNED |
-| GET | `/cashbook/overview` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | PLANNED |
+| GET | `/cashbook/overview` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | DONE |
 | POST | `/cashbook/post-to-qb` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/reconcile` | CASHIER / ADMIN | PLANNED |
 | POST | `/cashbook/return` | CASHIER / ADMIN | PLANNED |
 | GET | `/cashbook/summary` | AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/transfer-to-wallet` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/wallet-deposit-intent` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
-| GET | `/cashbook/wallets` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | PLANNED |
+| GET | `/cashbook/wallets` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | DONE |
 | POST | `/cashbook/wallets` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/wallets/transfer` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | GET | `/departments` | — | DONE |
