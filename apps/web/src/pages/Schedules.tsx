@@ -20,6 +20,7 @@ import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs
 import { lencoService } from '../services/lenco.service';
 import { useAuth } from '../context/AuthContext';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday } from 'date-fns';
+import { formatKwacha } from 'core';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -79,9 +80,7 @@ function isPhoneComplete(phone: string): boolean {
 
 function categoryLabel(cat: string) { return CATEGORIES.find(c => c.value === cat)?.label ?? cat; }
 function cadenceLabel(cad: string)  { return CADENCES.find(c => c.value === cad)?.label ?? cad; }
-function formatCurrency(n: number) {
-    return `K${n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+const formatCurrency = formatKwacha;
 function formatDueDate(dateStr: string) {
     try {
         const d = parseISO(dateStr);

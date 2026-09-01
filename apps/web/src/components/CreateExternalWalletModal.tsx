@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Wallet, Loader2, AlertCircle } from 'lucide-react';
 import { cashbookService } from '../services/cashbook.service';
 import { integrationService } from '../services/integration.service';
+import { PROVIDER_BANKS, PROVIDER_MOMO } from 'core';
 
 interface CreateExternalWalletModalProps {
     isOpen: boolean;
@@ -9,22 +10,6 @@ interface CreateExternalWalletModalProps {
     onSuccess: () => void;
 }
 
-const PROVIDER_BANKS = [
-    { code: 'ZANACO', name: 'Zanaco Bank' },
-    { code: 'FNB', name: 'FNB' },
-    { code: 'STANBIC', name: 'Stanbic Bank' },
-    { code: 'ABSA', name: 'Absa Bank' },
-    { code: 'ECOBANK', name: 'Ecobank' },
-    { code: 'STANDARD_CHARTERED', name: 'Standard Chartered' },
-    { code: 'OTHER', name: 'Other Bank' }
-];
-
-const PROVIDER_MOMO = [
-    { code: 'MTN', name: 'MTN Mobile Money' },
-    { code: 'AIRTEL', name: 'Airtel Money' },
-    { code: 'ZAMTEL', name: 'Zamtel Kwacha' },
-    { code: 'OTHER', name: 'Other Mobile Money' }
-];
 
 const CreateExternalWalletModal: React.FC<CreateExternalWalletModalProps> = ({ isOpen, onClose, onSuccess }) => {
     const [providerType, setProviderType] = useState<'BANK' | 'MOBILE_MONEY' | 'CUSTOM'>('BANK');

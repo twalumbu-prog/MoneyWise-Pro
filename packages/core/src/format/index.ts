@@ -48,8 +48,8 @@ export function groupByDate<T>(
 
     for (const row of rows) {
         const raw = getDate(row);
-        const d = raw instanceof Date ? raw : new Date(raw);
-        if (Number.isNaN(d.getTime())) continue; // skip unparseable rather than crash a list
+        const d = toLocalDate(raw);
+        if (!d) continue; // skip unparseable rather than crash a list
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
         if (!buckets.has(key)) buckets.set(key, { date: d, items: [] });
         buckets.get(key)!.items.push(row);
@@ -64,11 +64,30 @@ export function groupByDate<T>(
         }));
 }
 
+/**
+ * Parses a value as a LOCAL calendar date.
+ *
+ * A bare `YYYY-MM-DD` is defined by ECMAScript to parse as UTC midnight, so
+ * reading `.getDate()` off it shifts back a day anywhere west of Greenwich.
+ * Ledger rows carry date-only strings, so a Lusaka user is fine but the bug is
+ * real — it is grouped by the calendar day the value names, not by an instant.
+ */
+function toLocalDate(value: string | Date): Date | null {
+    if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (dateOnly) {
+        const [, y, m, day] = dateOnly;
+        return new Date(Number(y), Number(m) - 1, Number(day));
+    }
+    const d = new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d;
+}
+
 /** `01/09/2026` */
 export function formatShortDate(value: string | Date | null | undefined): string {
     if (!value) return '—';
-    const d = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(d.getTime())) return '—';
+    const d = toLocalDate(value);
+    if (!d) return '—';
     return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 

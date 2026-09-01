@@ -49,6 +49,7 @@ import ExportLedgerModal from '../components/ExportLedgerModal';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
 import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
+import { formatKwacha } from 'core';
 
 
 const SearchableAccountSelect: React.FC<{
@@ -702,9 +703,10 @@ const CashLedger: React.FC = () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [displayedHasNew]);
 
-    const formatCurrency = (amount: number) => {
-        return `K${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    };
+    // Money formatting lives in `core`; the web ledger and the native wallet must
+    // never render the same row differently. Output is byte-identical to what
+    // this file produced before.
+    const formatCurrency = formatKwacha;
 
     const formatDateSlash = (dateString: string) => {
         try {
