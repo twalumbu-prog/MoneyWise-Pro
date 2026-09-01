@@ -3595,7 +3595,7 @@
       "kind": "route",
       "label": "`/login`",
       "detail": "Login · public",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/join",
@@ -3658,14 +3658,14 @@
       "kind": "route",
       "label": "`/`",
       "detail": "HomeRedirect · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/requisitions",
       "kind": "route",
       "label": "`/requisitions`",
       "detail": "RequisitionList · protected",
-      "state": "PLANNED"
+      "state": "IN_PROGRESS"
     },
     {
       "key": "route:/requisitions/new",
@@ -3882,7 +3882,7 @@
       "kind": "screen",
       "label": "Login",
       "detail": "639 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:Menu",
@@ -3973,7 +3973,7 @@
       "kind": "screen",
       "label": "RequisitionList",
       "detail": "1504 LOC · 9 overlays",
-      "state": "PLANNED"
+      "state": "IN_PROGRESS"
     },
     {
       "key": "screen:ResetPassword",

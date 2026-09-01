@@ -1,8 +1,8 @@
 {
   "route:/login": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Native auth screen; username-or-email resolve + password"
+    "note": "Native login screen; username-or-email resolve via /auth/resolve-username."
   },
   "route:/join": {
     "state": "PLANNED",
@@ -15,14 +15,14 @@
     "note": "Must handle the Supabase recovery deep link"
   },
   "route:/": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "HomeRedirect \u2192 role-based initial tab"
+    "note": "AuthGate + five-tab shell; REQUESTOR tab rule matches web Layout.tsx."
   },
   "route:/requisitions": {
-    "state": "PLANNED",
+    "state": "IN_PROGRESS",
     "phase": "P1",
-    "note": "Inbox tab \u2014 primary surface"
+    "note": "List renders from the live API; detail, filters and wizard pending."
   },
   "route:/requisitions/new": {
     "state": "PLANNED",
@@ -170,9 +170,9 @@
     "note": "Charts \u2192 victory-native; exports \u2192 server-side"
   },
   "screen:RequisitionList": {
-    "state": "PLANNED",
+    "state": "IN_PROGRESS",
     "phase": "P1",
-    "note": "Inbox tab \u2014 primary surface"
+    "note": "app/(tabs)/index.tsx \u2014 list only so far."
   },
   "screen:PublicPaymentLink": {
     "state": "WEB_ONLY",
@@ -215,9 +215,9 @@
     "note": "Sub-screen reached from a parent route"
   },
   "screen:Login": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P0",
-    "note": "Native auth screen; username-or-email resolve + password"
+    "note": "app/(auth)/login.tsx"
   },
   "screen:Payroll": {
     "state": "PLANNED",

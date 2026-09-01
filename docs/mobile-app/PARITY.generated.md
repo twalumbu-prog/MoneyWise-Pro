@@ -8,10 +8,11 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 275 | 58.3% |
-| **DONE** | 163 | 34.5% |
+| **PLANNED** | 270 | 57.2% |
+| **DONE** | 166 | 35.2% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
+| **IN_PROGRESS** | 2 | 0.4% |
 
 **472** trackable units · **0** untriaged.
 
@@ -19,7 +20,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | Path | Screen | Access | Phase | Status | Note |
 | --- | --- | --- | --- | --- | --- |
-| `/login` | Login | public | P0 | PLANNED | Native auth screen; username-or-email resolve + password |
+| `/login` | Login | public | P0 | DONE | Native login screen; username-or-email resolve via /auth/resolve-username. |
 | `/join` | Join | public | P0 | PLANNED | Join-org flow; reached via invite deep link |
 | `/reset-password` | ResetPassword | public | P0 | PLANNED | Must handle the Supabase recovery deep link |
 | `/privacy` | PrivacyPolicy | public | — | WEB_ONLY | Linked out from Settings (store listing also links here) |
@@ -28,8 +29,8 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/pay/:wallet_id` | PayEntry | public | — | WEB_ONLY | Customer payment page; app shares the URL, never renders it |
 | `/pl/:token` | PublicPaymentLink | public | — | WEB_ONLY | One-time payment link for customers |
 | `/onboarding` | Onboarding | protected | P5 | PLANNED | Full signup wizard incl. wallet activation |
-| `/` | HomeRedirect | protected | P0 | PLANNED | HomeRedirect → role-based initial tab |
-| `/requisitions` | RequisitionList | protected | P1 | PLANNED | Inbox tab — primary surface |
+| `/` | HomeRedirect | protected | P0 | DONE | AuthGate + five-tab shell; REQUESTOR tab rule matches web Layout.tsx. |
+| `/requisitions` | RequisitionList | protected | P1 | IN_PROGRESS | List renders from the live API; detail, filters and wizard pending. |
 | `/requisitions/new` | RequisitionCreate | protected | P1 | PLANNED | MobileRequisitionWizard is the direct spec |
 | `/sales/new` | NewSale | protected | P2 | PLANNED | POS / New Sale |
 | `/approvals` | Approvals | protected | P3 | PLANNED |  |
@@ -58,7 +59,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | PublicPay | 3880 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy pay page (superseded by PublicPaymentLink) |
 | CashLedger | 2848 | yes | 10 | P2 | PLANNED | Wallet tab — largest screen (2.8k LOC), 10 overlays |
 | Reporting | 2138 | yes | 1 | P4 | PLANNED | Charts → victory-native; exports → server-side |
-| RequisitionList | 1504 | yes | 9 | P1 | PLANNED | Inbox tab — primary surface |
+| RequisitionList | 1504 | yes | 9 | P1 | IN_PROGRESS | app/(tabs)/index.tsx — list only so far. |
 | PublicPaymentLink | 1379 | — | 0 | — | WEB_ONLY | One-time payment link for customers |
 | NewSale | 1284 | — | 0 | P2 | PLANNED | POS / New Sale |
 | Schedules | 1208 | yes | 1 | P5 | PLANNED |  |
@@ -67,7 +68,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | RunPayrollPage | 957 | — | 0 | P6 | PLANNED | Batch payroll — 30s ceiling applies |
 | QuickPay | 951 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
 | InvestPaymentFlow | 655 | yes | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
-| Login | 639 | — | 0 | P0 | PLANNED | Native auth screen; username-or-email resolve + password |
+| Login | 639 | — | 0 | P0 | DONE | app/(auth)/login.tsx |
 | Payroll | 518 | — | 2 | P6 | PLANNED |  |
 | InvestHome | 381 | yes | 0 | P6 | PLANNED |  |
 | Menu | 376 | — | 0 | P1 | PLANNED | Menu tab — hub for Other Services |
