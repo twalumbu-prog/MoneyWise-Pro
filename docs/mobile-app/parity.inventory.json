@@ -3665,14 +3665,14 @@
       "kind": "route",
       "label": "`/requisitions`",
       "detail": "RequisitionList · protected",
-      "state": "IN_PROGRESS"
+      "state": "DONE"
     },
     {
       "key": "route:/requisitions/new",
       "kind": "route",
       "label": "`/requisitions/new`",
       "detail": "RequisitionCreate · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/sales/new",
@@ -3784,7 +3784,7 @@
       "kind": "route",
       "label": "`/schedules`",
       "detail": "Schedules · protected",
-      "state": "PLANNED"
+      "state": "IN_PROGRESS"
     },
     {
       "key": "route:/invest",
@@ -3966,14 +3966,14 @@
       "kind": "screen",
       "label": "RequisitionCreate",
       "detail": "1164 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:RequisitionList",
       "kind": "screen",
       "label": "RequisitionList",
       "detail": "1504 LOC · 9 overlays",
-      "state": "IN_PROGRESS"
+      "state": "DONE"
     },
     {
       "key": "screen:ResetPassword",
@@ -5779,7 +5779,7 @@
       "kind": "endpoint",
       "label": "GET /departments",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /departments",
@@ -6479,14 +6479,14 @@
       "kind": "endpoint",
       "label": "POST /requisitions",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /requisitions",
       "kind": "endpoint",
       "label": "GET /requisitions",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /requisitions/:id",

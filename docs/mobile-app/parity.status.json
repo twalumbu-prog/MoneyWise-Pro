@@ -20,14 +20,14 @@
     "note": "AuthGate + five-tab shell; REQUESTOR tab rule matches web Layout.tsx."
   },
   "route:/requisitions": {
-    "state": "IN_PROGRESS",
+    "state": "DONE",
     "phase": "P1",
-    "note": "List renders from the live API; detail, filters and wizard pending."
+    "note": "Inbox: day-grouped cards, status tabs from core config, search, sort, pull-to-refresh."
   },
   "route:/requisitions/new": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": "MobileRequisitionWizard is the direct spec"
+    "note": "New request form with line items and live total; handles the one-open-request API block."
   },
   "route:/menu": {
     "state": "PLANNED",
@@ -90,9 +90,9 @@
     "note": ""
   },
   "route:/schedules": {
-    "state": "PLANNED",
+    "state": "IN_PROGRESS",
     "phase": "P5",
-    "note": ""
+    "note": "Route exists so Inbox nav works; screen is a placeholder."
   },
   "route:/onboarding": {
     "state": "PLANNED",
@@ -170,9 +170,9 @@
     "note": "Charts \u2192 victory-native; exports \u2192 server-side"
   },
   "screen:RequisitionList": {
-    "state": "IN_PROGRESS",
+    "state": "DONE",
     "phase": "P1",
-    "note": "app/(tabs)/index.tsx \u2014 list only so far."
+    "note": "app/(tabs)/index.tsx"
   },
   "screen:PublicPaymentLink": {
     "state": "WEB_ONLY",
@@ -190,9 +190,9 @@
     "note": ""
   },
   "screen:RequisitionCreate": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": "MobileRequisitionWizard is the direct spec"
+    "note": "app/requisition/new.tsx"
   },
   "screen:CashierDashboard": {
     "state": "PLANNED",
@@ -1560,9 +1560,9 @@
     "note": ""
   },
   "api:GET /departments": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": ""
+    "note": "Consumed by the native Inbox."
   },
   "api:POST /departments": {
     "state": "PLANNED",
@@ -2060,14 +2060,14 @@
     "note": ""
   },
   "api:POST /requisitions": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": ""
+    "note": "Consumed by the native Inbox."
   },
   "api:GET /requisitions": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P1",
-    "note": ""
+    "note": "Consumed by the native Inbox."
   },
   "api:GET /requisitions/:id": {
     "state": "PLANNED",

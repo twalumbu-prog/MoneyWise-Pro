@@ -8,11 +8,11 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 270 | 57.2% |
-| **DONE** | 166 | 35.2% |
+| **PLANNED** | 264 | 55.9% |
+| **DONE** | 173 | 36.7% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
-| **IN_PROGRESS** | 2 | 0.4% |
+| **IN_PROGRESS** | 1 | 0.2% |
 
 **472** trackable units · **0** untriaged.
 
@@ -30,8 +30,8 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/pl/:token` | PublicPaymentLink | public | — | WEB_ONLY | One-time payment link for customers |
 | `/onboarding` | Onboarding | protected | P5 | PLANNED | Full signup wizard incl. wallet activation |
 | `/` | HomeRedirect | protected | P0 | DONE | AuthGate + five-tab shell; REQUESTOR tab rule matches web Layout.tsx. |
-| `/requisitions` | RequisitionList | protected | P1 | IN_PROGRESS | List renders from the live API; detail, filters and wizard pending. |
-| `/requisitions/new` | RequisitionCreate | protected | P1 | PLANNED | MobileRequisitionWizard is the direct spec |
+| `/requisitions` | RequisitionList | protected | P1 | DONE | Inbox: day-grouped cards, status tabs from core config, search, sort, pull-to-refresh. |
+| `/requisitions/new` | RequisitionCreate | protected | P1 | DONE | New request form with line items and live total; handles the one-open-request API block. |
 | `/sales/new` | NewSale | protected | P2 | PLANNED | POS / New Sale |
 | `/approvals` | Approvals | protected | P3 | PLANNED |  |
 | `/disbursements` | CashierDashboard | protected | P3 | PLANNED | Cashier queue + payout confirmation |
@@ -47,7 +47,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/apps` | Apps | protected | P6 | PLANNED |  |
 | `/apps/payroll` | Payroll | protected | P6 | PLANNED |  |
 | `/apps/payroll/run` | RunPayrollPage | protected | P6 | PLANNED | Batch payroll — 30s ceiling applies |
-| `/schedules` | Schedules | protected | P5 | PLANNED |  |
+| `/schedules` | Schedules | protected | P5 | IN_PROGRESS | Route exists so Inbox nav works; screen is a placeholder. |
 | `/invest` | InvestHome | protected | P6 | PLANNED |  |
 | `/invest/company/:id` | InvestCompany | protected | P6 | PLANNED |  |
 | `/invest/product/:id` | InvestProductDetail | protected | P6 | PLANNED |  |
@@ -59,11 +59,11 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | PublicPay | 3880 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy pay page (superseded by PublicPaymentLink) |
 | CashLedger | 2848 | yes | 10 | P2 | PLANNED | Wallet tab — largest screen (2.8k LOC), 10 overlays |
 | Reporting | 2138 | yes | 1 | P4 | PLANNED | Charts → victory-native; exports → server-side |
-| RequisitionList | 1504 | yes | 9 | P1 | IN_PROGRESS | app/(tabs)/index.tsx — list only so far. |
+| RequisitionList | 1504 | yes | 9 | P1 | DONE | app/(tabs)/index.tsx |
 | PublicPaymentLink | 1379 | — | 0 | — | WEB_ONLY | One-time payment link for customers |
 | NewSale | 1284 | — | 0 | P2 | PLANNED | POS / New Sale |
 | Schedules | 1208 | yes | 1 | P5 | PLANNED |  |
-| RequisitionCreate | 1164 | yes | 0 | P1 | PLANNED | MobileRequisitionWizard is the direct spec |
+| RequisitionCreate | 1164 | yes | 0 | P1 | DONE | app/requisition/new.tsx |
 | CashierDashboard | 996 | — | 1 | P3 | PLANNED | Cashier queue + payout confirmation |
 | RunPayrollPage | 957 | — | 0 | P6 | PLANNED | Batch payroll — 30s ceiling applies |
 | QuickPay | 951 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
@@ -232,7 +232,7 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | GET | `/cashbook/wallets` | REQUESTOR / AUTHORISER / CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/wallets` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
 | POST | `/cashbook/wallets/transfer` | CASHIER / ACCOUNTANT / ADMIN | PLANNED |
-| GET | `/departments` | — | PLANNED |
+| GET | `/departments` | — | DONE |
 | POST | `/departments` | — | PLANNED |
 | PATCH | `/departments/:id` | — | PLANNED |
 | DELETE | `/departments/:id` | — | PLANNED |
@@ -332,8 +332,8 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | GET | `/payroll/staff/departments` | — | PLANNED |
 | GET | `/reports/expenditure` | AUTHORISER / ACCOUNTANT / ADMIN / MANAGEMENT | PLANNED |
 | GET | `/reports/expenditure/:accountId/items` | AUTHORISER / ACCOUNTANT / ADMIN / MANAGEMENT | PLANNED |
-| POST | `/requisitions` | — | PLANNED |
-| GET | `/requisitions` | — | PLANNED |
+| POST | `/requisitions` | — | DONE |
+| GET | `/requisitions` | — | DONE |
 | GET | `/requisitions/:id` | — | PLANNED |
 | PUT | `/requisitions/:id` | — | PLANNED |
 | DELETE | `/requisitions/:id` | — | PLANNED |

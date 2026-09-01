@@ -149,3 +149,12 @@ export type {
     Requisition,
     RequisitionMessage,
 } from './services/requisition.service';
+
+export {
+    formatKwacha,
+    formatKwachaCompact,
+    formatShortDate,
+    formatRelative,
+    groupByDate,
+} from './format';
+export type { DateGroup } from './format';

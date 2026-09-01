@@ -48,6 +48,9 @@ const AuthGate: React.FC = () => {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
+            <Stack.Screen name="requisition/[id]" options={{ animation: 'slide_from_right' }} />
+            <Stack.Screen name="requisition/new" options={{ animation: 'slide_from_bottom' }} />
+            <Stack.Screen name="schedules" options={{ animation: 'slide_from_right' }} />
         </Stack>
     );
 };
