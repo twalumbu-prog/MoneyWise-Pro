@@ -1,0 +1,77 @@
+import type { ExpoConfig } from 'expo/config';
+
+/**
+ * Bundle identifier is reverse-DNS of the production web app,
+ * moneywise.blueopus.cloud. It is PERMANENT once the app ships — changing it
+ * later means a brand-new store listing that loses installs and reviews.
+ */
+const BUNDLE_ID = 'cloud.blueopus.moneywise';
+
+/** Public web origin. Backs universal/app links and anything we hand off to a browser. */
+const WEB_ORIGIN = 'https://moneywise.blueopus.cloud';
+
+const config: ExpoConfig = {
+    name: 'MoneyWise Pro',
+    slug: 'moneywise-pro',
+    version: '0.1.0',
+    orientation: 'portrait',
+    scheme: 'moneywise',
+    userInterfaceStyle: 'light',
+    // No newArchEnabled flag: SDK 57 is New Architecture only.
+
+    // Pinned to the native ABI so an over-the-air update can never ship JS that
+    // calls a native module the installed binary doesn't have. Bump only when
+    // native dependencies change.
+    runtimeVersion: { policy: 'appVersion' },
+    updates: { fallbackToCacheTimeout: 0 },
+
+    ios: {
+        bundleIdentifier: BUNDLE_ID,
+        supportsTablet: false,
+        associatedDomains: [`applinks:${WEB_ORIGIN.replace('https://', '')}`],
+        infoPlist: {
+            // Receipts are the core input to a requisition; statements arrive as files.
+            NSCameraUsageDescription:
+                'MoneyWise uses the camera so you can photograph receipts and attach them to a request.',
+            NSPhotoLibraryUsageDescription:
+                'MoneyWise needs access to your photos so you can attach receipts and documents to a request.',
+            NSFaceIDUsageDescription:
+                'MoneyWise uses Face ID to unlock the app without re-entering your password.',
+            ITSAppUsesNonExemptEncryption: false,
+        },
+    },
+
+    android: {
+        package: BUNDLE_ID,
+        adaptiveIcon: { backgroundColor: '#EEF5FF' },
+        intentFilters: [
+            {
+                action: 'VIEW',
+                autoVerify: true,
+                data: [{ scheme: 'https', host: WEB_ORIGIN.replace('https://', '') }],
+                category: ['BROWSABLE', 'DEFAULT'],
+            },
+        ],
+    },
+
+    plugins: [
+        'expo-router',
+        'expo-secure-store',
+        'expo-font',
+        ['expo-splash-screen', { backgroundColor: '#EEF5FF', resizeMode: 'contain' }],
+    ],
+
+    experiments: { typedRoutes: true },
+
+    extra: {
+        // Mirrors apps/web's VITE_* vars. Values come from EAS env / .env at build
+        // time; the web origin is a constant because it is where the app hands off
+        // customer-facing payment pages.
+        apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000',
+        supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
+        supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
+        webOrigin: WEB_ORIGIN,
+    },
+};
+
+export default config;
