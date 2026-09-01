@@ -51,9 +51,33 @@ export interface MutationAck {
     message: string;
 }
 
+export interface PaymentInfo {
+    bank_name?: string;
+    bank_account_number?: string;
+    bank_account_name?: string;
+    mobile_money_provider?: string;
+    mobile_money_number?: string;
+    mobile_money_name?: string;
+}
+
+export interface MyProfile extends UserProfile {
+    payment_info?: PaymentInfo | null;
+}
+
 export const userService = {
     getAll(): Promise<UserProfile[]> {
         return apiJson<UserProfile[]>('/users');
+    },
+
+    getMyProfile(): Promise<MyProfile> {
+        return apiJson<MyProfile>('/users/me');
+    },
+
+    updatePaymentInfo(paymentInfo: PaymentInfo): Promise<{ message?: string }> {
+        return apiJson('/users/me/payment-info', {
+            method: 'PUT',
+            body: JSON.stringify({ payment_info: paymentInfo }),
+        });
     },
 
     create(data: CreateUserInput): Promise<CreateUserResult> {

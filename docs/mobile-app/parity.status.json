@@ -75,34 +75,34 @@
     "note": "Streaming assistant: text, widgets (kpi/table/chart/file), approval flow. Insights/Automations remain placeholders on web too."
   },
   "route:/settings": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Split into three focused screens (profile/general/team) reached from Menu, rather than one tabbed page \u2014 matches how the app already navigates."
   },
   "route:/products": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": "Image upload \u2192 expo-image-picker"
+    "note": "List + create/edit for name, type, price, image. Digital assets, delivery options and additional-image carousel stay web-only."
   },
   "route:/audit": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Score hero, search, per-transaction rating -> requisition detail."
   },
   "route:/schedules": {
-    "state": "IN_PROGRESS",
+    "state": "DONE",
     "phase": "P5",
-    "note": "Route exists so Inbox nav works; screen is a placeholder."
+    "note": "List with category filter, run-now, and a creation modal covering title/amount/category/cadence/next-due."
   },
   "route:/onboarding": {
     "state": "PLANNED",
     "phase": "P5",
-    "note": "Full signup wizard incl. wallet activation"
+    "note": "Full signup wizard -- deferred; org creation and activation happen on web today."
   },
   "route:/apps": {
     "state": "PLANNED",
     "phase": "P6",
-    "note": ""
+    "note": "Payroll + Invest -- P6."
   },
   "route:/apps/payroll": {
     "state": "PLANNED",
@@ -112,7 +112,7 @@
   "route:/apps/payroll/run": {
     "state": "PLANNED",
     "phase": "P6",
-    "note": "Batch payroll \u2014 30s ceiling applies"
+    "note": ""
   },
   "route:/invest": {
     "state": "PLANNED",
@@ -185,9 +185,9 @@
     "note": "POS / New Sale"
   },
   "screen:Schedules": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "app/schedules.tsx"
   },
   "screen:RequisitionCreate": {
     "state": "DONE",
@@ -242,7 +242,7 @@
   "screen:Onboarding": {
     "state": "PLANNED",
     "phase": "P5",
-    "note": "Full signup wizard incl. wallet activation"
+    "note": ""
   },
   "screen:Approvals": {
     "state": "DONE",
@@ -255,9 +255,9 @@
     "note": "app/vouchers/[id].tsx"
   },
   "screen:Audit": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "app/audit.tsx"
   },
   "screen:ResetPassword": {
     "state": "PLANNED",
@@ -270,9 +270,9 @@
     "note": "app/vouchers/index.tsx"
   },
   "screen:Settings": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "app/settings/profile.tsx + general.tsx + team.tsx"
   },
   "screen:InvestCompany": {
     "state": "PLANNED",
@@ -335,9 +335,9 @@
     "note": "OAuth disconnect callback \u2014 browser only"
   },
   "screen:ProductsServices": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": "Image upload \u2192 expo-image-picker"
+    "note": "app/products/*"
   },
   "screen:PayEntry": {
     "state": "WEB_ONLY",
@@ -1561,23 +1561,23 @@
   },
   "api:GET /departments": {
     "state": "DONE",
-    "phase": "P1",
-    "note": "Consumed by the native Inbox."
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:POST /departments": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:PATCH /departments/:id": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:DELETE /departments/:id": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:DELETE /integrations/masterfees": {
     "state": "PLANNED",
@@ -1900,14 +1900,14 @@
     "note": ""
   },
   "api:GET /organizations": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:PUT /organizations": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:DELETE /organizations": {
     "state": "PLANNED",
@@ -1945,19 +1945,19 @@
     "note": ""
   },
   "api:GET /organizations/products": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:POST /organizations/products": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:PUT /organizations/products/:id": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:DELETE /organizations/products/:id": {
     "state": "PLANNED",
@@ -2250,19 +2250,19 @@
     "note": ""
   },
   "api:GET /requisitions/reports/audit": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:GET /schedules": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:POST /schedules": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:PATCH /schedules/:id": {
     "state": "PLANNED",
@@ -2275,9 +2275,9 @@
     "note": ""
   },
   "api:POST /schedules/:id/run-now": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:GET /schedules/:id/runs": {
     "state": "PLANNED",
@@ -2285,44 +2285,44 @@
     "note": ""
   },
   "api:GET /schedules/counts": {
-    "state": "PLANNED",
+    "state": "DONE",
     "phase": "P5",
-    "note": ""
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:GET /users": {
     "state": "DONE",
-    "phase": "P0",
-    "note": "Typed against the controller; consumed via core userService."
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:POST /users": {
     "state": "DONE",
-    "phase": "P0",
-    "note": "Typed against the controller; consumed via core userService."
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:PUT /users/:id": {
     "state": "DONE",
-    "phase": "P0",
-    "note": "Typed against the controller; consumed via core userService."
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:DELETE /users/:id": {
     "state": "DONE",
-    "phase": "P0",
-    "note": "Typed against the controller; consumed via core userService."
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:POST /users/:id/resend-invite": {
     "state": "DONE",
-    "phase": "P0",
-    "note": "Typed against the controller; consumed via core userService."
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:GET /users/me": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:PUT /users/me/payment-info": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Consumed by the native Menu-hub screens."
   },
   "api:GET /users/notifications": {
     "state": "PLANNED",
@@ -2358,5 +2358,15 @@
     "state": "NOT_APPLICABLE",
     "phase": "\u2014",
     "note": "Server-to-server (Lenco); no client consumes it"
+  },
+  "service:user.service.getMyProfile": {
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Added to core alongside the P5 profile screen."
+  },
+  "service:user.service.updatePaymentInfo": {
+    "state": "DONE",
+    "phase": "P5",
+    "note": "Added to core alongside the P5 profile screen."
   }
 }

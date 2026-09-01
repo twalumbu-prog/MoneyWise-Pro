@@ -21,24 +21,22 @@ import { lencoService } from '../services/lenco.service';
 import { useAuth } from '../context/AuthContext';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday } from 'date-fns';
 import { formatKwacha } from 'core';
+import { SCHEDULE_CATEGORIES, SCHEDULE_CADENCES } from 'core';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CATEGORIES: { value: ScheduleCategory; label: string; icon: React.ElementType }[] = [
-    { value: 'BILLS',            label: 'Bills',            icon: Receipt },
-    { value: 'SUBSCRIPTIONS',    label: 'Subscriptions',    icon: CreditCard },
-    { value: 'INVESTMENTS',      label: 'Investments',      icon: TrendingUp },
-    { value: 'LOAN_REPAYMENTS',  label: 'Loan Repayments',  icon: Landmark },
-    { value: 'GENERAL_EXPENSES', label: 'General Expenses', icon: Wallet },
-];
-
-const CADENCES: { value: ScheduleCadence; label: string }[] = [
-    { value: 'DAILY',     label: 'Daily' },
-    { value: 'WEEKLY',    label: 'Weekly' },
-    { value: 'BIWEEKLY',  label: 'Bi-weekly' },
-    { value: 'MONTHLY',   label: 'Monthly' },
-    { value: 'QUARTERLY', label: 'Quarterly' },
-];
+// Labels live in `core` (reference/schedules.ts) so the phone's category picker
+// can't drift from this one in wording or order. Icons are a web-only concern,
+// mapped onto the shared value list here.
+const CATEGORY_ICONS: Record<ScheduleCategory, React.ElementType> = {
+    BILLS: Receipt,
+    SUBSCRIPTIONS: CreditCard,
+    INVESTMENTS: TrendingUp,
+    LOAN_REPAYMENTS: Landmark,
+    GENERAL_EXPENSES: Wallet,
+};
+const CATEGORIES = SCHEDULE_CATEGORIES.map(c => ({ ...c, icon: CATEGORY_ICONS[c.value] }));
+const CADENCES = SCHEDULE_CADENCES;
 
 const CATEGORY_COLORS: Record<string, string> = {
     BILLS:            'bg-orange-100 text-orange-700',

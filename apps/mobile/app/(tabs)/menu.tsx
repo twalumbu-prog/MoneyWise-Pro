@@ -55,8 +55,8 @@ export default function MenuScreen() {
     ].filter((q) => q.show);
 
     const services = [
-        { icon: ShieldCheck, label: 'Audit', go: () => soon('Audit') },
-        { icon: ShoppingBag, label: 'Products', go: () => soon('Products') },
+        { icon: ShieldCheck, label: 'Audit', go: () => router.push('/audit') },
+        { icon: ShoppingBag, label: 'Products', go: () => router.push('/products') },
         { icon: LayoutGrid, label: 'Apps', go: () => soon('Apps') },
         { icon: TrendingUp, label: 'Invest', go: () => soon('Invest') },
         { icon: Landmark, label: 'Loans', go: () => soon('Business Loans') },
@@ -127,8 +127,18 @@ export default function MenuScreen() {
             <View style={styles.card}>
                 <Text style={styles.cardTitle}>Settings</Text>
                 <Pressable
-                    onPress={() => soon('Settings')}
+                    onPress={() => router.push('/settings/profile')}
                     style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
+                >
+                    <User size={18} color={colors.blue} />
+                    <View style={styles.rowMain}>
+                        <Text style={styles.rowLabel}>My Profile</Text>
+                        <Text style={styles.rowSub}>Your account & disbursement details</Text>
+                    </View>
+                </Pressable>
+                <Pressable
+                    onPress={() => router.push('/settings/general')}
+                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
                 >
                     <SettingsIcon size={18} color={colors.blue} />
                     <View style={styles.rowMain}>
@@ -137,7 +147,7 @@ export default function MenuScreen() {
                     </View>
                 </Pressable>
                 <Pressable
-                    onPress={() => soon('Team Members')}
+                    onPress={() => router.push('/settings/team')}
                     style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
                 >
                     <Users size={18} color={colors.blue} />

@@ -80,6 +80,12 @@ export default function RootLayout() {
                         <Stack.Screen name="disbursements" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="vouchers/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="vouchers/[id]" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="audit" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="products/index" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="products/[id]" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="settings/profile" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/general" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/team" options={{ animation: 'slide_from_right' }} />
                     </Stack>
                     <SessionGate />
                 </AuthProvider>

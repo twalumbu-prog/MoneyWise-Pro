@@ -39,6 +39,8 @@ export type {
     CreateUserInput,
     CreateUserResult,
     MutationAck,
+    PaymentInfo,
+    MyProfile,
 } from './services/user.service';
 
 export { accountService } from './services/account.service';
@@ -184,3 +186,7 @@ export type {
     ReportView, ReportLineItem, ReportGroup, ReportGroups,
     BuildReportGroupsOptions, ReportTotals, PercentageChange,
 } from './reporting/aggregate';
+
+export {
+    SCHEDULE_CATEGORIES, SCHEDULE_CADENCES, scheduleCategoryLabel, scheduleCadenceLabel,
+} from './reference/schedules';

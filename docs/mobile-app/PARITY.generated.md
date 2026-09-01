@@ -8,13 +8,12 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **PLANNED** | 221 | 46.8% |
-| **DONE** | 216 | 45.8% |
+| **DONE** | 241 | 50.8% |
+| **PLANNED** | 199 | 42.0% |
 | **WEB_ONLY** | 27 | 5.7% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
-| **IN_PROGRESS** | 1 | 0.2% |
 
-**472** trackable units · **0** untriaged.
+**474** trackable units · **0** untriaged.
 
 ## 1. Routes (31)
 
@@ -28,7 +27,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/disconnect` | Disconnect | public | — | WEB_ONLY | OAuth disconnect callback — browser only |
 | `/pay/:wallet_id` | PayEntry | public | — | WEB_ONLY | Customer payment page; app shares the URL, never renders it |
 | `/pl/:token` | PublicPaymentLink | public | — | WEB_ONLY | One-time payment link for customers |
-| `/onboarding` | Onboarding | protected | P5 | PLANNED | Full signup wizard incl. wallet activation |
+| `/onboarding` | Onboarding | protected | P5 | PLANNED | Full signup wizard -- deferred; org creation and activation happen on web today. |
 | `/` | HomeRedirect | protected | P0 | DONE | AuthGate + five-tab shell; REQUESTOR tab rule matches web Layout.tsx. |
 | `/requisitions` | RequisitionList | protected | P1 | DONE | Inbox: day-grouped cards, status tabs from core config, search, sort, pull-to-refresh. |
 | `/requisitions/new` | RequisitionCreate | protected | P1 | DONE | New request form with line items and live total; handles the one-open-request API block. |
@@ -39,15 +38,15 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/vouchers/:id` | VoucherDetail | protected | P3 | DONE | Journal lines, balance check, post-to-ledger for ACCOUNTANT/ADMIN. |
 | `/cashbook` | CashLedger | protected | P2 | DONE | Wallet carousel, ledger, entry detail, deposit, transfers, wallet/external-account creation, CSV statement import. Pay-link deferred to P5. |
 | `/reporting` | Reporting | protected | P4 | DONE | Headline card, Month/Quarter/YTD toggle, grouped category breakdown with budget progress and prior-period change. Trend chart and budget editing stay web-only for now. |
-| `/settings` | Settings | protected | P5 | PLANNED |  |
-| `/products` | ProductsServices | protected | P5 | PLANNED | Image upload → expo-image-picker |
+| `/settings` | Settings | protected | P5 | DONE | Split into three focused screens (profile/general/team) reached from Menu, rather than one tabbed page — matches how the app already navigates. |
+| `/products` | ProductsServices | protected | P5 | DONE | List + create/edit for name, type, price, image. Digital assets, delivery options and additional-image carousel stay web-only. |
 | `/intelligence` | Intelligence | protected | P4 | DONE | Streaming assistant: text, widgets (kpi/table/chart/file), approval flow. Insights/Automations remain placeholders on web too. |
-| `/audit` | Audit | protected | P5 | PLANNED |  |
+| `/audit` | Audit | protected | P5 | DONE | Score hero, search, per-transaction rating -> requisition detail. |
 | `/menu` | Menu | protected | P3 | DONE | Menu tab: profile, role-gated queues, Other Services grid, sign out. Settings land in P5. |
-| `/apps` | Apps | protected | P6 | PLANNED |  |
+| `/apps` | Apps | protected | P6 | PLANNED | Payroll + Invest -- P6. |
 | `/apps/payroll` | Payroll | protected | P6 | PLANNED |  |
-| `/apps/payroll/run` | RunPayrollPage | protected | P6 | PLANNED | Batch payroll — 30s ceiling applies |
-| `/schedules` | Schedules | protected | P5 | IN_PROGRESS | Route exists so Inbox nav works; screen is a placeholder. |
+| `/apps/payroll/run` | RunPayrollPage | protected | P6 | PLANNED |  |
+| `/schedules` | Schedules | protected | P5 | DONE | List with category filter, run-now, and a creation modal covering title/amount/category/cadence/next-due. |
 | `/invest` | InvestHome | protected | P6 | PLANNED |  |
 | `/invest/company/:id` | InvestCompany | protected | P6 | PLANNED |  |
 | `/invest/product/:id` | InvestProductDetail | protected | P6 | PLANNED |  |
@@ -62,7 +61,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | RequisitionList | 1454 | yes | 9 | P1 | DONE | app/(tabs)/index.tsx |
 | PublicPaymentLink | 1379 | — | 0 | — | WEB_ONLY | One-time payment link for customers |
 | NewSale | 1284 | — | 0 | P2 | PLANNED | POS / New Sale |
-| Schedules | 1207 | yes | 1 | P5 | PLANNED |  |
+| Schedules | 1205 | yes | 1 | P5 | DONE | app/schedules.tsx |
 | RequisitionCreate | 1164 | yes | 0 | P1 | DONE | app/requisition/new.tsx |
 | CashierDashboard | 996 | — | 1 | P3 | DONE | app/disbursements.tsx + DisburseSheet |
 | RunPayrollPage | 957 | — | 0 | P6 | PLANNED | Batch payroll — 30s ceiling applies |
@@ -73,13 +72,13 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | InvestHome | 381 | yes | 0 | P6 | PLANNED |  |
 | Menu | 376 | — | 0 | P3 | DONE | app/(tabs)/menu.tsx |
 | InvestProductDetail | 292 | yes | 0 | P6 | PLANNED |  |
-| Onboarding | 288 | — | 0 | P5 | PLANNED | Full signup wizard incl. wallet activation |
+| Onboarding | 288 | — | 0 | P5 | PLANNED |  |
 | Approvals | 241 | yes | 0 | P3 | DONE | app/approvals.tsx |
 | VoucherDetail | 234 | — | 0 | P3 | DONE | app/vouchers/[id].tsx |
-| Audit | 225 | yes | 0 | P5 | PLANNED |  |
+| Audit | 225 | yes | 0 | P5 | DONE | app/audit.tsx |
 | ResetPassword | 208 | — | 0 | P0 | PLANNED | Must handle the Supabase recovery deep link |
 | Vouchers | 206 | — | 1 | P3 | DONE | app/vouchers/index.tsx |
-| Settings | 196 | — | 0 | P5 | PLANNED |  |
+| Settings | 196 | — | 0 | P5 | DONE | app/settings/profile.tsx + general.tsx + team.tsx |
 | InvestCompany | 192 | yes | 0 | P6 | PLANNED |  |
 | investCertificate.ts | 184 | — | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
 | Join | 182 | — | 0 | P0 | PLANNED | Join-org flow; reached via invite deep link |
@@ -92,7 +91,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | StaffPortfolio | 91 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
 | Intelligence | 82 | — | 0 | P4 | DONE | app/(tabs)/bi.tsx |
 | Disconnect | 32 | — | 0 | — | WEB_ONLY | OAuth disconnect callback — browser only |
-| ProductsServices | 28 | — | 0 | P5 | PLANNED | Image upload → expo-image-picker |
+| ProductsServices | 28 | — | 0 | P5 | DONE | app/products/* |
 | PayEntry | 26 | — | 0 | — | WEB_ONLY | Customer payment page; app shares the URL, never renders it |
 | ComingSoonPage | 18 | — | 0 | — | NOT_APPLICABLE | Unrouted stub |
 
@@ -120,7 +119,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | ProductSettings | responsive | 1313 | components/settings/ProductSettings.tsx |
 | UserManagement | responsive | 529 | components/settings/UserManagement.tsx |
 
-## 4. Service layer → `packages/core` (17 modules, 158 methods)
+## 4. Service layer → `packages/core` (17 modules, 160 methods)
 
 | Service | Lives in | Methods | Transport | Status |
 | --- | --- | --- | --- | --- |
@@ -139,7 +138,7 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | report.service | **core** | 2 | apiFetch only | DONE |
 | requisition.service | **core** | 28 | ⚠️ direct supabase/storage | DONE |
 | schedule.service | **core** | 7 | apiFetch only | DONE |
-| user.service | **core** | 5 | apiFetch only | DONE |
+| user.service | **core** | 7 | apiFetch only | DONE |
 | voucher.service | **core** | 5 | apiFetch only | DONE |
 
 ## 5. Backend endpoints (244)
@@ -233,9 +232,9 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | POST | `/cashbook/wallets` | CASHIER / ACCOUNTANT / ADMIN | DONE |
 | POST | `/cashbook/wallets/transfer` | CASHIER / ACCOUNTANT / ADMIN | DONE |
 | GET | `/departments` | — | DONE |
-| POST | `/departments` | — | PLANNED |
-| PATCH | `/departments/:id` | — | PLANNED |
-| DELETE | `/departments/:id` | — | PLANNED |
+| POST | `/departments` | — | DONE |
+| PATCH | `/departments/:id` | — | DONE |
+| DELETE | `/departments/:id` | — | DONE |
 | DELETE | `/integrations/masterfees` | — | PLANNED |
 | POST | `/integrations/masterfees/backfill-payments` | — | PLANNED |
 | POST | `/integrations/masterfees/connect` | — | PLANNED |
@@ -300,8 +299,8 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | GET | `/onboarding/wallet` | — | PLANNED |
 | POST | `/onboarding/wallet/activation-confirm` | — | PLANNED |
 | POST | `/onboarding/wallet/claim` | — | PLANNED |
-| GET | `/organizations` | — | PLANNED |
-| PUT | `/organizations` | — | PLANNED |
+| GET | `/organizations` | — | DONE |
+| PUT | `/organizations` | — | DONE |
 | DELETE | `/organizations` | — | PLANNED |
 | GET | `/organizations/payment-links` | — | PLANNED |
 | POST | `/organizations/payment-links` | — | PLANNED |
@@ -309,9 +308,9 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | PATCH | `/organizations/payment-links/:id/archive` | — | PLANNED |
 | POST | `/organizations/payment-links/:id/deactivate` | — | PLANNED |
 | POST | `/organizations/payment-links/invoice` | — | PLANNED |
-| GET | `/organizations/products` | — | PLANNED |
-| POST | `/organizations/products` | — | PLANNED |
-| PUT | `/organizations/products/:id` | — | PLANNED |
+| GET | `/organizations/products` | — | DONE |
+| POST | `/organizations/products` | — | DONE |
+| PUT | `/organizations/products/:id` | — | DONE |
 | DELETE | `/organizations/products/:id` | — | PLANNED |
 | GET | `/organizations/products/:id/sales` | — | PLANNED |
 | GET | `/organizations/products/sales-by-reference/:reference` | — | PLANNED |
@@ -370,21 +369,21 @@ Both clients share this contract verbatim — the same DB, the same rows, the sa
 | PATCH | `/requisitions/items/:itemId/details` | — | PLANNED |
 | POST | `/requisitions/maintenance/backfill-audit` | — | PLANNED |
 | POST | `/requisitions/poll-processing` | — | PLANNED |
-| GET | `/requisitions/reports/audit` | — | PLANNED |
-| GET | `/schedules` | — | PLANNED |
-| POST | `/schedules` | — | PLANNED |
+| GET | `/requisitions/reports/audit` | — | DONE |
+| GET | `/schedules` | — | DONE |
+| POST | `/schedules` | — | DONE |
 | PATCH | `/schedules/:id` | — | PLANNED |
 | DELETE | `/schedules/:id` | — | PLANNED |
-| POST | `/schedules/:id/run-now` | — | PLANNED |
+| POST | `/schedules/:id/run-now` | — | DONE |
 | GET | `/schedules/:id/runs` | — | PLANNED |
-| GET | `/schedules/counts` | — | PLANNED |
+| GET | `/schedules/counts` | — | DONE |
 | GET | `/users` | — | DONE |
 | POST | `/users` | — | DONE |
 | PUT | `/users/:id` | — | DONE |
 | DELETE | `/users/:id` | — | DONE |
 | POST | `/users/:id/resend-invite` | — | DONE |
-| GET | `/users/me` | — | PLANNED |
-| PUT | `/users/me/payment-info` | — | PLANNED |
+| GET | `/users/me` | — | DONE |
+| PUT | `/users/me/payment-info` | — | DONE |
 | GET | `/users/notifications` | — | PLANNED |
 | GET | `/vouchers` | — | DONE |
 | POST | `/vouchers` | — | DONE |

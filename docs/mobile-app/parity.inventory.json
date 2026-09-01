@@ -263,7 +263,7 @@
     {
       "id": "pages/Schedules.tsx",
       "name": "Schedules",
-      "loc": 1207,
+      "loc": 1205,
       "hasMobileBranch": true,
       "usesLayout": true,
       "modals": [
@@ -1508,9 +1508,11 @@
       "id": "packages/core/src/services/user.service.ts",
       "name": "user.service",
       "home": "core",
-      "loc": 81,
+      "loc": 105,
       "methods": [
         "getAll",
+        "getMyProfile",
+        "updatePaymentInfo",
         "create",
         "update",
         "delete",
@@ -3728,14 +3730,14 @@
       "kind": "route",
       "label": "`/settings`",
       "detail": "Settings · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/products",
       "kind": "route",
       "label": "`/products`",
       "detail": "ProductsServices · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/intelligence",
@@ -3749,7 +3751,7 @@
       "kind": "route",
       "label": "`/audit`",
       "detail": "Audit · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/menu",
@@ -3784,7 +3786,7 @@
       "kind": "route",
       "label": "`/schedules`",
       "detail": "Schedules · protected",
-      "state": "IN_PROGRESS"
+      "state": "DONE"
     },
     {
       "key": "route:/invest",
@@ -3826,7 +3828,7 @@
       "kind": "screen",
       "label": "Audit",
       "detail": "225 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:CashLedger",
@@ -3931,7 +3933,7 @@
       "kind": "screen",
       "label": "ProductsServices",
       "detail": "28 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:PublicPay",
@@ -3993,15 +3995,15 @@
       "key": "screen:Schedules",
       "kind": "screen",
       "label": "Schedules",
-      "detail": "1207 LOC · 1 overlays",
-      "state": "PLANNED"
+      "detail": "1205 LOC · 1 overlays",
+      "state": "DONE"
     },
     {
       "key": "screen:Settings",
       "kind": "screen",
       "label": "Settings",
       "detail": "196 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:StaffPortfolio",
@@ -5124,6 +5126,20 @@
       "state": "DONE"
     },
     {
+      "key": "service:user.service.getMyProfile",
+      "kind": "service",
+      "label": "user.service.getMyProfile()",
+      "detail": "api",
+      "state": "DONE"
+    },
+    {
+      "key": "service:user.service.updatePaymentInfo",
+      "kind": "service",
+      "label": "user.service.updatePaymentInfo()",
+      "detail": "api",
+      "state": "DONE"
+    },
+    {
       "key": "service:user.service.create",
       "kind": "service",
       "label": "user.service.create()",
@@ -5786,21 +5802,21 @@
       "kind": "endpoint",
       "label": "POST /departments",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PATCH /departments/:id",
       "kind": "endpoint",
       "label": "PATCH /departments/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /departments/:id",
       "kind": "endpoint",
       "label": "DELETE /departments/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /integrations/masterfees",
@@ -6255,14 +6271,14 @@
       "kind": "endpoint",
       "label": "GET /organizations",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PUT /organizations",
       "kind": "endpoint",
       "label": "PUT /organizations",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /organizations",
@@ -6318,21 +6334,21 @@
       "kind": "endpoint",
       "label": "GET /organizations/products",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /organizations/products",
       "kind": "endpoint",
       "label": "POST /organizations/products",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PUT /organizations/products/:id",
       "kind": "endpoint",
       "label": "PUT /organizations/products/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /organizations/products/:id",
@@ -6745,21 +6761,21 @@
       "kind": "endpoint",
       "label": "GET /requisitions/reports/audit",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /schedules",
       "kind": "endpoint",
       "label": "GET /schedules",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /schedules",
       "kind": "endpoint",
       "label": "POST /schedules",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PATCH /schedules/:id",
@@ -6780,7 +6796,7 @@
       "kind": "endpoint",
       "label": "POST /schedules/:id/run-now",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /schedules/:id/runs",
@@ -6794,7 +6810,7 @@
       "kind": "endpoint",
       "label": "GET /schedules/counts",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /users",
@@ -6836,14 +6852,14 @@
       "kind": "endpoint",
       "label": "GET /users/me",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PUT /users/me/payment-info",
       "kind": "endpoint",
       "label": "PUT /users/me/payment-info",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /users/notifications",
