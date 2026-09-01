@@ -1,4 +1,4 @@
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Navigation, Wallet, Sparkles, TrendingUp, Menu } from 'lucide-react-native';
 import { isRequestorRole } from 'core';
@@ -12,9 +12,12 @@ import { colors } from '../../src/theme/tokens';
  * here — the one intentional divergence.
  */
 export default function TabsLayout() {
-    const { userRole } = useAuth();
+    const { userRole, session, loading } = useAuth();
     const insets = useSafeAreaInsets();
     const isRequestor = isRequestorRole(userRole);
+
+    // Signing out anywhere in the app drops straight back to login.
+    if (!loading && !session) return <Redirect href="/(auth)/login" />;
 
     return (
         <Tabs

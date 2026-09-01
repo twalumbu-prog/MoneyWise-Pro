@@ -1,6 +1,6 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -23,45 +23,21 @@ initCore();
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-/** Routes the user between the auth stack and the tab shell as the session resolves. */
-const AuthGate: React.FC = () => {
-    const { session, loading } = useAuth();
-    const segments = useSegments();
-    const router = useRouter();
-
-    useEffect(() => {
-        if (loading) return;
-        const inAuthGroup = segments[0] === '(auth)';
-        if (!session && !inAuthGroup) router.replace('/(auth)/login');
-        else if (session && inAuthGroup) router.replace('/(tabs)');
-    }, [session, loading, segments, router]);
-
-    if (loading) {
-        return (
-            <View style={styles.centre}>
-                <ActivityIndicator size="large" color={colors.blue} />
-            </View>
-        );
-    }
-
+/**
+ * Holds the splash until the session is known.
+ *
+ * The redirect itself lives in the group layouts, not here. Router hooks must be
+ * used BELOW the navigator, and an earlier version of this file called
+ * useSegments()/useRouter() in the same component that rendered <Stack> — which
+ * React rejects as an invalid hook call and takes the whole app down.
+ */
+const SessionGate: React.FC = () => {
+    const { loading } = useAuth();
+    if (!loading) return null;
     return (
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="requisition/[id]" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="requisition/new" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="schedules" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="wallet/entry/[id]" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="wallet/deposit" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="wallet/transfer" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="wallet/new" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="wallet/pay-link" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="wallet/import" options={{ animation: 'slide_from_bottom' }} />
-            <Stack.Screen name="approvals" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="disbursements" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="vouchers/index" options={{ animation: 'slide_from_right' }} />
-            <Stack.Screen name="vouchers/[id]" options={{ animation: 'slide_from_right' }} />
-        </Stack>
+        <View style={styles.splash}>
+            <ActivityIndicator size="large" color={colors.blue} />
+        </View>
     );
 };
 
@@ -73,8 +49,7 @@ export default function RootLayout() {
     });
 
     useEffect(() => {
-        // Hide on font error too — a fallback face is a far better outcome than
-        // an app stuck on the splash screen.
+        // Hide on font error too — a fallback face beats an app stuck on splash.
         if (fontsLoaded || fontError) SplashScreen.hideAsync().catch(() => {});
     }, [fontsLoaded, fontError]);
 
@@ -88,7 +63,25 @@ export default function RootLayout() {
             >
                 <AuthProvider>
                     <StatusBar style="dark" />
-                    <AuthGate />
+                    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
+                        <Stack.Screen name="index" />
+                        <Stack.Screen name="(auth)" />
+                        <Stack.Screen name="(tabs)" />
+                        <Stack.Screen name="requisition/[id]" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="requisition/new" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="schedules" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="wallet/entry/[id]" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="wallet/deposit" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="wallet/transfer" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="wallet/new" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="wallet/pay-link" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="wallet/import" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="approvals" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="disbursements" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="vouchers/index" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="vouchers/[id]" options={{ animation: 'slide_from_right' }} />
+                    </Stack>
+                    <SessionGate />
                 </AuthProvider>
             </PersistQueryClientProvider>
         </SafeAreaProvider>
@@ -96,5 +89,8 @@ export default function RootLayout() {
 }
 
 const styles = StyleSheet.create({
-    centre: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas },
+    splash: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas,
+    },
 });

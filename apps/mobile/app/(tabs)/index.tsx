@@ -206,8 +206,8 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: colors.border,
     },
     searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text, padding: 0 },
-    tabsScroll: { flexGrow: 0, marginTop: 12 },
-    tabs: { paddingHorizontal: 20, gap: 8 },
+    tabsScroll: { flexGrow: 0, height: 52, marginTop: 12 },
+    tabs: { paddingHorizontal: 20, gap: 8, alignItems: 'center' },
     tab: {
         paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
         backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
