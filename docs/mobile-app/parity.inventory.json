@@ -3714,7 +3714,7 @@
       "kind": "route",
       "label": "`/cashbook`",
       "detail": "CashLedger · protected",
-      "state": "IN_PROGRESS"
+      "state": "DONE"
     },
     {
       "key": "route:/reporting",
@@ -3833,7 +3833,7 @@
       "kind": "screen",
       "label": "CashLedger",
       "detail": "2848 LOC · 10 overlays",
-      "state": "IN_PROGRESS"
+      "state": "DONE"
     },
     {
       "key": "screen:CashierDashboard",
@@ -5667,7 +5667,7 @@
       "kind": "endpoint",
       "label": "POST /cashbook/external-wallets",
       "detail": "CASHIER/ACCOUNTANT/ADMIN",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /cashbook/external-wallets/:id",
@@ -5681,14 +5681,14 @@
       "kind": "endpoint",
       "label": "POST /cashbook/external-wallets/:id/import-preview",
       "detail": "CASHIER/ACCOUNTANT/ADMIN",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /cashbook/external-wallets/:id/import-statement",
       "kind": "endpoint",
       "label": "POST /cashbook/external-wallets/:id/import-statement",
       "detail": "CASHIER/ACCOUNTANT/ADMIN",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /cashbook/inflow",
@@ -5744,7 +5744,7 @@
       "kind": "endpoint",
       "label": "POST /cashbook/transfer-to-wallet",
       "detail": "CASHIER/ACCOUNTANT/ADMIN",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /cashbook/wallet-deposit-intent",
@@ -5765,14 +5765,14 @@
       "kind": "endpoint",
       "label": "POST /cashbook/wallets",
       "detail": "CASHIER/ACCOUNTANT/ADMIN",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /cashbook/wallets/transfer",
       "kind": "endpoint",
       "label": "POST /cashbook/wallets/transfer",
       "detail": "CASHIER/ACCOUNTANT/ADMIN",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /departments",

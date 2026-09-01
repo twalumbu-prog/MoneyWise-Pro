@@ -158,3 +158,9 @@ export {
     groupByDate,
 } from './format';
 export type { DateGroup } from './format';
+
+export { parseStatementRows, parseCsv, StatementFormatError } from './statements';
+export type { ParsedStatementRow } from './statements';
+
+export { PROVIDER_BANKS, PROVIDER_MOMO, providersFor } from './reference/providers';
+export type { Provider, ExternalProviderType } from './reference/providers';

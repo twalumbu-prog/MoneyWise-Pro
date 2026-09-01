@@ -7,7 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
-    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2,
+    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet,
 } from 'lucide-react-native';
 import { cashbookService, groupByDate } from 'core';
 import type { CashbookEntry } from 'core';
@@ -66,7 +66,8 @@ export default function WalletScreen() {
         }));
     }, [group, wallets, externalAccounts, externalBalances, isRequestor, data?.balance]);
 
-    const slideCount = cards.length + (group === 'MONEYWISE' && !isRequestor ? 1 : 0);
+    // The trailing add-card is a slide too, in whichever group it appears.
+    const slideCount = cards.length + (isRequestor ? 0 : 1);
 
     const sections = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -145,11 +146,11 @@ export default function WalletScreen() {
                                 {group === 'MONEYWISE' && !isRequestor && (
                                     <AddWalletCard
                                         label={wallets.length === 0 ? 'Add Wallet' : 'Add Subwallet'}
-                                        onPress={() => router.push('/wallet/new')}
+                                        onPress={() => router.push('/wallet/new?kind=MONEYWISE')}
                                     />
                                 )}
-                                {group === 'EXTERNAL' && cards.length === 0 && (
-                                    <AddWalletCard label="Add External Account" onPress={() => router.push('/wallet/new')} />
+                                {group === 'EXTERNAL' && !isRequestor && (
+                                    <AddWalletCard label="Add External Account" onPress={() => router.push('/wallet/new?kind=EXTERNAL')} />
                                 )}
                             </ScrollView>
                         )}
@@ -168,13 +169,29 @@ export default function WalletScreen() {
                             </View>
                         )}
 
-                        {!isRequestor && (
+                        {!isRequestor && group === 'MONEYWISE' && (
                             <View style={styles.actionBar}>
                                 <Action icon={ArrowDownToLine} label="Deposit" onPress={() => router.push('/wallet/deposit')} />
                                 <View style={styles.actionDivider} />
                                 <Action icon={ArrowLeftRight} label="Transfer" onPress={() => router.push('/wallet/transfer')} />
                                 <View style={styles.actionDivider} />
                                 <Action icon={Link2} label="Pay Link" onPress={() => router.push('/wallet/pay-link')} />
+                            </View>
+                        )}
+
+                        {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && (
+                            <View style={styles.actionBar}>
+                                <Action
+                                    icon={FileSpreadsheet}
+                                    label="Import statement"
+                                    onPress={() => {
+                                        const card = cards[Math.min(slide, cards.length - 1)];
+                                        router.push({
+                                            pathname: '/wallet/import',
+                                            params: { walletId: card.id, walletName: card.name },
+                                        });
+                                    }}
+                                />
                             </View>
                         )}
 
