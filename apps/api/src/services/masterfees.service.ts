@@ -169,6 +169,15 @@ export interface MasterFeesConfig {
     categoryMap?: Record<string, { accountId: string; name: string }>;
     schoolName?: string;
     lastSyncedAt?: string;
+    /** Timestamp of the most recent routine sync attempt (regardless of whether
+     *  it found anything new) — drives the adaptive backoff below. */
+    lastSyncAttemptAt?: string;
+    /** Timestamp of the most recent sync that actually posted/reclassified a
+     *  payment. Recency of this (not lastSyncAttemptAt) decides how eager the
+     *  routine cron stays: an org with fresh activity gets checked every tick,
+     *  a quiet org backs off, since Master Fees' API returns unsorted results
+     *  and can't be paginated incrementally — every sync is a full walk. */
+    lastSyncActivityAt?: string;
     lastSyncError?: string | null;
     /** True when the most recent sync hit Master Fees' undocumented 1000-row
      *  API cap — see MF_ROW_CAP. Persisted so the "connected" status banner can
@@ -427,6 +436,39 @@ async function patchConfig(organizationId: string, patch: Partial<MasterFeesConf
         .eq('provider', SOURCE_TYPE)
         .eq('organization_id', organizationId);
     return merged;
+}
+
+/**
+ * Adaptive backoff for the routine per-minute sync cron. Master Fees' API
+ * returns transactions in no chronological order and offers no "since"
+ * filter, so every routine sync is a full walk regardless of how much is
+ * actually new — there is no cheaper incremental fetch to do instead. The
+ * lever we do have is *frequency*: an org that's actively collecting
+ * payments gets checked every tick, one that's gone quiet backs off, so the
+ * per-minute cron isn't burning a full API walk against every connected
+ * school every minute forever regardless of whether anything changed.
+ */
+function getSyncIntervalMinutes(config: MasterFeesConfig): number {
+    if (!config.lastSyncActivityAt) return 1; // never seen activity (or brand new) — stay eager
+    const idleMin = (Date.now() - new Date(config.lastSyncActivityAt).getTime()) / 60_000;
+    if (idleMin < 15) return 1;
+    if (idleMin < 60) return 5;
+    return 15;
+}
+
+/** Whether this org is due for another routine sync attempt, per the backoff above. */
+export function isMasterFeesSyncDue(config: MasterFeesConfig): boolean {
+    if (!config.lastSyncAttemptAt) return true;
+    const sinceAttemptMin = (Date.now() - new Date(config.lastSyncAttemptAt).getTime()) / 60_000;
+    return sinceAttemptMin >= getSyncIntervalMinutes(config);
+}
+
+/** Records that a routine sync attempt happened, and whether it found real activity. */
+export async function recordMasterFeesSyncAttempt(organizationId: string, foundActivity: boolean): Promise<void> {
+    const now = new Date().toISOString();
+    const patch: Partial<MasterFeesConfig> = { lastSyncAttemptAt: now };
+    if (foundActivity) patch.lastSyncActivityAt = now;
+    await patchConfig(organizationId, patch);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
