@@ -7,6 +7,8 @@ import {
     detectLencoMode,
     syncMasterfees,
     syncMasterfeesPayments,
+    isMasterFeesSyncDue,
+    recordMasterFeesSyncAttempt,
     recategorizeMasterfeesInvoices,
     applyPaymentDateCorrections,
     reconcileMasterfees,
@@ -498,18 +500,26 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
         // fits in one request's budget.
         const { data: rows, error } = await supabase
             .from('integrations')
-            .select('organization_id')
+            .select('organization_id, config')
             .eq('provider', PROVIDER)
             .not('organization_id', 'is', null)
             .order('config->>lastSyncedAt', { ascending: true, nullsFirst: true });
         if (error) throw error;
 
         const results: any[] = [];
+        let skippedNotDue = 0;
         for (const row of rows || []) {
             const elapsed = Date.now() - START;
             if (elapsed > GLOBAL_BUDGET_MS) {
-                console.warn(`[MasterFees Sync] Time budget exceeded — deferring ${(rows!.length) - results.length} org(s).`);
+                console.warn(`[MasterFees Sync] Time budget exceeded — deferring ${(rows!.length) - results.length - skippedNotDue} org(s).`);
                 break;
+            }
+            // Adaptive backoff — see isMasterFeesSyncDue. Master Fees' API has no
+            // "since" filter and returns rows unsorted, so every sync is a full
+            // walk; an org with no recent activity doesn't need one every minute.
+            if (!isMasterFeesSyncDue((row.config || {}) as MasterFeesConfig)) {
+                skippedNotDue++;
+                continue;
             }
             try {
                 const perOrgDeadline = START + GLOBAL_BUDGET_MS;
@@ -526,12 +536,14 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
                 // syncMasterfees, unchanged) — this only lightens the automatic
                 // per-minute tick.
                 const summary = await syncMasterfeesPayments(row.organization_id, perOrgDeadline, { onlyMissing: true });
+                const foundActivity = summary.payments.posted + summary.payments.reclassified > 0;
+                await recordMasterFeesSyncAttempt(row.organization_id, foundActivity);
                 results.push({ organizationId: row.organization_id, success: true, summary });
             } catch (err: any) {
                 results.push({ organizationId: row.organization_id, success: false, error: err.message });
             }
         }
-        res.json({ success: true, processed: results.length, results });
+        res.json({ success: true, processed: results.length, skippedNotDue, results });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
