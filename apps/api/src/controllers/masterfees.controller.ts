@@ -513,7 +513,19 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
             }
             try {
                 const perOrgDeadline = START + GLOBAL_BUDGET_MS;
-                const summary = await syncMasterfees(row.organization_id, perOrgDeadline);
+                // Payments-only, missing-only. The routine cron used to run the
+                // FULL sync (walk every invoice, then re-examine every already-
+                // recorded payment's self-heal state) every single minute forever
+                // — expensive against Master Fees' API and against our own DB for
+                // essentially no benefit once an org's backlog is caught up.
+                // syncMasterfeesPayments({ onlyMissing: true }) only processes
+                // transactions we've never recorded, which is what a routine tick
+                // actually needs. A full walk (invoices + full self-heal, e.g. to
+                // catch an amount edited after the fact) is still available on
+                // demand via the "Sync Now" button (syncMasterFeesNow ->
+                // syncMasterfees, unchanged) — this only lightens the automatic
+                // per-minute tick.
+                const summary = await syncMasterfeesPayments(row.organization_id, perOrgDeadline, { onlyMissing: true });
                 results.push({ organizationId: row.organization_id, success: true, summary });
             } catch (err: any) {
                 results.push({ organizationId: row.organization_id, success: false, error: err.message });

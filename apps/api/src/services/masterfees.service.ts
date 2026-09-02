@@ -937,9 +937,19 @@ async function postPayment(
         const desiredType = isLencoProcessed(txn) ? 'MASTERFEES' : 'MASTERFEES_MANUAL';
         const { data: ce } = await supabase
             .from('cashbook_entries')
-            .select('account_type, date, created_at, mf_payment_channel')
+            .select('account_type, date, created_at, mf_payment_channel, bank_statement_reference')
             .eq('id', prior!.cashbook_entry_id)
             .maybeSingle();
+        // A row carrying bank_statement_reference was classified by a real bank/
+        // Lenco statement reconciliation, not guessed from the reference format —
+        // that's authoritative and must not be silently reverted by this heuristic
+        // on the next sync tick. Confirmed live: entries reclassified during a
+        // statement reconciliation were flipped back to MASTERFEES_MANUAL within
+        // a minute by exactly this branch, because their reference isn't in the
+        // REF-<epoch> Lenco format the heuristic expects.
+        if (ce && ce.bank_statement_reference) {
+            return 'skipped';
+        }
         if (ce && (ce.account_type === 'MASTERFEES' || ce.account_type === 'MASTERFEES_MANUAL') && ce.account_type !== desiredType) {
             const oldType = ce.account_type;
             if (desiredType === 'MASTERFEES_MANUAL') await getManualCollectionsAccount(organizationId);
