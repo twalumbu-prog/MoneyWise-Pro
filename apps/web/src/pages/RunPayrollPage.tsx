@@ -6,6 +6,7 @@ import { payrollService, StaffMember } from '../services/payroll.service';
 import { cashbookService } from '../services/cashbook.service';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, Plus, Trash2, Search, ChevronRight, ChevronDown, Check, Building2, Smartphone, Wallet } from 'lucide-react';
+import { calcPAYE, calcStatutoryGross, calcGross, calcNet, sumValues, NAPSA_CEILING, NAPSA_RATE, NHIMA_RATE } from 'core';
 
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
@@ -68,38 +69,9 @@ interface PayrollItem {
     custom_deductions: Record<string, number>;
 }
 
-const NAPSA_RATE = 0.05;
-const NAPSA_CEILING = 1073.15;
-const NHIMA_RATE = 0.01;
-
-function calcPAYE(g: number) {
-    if (g <= 4800) return 0;
-    if (g <= 9600) return (g - 4800) * 0.20;
-    if (g <= 16000) return (9600 - 4800) * 0.20 + (g - 9600) * 0.30;
-    return (9600 - 4800) * 0.20 + (16000 - 9600) * 0.30 + (g - 16000) * 0.375;
-}
-
-const sumValues = (rec?: Record<string, number>) => Object.values(rec || {}).reduce((a, b) => a + b, 0);
-
-const calcGross = (item: PayrollItem) =>
-    item.basic_pay + item.overtime + item.taxable_allowances + item.non_taxable_allowances + sumValues(item.custom_allowances);
-
-/** Portion of gross that NAPSA / NHIMA / PAYE are assessed on */
-const calcStatutoryGross = (item: PayrollItem, allowanceTypes: any[]) =>
-    item.basic_pay + item.overtime + item.taxable_allowances +
-    Object.entries(item.custom_allowances || {}).reduce((sum, [name, val]) => {
-        const isTaxable = allowanceTypes.find(a => a.name === name)?.subject_to_statutory !== false;
-        return isTaxable ? sum + val : sum;
-    }, 0);
-
-const calcStatutory = (sg: number) => Math.min(sg, NAPSA_CEILING) * NAPSA_RATE + sg * NHIMA_RATE + calcPAYE(sg);
-
-const calcNet = (item: PayrollItem, allowanceTypes: any[]) =>
-    calcGross(item)
-    - calcStatutory(calcStatutoryGross(item, allowanceTypes))
-    - item.loans
-    - item.other_deductions
-    - sumValues(item.custom_deductions);
+// Statutory math lives in `core` (payroll/calc.ts) -- see the comment there for
+// why this must never be a per-client copy: a divergence here is a wrong salary,
+// not a UI defect.
 
 const fmt = (n: number) => n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

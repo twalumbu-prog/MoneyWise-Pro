@@ -190,3 +190,11 @@ export type {
 export {
     SCHEDULE_CATEGORIES, SCHEDULE_CADENCES, scheduleCategoryLabel, scheduleCadenceLabel,
 } from './reference/schedules';
+
+export {
+    NAPSA_RATE, NAPSA_CEILING, NHIMA_RATE,
+    calcPAYE, calcStatutory, calcStatutoryGross, calcGross, calcNet, sumValues,
+} from './payroll/calc';
+export type { PayrollRunLineInput } from './payroll/calc';
+
+export { detectMobileNetwork } from './reference/mobileMoney';

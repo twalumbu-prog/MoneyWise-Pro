@@ -86,6 +86,14 @@ export default function RootLayout() {
                         <Stack.Screen name="settings/profile" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/general" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/team" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/index" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/payroll/index" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/payroll/config" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/payroll/run/index" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="apps/payroll/run/[id]" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/payroll/staff/[id]" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/payroll/staff/new" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="apps/payroll/staff/import" options={{ animation: 'slide_from_bottom' }} />
                     </Stack>
                     <SessionGate />
                 </AuthProvider>

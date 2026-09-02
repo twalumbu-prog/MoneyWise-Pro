@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-01",
+  "generatedAt": "2026-09-02",
   "routes": [
     {
       "path": "/login",
@@ -289,19 +289,19 @@
       ]
     },
     {
-      "id": "pages/RunPayrollPage.tsx",
-      "name": "RunPayrollPage",
-      "loc": 957,
-      "hasMobileBranch": false,
-      "usesLayout": true,
-      "modals": []
-    },
-    {
       "id": "pages/QuickPay.tsx",
       "name": "QuickPay",
       "loc": 951,
       "hasMobileBranch": false,
       "usesLayout": false,
+      "modals": []
+    },
+    {
+      "id": "pages/RunPayrollPage.tsx",
+      "name": "RunPayrollPage",
+      "loc": 929,
+      "hasMobileBranch": false,
+      "usesLayout": true,
       "modals": []
     },
     {
@@ -988,7 +988,7 @@
     {
       "id": "components/payroll/AddStaffWizard.tsx",
       "name": "AddStaffWizard",
-      "loc": 610,
+      "loc": 605,
       "surface": "shared"
     },
     {
@@ -1007,12 +1007,6 @@
       "id": "components/payroll/PayrollRunDetail.tsx",
       "name": "PayrollRunDetail",
       "loc": 262,
-      "surface": "shared"
-    },
-    {
-      "id": "components/payroll/RunPayrollWizard.tsx",
-      "name": "RunPayrollWizard",
-      "loc": 455,
       "surface": "shared"
     },
     {
@@ -3772,14 +3766,14 @@
       "kind": "route",
       "label": "`/apps/payroll`",
       "detail": "Payroll · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/apps/payroll/run",
       "kind": "route",
       "label": "`/apps/payroll/run`",
       "detail": "RunPayrollPage · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/schedules",
@@ -3919,7 +3913,7 @@
       "kind": "screen",
       "label": "Payroll",
       "detail": "518 LOC · 2 overlays",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:PrivacyPolicy",
@@ -3988,8 +3982,8 @@
       "key": "screen:RunPayrollPage",
       "kind": "screen",
       "label": "RunPayrollPage",
-      "detail": "957 LOC",
-      "state": "PLANNED"
+      "detail": "929 LOC",
+      "state": "DONE"
     },
     {
       "key": "screen:Schedules",
@@ -6383,98 +6377,98 @@
       "kind": "endpoint",
       "label": "GET /payroll/config",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PUT /payroll/config",
       "kind": "endpoint",
       "label": "PUT /payroll/config",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /payroll/runs",
       "kind": "endpoint",
       "label": "GET /payroll/runs",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /payroll/runs",
       "kind": "endpoint",
       "label": "POST /payroll/runs",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /payroll/runs/:id",
       "kind": "endpoint",
       "label": "GET /payroll/runs/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /payroll/runs/:id/approve",
       "kind": "endpoint",
       "label": "POST /payroll/runs/:id/approve",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /payroll/runs/suggested-deductions",
       "kind": "endpoint",
       "label": "GET /payroll/runs/suggested-deductions",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /payroll/staff",
       "kind": "endpoint",
       "label": "GET /payroll/staff",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:POST /payroll/staff",
       "kind": "endpoint",
       "label": "POST /payroll/staff",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /payroll/staff/:id",
       "kind": "endpoint",
       "label": "GET /payroll/staff/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PATCH /payroll/staff/:id",
       "kind": "endpoint",
       "label": "PATCH /payroll/staff/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:DELETE /payroll/staff/:id",
       "kind": "endpoint",
       "label": "DELETE /payroll/staff/:id",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /payroll/staff/:id/history",
       "kind": "endpoint",
       "label": "GET /payroll/staff/:id/history",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /payroll/staff/departments",
       "kind": "endpoint",
       "label": "GET /payroll/staff/departments",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:GET /reports/expenditure",
@@ -6579,7 +6573,7 @@
       "kind": "endpoint",
       "label": "POST /requisitions/:id/disburse-payroll",
       "detail": "any",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "api:PUT /requisitions/:id/expenses",

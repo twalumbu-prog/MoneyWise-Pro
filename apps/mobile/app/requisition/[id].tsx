@@ -15,6 +15,7 @@ import { StatusIcon } from '../../src/components/StatusIcon';
 import { ReceiptCapture } from '../../src/components/requisitions/ReceiptCapture';
 import { RequisitionThread } from '../../src/components/requisitions/RequisitionThread';
 import { DisburseSheet } from '../../src/components/requisitions/DisburseSheet';
+import { PayrollDisburseSheet } from '../../src/components/requisitions/PayrollDisburseSheet';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 export default function RequisitionDetailScreen() {
@@ -153,13 +154,22 @@ export default function RequisitionDetailScreen() {
 
                     {canPayOut && req && (
                         <View style={styles.card}>
-                            <DisburseSheet
-                                requisitionId={String(id)}
-                                amount={req.actual_total ?? req.estimated_total}
-                                recipientName={req.recipient_name}
-                                recipientAccount={req.recipient_account}
-                                onDone={() => router.back()}
-                            />
+                            {req.type === 'PAYROLL' ? (
+                                <PayrollDisburseSheet
+                                    requisitionId={String(id)}
+                                    amount={req.actual_total ?? req.estimated_total}
+                                    employeeCount={req.items?.length ?? 0}
+                                    onDone={() => router.back()}
+                                />
+                            ) : (
+                                <DisburseSheet
+                                    requisitionId={String(id)}
+                                    amount={req.actual_total ?? req.estimated_total}
+                                    recipientName={req.recipient_name}
+                                    recipientAccount={req.recipient_account}
+                                    onDone={() => router.back()}
+                                />
+                            )}
                         </View>
                     )}
 

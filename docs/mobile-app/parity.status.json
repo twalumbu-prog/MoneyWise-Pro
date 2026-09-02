@@ -1,2372 +1,2372 @@
 {
-  "route:/login": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Native login screen; username-or-email resolve via /auth/resolve-username."
-  },
-  "route:/join": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": "Join-org flow; reached via invite deep link"
-  },
-  "route:/reset-password": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": "Must handle the Supabase recovery deep link"
-  },
-  "route:/": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "AuthGate + five-tab shell; REQUESTOR tab rule matches web Layout.tsx."
-  },
-  "route:/requisitions": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "Inbox: day-grouped cards, status tabs from core config, search, sort, pull-to-refresh."
-  },
-  "route:/requisitions/new": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "New request form with line items and live total; handles the one-open-request API block."
-  },
-  "route:/menu": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Menu tab: profile, role-gated queues, Other Services grid, sign out. Settings land in P5."
-  },
-  "route:/cashbook": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Wallet carousel, ledger, entry detail, deposit, transfers, wallet/external-account creation, CSV statement import. Pay-link deferred to P5."
-  },
-  "route:/sales/new": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": "POS / New Sale"
-  },
-  "route:/approvals": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Native queue; approve/reject on the requisition detail, gated by core.canAuthoriseRequisition."
-  },
-  "route:/disbursements": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Native queue; payout sheet on the detail screen (cash settles, Lenco returns PROCESSING)."
-  },
-  "route:/vouchers": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Voucher list grouped by day."
-  },
-  "route:/vouchers/:id": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Journal lines, balance check, post-to-ledger for ACCOUNTANT/ADMIN."
-  },
-  "route:/reporting": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Headline card, Month/Quarter/YTD toggle, grouped category breakdown with budget progress and prior-period change. Trend chart and budget editing stay web-only for now."
-  },
-  "route:/intelligence": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Full composer parity: vendor-logo model picker (native SVG port of VendorLogos.tsx), bank-statement attachment upload (bank-statements bucket, same path convention), and dictation via expo-speech-recognition. Hero copy matches web request (\"How can I help you today?\"), sparkle icon removed per request."
-  },
-  "route:/settings": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Split into three focused screens (profile/general/team) reached from Menu, rather than one tabbed page \u2014 matches how the app already navigates."
-  },
-  "route:/products": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "List + create/edit for name, type, price, image. Digital assets, delivery options and additional-image carousel stay web-only."
-  },
-  "route:/audit": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Score hero, search, per-transaction rating -> requisition detail."
-  },
-  "route:/schedules": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "List with category filter, run-now, and a creation modal covering title/amount/category/cadence/next-due."
-  },
-  "route:/onboarding": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": "Full signup wizard -- deferred; org creation and activation happen on web today."
-  },
-  "route:/apps": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": "Payroll + Invest -- P6."
-  },
-  "route:/apps/payroll": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "route:/apps/payroll/run": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "route:/invest": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "route:/invest/company/:id": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "route:/invest/product/:id": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "route:/pay/:wallet_id": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Customer payment page; app shares the URL, never renders it"
-  },
-  "route:/pl/:token": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "One-time payment link for customers"
-  },
-  "route:/privacy": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Linked out from Settings (store listing also links here)"
-  },
-  "route:/terms": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Linked out from Settings"
-  },
-  "route:/disconnect": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "OAuth disconnect callback \u2014 browser only"
-  },
-  "screen:PublicPay": {
-    "state": "NOT_APPLICABLE",
-    "phase": "\u2014",
-    "note": "Unrouted legacy pay page (superseded by PublicPaymentLink)"
-  },
-  "screen:CashLedger": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "app/(tabs)/wallet.tsx + app/wallet/*"
-  },
-  "screen:Reporting": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "app/(tabs)/reporting.tsx"
-  },
-  "screen:RequisitionList": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "app/(tabs)/index.tsx"
-  },
-  "screen:PublicPaymentLink": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "One-time payment link for customers"
-  },
-  "screen:NewSale": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": "POS / New Sale"
-  },
-  "screen:Schedules": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "app/schedules.tsx"
-  },
-  "screen:RequisitionCreate": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "app/requisition/new.tsx"
-  },
-  "screen:CashierDashboard": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "app/disbursements.tsx + DisburseSheet"
-  },
-  "screen:RunPayrollPage": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": "Batch payroll \u2014 30s ceiling applies"
-  },
-  "screen:QuickPay": {
-    "state": "NOT_APPLICABLE",
-    "phase": "\u2014",
-    "note": "Unrouted legacy"
-  },
-  "screen:InvestPaymentFlow": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": "Sub-screen reached from a parent route"
-  },
-  "screen:Login": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "app/(auth)/login.tsx"
-  },
-  "screen:Payroll": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "screen:InvestHome": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "screen:Menu": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "app/(tabs)/menu.tsx"
-  },
-  "screen:InvestProductDetail": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "screen:Onboarding": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "screen:Approvals": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "app/approvals.tsx"
-  },
-  "screen:VoucherDetail": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "app/vouchers/[id].tsx"
-  },
-  "screen:Audit": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "app/audit.tsx"
-  },
-  "screen:ResetPassword": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": "Must handle the Supabase recovery deep link"
-  },
-  "screen:Vouchers": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "app/vouchers/index.tsx"
-  },
-  "screen:Settings": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "app/settings/profile.tsx + general.tsx + team.tsx"
-  },
-  "screen:InvestCompany": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "screen:investCertificate.ts": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": "Sub-screen reached from a parent route"
-  },
-  "screen:Join": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": "Join-org flow; reached via invite deep link"
-  },
-  "screen:PrivacyPolicy": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Linked out from Settings (store listing also links here)"
-  },
-  "screen:InvestChart": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": "Sub-screen reached from a parent route"
-  },
-  "screen:investChartData.ts": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": "Sub-screen reached from a parent route"
-  },
-  "screen:TermsOfService": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Linked out from Settings"
-  },
-  "screen:Dashboard": {
-    "state": "NOT_APPLICABLE",
-    "phase": "\u2014",
-    "note": "Unrouted legacy"
-  },
-  "screen:Apps": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "screen:StaffPortfolio": {
-    "state": "NOT_APPLICABLE",
-    "phase": "\u2014",
-    "note": "Unrouted legacy"
-  },
-  "screen:Intelligence": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "app/(tabs)/bi.tsx"
-  },
-  "screen:Disconnect": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "OAuth disconnect callback \u2014 browser only"
-  },
-  "screen:ProductsServices": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "app/products/*"
-  },
-  "screen:PayEntry": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Customer payment page; app shares the URL, never renders it"
-  },
-  "screen:ComingSoonPage": {
-    "state": "NOT_APPLICABLE",
-    "phase": "\u2014",
-    "note": "Unrouted stub"
-  },
-  "service:account.service.getAll": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:account.service.create": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:account.service.update": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:account.service.importFromQuickBooks": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:account.service.suggestAccount": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:account.service.suggestBatch": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.getRules": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.createRule": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.updateRule": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.deleteRule": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.getDailyMetrics": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.getStats": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.getModelSettings": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:ai.service.updateModelSettings": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:budget.service.getBudgets": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:budget.service.setBudget": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.getEntries": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.getOverview": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.getBalance": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.getSummary": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.reconcile": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.returnCash": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.closeBook": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.logInflow": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.recordManualSale": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.logWalletDepositIntent": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.classifyBulk": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.postToQuickBooks": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.updateAccount": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.narrateEntry": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.getWallets": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.createWallet": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.transfer": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.transferToWallet": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.getExternalWallets": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.createExternalWallet": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.deleteExternalWallet": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.previewStatementImport": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:cashbook.service.importStatement": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:department.service.list": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:department.service.create": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:department.service.update": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:department.service.delete": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:highlights.service.getHighlights": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:highlights.service.acknowledgeAchievements": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.getStatus": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.getConnectUrl": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.disconnect": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.getAccounts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.getAccountTransactions": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.retrySync": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.getOAuthUrl": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.connect": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.getFeeCategories": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.mapCategory": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.setLencoMode": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.sync": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:integration.service.reconcile": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.getAccounts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.provisionOrganizationSubaccount": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.getAvailableAccounts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.linkOrganizationSubaccount": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.verifyStatus": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.getReconciliationSummary": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.getBanks": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.resolveBankAccount": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.resolveMobileMoney": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.verifyDisbursementStatus": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.getSaleReceiptDetails": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:lenco.service.calculatePayoutFee": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.getState": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.saveProgress": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.updateOrganizationName": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.saveProfile": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.generateChartOfAccounts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.saveChartOfAccounts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.getWalletStatus": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.claimWallet": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.confirmActivation": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:onboarding.service.complete": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:organization.service.getOrganization": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:organization.service.updateOrganization": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:organization.service.deleteOrganization": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:organization.service.getOrCreateQuickLinkUsername": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.listStaff": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.getStaffMember": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.createStaffMember": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.updateStaffMember": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.archiveStaffMember": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.getStaffPayrollHistory": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.getStaffDepartments": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.listRuns": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.getRun": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.createRun": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.approveRun": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.getSuggestedDeductions": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.getPayrollConfig": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:payroll.service.upsertPayrollConfig": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.getProducts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.createProduct": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.updateProduct": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.deleteProduct": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.getProductSales": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.getAvailability": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.createPaymentLink": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.createInvoiceLink": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.listPaymentLinks": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.listInvoiceLinks": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.deactivatePaymentLink": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.archiveInvoiceLink": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:product.service.updateInvoiceLink": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:report.service.getExpenditures": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:report.service.getExpenditureItems": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.autoDisburse": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.disburse": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.disburseExcess": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.verifyDisbursement": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.acknowledge": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.getAll": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.getById": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.create": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.update": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.getFileUrl": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.analyzeReceipt": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.getDisbursementHistory": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.updateDisbursement": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.analyzeDisbursementProof": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.getMessages": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.sendMessage": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.approveCategorization": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.retriggerAI": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.postToQuickBooks": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.scanReceipts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.acknowledgeReceipt": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.deleteReceipt": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.updateLineItemAccount": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.revertToDraft": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.getAuditReport": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.disbursePayroll": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.updateLineItemDetails": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:requisition.service.delete": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:schedule.service.getAll": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:schedule.service.getCounts": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:schedule.service.create": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:schedule.service.update": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:schedule.service.delete": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:schedule.service.getRuns": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:schedule.service.runNow": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:user.service.getAll": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:user.service.create": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:user.service.update": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:user.service.delete": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:user.service.resendInvite": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:voucher.service.getAll": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:voucher.service.getById": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:voucher.service.createFromRequisition": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:voucher.service.post": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "service:voucher.service.postVoucherWithClassification": {
-    "state": "DONE",
-    "phase": "P0",
-    "note": "Moved to packages/core; web file is a re-export."
-  },
-  "api:GET /accounts": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Consumed by the native assistant / reporting screens."
-  },
-  "api:POST /accounts": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:PUT /accounts/:id": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /accounts/import": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /accounts/suggest": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /admin/analytics/payment-links": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/analytics/payment-links/attempts": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:PUT /admin/analytics/posthog-key": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/logs": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/me": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/reconciliation": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/reconciliation/:orgId": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:POST /admin/reconciliation/:orgId/heal-platform-fees": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/reconciliation/:orgId/raw-lenco-txns": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:POST /admin/reconciliation/heal-platform-fees": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:POST /admin/test-collection/initiate": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/test-collection/status/:reference": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/wallet-pool": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:POST /admin/wallet-pool": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:PATCH /admin/wallet-pool/:id": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:GET /admin/wallet-pool/settings": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:PUT /admin/wallet-pool/settings": {
-    "state": "WEB_ONLY",
-    "phase": "\u2014",
-    "note": "Reconciliation console lives in apps/admin"
-  },
-  "api:POST /ai/agent/approve": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Consumed by the native assistant / reporting screens."
-  },
-  "api:POST /ai/agent/chat": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Consumed by the native assistant / reporting screens."
-  },
-  "api:GET /ai/agent/models": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Consumed by the native assistant / reporting screens."
-  },
-  "api:GET /ai/agent/threads": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Consumed by the native assistant / reporting screens."
-  },
-  "api:GET /ai/agent/threads/:id": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:DELETE /ai/agent/threads/:id": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:POST /ai/assistant": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:GET /ai/digest": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:GET /ai/highlights": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:POST /ai/highlights/acknowledge": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:POST /ai/highlights/weekly-email": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:GET /ai/metrics/daily": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:GET /ai/metrics/stats": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:GET /ai/model-settings": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:PUT /ai/model-settings": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:GET /ai/rules": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:POST /ai/rules": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:PATCH /ai/rules/:id": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:DELETE /ai/rules/:id": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:POST /auth/complete-invitation": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:POST /auth/forgot-password": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:POST /auth/join-request": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:GET /auth/my-organizations": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:GET /auth/organizations/search": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:POST /auth/register": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:POST /auth/resolve-username": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:POST /auth/signup": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:POST /auth/switch-organization": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:POST /billing/downgrade": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /billing/generate-invoice": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /billing/invoice/:invoiceId/receipt": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /billing/pay/:invoiceId": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /billing/pay/:invoiceId/mobile-money": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /billing/pay/:invoiceId/mobile-money/status": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /billing/subscription": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /billing/upgrade": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /budgets": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Consumed by the native assistant / reporting screens."
-  },
-  "api:POST /budgets": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:GET /cashbook": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:PATCH /cashbook/:entryId/account": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:PATCH /cashbook/:entryId/narrate": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /cashbook/balance": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /cashbook/classify-bulk": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /cashbook/close": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /cashbook/create-qb-account": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /cashbook/external-wallets": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Consumed by the native Wallet tab."
-  },
-  "api:POST /cashbook/external-wallets": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Native transfer and wallet-creation screens."
-  },
-  "api:DELETE /cashbook/external-wallets/:id": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /cashbook/external-wallets/:id/import-preview": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "CSV statement import; XLSX still web-only."
-  },
-  "api:POST /cashbook/external-wallets/:id/import-statement": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "CSV statement import; XLSX still web-only."
-  },
-  "api:POST /cashbook/inflow": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Consumed by the native Wallet tab."
-  },
-  "api:POST /cashbook/manual-sale": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /cashbook/overview": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Consumed by the native Wallet tab."
-  },
-  "api:POST /cashbook/post-to-qb": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /cashbook/reconcile": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /cashbook/return": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /cashbook/summary": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /cashbook/transfer-to-wallet": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Native transfer and wallet-creation screens."
-  },
-  "api:POST /cashbook/wallet-deposit-intent": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /cashbook/wallets": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Consumed by the native Wallet tab."
-  },
-  "api:POST /cashbook/wallets": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Native transfer and wallet-creation screens."
-  },
-  "api:POST /cashbook/wallets/transfer": {
-    "state": "DONE",
-    "phase": "P2",
-    "note": "Native transfer and wallet-creation screens."
-  },
-  "api:GET /departments": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:POST /departments": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:PATCH /departments/:id": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:DELETE /departments/:id": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:DELETE /integrations/masterfees": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /integrations/masterfees/backfill-payments": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /integrations/masterfees/connect": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /integrations/masterfees/correct-dates": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/masterfees/diag": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/masterfees/fee-categories": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:PUT /integrations/masterfees/fee-categories": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:PUT /integrations/masterfees/lenco-mode": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/masterfees/oauth/callback": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/masterfees/oauth/url": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /integrations/masterfees/recategorize-invoices": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/masterfees/reconcile": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/masterfees/status": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /integrations/masterfees/sync": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /integrations/masterfees/sync-all": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:DELETE /integrations/quickbooks": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/quickbooks/accounts": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/quickbooks/accounts/:qbAccountId/transactions": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/quickbooks/callback": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/quickbooks/connect": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/quickbooks/invoices": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /integrations/quickbooks/sync/:id": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /integrations/status": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /lenco/accounts": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/available-accounts": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/banks": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/organizations/:id/link": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/organizations/:id/provision": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/public-collection-finalize/:reference": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-collection-longpoll/:reference": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/public-collection/cancel": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/public-collection/mobile-money": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/public-collection/resolve-momo": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-context/:wallet_id": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/public-diagnostics/report": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-payment-link/:token": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-product-availability/:productId": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-quicklink-context/:username": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/public-quicklink-intent": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-quicklink-purposes/:username": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-sale-receipt/:reference": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-sales/by-phone/:phone": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/public-verify-status/:reference": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/public-wallet-deposit-intent": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/reconcile/:organizationId": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/resolve-bank": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/resolve-momo": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/sale-receipt/:entryId": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/sync": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/test-collection/initiate": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/test-collection/status/:reference": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:GET /lenco/verify-status/:reference": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/wallet-deposit-intent": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /lenco/webhook": {
-    "state": "PLANNED",
-    "phase": "P2",
-    "note": ""
-  },
-  "api:POST /onboarding/chart-of-accounts": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /onboarding/chart-of-accounts/generate": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /onboarding/complete": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:PUT /onboarding/organization": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:PUT /onboarding/profile": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:PUT /onboarding/progress": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /onboarding/state": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /onboarding/wallet": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /onboarding/wallet/activation-confirm": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /onboarding/wallet/claim": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /organizations": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:PUT /organizations": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:DELETE /organizations": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /organizations/payment-links": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /organizations/payment-links": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:PATCH /organizations/payment-links/:id": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:PATCH /organizations/payment-links/:id/archive": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /organizations/payment-links/:id/deactivate": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /organizations/payment-links/invoice": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /organizations/products": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:POST /organizations/products": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:PUT /organizations/products/:id": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:DELETE /organizations/products/:id": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /organizations/products/:id/sales": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /organizations/products/sales-by-reference/:reference": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /organizations/quick-link-username": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /payroll/config": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:PUT /payroll/config": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /payroll/runs": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:POST /payroll/runs": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /payroll/runs/:id": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:POST /payroll/runs/:id/approve": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /payroll/runs/suggested-deductions": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /payroll/staff": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:POST /payroll/staff": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /payroll/staff/:id": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:PATCH /payroll/staff/:id": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:DELETE /payroll/staff/:id": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /payroll/staff/:id/history": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /payroll/staff/departments": {
-    "state": "PLANNED",
-    "phase": "P6",
-    "note": ""
-  },
-  "api:GET /reports/expenditure": {
-    "state": "DONE",
-    "phase": "P4",
-    "note": "Consumed by the native assistant / reporting screens."
-  },
-  "api:GET /reports/expenditure/:accountId/items": {
-    "state": "PLANNED",
-    "phase": "P4",
-    "note": ""
-  },
-  "api:POST /requisitions": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "Consumed by the native Inbox."
-  },
-  "api:GET /requisitions": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "Consumed by the native Inbox."
-  },
-  "api:GET /requisitions/:id": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "Native detail screen: receipts + activity thread."
-  },
-  "api:PUT /requisitions/:id": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:DELETE /requisitions/:id": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/acknowledge": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/approve-categorization": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/auto-complete": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/auto-disburse": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/confirm-change": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/disburse": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Consumed by the native approval chain."
-  },
-  "api:POST /requisitions/:id/disburse-excess": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/disburse-payroll": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:PUT /requisitions/:id/expenses": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/items/:itemId/analyze-receipt": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/mark-read": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:GET /requisitions/:id/messages": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "Native detail screen: receipts + activity thread."
-  },
-  "api:POST /requisitions/:id/messages": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "Native detail screen: receipts + activity thread."
-  },
-  "api:DELETE /requisitions/:id/messages/:messageId": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/post-quickbooks": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/post-voucher": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:DELETE /requisitions/:id/receipts/:receiptId": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:GET /requisitions/:id/resolve-recipient": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/retrigger-ai": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/revert-to-draft": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/:id/scan-receipts": {
-    "state": "DONE",
-    "phase": "P1",
-    "note": "Native detail screen: receipts + activity thread."
-  },
-  "api:PATCH /requisitions/:id/status": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Consumed by the native approval chain."
-  },
-  "api:POST /requisitions/:id/submit-change": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:GET /requisitions/:id/verify-disbursement": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:GET /requisitions/admin/all": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/auto-reminder": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:PATCH /requisitions/disbursements/:id": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/disbursements/:id/analyze-proof": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:GET /requisitions/disbursements/history": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:PATCH /requisitions/items/:itemId/account": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:PATCH /requisitions/items/:itemId/details": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/maintenance/backfill-audit": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:POST /requisitions/poll-processing": {
-    "state": "PLANNED",
-    "phase": "P1",
-    "note": ""
-  },
-  "api:GET /requisitions/reports/audit": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:GET /schedules": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:POST /schedules": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:PATCH /schedules/:id": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:DELETE /schedules/:id": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:POST /schedules/:id/run-now": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:GET /schedules/:id/runs": {
-    "state": "PLANNED",
-    "phase": "P5",
-    "note": ""
-  },
-  "api:GET /schedules/counts": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:GET /users": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:POST /users": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:PUT /users/:id": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:DELETE /users/:id": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:POST /users/:id/resend-invite": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:GET /users/me": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:PUT /users/me/payment-info": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Consumed by the native Menu-hub screens."
-  },
-  "api:GET /users/notifications": {
-    "state": "PLANNED",
-    "phase": "P0",
-    "note": ""
-  },
-  "api:GET /vouchers": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Consumed by the native approval chain."
-  },
-  "api:POST /vouchers": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Consumed by the native approval chain."
-  },
-  "api:GET /vouchers/:id": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Consumed by the native approval chain."
-  },
-  "api:POST /vouchers/:id/post": {
-    "state": "DONE",
-    "phase": "P3",
-    "note": "Consumed by the native approval chain."
-  },
-  "api:GET /webhooks/vercel-log-drain": {
-    "state": "NOT_APPLICABLE",
-    "phase": "\u2014",
-    "note": "Server-to-server (Lenco); no client consumes it"
-  },
-  "api:POST /webhooks/vercel-log-drain": {
-    "state": "NOT_APPLICABLE",
-    "phase": "\u2014",
-    "note": "Server-to-server (Lenco); no client consumes it"
-  },
-  "service:user.service.getMyProfile": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Added to core alongside the P5 profile screen."
-  },
-  "service:user.service.updatePaymentInfo": {
-    "state": "DONE",
-    "phase": "P5",
-    "note": "Added to core alongside the P5 profile screen."
-  }
+    "route:/login": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Native login screen; username-or-email resolve via /auth/resolve-username."
+    },
+    "route:/join": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": "Join-org flow; reached via invite deep link"
+    },
+    "route:/reset-password": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": "Must handle the Supabase recovery deep link"
+    },
+    "route:/": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "AuthGate + five-tab shell; REQUESTOR tab rule matches web Layout.tsx."
+    },
+    "route:/requisitions": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Inbox: day-grouped cards, status tabs from core config, search, sort, pull-to-refresh."
+    },
+    "route:/requisitions/new": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "New request form with line items and live total; handles the one-open-request API block."
+    },
+    "route:/menu": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Menu tab: profile, role-gated queues, Other Services grid, sign out. Settings land in P5."
+    },
+    "route:/cashbook": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Wallet carousel, ledger, entry detail, deposit, transfers, wallet/external-account creation, CSV statement import. Pay-link deferred to P5."
+    },
+    "route:/sales/new": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": "POS / New Sale"
+    },
+    "route:/approvals": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Native queue; approve/reject on the requisition detail, gated by core.canAuthoriseRequisition."
+    },
+    "route:/disbursements": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Native queue; payout sheet on the detail screen (cash settles, Lenco returns PROCESSING)."
+    },
+    "route:/vouchers": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Voucher list grouped by day."
+    },
+    "route:/vouchers/:id": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Journal lines, balance check, post-to-ledger for ACCOUNTANT/ADMIN."
+    },
+    "route:/reporting": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Headline card, Month/Quarter/YTD toggle, grouped category breakdown with budget progress and prior-period change. Trend chart and budget editing stay web-only for now."
+    },
+    "route:/intelligence": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Full composer parity: vendor-logo model picker (native SVG port of VendorLogos.tsx), bank-statement attachment upload (bank-statements bucket, same path convention), and dictation via expo-speech-recognition. Hero copy matches web request (\"How can I help you today?\"), sparkle icon removed per request."
+    },
+    "route:/settings": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Split into three focused screens (profile/general/team) reached from Menu, rather than one tabbed page \u2014 matches how the app already navigates."
+    },
+    "route:/products": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "List + create/edit for name, type, price, image. Digital assets, delivery options and additional-image carousel stay web-only."
+    },
+    "route:/audit": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Score hero, search, per-transaction rating -> requisition detail."
+    },
+    "route:/schedules": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "List with category filter, run-now, and a creation modal covering title/amount/category/cadence/next-due."
+    },
+    "route:/onboarding": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": "Full signup wizard -- deferred; org creation and activation happen on web today."
+    },
+    "route:/apps": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": "Payroll + Invest -- P6."
+    },
+    "route:/apps/payroll": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Apps hub (Payroll card, Activate/Open) + Payroll home screen (History/Staff segmented tabs, search, sort)."
+    },
+    "route:/apps/payroll/run": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Dynamic run-creation wizard at app/apps/payroll/run/index.tsx \u2014 steps derived from configured allowance/deduction types, review as per-employee cards (not a desktop table)."
+    },
+    "route:/invest": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": ""
+    },
+    "route:/invest/company/:id": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": ""
+    },
+    "route:/invest/product/:id": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": ""
+    },
+    "route:/pay/:wallet_id": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Customer payment page; app shares the URL, never renders it"
+    },
+    "route:/pl/:token": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "One-time payment link for customers"
+    },
+    "route:/privacy": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Linked out from Settings (store listing also links here)"
+    },
+    "route:/terms": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Linked out from Settings"
+    },
+    "route:/disconnect": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "OAuth disconnect callback \u2014 browser only"
+    },
+    "screen:PublicPay": {
+        "state": "NOT_APPLICABLE",
+        "phase": "\u2014",
+        "note": "Unrouted legacy pay page (superseded by PublicPaymentLink)"
+    },
+    "screen:CashLedger": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "app/(tabs)/wallet.tsx + app/wallet/*"
+    },
+    "screen:Reporting": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "app/(tabs)/reporting.tsx"
+    },
+    "screen:RequisitionList": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "app/(tabs)/index.tsx"
+    },
+    "screen:PublicPaymentLink": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "One-time payment link for customers"
+    },
+    "screen:NewSale": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": "POS / New Sale"
+    },
+    "screen:Schedules": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "app/schedules.tsx"
+    },
+    "screen:RequisitionCreate": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "app/requisition/new.tsx"
+    },
+    "screen:CashierDashboard": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "app/disbursements.tsx + DisburseSheet"
+    },
+    "screen:RunPayrollPage": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Ported as app/apps/payroll/run/index.tsx. Batch disbursement (30s server ceiling) handled by PayrollDisburseSheet on the requisition detail screen via a polling loop."
+    },
+    "screen:QuickPay": {
+        "state": "NOT_APPLICABLE",
+        "phase": "\u2014",
+        "note": "Unrouted legacy"
+    },
+    "screen:InvestPaymentFlow": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": "Sub-screen reached from a parent route"
+    },
+    "screen:Login": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "app/(auth)/login.tsx"
+    },
+    "screen:Payroll": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "app/apps/payroll/index.tsx \u2014 run history + staff roster, config screen, staff detail/edit, add staff, bulk CSV import."
+    },
+    "screen:InvestHome": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": ""
+    },
+    "screen:Menu": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "app/(tabs)/menu.tsx"
+    },
+    "screen:InvestProductDetail": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": ""
+    },
+    "screen:Onboarding": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "screen:Approvals": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "app/approvals.tsx"
+    },
+    "screen:VoucherDetail": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "app/vouchers/[id].tsx"
+    },
+    "screen:Audit": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "app/audit.tsx"
+    },
+    "screen:ResetPassword": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": "Must handle the Supabase recovery deep link"
+    },
+    "screen:Vouchers": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "app/vouchers/index.tsx"
+    },
+    "screen:Settings": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "app/settings/profile.tsx + general.tsx + team.tsx"
+    },
+    "screen:InvestCompany": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": ""
+    },
+    "screen:investCertificate.ts": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": "Sub-screen reached from a parent route"
+    },
+    "screen:Join": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": "Join-org flow; reached via invite deep link"
+    },
+    "screen:PrivacyPolicy": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Linked out from Settings (store listing also links here)"
+    },
+    "screen:InvestChart": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": "Sub-screen reached from a parent route"
+    },
+    "screen:investChartData.ts": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": "Sub-screen reached from a parent route"
+    },
+    "screen:TermsOfService": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Linked out from Settings"
+    },
+    "screen:Dashboard": {
+        "state": "NOT_APPLICABLE",
+        "phase": "\u2014",
+        "note": "Unrouted legacy"
+    },
+    "screen:Apps": {
+        "state": "PLANNED",
+        "phase": "P6",
+        "note": ""
+    },
+    "screen:StaffPortfolio": {
+        "state": "NOT_APPLICABLE",
+        "phase": "\u2014",
+        "note": "Unrouted legacy"
+    },
+    "screen:Intelligence": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "app/(tabs)/bi.tsx"
+    },
+    "screen:Disconnect": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "OAuth disconnect callback \u2014 browser only"
+    },
+    "screen:ProductsServices": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "app/products/*"
+    },
+    "screen:PayEntry": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Customer payment page; app shares the URL, never renders it"
+    },
+    "screen:ComingSoonPage": {
+        "state": "NOT_APPLICABLE",
+        "phase": "\u2014",
+        "note": "Unrouted stub"
+    },
+    "service:account.service.getAll": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:account.service.create": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:account.service.update": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:account.service.importFromQuickBooks": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:account.service.suggestAccount": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:account.service.suggestBatch": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.getRules": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.createRule": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.updateRule": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.deleteRule": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.getDailyMetrics": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.getStats": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.getModelSettings": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:ai.service.updateModelSettings": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:budget.service.getBudgets": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:budget.service.setBudget": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.getEntries": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.getOverview": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.getBalance": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.getSummary": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.reconcile": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.returnCash": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.closeBook": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.logInflow": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.recordManualSale": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.logWalletDepositIntent": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.classifyBulk": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.postToQuickBooks": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.updateAccount": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.narrateEntry": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.getWallets": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.createWallet": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.transfer": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.transferToWallet": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.getExternalWallets": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.createExternalWallet": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.deleteExternalWallet": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.previewStatementImport": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:cashbook.service.importStatement": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:department.service.list": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:department.service.create": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:department.service.update": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:department.service.delete": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:highlights.service.getHighlights": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:highlights.service.acknowledgeAchievements": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.getStatus": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.getConnectUrl": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.disconnect": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.getAccounts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.getAccountTransactions": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.retrySync": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.getOAuthUrl": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.connect": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.getFeeCategories": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.mapCategory": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.setLencoMode": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.sync": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:integration.service.reconcile": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.getAccounts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.provisionOrganizationSubaccount": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.getAvailableAccounts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.linkOrganizationSubaccount": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.verifyStatus": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.getReconciliationSummary": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.getBanks": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.resolveBankAccount": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.resolveMobileMoney": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.verifyDisbursementStatus": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.getSaleReceiptDetails": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:lenco.service.calculatePayoutFee": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.getState": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.saveProgress": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.updateOrganizationName": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.saveProfile": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.generateChartOfAccounts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.saveChartOfAccounts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.getWalletStatus": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.claimWallet": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.confirmActivation": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:onboarding.service.complete": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:organization.service.getOrganization": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:organization.service.updateOrganization": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:organization.service.deleteOrganization": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:organization.service.getOrCreateQuickLinkUsername": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.listStaff": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.getStaffMember": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.createStaffMember": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.updateStaffMember": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.archiveStaffMember": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.getStaffPayrollHistory": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.getStaffDepartments": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.listRuns": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.getRun": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.createRun": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.approveRun": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.getSuggestedDeductions": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.getPayrollConfig": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:payroll.service.upsertPayrollConfig": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.getProducts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.createProduct": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.updateProduct": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.deleteProduct": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.getProductSales": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.getAvailability": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.createPaymentLink": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.createInvoiceLink": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.listPaymentLinks": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.listInvoiceLinks": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.deactivatePaymentLink": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.archiveInvoiceLink": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:product.service.updateInvoiceLink": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:report.service.getExpenditures": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:report.service.getExpenditureItems": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.autoDisburse": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.disburse": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.disburseExcess": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.verifyDisbursement": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.acknowledge": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.getAll": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.getById": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.create": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.update": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.getFileUrl": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.analyzeReceipt": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.getDisbursementHistory": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.updateDisbursement": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.analyzeDisbursementProof": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.getMessages": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.sendMessage": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.approveCategorization": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.retriggerAI": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.postToQuickBooks": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.scanReceipts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.acknowledgeReceipt": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.deleteReceipt": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.updateLineItemAccount": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.revertToDraft": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.getAuditReport": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.disbursePayroll": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.updateLineItemDetails": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:requisition.service.delete": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:schedule.service.getAll": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:schedule.service.getCounts": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:schedule.service.create": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:schedule.service.update": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:schedule.service.delete": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:schedule.service.getRuns": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:schedule.service.runNow": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:user.service.getAll": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:user.service.create": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:user.service.update": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:user.service.delete": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:user.service.resendInvite": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:voucher.service.getAll": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:voucher.service.getById": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:voucher.service.createFromRequisition": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:voucher.service.post": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "service:voucher.service.postVoucherWithClassification": {
+        "state": "DONE",
+        "phase": "P0",
+        "note": "Moved to packages/core; web file is a re-export."
+    },
+    "api:GET /accounts": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Consumed by the native assistant / reporting screens."
+    },
+    "api:POST /accounts": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:PUT /accounts/:id": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /accounts/import": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /accounts/suggest": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /admin/analytics/payment-links": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/analytics/payment-links/attempts": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:PUT /admin/analytics/posthog-key": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/logs": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/me": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/reconciliation": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/reconciliation/:orgId": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:POST /admin/reconciliation/:orgId/heal-platform-fees": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/reconciliation/:orgId/raw-lenco-txns": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:POST /admin/reconciliation/heal-platform-fees": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:POST /admin/test-collection/initiate": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/test-collection/status/:reference": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/wallet-pool": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:POST /admin/wallet-pool": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:PATCH /admin/wallet-pool/:id": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:GET /admin/wallet-pool/settings": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:PUT /admin/wallet-pool/settings": {
+        "state": "WEB_ONLY",
+        "phase": "\u2014",
+        "note": "Reconciliation console lives in apps/admin"
+    },
+    "api:POST /ai/agent/approve": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Consumed by the native assistant / reporting screens."
+    },
+    "api:POST /ai/agent/chat": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Consumed by the native assistant / reporting screens."
+    },
+    "api:GET /ai/agent/models": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Consumed by the native assistant / reporting screens."
+    },
+    "api:GET /ai/agent/threads": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Consumed by the native assistant / reporting screens."
+    },
+    "api:GET /ai/agent/threads/:id": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:DELETE /ai/agent/threads/:id": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:POST /ai/assistant": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:GET /ai/digest": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:GET /ai/highlights": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:POST /ai/highlights/acknowledge": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:POST /ai/highlights/weekly-email": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:GET /ai/metrics/daily": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:GET /ai/metrics/stats": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:GET /ai/model-settings": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:PUT /ai/model-settings": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:GET /ai/rules": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:POST /ai/rules": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:PATCH /ai/rules/:id": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:DELETE /ai/rules/:id": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:POST /auth/complete-invitation": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:POST /auth/forgot-password": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:POST /auth/join-request": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:GET /auth/my-organizations": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:GET /auth/organizations/search": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:POST /auth/register": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:POST /auth/resolve-username": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:POST /auth/signup": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:POST /auth/switch-organization": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:POST /billing/downgrade": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /billing/generate-invoice": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /billing/invoice/:invoiceId/receipt": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /billing/pay/:invoiceId": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /billing/pay/:invoiceId/mobile-money": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /billing/pay/:invoiceId/mobile-money/status": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /billing/subscription": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /billing/upgrade": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /budgets": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Consumed by the native assistant / reporting screens."
+    },
+    "api:POST /budgets": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:GET /cashbook": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:PATCH /cashbook/:entryId/account": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:PATCH /cashbook/:entryId/narrate": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /cashbook/balance": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /cashbook/classify-bulk": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /cashbook/close": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /cashbook/create-qb-account": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /cashbook/external-wallets": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Consumed by the native Wallet tab."
+    },
+    "api:POST /cashbook/external-wallets": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Native transfer and wallet-creation screens."
+    },
+    "api:DELETE /cashbook/external-wallets/:id": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /cashbook/external-wallets/:id/import-preview": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "CSV statement import; XLSX still web-only."
+    },
+    "api:POST /cashbook/external-wallets/:id/import-statement": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "CSV statement import; XLSX still web-only."
+    },
+    "api:POST /cashbook/inflow": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Consumed by the native Wallet tab."
+    },
+    "api:POST /cashbook/manual-sale": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /cashbook/overview": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Consumed by the native Wallet tab."
+    },
+    "api:POST /cashbook/post-to-qb": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /cashbook/reconcile": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /cashbook/return": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /cashbook/summary": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /cashbook/transfer-to-wallet": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Native transfer and wallet-creation screens."
+    },
+    "api:POST /cashbook/wallet-deposit-intent": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /cashbook/wallets": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Consumed by the native Wallet tab."
+    },
+    "api:POST /cashbook/wallets": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Native transfer and wallet-creation screens."
+    },
+    "api:POST /cashbook/wallets/transfer": {
+        "state": "DONE",
+        "phase": "P2",
+        "note": "Native transfer and wallet-creation screens."
+    },
+    "api:GET /departments": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:POST /departments": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:PATCH /departments/:id": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:DELETE /departments/:id": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:DELETE /integrations/masterfees": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /integrations/masterfees/backfill-payments": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /integrations/masterfees/connect": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /integrations/masterfees/correct-dates": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/masterfees/diag": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/masterfees/fee-categories": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:PUT /integrations/masterfees/fee-categories": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:PUT /integrations/masterfees/lenco-mode": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/masterfees/oauth/callback": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/masterfees/oauth/url": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /integrations/masterfees/recategorize-invoices": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/masterfees/reconcile": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/masterfees/status": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /integrations/masterfees/sync": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /integrations/masterfees/sync-all": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:DELETE /integrations/quickbooks": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/quickbooks/accounts": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/quickbooks/accounts/:qbAccountId/transactions": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/quickbooks/callback": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/quickbooks/connect": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/quickbooks/invoices": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /integrations/quickbooks/sync/:id": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /integrations/status": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /lenco/accounts": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/available-accounts": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/banks": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/organizations/:id/link": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/organizations/:id/provision": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/public-collection-finalize/:reference": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-collection-longpoll/:reference": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/public-collection/cancel": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/public-collection/mobile-money": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/public-collection/resolve-momo": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-context/:wallet_id": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/public-diagnostics/report": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-payment-link/:token": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-product-availability/:productId": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-quicklink-context/:username": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/public-quicklink-intent": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-quicklink-purposes/:username": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-sale-receipt/:reference": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-sales/by-phone/:phone": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/public-verify-status/:reference": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/public-wallet-deposit-intent": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/reconcile/:organizationId": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/resolve-bank": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/resolve-momo": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/sale-receipt/:entryId": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/sync": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/test-collection/initiate": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/test-collection/status/:reference": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:GET /lenco/verify-status/:reference": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/wallet-deposit-intent": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /lenco/webhook": {
+        "state": "PLANNED",
+        "phase": "P2",
+        "note": ""
+    },
+    "api:POST /onboarding/chart-of-accounts": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /onboarding/chart-of-accounts/generate": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /onboarding/complete": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:PUT /onboarding/organization": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:PUT /onboarding/profile": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:PUT /onboarding/progress": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /onboarding/state": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /onboarding/wallet": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /onboarding/wallet/activation-confirm": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /onboarding/wallet/claim": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /organizations": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:PUT /organizations": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:DELETE /organizations": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /organizations/payment-links": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /organizations/payment-links": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:PATCH /organizations/payment-links/:id": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:PATCH /organizations/payment-links/:id/archive": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /organizations/payment-links/:id/deactivate": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /organizations/payment-links/invoice": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /organizations/products": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:POST /organizations/products": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:PUT /organizations/products/:id": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:DELETE /organizations/products/:id": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /organizations/products/:id/sales": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /organizations/products/sales-by-reference/:reference": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /organizations/quick-link-username": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /payroll/config": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/config.tsx"
+    },
+    "api:PUT /payroll/config": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/config.tsx"
+    },
+    "api:GET /payroll/runs": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/index.tsx (History tab)"
+    },
+    "api:POST /payroll/runs": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/run/index.tsx wizard submit"
+    },
+    "api:GET /payroll/runs/:id": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/run/[id].tsx"
+    },
+    "api:POST /payroll/runs/:id/approve": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/run/[id].tsx"
+    },
+    "api:GET /payroll/runs/suggested-deductions": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/run/index.tsx wizard (auto standing loans/advances)"
+    },
+    "api:GET /payroll/staff": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/index.tsx (Staff tab) and run/index.tsx auto-population"
+    },
+    "api:POST /payroll/staff": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/staff/new.tsx and staff/import.tsx"
+    },
+    "api:GET /payroll/staff/:id": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/staff/[id].tsx"
+    },
+    "api:PATCH /payroll/staff/:id": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/staff/[id].tsx EditStaffModal"
+    },
+    "api:DELETE /payroll/staff/:id": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/staff/[id].tsx (archive)"
+    },
+    "api:GET /payroll/staff/:id/history": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/staff/[id].tsx Payroll History tab"
+    },
+    "api:GET /payroll/staff/departments": {
+        "state": "DONE",
+        "phase": "P6",
+        "note": "Consumed by apps/payroll/staff/new.tsx department autocomplete"
+    },
+    "api:GET /reports/expenditure": {
+        "state": "DONE",
+        "phase": "P4",
+        "note": "Consumed by the native assistant / reporting screens."
+    },
+    "api:GET /reports/expenditure/:accountId/items": {
+        "state": "PLANNED",
+        "phase": "P4",
+        "note": ""
+    },
+    "api:POST /requisitions": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Consumed by the native Inbox."
+    },
+    "api:GET /requisitions": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Consumed by the native Inbox."
+    },
+    "api:GET /requisitions/:id": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Native detail screen: receipts + activity thread."
+    },
+    "api:PUT /requisitions/:id": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:DELETE /requisitions/:id": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/acknowledge": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/approve-categorization": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/auto-complete": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/auto-disburse": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/confirm-change": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/disburse": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Consumed by the native approval chain."
+    },
+    "api:POST /requisitions/:id/disburse-excess": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/disburse-payroll": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Consumed by PayrollDisburseSheet, polled up to 20 passes per the 30s server budget."
+    },
+    "api:PUT /requisitions/:id/expenses": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/items/:itemId/analyze-receipt": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/mark-read": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:GET /requisitions/:id/messages": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Native detail screen: receipts + activity thread."
+    },
+    "api:POST /requisitions/:id/messages": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Native detail screen: receipts + activity thread."
+    },
+    "api:DELETE /requisitions/:id/messages/:messageId": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/post-quickbooks": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/post-voucher": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:DELETE /requisitions/:id/receipts/:receiptId": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:GET /requisitions/:id/resolve-recipient": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/retrigger-ai": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/revert-to-draft": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/:id/scan-receipts": {
+        "state": "DONE",
+        "phase": "P1",
+        "note": "Native detail screen: receipts + activity thread."
+    },
+    "api:PATCH /requisitions/:id/status": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Consumed by the native approval chain."
+    },
+    "api:POST /requisitions/:id/submit-change": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:GET /requisitions/:id/verify-disbursement": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:GET /requisitions/admin/all": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/auto-reminder": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:PATCH /requisitions/disbursements/:id": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/disbursements/:id/analyze-proof": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:GET /requisitions/disbursements/history": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:PATCH /requisitions/items/:itemId/account": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:PATCH /requisitions/items/:itemId/details": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/maintenance/backfill-audit": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:POST /requisitions/poll-processing": {
+        "state": "PLANNED",
+        "phase": "P1",
+        "note": ""
+    },
+    "api:GET /requisitions/reports/audit": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:GET /schedules": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:POST /schedules": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:PATCH /schedules/:id": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:DELETE /schedules/:id": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:POST /schedules/:id/run-now": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:GET /schedules/:id/runs": {
+        "state": "PLANNED",
+        "phase": "P5",
+        "note": ""
+    },
+    "api:GET /schedules/counts": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:GET /users": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:POST /users": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:PUT /users/:id": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:DELETE /users/:id": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:POST /users/:id/resend-invite": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:GET /users/me": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:PUT /users/me/payment-info": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Consumed by the native Menu-hub screens."
+    },
+    "api:GET /users/notifications": {
+        "state": "PLANNED",
+        "phase": "P0",
+        "note": ""
+    },
+    "api:GET /vouchers": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Consumed by the native approval chain."
+    },
+    "api:POST /vouchers": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Consumed by the native approval chain."
+    },
+    "api:GET /vouchers/:id": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Consumed by the native approval chain."
+    },
+    "api:POST /vouchers/:id/post": {
+        "state": "DONE",
+        "phase": "P3",
+        "note": "Consumed by the native approval chain."
+    },
+    "api:GET /webhooks/vercel-log-drain": {
+        "state": "NOT_APPLICABLE",
+        "phase": "\u2014",
+        "note": "Server-to-server (Lenco); no client consumes it"
+    },
+    "api:POST /webhooks/vercel-log-drain": {
+        "state": "NOT_APPLICABLE",
+        "phase": "\u2014",
+        "note": "Server-to-server (Lenco); no client consumes it"
+    },
+    "service:user.service.getMyProfile": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Added to core alongside the P5 profile screen."
+    },
+    "service:user.service.updatePaymentInfo": {
+        "state": "DONE",
+        "phase": "P5",
+        "note": "Added to core alongside the P5 profile screen."
+    }
 }
