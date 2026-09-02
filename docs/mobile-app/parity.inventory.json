@@ -3787,21 +3787,21 @@
       "kind": "route",
       "label": "`/invest`",
       "detail": "InvestHome · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/invest/company/:id",
       "kind": "route",
       "label": "`/invest/company/:id`",
       "detail": "InvestCompany · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "route:/invest/product/:id",
       "kind": "route",
       "label": "`/invest/product/:id`",
       "detail": "InvestProductDetail · protected",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:Approvals",
@@ -4032,49 +4032,49 @@
       "kind": "screen",
       "label": "InvestChart",
       "detail": "168 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:InvestCompany",
       "kind": "screen",
       "label": "InvestCompany",
       "detail": "192 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:InvestHome",
       "kind": "screen",
       "label": "InvestHome",
       "detail": "381 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:InvestPaymentFlow",
       "kind": "screen",
       "label": "InvestPaymentFlow",
       "detail": "655 LOC",
-      "state": "PLANNED"
+      "state": "WEB_ONLY"
     },
     {
       "key": "screen:InvestProductDetail",
       "kind": "screen",
       "label": "InvestProductDetail",
       "detail": "292 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "screen:investCertificate.ts",
       "kind": "screen",
       "label": "investCertificate.ts",
       "detail": "184 LOC",
-      "state": "PLANNED"
+      "state": "WEB_ONLY"
     },
     {
       "key": "screen:investChartData.ts",
       "kind": "screen",
       "label": "investChartData.ts",
       "detail": "167 LOC",
-      "state": "PLANNED"
+      "state": "DONE"
     },
     {
       "key": "service:account.service.getAll",

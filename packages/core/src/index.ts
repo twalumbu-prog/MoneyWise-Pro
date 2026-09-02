@@ -198,3 +198,8 @@ export {
 export type { PayrollRunLineInput } from './payroll/calc';
 
 export { detectMobileNetwork } from './reference/mobileMoney';
+
+export {
+    generateDailyHistory, generateIntradayHistory, sliceForTimeframe, formatAxisDate,
+} from './invest/chartData';
+export type { InvestProductType, PricePoint, Timeframe } from './invest/chartData';

@@ -94,6 +94,9 @@ export default function RootLayout() {
                         <Stack.Screen name="apps/payroll/staff/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/payroll/staff/new" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="apps/payroll/staff/import" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="apps/invest/index" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/invest/company/[id]" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/invest/product/[id]" options={{ animation: 'slide_from_right' }} />
                     </Stack>
                     <SessionGate />
                 </AuthProvider>

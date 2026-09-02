@@ -58,7 +58,7 @@ export default function MenuScreen() {
         { icon: ShieldCheck, label: 'Audit', go: () => router.push('/audit') },
         { icon: ShoppingBag, label: 'Products', go: () => router.push('/products') },
         { icon: LayoutGrid, label: 'Apps', go: () => router.push('/apps') },
-        { icon: TrendingUp, label: 'Invest', go: () => soon('Invest') },
+        { icon: TrendingUp, label: 'Invest', go: () => router.push('/apps/invest') },
         { icon: Landmark, label: 'Loans', go: () => soon('Business Loans') },
         { icon: Store, label: 'Marketplace', go: () => soon('Marketplace') },
     ];

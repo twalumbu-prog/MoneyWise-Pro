@@ -8,9 +8,9 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 
 | State | Units | Share |
 | --- | --- | --- |
-| **DONE** | 260 | 54.9% |
-| **PLANNED** | 180 | 38.0% |
-| **WEB_ONLY** | 27 | 5.7% |
+| **DONE** | 268 | 56.5% |
+| **PLANNED** | 170 | 35.9% |
+| **WEB_ONLY** | 29 | 6.1% |
 | **NOT_APPLICABLE** | 7 | 1.5% |
 
 **474** trackable units · **0** untriaged.
@@ -47,9 +47,9 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | `/apps/payroll` | Payroll | protected | P6 | DONE | Apps hub (Payroll card, Activate/Open) + Payroll home screen (History/Staff segmented tabs, search, sort). |
 | `/apps/payroll/run` | RunPayrollPage | protected | P6 | DONE | Dynamic run-creation wizard at app/apps/payroll/run/index.tsx — steps derived from configured allowance/deduction types, review as per-employee cards (not a desktop table). |
 | `/schedules` | Schedules | protected | P5 | DONE | List with category filter, run-now, and a creation modal covering title/amount/category/cadence/next-due. |
-| `/invest` | InvestHome | protected | P6 | PLANNED |  |
-| `/invest/company/:id` | InvestCompany | protected | P6 | PLANNED |  |
-| `/invest/product/:id` | InvestProductDetail | protected | P6 | PLANNED |  |
+| `/invest` | InvestHome | protected | P6 | DONE | app/apps/invest/index.tsx — search + Home/Trending/Unit Trusts tabs, provider list. |
+| `/invest/company/:id` | InvestCompany | protected | P6 | DONE | app/apps/invest/company/[id].tsx |
+| `/invest/product/:id` | InvestProductDetail | protected | P6 | DONE | app/apps/invest/product/[id].tsx — chart, about, Invest CTA. |
 
 ## 2. Screens (39)
 
@@ -66,12 +66,12 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | CashierDashboard | 996 | — | 1 | P3 | DONE | app/disbursements.tsx + DisburseSheet |
 | QuickPay | 951 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
 | RunPayrollPage | 929 | — | 0 | P6 | DONE | Ported as app/apps/payroll/run/index.tsx. Batch disbursement (30s server ceiling) handled by PayrollDisburseSheet on the requisition detail screen via a polling loop. |
-| InvestPaymentFlow | 655 | yes | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
+| InvestPaymentFlow | 655 | yes | 0 | P6 | WEB_ONLY | Confirmed apps/web/src/pages/invest/* has zero API calls anywhere — a UI showcase with no backend, no requisition, no ledger entry. The app's real, backend-connected invest path is MobileInvestWizard.tsx (creates an actual requisition via requisitionService.create()), which IS ported: it is now the "Invest" CTA on the product detail screen. Porting this separate decorative payment modal for a transaction that never happened would be strictly worse UX, so both of web's invest entry points converge into the one real flow on mobile. |
 | Login | 639 | — | 0 | P0 | DONE | app/(auth)/login.tsx |
 | Payroll | 518 | — | 2 | P6 | DONE | app/apps/payroll/index.tsx — run history + staff roster, config screen, staff detail/edit, add staff, bulk CSV import. |
-| InvestHome | 381 | yes | 0 | P6 | PLANNED |  |
+| InvestHome | 381 | yes | 0 | P6 | DONE | Ported as app/apps/invest/index.tsx. Provider catalog unified into src/data/investCatalog.ts (web keeps two slightly-differing copies across InvestHome.tsx and MobileInvestWizard.tsx; this app has one). |
 | Menu | 376 | — | 0 | P3 | DONE | app/(tabs)/menu.tsx |
-| InvestProductDetail | 292 | yes | 0 | P6 | PLANNED |  |
+| InvestProductDetail | 292 | yes | 0 | P6 | DONE | Ported as app/apps/invest/product/[id].tsx |
 | Onboarding | 288 | — | 0 | P5 | PLANNED |  |
 | Approvals | 241 | yes | 0 | P3 | DONE | app/approvals.tsx |
 | VoucherDetail | 234 | — | 0 | P3 | DONE | app/vouchers/[id].tsx |
@@ -79,12 +79,12 @@ Porting status lives in `docs/mobile-app/parity.status.json` and survives regene
 | ResetPassword | 208 | — | 0 | P0 | PLANNED | Must handle the Supabase recovery deep link |
 | Vouchers | 206 | — | 1 | P3 | DONE | app/vouchers/index.tsx |
 | Settings | 196 | — | 0 | P5 | DONE | app/settings/profile.tsx + general.tsx + team.tsx |
-| InvestCompany | 192 | yes | 0 | P6 | PLANNED |  |
-| investCertificate.ts | 184 | — | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
+| InvestCompany | 192 | yes | 0 | P6 | DONE | Ported as app/apps/invest/company/[id].tsx |
+| investCertificate.ts | 184 | — | 0 | P6 | WEB_ONLY | Canvas-drawn "certificate" PNG closing the decorative InvestPaymentFlow loop above — same reasoning: no real transaction to certify. The mobile flow produces a real requisition (visible in Approvals/history) instead of a decorative image. |
 | Join | 182 | — | 0 | P0 | PLANNED | Join-org flow; reached via invite deep link |
 | PrivacyPolicy | 177 | — | 0 | — | WEB_ONLY | Linked out from Settings (store listing also links here) |
-| InvestChart | 168 | — | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
-| investChartData.ts | 167 | — | 0 | P6 | PLANNED | Sub-screen reached from a parent route |
+| InvestChart | 168 | — | 0 | P6 | DONE | Ported as src/components/invest/InvestAreaChart.tsx — hand-drawn gradient area path via react-native-svg (no Recharts equivalent on native). |
+| investChartData.ts | 167 | — | 0 | P6 | DONE | Ported verbatim to packages/core/src/invest/chartData.ts (pure functions, no DOM dependency). |
 | TermsOfService | 123 | — | 0 | — | WEB_ONLY | Linked out from Settings |
 | Dashboard | 118 | — | 0 | — | NOT_APPLICABLE | Unrouted legacy |
 | Apps | 116 | — | 0 | P6 | PLANNED |  |

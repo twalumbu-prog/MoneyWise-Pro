@@ -115,19 +115,19 @@
         "note": "Dynamic run-creation wizard at app/apps/payroll/run/index.tsx \u2014 steps derived from configured allowance/deduction types, review as per-employee cards (not a desktop table)."
     },
     "route:/invest": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": ""
+        "note": "app/apps/invest/index.tsx \u2014 search + Home/Trending/Unit Trusts tabs, provider list."
     },
     "route:/invest/company/:id": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": ""
+        "note": "app/apps/invest/company/[id].tsx"
     },
     "route:/invest/product/:id": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": ""
+        "note": "app/apps/invest/product/[id].tsx \u2014 chart, about, Invest CTA."
     },
     "route:/pay/:wallet_id": {
         "state": "WEB_ONLY",
@@ -210,9 +210,9 @@
         "note": "Unrouted legacy"
     },
     "screen:InvestPaymentFlow": {
-        "state": "PLANNED",
+        "state": "WEB_ONLY",
         "phase": "P6",
-        "note": "Sub-screen reached from a parent route"
+        "note": "Confirmed apps/web/src/pages/invest/* has zero API calls anywhere \u2014 a UI showcase with no backend, no requisition, no ledger entry. The app's real, backend-connected invest path is MobileInvestWizard.tsx (creates an actual requisition via requisitionService.create()), which IS ported: it is now the \"Invest\" CTA on the product detail screen. Porting this separate decorative payment modal for a transaction that never happened would be strictly worse UX, so both of web's invest entry points converge into the one real flow on mobile."
     },
     "screen:Login": {
         "state": "DONE",
@@ -225,9 +225,9 @@
         "note": "app/apps/payroll/index.tsx \u2014 run history + staff roster, config screen, staff detail/edit, add staff, bulk CSV import."
     },
     "screen:InvestHome": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": ""
+        "note": "Ported as app/apps/invest/index.tsx. Provider catalog unified into src/data/investCatalog.ts (web keeps two slightly-differing copies across InvestHome.tsx and MobileInvestWizard.tsx; this app has one)."
     },
     "screen:Menu": {
         "state": "DONE",
@@ -235,9 +235,9 @@
         "note": "app/(tabs)/menu.tsx"
     },
     "screen:InvestProductDetail": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": ""
+        "note": "Ported as app/apps/invest/product/[id].tsx"
     },
     "screen:Onboarding": {
         "state": "PLANNED",
@@ -275,14 +275,14 @@
         "note": "app/settings/profile.tsx + general.tsx + team.tsx"
     },
     "screen:InvestCompany": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": ""
+        "note": "Ported as app/apps/invest/company/[id].tsx"
     },
     "screen:investCertificate.ts": {
-        "state": "PLANNED",
+        "state": "WEB_ONLY",
         "phase": "P6",
-        "note": "Sub-screen reached from a parent route"
+        "note": "Canvas-drawn \"certificate\" PNG closing the decorative InvestPaymentFlow loop above \u2014 same reasoning: no real transaction to certify. The mobile flow produces a real requisition (visible in Approvals/history) instead of a decorative image."
     },
     "screen:Join": {
         "state": "PLANNED",
@@ -295,14 +295,14 @@
         "note": "Linked out from Settings (store listing also links here)"
     },
     "screen:InvestChart": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": "Sub-screen reached from a parent route"
+        "note": "Ported as src/components/invest/InvestAreaChart.tsx \u2014 hand-drawn gradient area path via react-native-svg (no Recharts equivalent on native)."
     },
     "screen:investChartData.ts": {
-        "state": "PLANNED",
+        "state": "DONE",
         "phase": "P6",
-        "note": "Sub-screen reached from a parent route"
+        "note": "Ported verbatim to packages/core/src/invest/chartData.ts (pure functions, no DOM dependency)."
     },
     "screen:TermsOfService": {
         "state": "WEB_ONLY",
