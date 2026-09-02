@@ -989,6 +989,40 @@ export class QuickBooksService {
         return { success: true, qbId: result.Payment?.Id };
     }
 
+    /**
+     * Delete a Payment. QuickBooks requires the current SyncToken, so this
+     * reads the payment first; a payment that is already gone reports success
+     * so a re-run of a reversal batch stays idempotent. Deleting a Payment
+     * releases the invoices it was applied to — their balances go back up.
+     */
+    static async deletePayment(organizationId: string, paymentId: string): Promise<{ success: boolean; alreadyGone?: boolean; error?: any }> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+
+        const readRes = await fetch(`${apiBase}/${realmId}/payment/${paymentId}?minorversion=70`, {
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+        });
+        if (readRes.status === 404) return { success: true, alreadyGone: true };
+        const readJson = await readRes.json();
+        const syncToken = readJson?.Payment?.SyncToken;
+        if (!readRes.ok || syncToken === undefined) {
+            return { success: false, error: readJson };
+        }
+
+        const delRes = await fetch(`${apiBase}/${realmId}/payment?operation=delete&minorversion=70`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify({ Id: paymentId, SyncToken: syncToken }),
+        });
+        const delJson = await delRes.json();
+        if (!delRes.ok) return { success: false, error: delJson };
+        return { success: true };
+    }
+
     static async createLedgerPurchase(organizationId: string, entryId: string, debitAccountId: string, userId: string) {
         console.log(`[QB Ledger Purchase] Starting purchase creation for entry ${entryId}`);
         try {
@@ -1119,6 +1153,85 @@ export class QuickBooksService {
      *                        Only invoices that contain this string are returned.
      *                        Pass undefined / empty string to return all invoices.
      */
+    /** Every Item (product/service) in the QuickBooks file, paginated. */
+    static async fetchItems(organizationId: string): Promise<Array<{
+        id: string; name: string; fullyQualifiedName: string; active: boolean; incomeAccountId: string; incomeAccountName: string;
+    }>> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+        const pageSize = 1000;
+        const all: any[] = [];
+        let startPos = 1;
+
+        while (true) {
+            const query = `SELECT * FROM Item MAXRESULTS ${pageSize} STARTPOSITION ${startPos}`;
+            const url = `${apiBase}/${realmId}/query?query=${encodeURIComponent(query)}&minorversion=65`;
+            const res = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+            if (!res.ok) throw new Error(`[QB fetchItems] Query failed (${res.status}): ${await res.text()}`);
+            const data = await res.json();
+            const batch: any[] = data.QueryResponse?.Item ?? [];
+            all.push(...batch);
+            if (batch.length < pageSize) break;
+            startPos += pageSize;
+        }
+
+        return all.map(i => ({
+            id: i.Id ?? '',
+            name: i.Name ?? '',
+            fullyQualifiedName: i.FullyQualifiedName ?? i.Name ?? '',
+            active: i.Active !== false,
+            incomeAccountId: i.IncomeAccountRef?.value ?? '',
+            incomeAccountName: i.IncomeAccountRef?.name ?? '',
+        }));
+    }
+
+    /**
+     * Create an Invoice. Used to post a Master Fees invoice that was never
+     * mirrored into QuickBooks, so a payment has something to be applied
+     * against. `privateNote` carries the Master Fees invoice reference, which
+     * is what makes the link durable (and re-runs idempotent).
+     */
+    static async createInvoice(organizationId: string, params: {
+        customerId: string;
+        txnDate: string;
+        lines: Array<{ amount: number; itemId: string; description: string }>;
+        privateNote?: string;
+        docNumber?: string;
+    }): Promise<{ success: boolean; qbId?: string; docNumber?: string; error?: any }> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+
+        const invoice: any = {
+            CustomerRef: { value: params.customerId },
+            TxnDate: params.txnDate,
+            Line: params.lines.map(l => ({
+                Amount: Number(l.amount.toFixed(2)),
+                DetailType: 'SalesItemLineDetail',
+                Description: l.description,
+                SalesItemLineDetail: {
+                    ItemRef: { value: l.itemId },
+                    Qty: 1,
+                    UnitPrice: Number(l.amount.toFixed(2)),
+                },
+            })),
+        };
+        if (params.privateNote) invoice.PrivateNote = params.privateNote;
+        if (params.docNumber) invoice.DocNumber = params.docNumber;
+
+        const res = await fetch(`${apiBase}/${realmId}/invoice?minorversion=70`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify(invoice),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+            console.error('[QB Invoice] API Error:', JSON.stringify(json).slice(0, 500));
+            return { success: false, error: json };
+        }
+        console.log(`[QB Invoice] ✅ Created ID: ${json.Invoice?.Id}`);
+        return { success: true, qbId: json.Invoice?.Id, docNumber: json.Invoice?.DocNumber };
+    }
+
     /**
      * Every customer in the QuickBooks file, paginated. Distinct from the
      * customer names embedded in fetchInvoices' results, which only cover

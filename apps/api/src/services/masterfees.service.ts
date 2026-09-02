@@ -212,6 +212,12 @@ interface MFInvoice {
     total_amount?: number | string;
     paid_amount?: number | string;
     balance_due?: number | string;
+    /** Academic term (1-3) and year this invoice belongs to. Returned by the
+     *  API but previously unmodelled — it is the only reliable way to tell one
+     *  term's tuition from another's when the amount and description repeat
+     *  identically every term. */
+    term?: number;
+    year?: number;
     student?: MFStudent;
     items?: MFInvoiceItem[];
 }
@@ -229,6 +235,9 @@ interface MFTransaction {
     status?: string;
     completed_at?: string;
     invoice_id?: string;
+    /** Academic term/year this payment was recorded against — see MFInvoice. */
+    term?: number;
+    year?: number;
     student?: MFStudent;
 }
 interface MFFeeCategory { id?: string; category_id?: string; name?: string; amount?: number | string; price?: number | string; }
