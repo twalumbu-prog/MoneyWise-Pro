@@ -935,6 +935,60 @@ export class QuickBooksService {
         }
     }
 
+    /**
+     * Record a customer payment applied against specific open invoices — the
+     * correct QB object for "a guardian paid a fee we already invoiced": QB
+     * itself derives Dr DepositToAccountRef / Cr Accounts Receivable, and each
+     * linked invoice's balance drops by the applied amount. Unlike createDeposit
+     * (a single-sided cash-in with no customer/invoice linkage), a Payment can
+     * only carry one CustomerRef, so a guardian's payment covering more than
+     * one child must be split into one Payment per child beforehand by the caller.
+     */
+    static async createPayment(
+        organizationId: string,
+        params: {
+            customerId: string;
+            txnDate: string;
+            depositToAccountId: string;
+            lines: Array<{ invoiceId: string; amount: number }>;
+            privateNote?: string;
+        }
+    ): Promise<{ success: boolean; qbId?: string; error?: any }> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const totalAmt = params.lines.reduce((s, l) => s + l.amount, 0);
+
+        const payment = {
+            CustomerRef: { value: params.customerId },
+            TxnDate: params.txnDate,
+            TotalAmt: totalAmt,
+            DepositToAccountRef: { value: params.depositToAccountId },
+            Line: params.lines.map(l => ({
+                Amount: l.amount,
+                LinkedTxn: [{ TxnId: l.invoiceId, TxnType: 'Invoice' }],
+            })),
+            PrivateNote: params.privateNote,
+        };
+
+        const { apiBase } = this.getEnv();
+        const response = await fetch(`${apiBase}/${realmId}/payment?minorversion=70`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            },
+            body: JSON.stringify(payment),
+        });
+
+        const result = await response.json();
+        if (!response.ok) {
+            console.error('[QB Payment] API Error:', JSON.stringify(result));
+            return { success: false, error: result };
+        }
+        console.log(`[QB Payment] ✅ Created ID: ${result.Payment?.Id}`);
+        return { success: true, qbId: result.Payment?.Id };
+    }
+
     static async createLedgerPurchase(organizationId: string, entryId: string, debitAccountId: string, userId: string) {
         console.log(`[QB Ledger Purchase] Starting purchase creation for entry ${entryId}`);
         try {
@@ -1065,6 +1119,57 @@ export class QuickBooksService {
      *                        Only invoices that contain this string are returned.
      *                        Pass undefined / empty string to return all invoices.
      */
+    /**
+     * Every customer in the QuickBooks file, paginated. Distinct from the
+     * customer names embedded in fetchInvoices' results, which only cover
+     * customers who happen to have an invoice in the queried date range —
+     * matching a payer against the customer list needs the whole roster.
+     */
+    static async fetchCustomers(organizationId: string): Promise<Array<{
+        id: string;
+        displayName: string;
+        givenName: string;
+        middleName: string;
+        familyName: string;
+        companyName: string;
+        active: boolean;
+        balance: number;
+    }>> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+        const pageSize = 1000;
+        const all: any[] = [];
+        let startPos = 1;
+
+        while (true) {
+            const query = `SELECT * FROM Customer MAXRESULTS ${pageSize} STARTPOSITION ${startPos}`;
+            const url = `${apiBase}/${realmId}/query?query=${encodeURIComponent(query)}&minorversion=65`;
+            const res = await fetch(url, {
+                headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+            });
+            if (!res.ok) {
+                const txt = await res.text();
+                throw new Error(`[QB fetchCustomers] Query failed (${res.status}): ${txt}`);
+            }
+            const data = await res.json();
+            const batch: any[] = data.QueryResponse?.Customer ?? [];
+            all.push(...batch);
+            if (batch.length < pageSize) break;
+            startPos += pageSize;
+        }
+
+        return all.map(c => ({
+            id: c.Id ?? '',
+            displayName: c.DisplayName ?? '',
+            givenName: c.GivenName ?? '',
+            middleName: c.MiddleName ?? '',
+            familyName: c.FamilyName ?? '',
+            companyName: c.CompanyName ?? '',
+            active: c.Active !== false,
+            balance: c.Balance ?? 0,
+        }));
+    }
+
     static async fetchInvoices(
         organizationId: string,
         fromDate: string,
@@ -1074,6 +1179,7 @@ export class QuickBooksService {
         id: string;
         docNumber: string;
         date: string;
+        customerId: string;
         customerName: string;
         customerEmail: string;
         memo: string;
@@ -1135,6 +1241,7 @@ export class QuickBooksService {
             id         : inv.Id ?? '',
             docNumber  : inv.DocNumber ?? '',
             date       : inv.TxnDate ?? '',
+            customerId   : inv.CustomerRef?.value ?? '',
             customerName : inv.CustomerRef?.name ?? '',
             customerEmail: inv.BillEmail?.Address ?? '',
             memo         : inv.CustomerMemo?.value ?? '',
