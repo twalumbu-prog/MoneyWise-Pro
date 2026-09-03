@@ -5,6 +5,7 @@ import { Star, Users } from 'lucide-react-native';
 import { generateDailyHistory, generateIntradayHistory, sliceForTimeframe } from 'core';
 import type { Timeframe } from 'core';
 import { findProduct } from '../../../../src/data/investCatalog';
+import { useInvestProviders } from '../../../../src/hooks/useInvestProviders';
 import { InvestLogo } from '../../../../src/components/invest/InvestLogo';
 import { InvestAreaChart } from '../../../../src/components/invest/InvestAreaChart';
 import { InvestPaymentFlow } from '../../../../src/components/invest/InvestPaymentFlow';
@@ -21,7 +22,8 @@ const CHART_WIDTH = Dimensions.get('window').width - 40;
  */
 export default function InvestProductDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
-    const found = findProduct(String(id));
+    const providers = useInvestProviders();
+    const found = findProduct(String(id), providers);
     const [timeframe, setTimeframe] = useState<Timeframe>('1M');
     const [flowOpen, setFlowOpen] = useState(false);
 

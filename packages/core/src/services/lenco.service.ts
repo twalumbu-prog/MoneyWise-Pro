@@ -76,6 +76,20 @@ export const lencoService = {
         });
     },
 
+    /**
+     * Logs the PENDING ledger intent for a wallet-scoped deposit before the
+     * mobile-money charge is fired — must be called first, same order the
+     * QuickLink/POS checkout uses. Public/wallet-scoped so it works for a
+     * destination wallet the caller doesn't belong to (e.g. investing into
+     * another organization).
+     */
+    logPublicWalletDepositIntent(reference: string, purpose: string, amount: number, walletId: string): Promise<any> {
+        return apiJson('/lenco/public-wallet-deposit-intent', {
+            method: 'POST',
+            body: JSON.stringify({ reference, purpose, amount, walletId }),
+        });
+    },
+
     /** Server-held long-poll (holds up to ~22s) — call in a loop until `verified`. */
     longPollCollectionStatus(reference: string, organizationId: string): Promise<{
         verified: boolean; status?: string; completedAt?: string; initiatedAt?: string; referenceNumber?: string;

@@ -8,7 +8,7 @@ import {
     ChevronLeft, X, Repeat, Smartphone, CreditCard, ChevronDown, CheckCircle2, Delete,
 } from 'lucide-react-native';
 import {
-    cashbookService, lencoService, detectMobileNetwork, formatKwacha,
+    cashbookService, lencoService, investmentService, detectMobileNetwork, formatKwacha,
 } from 'core';
 import type { InvestProduct, InvestProvider } from '../../data/investCatalog';
 import { PaymentWaitingScreen, type PaymentPhase } from '../payments/PaymentWaitingScreen';
@@ -69,8 +69,10 @@ export const InvestPaymentFlow: React.FC<{
     const [phase, setPhase] = useState<PaymentPhase>('initiating');
     const [elapsed, setElapsed] = useState(0);
     const [reference, setReference] = useState('');
+    const [payError, setPayError] = useState<string | null>(null);
     const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
     const elapsedInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+    const cancelledRef = useRef(false);
 
     const { data: wallets = [] } = useQuery({
         queryKey: ['wallets-payment-flow'],
@@ -102,6 +104,8 @@ export const InvestPaymentFlow: React.FC<{
         setPhase('initiating');
         setElapsed(0);
         setReference('');
+        setPayError(null);
+        cancelledRef.current = false;
         return () => {
             timers.current.forEach(clearTimeout);
             timers.current = [];
@@ -164,6 +168,59 @@ export const InvestPaymentFlow: React.FC<{
         timers.current.push(setTimeout(() => { clearTimers(); setPhase('success'); }, 5800));
     };
 
+    /**
+     * Real deposit into provider.walletId — same server-initiated mobile-money
+     * collection QuickPay/lenco-transfer.tsx use, just against the investment
+     * target's wallet (cross-org, hence the public/*-scoped endpoints) instead
+     * of the caller's own.
+     */
+    const startRealDeposit = async () => {
+        if (!provider.walletId || !provider.organizationId) return;
+        const ref = genReference();
+        setReference(ref);
+        setPayError(null);
+        cancelledRef.current = false;
+
+        try {
+            await lencoService.logPublicWalletDepositIntent(ref, `Investment deposit into ${provider.name}`, amount, provider.walletId);
+            const initRes = await lencoService.initiateMobileMoneyCollection({
+                reference: ref, amount, phone, operator: (operator || '').toLowerCase(), walletId: provider.walletId,
+            });
+            const status = initRes?.data?.status;
+            if (status !== 'pay-offline' && status !== 'pending' && status !== 'successful') {
+                throw new Error(`Payment could not be started (status: ${status || 'unknown'}). Please try again.`);
+            }
+
+            setStep('WAITING');
+            setPhase('confirm');
+            setElapsed(0);
+            elapsedInterval.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+
+            for (let attempt = 0; attempt < 8; attempt++) {
+                if (cancelledRef.current) return;
+                setPhase((p) => (p === 'confirm' ? 'polling' : p));
+                try {
+                    const res = await lencoService.longPollCollectionStatus(ref, provider.organizationId);
+                    if (cancelledRef.current) return;
+                    if (res.verified) {
+                        if (elapsedInterval.current) clearInterval(elapsedInterval.current);
+                        setPhase('success');
+                        lencoService.finalizeCollection(ref, provider.organizationId).catch(() => {});
+                        return;
+                    }
+                } catch {
+                    // transient — the loop just retries
+                }
+            }
+            if (elapsedInterval.current) clearInterval(elapsedInterval.current);
+            setPayError('We confirmed the request with Lenco, but it hasn\'t reconciled yet. It will settle automatically — check back shortly.');
+            setStep('PAY');
+        } catch (e: any) {
+            setPayError(e?.message ?? 'Failed to start the deposit. Please try again.');
+            setStep('PAY');
+        }
+    };
+
     const startAutoInvestActivation = () => {
         setReference(genReference());
         setStep('ACTIVATING');
@@ -176,6 +233,27 @@ export const InvestPaymentFlow: React.FC<{
         timers.current.push(setTimeout(() => setStep('SUCCESS'), 1200));
     };
 
+    /** Real ledger transfer from the caller's own wallet into the investment target's wallet. */
+    const startRealWalletPayment = async () => {
+        if (!selectedWallet || !provider.investmentTargetId) return;
+        const ref = genReference();
+        setReference(ref);
+        setPayError(null);
+        setStep('ACTIVATING');
+        try {
+            await investmentService.walletTransfer(
+                selectedWallet.id,
+                provider.investmentTargetId,
+                amount,
+                `Investment: ${selectedWallet.name} ➜ ${provider.name}`,
+            );
+            setStep('SUCCESS');
+        } catch (e: any) {
+            setPayError(e?.message ?? 'Failed to transfer funds. Please try again.');
+            setStep('PAY');
+        }
+    };
+
     const handleAmountCta = () => {
         if (amount <= 0) return;
         if (method === 'DEPOSIT') setStep('PAY');
@@ -183,11 +261,23 @@ export const InvestPaymentFlow: React.FC<{
     };
 
     const handlePayCta = () => {
+        if (provider.isReal) {
+            if (payMethod === 'WALLET') startRealWalletPayment();
+            else if (payMethod === 'MOBILE_MONEY') startRealDeposit();
+            return;
+        }
         if (payMethod === 'WALLET') startWalletPayment();
         else if (payMethod === 'MOBILE_MONEY') startDepositSimulation();
     };
 
-    const handleClose = () => { clearTimers(); onClose(); };
+    const handleCancelWaiting = () => {
+        cancelledRef.current = true;
+        clearTimers();
+        if (provider.isReal) lencoService.cancelCollection(reference).catch(() => {});
+        setStep('PAY');
+    };
+
+    const handleClose = () => { cancelledRef.current = true; clearTimers(); onClose(); };
 
     const ctaLabel = method === 'DEPOSIT' ? 'Proceed to Payment' : 'Activate Auto-Invest';
     const charge = Math.max(1, Math.round(amount * 0.01 * 100) / 100);
@@ -372,6 +462,10 @@ export const InvestPaymentFlow: React.FC<{
                                     <Text style={styles.cardComingSoonSub}>Use Moneywise or Mobile Money for now.</Text>
                                 </View>
                             )}
+
+                            {payError && (
+                                <View style={styles.payErrorCard}><Text style={styles.payErrorText}>{payError}</Text></View>
+                            )}
                         </ScrollView>
 
                         <View style={styles.payFooter}>
@@ -401,7 +495,7 @@ export const InvestPaymentFlow: React.FC<{
                         operator={operator}
                         elapsedSeconds={elapsed}
                         reference={reference}
-                        onCancel={() => { clearTimers(); setStep('PAY'); }}
+                        onCancel={handleCancelWaiting}
                         onDone={() => setStep('SUCCESS')}
                     />
                 )}
@@ -538,6 +632,8 @@ const styles = StyleSheet.create({
     cardComingSoon: { marginTop: 22, backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, padding: 20, alignItems: 'center' },
     cardComingSoonTitle: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
     cardComingSoonSub: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, marginTop: 4 },
+    payErrorCard: { backgroundColor: '#FEF2F2', borderRadius: radius.md, padding: 12, marginTop: 16 },
+    payErrorText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.danger, lineHeight: 17 },
     payFooter: { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.border, paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24, gap: 8 },
     payFooterRow: { flexDirection: 'row', justifyContent: 'space-between' },
     payFooterLabel: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textMuted },

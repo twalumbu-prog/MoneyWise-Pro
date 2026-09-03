@@ -1,7 +1,8 @@
 import { View, Text, FlatList, Pressable, StyleSheet } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { ChevronRight, Star, Users, BadgeCheck } from 'lucide-react-native';
-import { INVEST_PROVIDERS, TYPE_CONFIG } from '../../../../src/data/investCatalog';
+import { TYPE_CONFIG } from '../../../../src/data/investCatalog';
+import { useInvestProviders } from '../../../../src/hooks/useInvestProviders';
 import { InvestLogo } from '../../../../src/components/invest/InvestLogo';
 import { ScreenHeader } from '../../../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../../../src/theme/tokens';
@@ -10,7 +11,8 @@ import { colors, fonts, radius } from '../../../../src/theme/tokens';
 export default function InvestCompanyScreen() {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
-    const provider = INVEST_PROVIDERS.find((p) => p.id === id) ?? INVEST_PROVIDERS[0];
+    const providers = useInvestProviders();
+    const provider = providers.find((p) => p.id === id) ?? providers[0];
 
     return (
         <View style={styles.root}>

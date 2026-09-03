@@ -37,6 +37,7 @@ import webhooksRoutes from './routes/webhooks.routes';
 import payrollRoutes from './routes/payroll.routes';
 import scheduleRoutes from './routes/schedule.routes';
 import billingRoutes from './routes/billing.routes';
+import investRoutes from './routes/invest.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
@@ -397,6 +398,7 @@ app.use('/lenco', lencoRoutes);
 app.use('/payroll', payrollRoutes);
 app.use('/schedules', scheduleRoutes);
 app.use('/billing', billingRoutes);
+app.use('/investments', investRoutes);
 
 // Dump the full route table only when explicitly debugging. On Vercel this
 // module reloads on every cold start, and printing all ~200 routes each time

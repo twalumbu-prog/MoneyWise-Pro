@@ -101,6 +101,8 @@ export type {
 } from './services/integration.service';
 
 export { lencoService } from './services/lenco.service';
+export { investmentService } from './services/investment.service';
+export type { InvestmentTarget } from './services/investment.service';
 
 export { payrollService } from './services/payroll.service';
 export type {

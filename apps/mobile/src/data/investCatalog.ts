@@ -28,6 +28,52 @@ export interface InvestProvider {
     reviews: string;
     investors: string;
     products: InvestProduct[];
+    /** Set for a real (non-demo) provider — funding it moves real money. */
+    isReal?: boolean;
+    organizationId?: string;
+    walletId?: string;
+    investmentTargetId?: string;
+}
+
+/**
+ * Turns a real investment_targets row (see apps/api/src/controllers/invest.controller.ts)
+ * into the same InvestProvider/InvestProduct shape the rest of the Invest UI
+ * already renders, so real and demo providers can share one list. There's
+ * only ever one generic "product" per real target today — a direct deposit
+ * into that organization's wallet, not a fund with its own NAV/performance.
+ */
+export function toRealInvestProvider(target: {
+    id: string; organizationId: string; walletId: string;
+    displayName: string; category: string | null; description: string | null; logoUrl: string | null;
+}): InvestProvider {
+    return {
+        id: `real-${target.id}`,
+        name: target.displayName,
+        description: target.description || target.category || 'Deposit directly into this organization\'s MoneyWise account.',
+        logo: target.logoUrl || 'default',
+        reviews: '',
+        investors: '',
+        isReal: true,
+        organizationId: target.organizationId,
+        walletId: target.walletId,
+        investmentTargetId: target.id,
+        products: [{
+            id: `real-${target.id}-direct`,
+            name: 'Direct Investment',
+            code: target.displayName,
+            type: 'FIXED_DEPOSIT',
+            price: 'K1.0',
+            priceUnit: '/deposit',
+            ytd: '0% YTD',
+            performance: 'Direct deposit',
+            lastUpdated: 'now',
+            reviews: 'New',
+            investors: '—',
+            description: target.description || `Fund ${target.displayName}'s MoneyWise account directly via mobile money or an internal wallet transfer.`,
+            expectedReturn: 'Market-linked',
+            risk: 'Medium',
+        }],
+    };
 }
 
 /**
@@ -177,8 +223,11 @@ export const INVEST_PROVIDERS: InvestProvider[] = [
     },
 ];
 
-export function findProduct(productId: string): { provider: InvestProvider; product: InvestProduct } | null {
-    for (const provider of INVEST_PROVIDERS) {
+export function findProduct(
+    productId: string,
+    providers: InvestProvider[] = INVEST_PROVIDERS,
+): { provider: InvestProvider; product: InvestProduct } | null {
+    for (const provider of providers) {
         const product = provider.products.find((p) => p.id === productId);
         if (product) return { provider, product };
     }

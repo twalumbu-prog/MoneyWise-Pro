@@ -3,6 +3,7 @@ import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Dimensions,
     KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, AlertCircle, ChevronRight, Star, Users } from 'lucide-react-native';
@@ -10,7 +11,7 @@ import {
     requisitionService, generateDailyHistory, generateIntradayHistory, sliceForTimeframe,
 } from 'core';
 import type { Timeframe } from 'core';
-import { INVEST_PROVIDERS } from '../../src/data/investCatalog';
+import { useInvestProviders } from '../../src/hooks/useInvestProviders';
 import { InvestLogo } from '../../src/components/invest/InvestLogo';
 import { InvestAreaChart } from '../../src/components/invest/InvestAreaChart';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -29,6 +30,7 @@ const CHART_WIDTH = Dimensions.get('window').width - 40;
 export default function NewInvestRequestScreen() {
     const router = useRouter();
     const qc = useQueryClient();
+    const insets = useSafeAreaInsets();
 
     const [stage, setStage] = useState<Stage>(1);
     const [providerId, setProviderId] = useState<string | null>(null);
@@ -40,7 +42,8 @@ export default function NewInvestRequestScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    const provider = INVEST_PROVIDERS.find((p) => p.id === providerId);
+    const providers = useInvestProviders();
+    const provider = providers.find((p) => p.id === providerId);
     const product = provider?.products.find((p) => p.id === productId);
     const numericAmount = Number(amount) || 0;
 
@@ -82,7 +85,7 @@ export default function NewInvestRequestScreen() {
     return (
         <View style={styles.root}>
             <Stack.Screen options={{ headerShown: false }} />
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
                 <Pressable onPress={goBack} hitSlop={10}><ArrowLeft size={22} color={colors.text} /></Pressable>
                 <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
                 <Pressable onPress={() => router.back()} hitSlop={10}><X size={22} color={colors.textFaint} /></Pressable>
@@ -97,7 +100,7 @@ export default function NewInvestRequestScreen() {
                     <>
                         <Text style={styles.stepTitle}>Choose a Partner</Text>
                         <Text style={styles.stepSub}>Select an investment provider to see their products.</Text>
-                        {INVEST_PROVIDERS.map((p) => (
+                        {providers.map((p) => (
                             <Pressable key={p.id} style={styles.providerRow} onPress={() => { setProviderId(p.id); setStage(2); }}>
                                 <InvestLogo logo={p.logo} size={48} />
                                 <View style={{ flex: 1 }}>
