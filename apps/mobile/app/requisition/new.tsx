@@ -16,6 +16,7 @@ import {
 } from 'core';
 import type { PaymentInfo } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
+import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 interface LineItem {
@@ -323,15 +324,20 @@ export default function NewRequisitionScreen() {
                 </Pressable>
             </View>
 
-            <View style={styles.tabTrack}>
-                {TABS.map((t) => (
-                    <Pressable key={t.value} onPress={() => setActiveTab(t.value)} style={[styles.tab, activeTab === t.value && styles.tabActive]}>
-                        <Text style={[styles.tabText, activeTab === t.value && styles.tabTextActive]}>{t.label}</Text>
-                    </Pressable>
-                ))}
-            </View>
+            <AnimatedSegmented
+                value={activeTab}
+                onChange={(v) => setActiveTab(v as WizardTab)}
+                trackStyle={styles.tabTrack}
+                indicatorStyle={styles.tabIndicator}
+                itemStyle={styles.tab}
+                items={TABS.map((t) => ({
+                    value: t.value,
+                    content: <Text style={[styles.tabText, activeTab === t.value && styles.tabTextActive]}>{t.label}</Text>,
+                }))}
+            />
 
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+                <AnimatedTabContent tabKey={activeTab} index={TABS.findIndex((t) => t.value === activeTab)}>
                 {activeTab !== 'basic' ? (
                     <View style={styles.comingSoon}>
                         <View style={styles.comingSoonIcon}><AlertCircle size={28} color={colors.borderStrong} /></View>
@@ -518,15 +524,25 @@ export default function NewRequisitionScreen() {
                             <View style={styles.stageGap}>
                                 <Text style={styles.stageTitle}>Payment Method</Text>
 
-                                <View style={styles.methodTrack}>
-                                    <Pressable style={[styles.methodBtn, paymentMethod === 'mobile' && styles.methodBtnActive]} onPress={() => setPaymentMethod('mobile')}>
-                                        <Text style={[styles.methodBtnText, paymentMethod === 'mobile' && styles.methodBtnTextActive]}>Mobile Money</Text>
-                                    </Pressable>
-                                    <Pressable style={[styles.methodBtn, paymentMethod === 'bank' && styles.methodBtnActive]} onPress={() => setPaymentMethod('bank')}>
-                                        <Text style={[styles.methodBtnText, paymentMethod === 'bank' && styles.methodBtnTextActive]}>Bank Account</Text>
-                                    </Pressable>
-                                </View>
+                                <AnimatedSegmented
+                                    value={paymentMethod}
+                                    onChange={(v) => setPaymentMethod(v as 'mobile' | 'bank')}
+                                    trackStyle={styles.methodTrack}
+                                    indicatorStyle={styles.methodIndicator}
+                                    itemStyle={styles.methodBtn}
+                                    items={[
+                                        {
+                                            value: 'mobile',
+                                            content: <Text style={[styles.methodBtnText, paymentMethod === 'mobile' && styles.methodBtnTextActive]}>Mobile Money</Text>,
+                                        },
+                                        {
+                                            value: 'bank',
+                                            content: <Text style={[styles.methodBtnText, paymentMethod === 'bank' && styles.methodBtnTextActive]}>Bank Account</Text>,
+                                        },
+                                    ]}
+                                />
 
+                                <AnimatedTabContent tabKey={paymentMethod} index={paymentMethod === 'bank' ? 1 : 0} style={{ gap: 18 }}>
                                 {paymentMethod === 'mobile' ? (
                                     <View style={styles.field}>
                                         <Text style={styles.label}>Phone Number</Text>
@@ -575,6 +591,7 @@ export default function NewRequisitionScreen() {
                                         </View>
                                     </>
                                 )}
+                                </AnimatedTabContent>
 
                                 {(phoneNumber.length >= 10 || accountNumber.length >= 5) && (
                                     <View style={styles.holderCard}>
@@ -670,6 +687,7 @@ export default function NewRequisitionScreen() {
                         )}
                     </>
                 )}
+                </AnimatedTabContent>
             </ScrollView>
 
             {activeTab === 'basic' && (
@@ -807,7 +825,8 @@ const styles = StyleSheet.create({
         backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
     },
     tab: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
-    tabActive: {
+    tabIndicator: {
+        borderRadius: radius.pill,
         backgroundColor: colors.surface,
         shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
     },
@@ -888,7 +907,7 @@ const styles = StyleSheet.create({
     amountInput: { flex: 1, fontFamily: fonts.display, fontSize: 24, color: colors.navy, padding: 0 },
     methodTrack: { flexDirection: 'row', padding: 4, backgroundColor: colors.canvasAlt, borderRadius: radius.lg },
     methodBtn: { flex: 1, paddingVertical: 12, borderRadius: radius.md, alignItems: 'center' },
-    methodBtnActive: { backgroundColor: colors.surface, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+    methodIndicator: { borderRadius: radius.md, backgroundColor: colors.surface, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
     methodBtnText: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.textFaint, textTransform: 'uppercase', letterSpacing: 0.5 },
     methodBtnTextActive: { color: colors.blue },
     phoneWrap: { position: 'relative', justifyContent: 'center' },

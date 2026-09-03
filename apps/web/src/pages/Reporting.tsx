@@ -7,7 +7,7 @@ import { accountService, Account } from '../services/account.service';
 import { BudgetModal } from '../components/BudgetModal';
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Loader2, Settings2, Eye, EyeOff, Filter, Plus, Trash2, FolderOutput, ArrowUpDown, Search, Link2, ArrowUpRight, ArrowDownRight, CalendarDays, X } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
+import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../components/AnimatedTabs';
 import { FinancialHighlights } from '../components/FinancialHighlights';
 import { BucketProgressBar } from '../components/BucketProgressBar';
 
@@ -762,31 +762,35 @@ export const Reporting: React.FC = () => {
                             
                             {/* Header Tabs */}
                             <div className="self-stretch inline-flex justify-between items-center flex-shrink-0">
-                                <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-2.5">
-                                    <button 
-                                        onClick={() => setReportView('NET_WORTH')}
-                                        className={`px-3.5 h-full rounded-lg flex justify-center items-center gap-3 transition-all ${
-                                            reportView === 'NET_WORTH' ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]' : 'hover:bg-white/50'
-                                        }`}
-                                    >
-                                        <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${
-                                            reportView === 'NET_WORTH' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'
-                                        }`}>Net Worth</span>
-                                    </button>
-                                    <button 
-                                        onClick={() => setReportView('PROFIT_LOSS')}
-                                        className={`px-3.5 h-full rounded-lg flex justify-center items-center gap-3 transition-all ${
-                                            reportView === 'PROFIT_LOSS' ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]' : 'hover:bg-white/50'
-                                        }`}
-                                    >
-                                        <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${
-                                            reportView === 'PROFIT_LOSS' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'
-                                        }`}>Profit/Loss</span>
-                                    </button>
+                                <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex justify-start items-center gap-1">
+                                    <TabPillGroup
+                                        value={reportView}
+                                        onChange={(v) => setReportView(v as 'NET_WORTH' | 'PROFIT_LOSS')}
+                                        trackClassName="flex items-center gap-1"
+                                        indicatorClassName="bg-white rounded-lg shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)]"
+                                        tabs={[
+                                            {
+                                                value: 'NET_WORTH',
+                                                buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center',
+                                                label: (
+                                                    <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${reportView === 'NET_WORTH' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>
+                                                        Net Worth
+                                                    </span>
+                                                ),
+                                            },
+                                            {
+                                                value: 'PROFIT_LOSS',
+                                                buttonClassName: 'px-3.5 h-6 rounded-lg flex justify-center items-center',
+                                                label: (
+                                                    <span className={`text-center text-[10px] font-['DM_Sans'] leading-5 ${reportView === 'PROFIT_LOSS' ? 'text-gray-900 font-bold' : 'text-gray-600 font-normal'}`}>
+                                                        Profit/Loss
+                                                    </span>
+                                                ),
+                                            },
+                                        ]}
+                                    />
                                     {reportView === 'PROFIT_LOSS' && (
-                                        <>
-                                            <div className="w-[1px] h-3 bg-gray-300"></div>
-                                        </>
+                                        <div className="w-[1px] h-3 bg-gray-300" />
                                     )}
                                 </div>
 

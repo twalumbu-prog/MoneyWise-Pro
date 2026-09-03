@@ -9,6 +9,7 @@ import {
 } from 'core';
 import type { ReportView, ExpenditureMode, ExpenditureAggregation } from 'core';
 import { ReportTrendChart, type ChartTimeframe, type TrendPoint } from '../../src/components/reporting/ReportTrendChart';
+import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 const CHART_WIDTH = Dimensions.get('window').width - 80;
@@ -159,20 +160,23 @@ export default function ReportingScreen() {
         <ScrollView style={styles.root} contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}>
             <Text style={styles.title}>Reporting</Text>
 
-            <View style={styles.segment}>
-                {(['PROFIT_LOSS', 'NET_WORTH'] as ReportView[]).map((v) => (
-                    <Pressable
-                        key={v}
-                        onPress={() => setView(v)}
-                        style={[styles.segmentBtn, view === v && styles.segmentBtnActive]}
-                    >
+            <AnimatedSegmented
+                value={view}
+                onChange={(v) => setView(v as ReportView)}
+                trackStyle={styles.segment}
+                indicatorStyle={styles.segmentIndicator}
+                itemStyle={styles.segmentBtn}
+                items={(['PROFIT_LOSS', 'NET_WORTH'] as ReportView[]).map((v) => ({
+                    value: v,
+                    content: (
                         <Text style={[styles.segmentText, view === v && styles.segmentTextActive]}>
                             {v === 'PROFIT_LOSS' ? 'Profit/Loss' : 'Net Worth'}
                         </Text>
-                    </Pressable>
-                ))}
-            </View>
+                    ),
+                }))}
+            />
 
+            <AnimatedTabContent tabKey={view} index={view === 'NET_WORTH' ? 1 : 0} style={{ gap: 14 }}>
             <View style={styles.hero}>
                 <Pressable onPress={() => setChartOpen((o) => !o)}>
                     <View style={styles.heroTop}>
@@ -269,6 +273,7 @@ export default function ReportingScreen() {
                     <Text style={styles.emptyText}>No activity in this period.</Text>
                 </View>
             )}
+            </AnimatedTabContent>
         </ScrollView>
     );
 }
@@ -282,7 +287,8 @@ const styles = StyleSheet.create({
         borderRadius: radius.pill,
     },
     segmentBtn: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
-    segmentBtnActive: {
+    segmentIndicator: {
+        borderRadius: radius.pill,
         backgroundColor: colors.surface,
         shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
     },

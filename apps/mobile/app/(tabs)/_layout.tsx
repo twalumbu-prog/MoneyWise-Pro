@@ -25,6 +25,10 @@ export default function TabsLayout() {
         <Tabs
             screenOptions={{
                 headerShown: false,
+                // Cross-fade + slight horizontal shift between tabs instead of
+                // the flat instant swap — react-navigation v7's built-in tab
+                // transition (bottom-tabs only offers 'none' | 'fade' | 'shift').
+                animation: 'shift',
                 tabBarActiveTintColor: colors.blue,
                 tabBarInactiveTintColor: colors.textFaint,
                 tabBarStyle: {
@@ -52,7 +56,7 @@ export default function TabsLayout() {
             <Tabs.Screen
                 name="bi"
                 options={{
-                    title: 'BI',
+                    title: 'Intelligence',
                     href: isRequestor ? null : undefined,
                     tabBarIcon: ({ color, size }) => <AstroidIcon color={color} size={size} />,
                 }}

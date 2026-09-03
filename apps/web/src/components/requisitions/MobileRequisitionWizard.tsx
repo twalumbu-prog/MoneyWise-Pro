@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SegmentedControl, AnimatedTabContent } from '../AnimatedTabs';
+import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../AnimatedTabs';
 import { ArrowRight, ArrowLeft, X, Plus, Trash2, User, List, AlertCircle, RotateCcw, CheckCircle, Smartphone, Building2, Mail, Zap } from 'lucide-react';
 import { requisitionService } from '../../services/requisition.service';
 import { lencoService } from '../../services/lenco.service';
@@ -645,20 +645,24 @@ export const MobileRequisitionWizard: React.FC<MobileRequisitionWizardProps> = (
                         {stage === 3 && (
                             <div className="space-y-6">
                                 <h2 className="text-[20px] font-bold text-brand-navy">Payment Method</h2>
-                                <div className="flex p-1 bg-gray-50 rounded-2xl">
-                                    <button 
-                                        onClick={() => setPaymentMethod('mobile')}
-                                        className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${paymentMethod === 'mobile' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-400'}`}
-                                    >
-                                        Mobile Money
-                                    </button>
-                                    <button 
-                                        onClick={() => setPaymentMethod('bank')}
-                                        className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${paymentMethod === 'bank' ? 'bg-white text-[#006AFF] shadow-sm' : 'text-gray-400'}`}
-                                    >
-                                        Bank Account
-                                    </button>
-                                </div>
+                                <TabPillGroup
+                                    value={paymentMethod}
+                                    onChange={(v) => setPaymentMethod(v as 'mobile' | 'bank')}
+                                    trackClassName="flex p-1 bg-gray-50 rounded-2xl"
+                                    indicatorClassName="bg-white rounded-xl shadow-sm"
+                                    tabs={[
+                                        {
+                                            value: 'mobile',
+                                            buttonClassName: 'flex-1 py-3 text-xs font-black uppercase tracking-widest',
+                                            label: <span className={paymentMethod === 'mobile' ? 'text-[#006AFF]' : 'text-gray-400'}>Mobile Money</span>,
+                                        },
+                                        {
+                                            value: 'bank',
+                                            buttonClassName: 'flex-1 py-3 text-xs font-black uppercase tracking-widest',
+                                            label: <span className={paymentMethod === 'bank' ? 'text-[#006AFF]' : 'text-gray-400'}>Bank Account</span>,
+                                        },
+                                    ]}
+                                />
 
                                 <div className="space-y-4">
                                     {paymentMethod === 'mobile' ? (

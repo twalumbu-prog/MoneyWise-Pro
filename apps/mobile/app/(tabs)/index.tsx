@@ -15,6 +15,7 @@ import { InflowCard } from '../../src/components/inflows/InflowCard';
 import { InflowDetailSheet } from '../../src/components/inflows/InflowDetailSheet';
 import type { InflowRow } from '../../src/components/inflows/inflowUtils';
 import { NewMenuSheet } from '../../src/components/requisitions/NewMenuSheet';
+import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -73,7 +74,13 @@ export default function InboxScreen() {
             }
             return (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 1000 })) || [];
         },
-        enabled: mode === 'inflows',
+        // Fetched up front — same as web's RequisitionList — not gated on
+        // `mode === 'inflows'`. Gating it on the active tab meant the query
+        // was always cold the first time you switched to Inflows (nothing
+        // to prefetch it while you were on Outflows), so every such switch
+        // showed a live spinner instead of painting from cache. Fetching
+        // eagerly here means it's already warm by the time you tap the tab.
+        enabled: !!user,
     });
 
     const rows: RequisitionRowData[] = Array.isArray(data) ? data : [];
@@ -142,16 +149,33 @@ export default function InboxScreen() {
                 </View>
             </View>
 
-            <View style={styles.modeRow}>
-                <Pressable style={[styles.modeBtn, mode === 'outflows' && styles.modeBtnActive]} onPress={() => setMode('outflows')}>
-                    <ArrowUpRight size={14} color={mode === 'outflows' ? colors.blue : colors.textFaint} />
-                    <Text style={[styles.modeBtnText, mode === 'outflows' && styles.modeBtnTextActive]}>Outflows</Text>
-                </Pressable>
-                <Pressable style={[styles.modeBtn, mode === 'inflows' && styles.modeBtnActive]} onPress={() => setMode('inflows')}>
-                    <ArrowDownLeft size={14} color={mode === 'inflows' ? colors.blue : colors.textFaint} />
-                    <Text style={[styles.modeBtnText, mode === 'inflows' && styles.modeBtnTextActive]}>Inflows</Text>
-                </Pressable>
-            </View>
+            <AnimatedSegmented
+                value={mode}
+                onChange={(v) => setMode(v as 'outflows' | 'inflows')}
+                trackStyle={styles.modeRow}
+                indicatorStyle={styles.modeIndicator}
+                itemStyle={styles.modeBtn}
+                items={[
+                    {
+                        value: 'outflows',
+                        content: (
+                            <>
+                                <ArrowUpRight size={14} color={mode === 'outflows' ? colors.blue : colors.textFaint} />
+                                <Text style={[styles.modeBtnText, mode === 'outflows' && styles.modeBtnTextActive]}>Outflows</Text>
+                            </>
+                        ),
+                    },
+                    {
+                        value: 'inflows',
+                        content: (
+                            <>
+                                <ArrowDownLeft size={14} color={mode === 'inflows' ? colors.blue : colors.textFaint} />
+                                <Text style={[styles.modeBtnText, mode === 'inflows' && styles.modeBtnTextActive]}>Inflows</Text>
+                            </>
+                        ),
+                    },
+                ]}
+            />
 
             <View style={styles.searchWrap}>
                 <Search size={16} color={colors.textFaint} />
@@ -208,6 +232,7 @@ export default function InboxScreen() {
                 </View>
             )}
 
+            <AnimatedTabContent tabKey={mode} index={mode === 'inflows' ? 1 : 0} style={{ flex: 1 }}>
             {mode === 'inflows' ? (
                 <SectionList
                     sections={inflowSections}
@@ -274,6 +299,7 @@ export default function InboxScreen() {
                 }
             />
             )}
+            </AnimatedTabContent>
 
             <Pressable
                     style={[styles.fab, { bottom: 16 }]}
@@ -357,7 +383,8 @@ const styles = StyleSheet.create({
         backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
     },
     modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: radius.pill },
-    modeBtnActive: {
+    modeIndicator: {
+        borderRadius: radius.pill,
         backgroundColor: colors.surface,
         shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
     },

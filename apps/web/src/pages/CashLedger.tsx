@@ -47,7 +47,7 @@ import DepositProofPreview from '../components/wallets/DepositProofPreview';
 import { Requisition } from '../services/requisition.service';
 import ExportLedgerModal from '../components/ExportLedgerModal';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
-import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs';
+import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../components/AnimatedTabs';
 import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
 import { formatKwacha } from 'core';
 
@@ -1576,26 +1576,36 @@ Status: VERIFIED`;
 
                 {/* Row 1: Main Wallets / External Accounts toggle + action bar */}
                 <div className="flex items-center justify-between">
-                    <div className="h-8 p-1 bg-[#F3F5FC] rounded-[10px] flex items-center gap-1">
-                        <button
-                            onClick={() => handleCategoryChange('MONEYWISE')}
-                            className={`px-3.5 h-full rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${
-                                categoryGroup === 'MONEYWISE' ? 'bg-white text-[#111827] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                        >
-                            {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
-                            Main Wallets
-                        </button>
-                        <button
-                            onClick={() => handleCategoryChange('EXTERNAL')}
-                            className={`px-3.5 h-full rounded-lg text-[10px] font-bold transition-all flex items-center gap-1.5 ${
-                                categoryGroup === 'EXTERNAL' ? 'bg-white text-[#111827] shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                        >
-                            {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
-                            External Accounts
-                        </button>
-                    </div>
+                    <TabPillGroup
+                        value={categoryGroup}
+                        onChange={(v) => handleCategoryChange(v as 'MONEYWISE' | 'EXTERNAL')}
+                        trackClassName="h-8 p-1 bg-[#F3F5FC] rounded-[10px] flex items-center gap-1"
+                        indicatorClassName="bg-white rounded-lg shadow-sm"
+                        tabs={[
+                            {
+                                value: 'MONEYWISE',
+                                buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
+                                activeButtonClassName: 'text-[#111827]',
+                                label: (
+                                    <>
+                                        {hasNewMoneywise && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
+                                        <span className={categoryGroup === 'MONEYWISE' ? 'text-[#111827]' : 'text-gray-500'}>Main Wallets</span>
+                                    </>
+                                ),
+                            },
+                            {
+                                value: 'EXTERNAL',
+                                buttonClassName: 'px-3.5 h-6 text-[10px] font-bold',
+                                activeButtonClassName: 'text-[#111827]',
+                                label: (
+                                    <>
+                                        {hasNewExternal && <span className="w-1.5 h-1.5 rounded-full bg-[#0058DB] flex-shrink-0" />}
+                                        <span className={categoryGroup === 'EXTERNAL' ? 'text-[#111827]' : 'text-gray-500'}>External Accounts</span>
+                                    </>
+                                ),
+                            },
+                        ]}
+                    />
 
                     {!isRequestor && (
                         <div className="h-8 px-1 bg-white rounded-lg shadow-[0px_2px_8px_0px_rgba(17,24,39,0.08)] outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center font-bold">

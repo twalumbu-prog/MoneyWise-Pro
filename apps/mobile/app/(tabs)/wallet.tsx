@@ -13,9 +13,10 @@ import { cashbookService, groupByDate, isRequestorRole } from 'core';
 import type { CashbookEntry } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import {
-    WalletCard, AddWalletCard, useCardWidth, CARD_GAP,
+    WalletCard, AddWalletCard, useCardWidth, CARD_GAP, CARD_HEIGHT,
 } from '../../src/components/wallet/WalletCard';
 import { TransactionRow } from '../../src/components/wallet/TransactionRow';
+import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 type Group = 'MONEYWISE' | 'EXTERNAL';
@@ -106,20 +107,23 @@ export default function WalletScreen() {
                     <View>
                         <Text style={styles.title}>Wallet</Text>
 
-                        <View style={styles.segment}>
-                            {(['MONEYWISE', 'EXTERNAL'] as Group[]).map((g) => (
-                                <Pressable
-                                    key={g}
-                                    onPress={() => { setGroup(g); setSlide(0); goToSlide(0); }}
-                                    style={[styles.segmentBtn, group === g && styles.segmentBtnActive]}
-                                >
+                        <AnimatedSegmented
+                            value={group}
+                            onChange={(v) => { const g = v as Group; setGroup(g); setSlide(0); goToSlide(0); }}
+                            trackStyle={styles.segment}
+                            indicatorStyle={styles.segmentIndicator}
+                            itemStyle={styles.segmentBtn}
+                            items={(['MONEYWISE', 'EXTERNAL'] as Group[]).map((g) => ({
+                                value: g,
+                                content: (
                                     <Text style={[styles.segmentText, group === g && styles.segmentTextActive]}>
                                         {g === 'MONEYWISE' ? 'Main Wallets' : 'External Accounts'}
                                     </Text>
-                                </Pressable>
-                            ))}
-                        </View>
+                                ),
+                            }))}
+                        />
 
+                        <AnimatedTabContent tabKey={group} index={group === 'EXTERNAL' ? 1 : 0}>
                         {isLoading ? (
                             <View style={[styles.cardSkeleton, { width: cardWidth }]}>
                                 <ActivityIndicator color={colors.blue} />
@@ -141,6 +145,7 @@ export default function WalletScreen() {
                                         name={c.name}
                                         balance={c.balance}
                                         organizationName={organizationName}
+                                        dots={slideCount > 1 ? { count: slideCount, active: slide, onSelect: goToSlide } : undefined}
                                     />
                                 ))}
                                 {group === 'MONEYWISE' && !isRequestor && (
@@ -153,20 +158,6 @@ export default function WalletScreen() {
                                     <AddWalletCard label="Add External Account" onPress={() => router.push('/wallet/new?kind=EXTERNAL')} />
                                 )}
                             </ScrollView>
-                        )}
-
-                        {slideCount > 1 && (
-                            <View style={styles.dots}>
-                                {Array.from({ length: slideCount }).map((_, i) => (
-                                    <Pressable
-                                        key={i}
-                                        onPress={() => goToSlide(i)}
-                                        hitSlop={6}
-                                        accessibilityLabel={`Go to card ${i + 1}`}
-                                        style={[styles.dot, i === slide && styles.dotActive]}
-                                    />
-                                ))}
-                            </View>
                         )}
 
                         {!isRequestor && group === 'MONEYWISE' && (
@@ -210,6 +201,7 @@ export default function WalletScreen() {
                                 />
                             </View>
                         )}
+                        </AnimatedTabContent>
 
                         <View style={styles.txHeader}>
                             {searchOpen ? (
@@ -300,7 +292,8 @@ const styles = StyleSheet.create({
         backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
     },
     segmentBtn: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
-    segmentBtnActive: {
+    segmentIndicator: {
+        borderRadius: radius.pill,
         backgroundColor: colors.surface,
         shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
     },
@@ -308,12 +301,9 @@ const styles = StyleSheet.create({
     segmentTextActive: { color: colors.text },
     carousel: { paddingHorizontal: 20, gap: CARD_GAP },
     cardSkeleton: {
-        height: 176, marginHorizontal: 20, borderRadius: 18,
+        height: CARD_HEIGHT, marginHorizontal: 20, borderRadius: 18,
         backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
     },
-    dots: { flexDirection: 'row', justifyContent: 'center', gap: 8, marginTop: 14 },
-    dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: 'rgba(0,0,0,0.15)' },
-    dotActive: { backgroundColor: colors.navy, transform: [{ scale: 1.15 }] },
     actionBar: {
         flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, marginTop: 18,
         backgroundColor: colors.surface, borderRadius: radius.md,

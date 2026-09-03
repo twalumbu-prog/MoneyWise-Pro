@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
+import { useIsRestoring } from '@tanstack/react-query';
 import * as SplashScreen from 'expo-splash-screen';
 import {
     useFonts,
@@ -24,7 +25,19 @@ initCore();
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 /**
- * Holds the splash until the session is known.
+ * Holds the splash until the session is known AND the persisted query cache
+ * has finished restoring from disk.
+ *
+ * Without the isRestoring check, screens mount and call useQuery() before
+ * AsyncStorage has handed the persister its data back — so `data` is briefly
+ * undefined and `isLoading` is briefly true even though a perfectly good
+ * cached copy is about to land a moment later. Every screen's loading
+ * spinner then flashes on and off, and any conditional "loading ? spinner :
+ * content" layout jumps because the two branches aren't the same size. This
+ * gate keeps that flash behind the splash instead of on-screen: <Stack> and
+ * its screens still mount and fire their queries underneath it (so the
+ * restore + first paint happen in parallel, not in series), and the gate
+ * only ever lifts once there's nothing left to flash.
  *
  * The redirect itself lives in the group layouts, not here. Router hooks must be
  * used BELOW the navigator, and an earlier version of this file called
@@ -33,7 +46,8 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
  */
 const SessionGate: React.FC = () => {
     const { loading } = useAuth();
-    if (!loading) return null;
+    const isRestoring = useIsRestoring();
+    if (!loading && !isRestoring) return null;
     return (
         <View style={styles.splash}>
             <ActivityIndicator size="large" color={colors.blue} />

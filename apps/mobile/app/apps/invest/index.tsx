@@ -6,6 +6,7 @@ import { TYPE_CONFIG } from '../../../src/data/investCatalog';
 import { useInvestProviders } from '../../../src/hooks/useInvestProviders';
 import { InvestLogo } from '../../../src/components/invest/InvestLogo';
 import { ScreenHeader } from '../../../src/components/ScreenHeader';
+import { AnimatedSegmented, AnimatedTabContent } from '../../../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../../../src/theme/tokens';
 
 type InvestTab = 'HOME' | 'TRENDING' | 'UNIT_TRUSTS';
@@ -49,14 +50,19 @@ export default function InvestHomeScreen() {
                 />
             </View>
 
-            <View style={styles.tabRow}>
-                {TABS.map((t) => (
-                    <Pressable key={t.id} onPress={() => setTab(t.id)} style={[styles.tab, tab === t.id && styles.tabActive]}>
-                        <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
-                    </Pressable>
-                ))}
-            </View>
+            <AnimatedSegmented
+                value={tab}
+                onChange={(v) => setTab(v as InvestTab)}
+                trackStyle={styles.tabRow}
+                indicatorStyle={styles.tabIndicator}
+                itemStyle={styles.tab}
+                items={TABS.map((t) => ({
+                    value: t.id,
+                    content: <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>,
+                }))}
+            />
 
+            <AnimatedTabContent tabKey={tab} index={TABS.findIndex((t) => t.id === tab)} style={{ flex: 1 }}>
             <FlatList
                 data={groups}
                 keyExtractor={(g) => g.provider.id}
@@ -109,6 +115,7 @@ export default function InvestHomeScreen() {
                     </View>
                 )}
             />
+            </AnimatedTabContent>
         </View>
     );
 }
@@ -125,7 +132,8 @@ const styles = StyleSheet.create({
         backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
     },
     tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill },
-    tabActive: {
+    tabIndicator: {
+        borderRadius: radius.pill,
         backgroundColor: colors.surface,
         shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
     },

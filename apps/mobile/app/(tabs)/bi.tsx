@@ -229,7 +229,7 @@ export default function BiScreen() {
         >
             {inChat ? (
                 <View style={[styles.chatHeader, { paddingTop: insets.top + 12 }]}>
-                    <Pressable onPress={newChat} hitSlop={10} accessibilityLabel="Back to Business Intelligence">
+                    <Pressable onPress={newChat} hitSlop={10} accessibilityLabel="Back to Intelligence">
                         <ChevronLeft size={22} color={colors.textMuted} />
                     </Pressable>
                     <Text style={styles.chatHeaderTitle} numberOfLines={1}>Assistant</Text>
@@ -240,7 +240,7 @@ export default function BiScreen() {
             ) : (
                 <>
                     <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-                        <Text style={styles.title}>Business Intelligence</Text>
+                        <Text style={styles.title}>Intelligence</Text>
                     </View>
                     <View style={styles.tabRow}>
                         {TABS.map((t) => (
