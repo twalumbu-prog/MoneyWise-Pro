@@ -59,11 +59,13 @@ export const RequisitionRow: React.FC<{
     );
 };
 
+// Font sizes/spacing mirror InflowCard's list-item scale (Inbox > Inflows) —
+// colors and font weights (fontFamily) below are unchanged from before.
 const styles = StyleSheet.create({
-    root: { gap: 4 },
+    root: { gap: 3 },
     pressed: { opacity: 0.7 },
     topLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
-    requestor: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#71717A', flexShrink: 1 },
+    requestor: { fontFamily: fonts.bodyBold, fontSize: 10, color: '#71717A', flexShrink: 1 },
     requestorNew: { fontFamily: fonts.bodyBold, color: '#3F3F46' },
     newPill: {
         backgroundColor: '#2563EB', borderRadius: 999,
@@ -73,8 +75,8 @@ const styles = StyleSheet.create({
         fontFamily: fonts.bodyBold, fontSize: 9, color: '#FFFFFF', letterSpacing: 0.5, lineHeight: 11,
     },
     midLine: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16 },
-    description: { flex: 1, fontFamily: fonts.body, fontSize: 16, color: '#000000', lineHeight: 20 },
-    amount: { fontFamily: fonts.bodyMedium, fontSize: 16, color: '#000000' },
-    statusLine: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
-    statusLabel: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint },
+    description: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: '#000000', lineHeight: 19 },
+    amount: { fontFamily: fonts.bodyMedium, fontSize: 14, color: '#000000' },
+    statusLine: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 1 },
+    statusLabel: { fontFamily: fonts.body, fontSize: 10, color: colors.textFaint },
 });

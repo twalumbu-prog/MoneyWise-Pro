@@ -278,13 +278,16 @@ const styles = StyleSheet.create({
     scroll: { paddingHorizontal: 20, paddingBottom: 100, gap: 14 },
     title: { fontFamily: fonts.display, fontSize: 30, color: '#000000' },
     segment: {
-        flexDirection: 'row', padding: 4, backgroundColor: colors.surface,
-        borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+        flexDirection: 'row', padding: 4, backgroundColor: colors.chipActiveBg,
+        borderRadius: radius.pill,
     },
     segmentBtn: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
-    segmentBtnActive: { backgroundColor: colors.tabActiveBg },
+    segmentBtnActive: {
+        backgroundColor: colors.surface,
+        shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    },
     segmentText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
-    segmentTextActive: { color: colors.blue },
+    segmentTextActive: { color: colors.text },
     hero: {
         backgroundColor: '#0F172A', borderRadius: 18, padding: 20, minHeight: 110,
     },

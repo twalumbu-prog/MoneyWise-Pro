@@ -1,9 +1,10 @@
 import { Tabs, Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Navigation, Wallet, TrendingUp, Menu } from 'lucide-react-native';
+import { Navigation, TrendingUp, Menu } from 'lucide-react-native';
 import { isRequestorRole } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { AstroidIcon } from '../../src/components/icons/AstroidIcon';
+import { WalletCardsIcon } from '../../src/components/icons/WalletCardsIcon';
 import { colors } from '../../src/theme/tokens';
 
 /**
@@ -45,7 +46,7 @@ export default function TabsLayout() {
                 options={{
                     title: 'Wallet',
                     href: isRequestor ? null : undefined,
-                    tabBarIcon: ({ color, size }) => <Wallet color={color} size={size} />,
+                    tabBarIcon: ({ color, size }) => <WalletCardsIcon color={color} size={size} />,
                 }}
             />
             <Tabs.Screen

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, StyleSheet } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Search, ChevronRight } from 'lucide-react-native';
-import { INVEST_PROVIDERS, TYPE_CONFIG } from '../../../src/data/investCatalog';
+import { TYPE_CONFIG } from '../../../src/data/investCatalog';
+import { useInvestProviders } from '../../../src/hooks/useInvestProviders';
 import { InvestLogo } from '../../../src/components/invest/InvestLogo';
 import { ScreenHeader } from '../../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../../src/theme/tokens';
@@ -19,8 +20,9 @@ export default function InvestHomeScreen() {
     const router = useRouter();
     const [search, setSearch] = useState('');
     const [tab, setTab] = useState<InvestTab>('HOME');
+    const providers = useInvestProviders();
 
-    const groups = useMemo(() => INVEST_PROVIDERS.flatMap((provider) => {
+    const groups = useMemo(() => providers.flatMap((provider) => {
         let products = provider.products;
         if (tab === 'TRENDING') products = products.filter((p) => p.trending);
         if (tab === 'UNIT_TRUSTS') products = products.filter((p) => p.type === 'UNIT_TRUST');
@@ -29,7 +31,7 @@ export default function InvestHomeScreen() {
             products = products.filter((p) => p.name.toLowerCase().includes(q) || provider.name.toLowerCase().includes(q));
         }
         return products.length === 0 ? [] : [{ provider, products }];
-    }), [tab, search]);
+    }), [providers, tab, search]);
 
     return (
         <View style={styles.root}>
@@ -115,14 +117,20 @@ const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.canvas },
     searchWrap: {
         flexDirection: 'row', alignItems: 'center', gap: 10, marginHorizontal: 16, marginTop: 6,
-        backgroundColor: colors.canvasAlt, borderRadius: radius.pill, paddingHorizontal: 16, height: 48,
+        backgroundColor: colors.chipActiveBg, borderRadius: radius.pill, paddingHorizontal: 16, height: 48,
     },
     searchInput: { flex: 1, fontFamily: fonts.body, fontSize: 14, color: colors.text },
-    tabRow: { flexDirection: 'row', gap: 6, marginHorizontal: 16, marginTop: 12 },
-    tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill, backgroundColor: colors.canvasAlt },
-    tabActive: { backgroundColor: colors.tabActiveBg },
+    tabRow: {
+        flexDirection: 'row', gap: 4, marginHorizontal: 16, marginTop: 12, padding: 4,
+        backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
+    },
+    tab: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill },
+    tabActive: {
+        backgroundColor: colors.surface,
+        shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    },
     tabText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
-    tabTextActive: { color: colors.blue },
+    tabTextActive: { color: colors.text },
     list: { padding: 16, paddingTop: 12, gap: 24 },
     group: { gap: 8 },
     groupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },

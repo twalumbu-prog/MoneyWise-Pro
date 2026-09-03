@@ -297,13 +297,15 @@ const styles = StyleSheet.create({
     title: { fontFamily: fonts.display, fontSize: 30, color: '#000000', paddingHorizontal: 20, marginBottom: 14 },
     segment: {
         flexDirection: 'row', marginHorizontal: 20, marginBottom: 18, padding: 4,
-        backgroundColor: colors.surface, borderRadius: radius.pill,
-        borderWidth: 1, borderColor: colors.border,
+        backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
     },
     segmentBtn: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
-    segmentBtnActive: { backgroundColor: colors.tabActiveBg },
+    segmentBtnActive: {
+        backgroundColor: colors.surface,
+        shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    },
     segmentText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
-    segmentTextActive: { color: colors.blue },
+    segmentTextActive: { color: colors.text },
     carousel: { paddingHorizontal: 20, gap: CARD_GAP },
     cardSkeleton: {
         height: 176, marginHorizontal: 20, borderRadius: 18,
