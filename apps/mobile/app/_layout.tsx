@@ -69,6 +69,9 @@ export default function RootLayout() {
                         <Stack.Screen name="(tabs)" />
                         <Stack.Screen name="requisition/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="requisition/new" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="requisition/new-loan" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="requisition/new-advance" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="requisition/new-invest" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="schedules" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="wallet/entry/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="wallet/deposit" options={{ animation: 'slide_from_bottom' }} />

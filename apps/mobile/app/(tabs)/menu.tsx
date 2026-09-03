@@ -6,6 +6,7 @@ import {
     User, Settings as SettingsIcon, Users, LogOut, Plug,
 } from 'lucide-react-native';
 import { useAuth } from '../../src/context/AuthContext';
+import { OtherServiceIcon } from '../../src/components/icons/OtherServiceIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 /**
@@ -55,7 +56,7 @@ export default function MenuScreen() {
                                 onPress={s.go}
                                 style={({ pressed }) => [styles.gridItem, pressed && { opacity: 0.6 }]}
                             >
-                                <View style={styles.gridIcon}><Icon size={20} color={colors.blue} /></View>
+                                <OtherServiceIcon><Icon size={22} color="#FFFFFF" strokeWidth={2} /></OtherServiceIcon>
                                 <Text style={styles.gridLabel}>{s.label}</Text>
                             </Pressable>
                         );
@@ -152,10 +153,6 @@ const styles = StyleSheet.create({
     rowSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint },
     grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
     gridItem: { width: '33.33%', alignItems: 'center', gap: 8, paddingVertical: 14 },
-    gridIcon: {
-        width: 46, height: 46, borderRadius: 16, backgroundColor: colors.tabActiveBg,
-        alignItems: 'center', justifyContent: 'center',
-    },
     gridLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.text },
     signOut: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

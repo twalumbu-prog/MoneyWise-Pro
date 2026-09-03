@@ -11,12 +11,13 @@ export const colors = {
     navy: '#002E3B',
     pink: '#FF2970',
 
-    // Surfaces, taken from the mobile screens rather than the Tailwind defaults:
-    // the mobile web app paints #F5FAFF behind most routes and #F9FAFB behind Menu.
-    canvas: '#F5FAFF',
+    // Surfaces — every main route (Inbox, Schedules, Wallet, Reporting, Menu)
+    // paints Tailwind's bg-gray-50 (#F9FAFB) behind it on web.
+    canvas: '#F9FAFB',
     canvasAlt: '#F9FAFB',
     surface: '#FFFFFF',
     tabActiveBg: '#F0F7FF',
+    chipActiveBg: '#F0F1F5',
 
     border: '#F3F4F6',
     borderStrong: '#E5E7EB',

@@ -10,6 +10,7 @@
  */
 
 import { getCore, requireCapability } from '../platform';
+import { apiFetch, apiJson } from '../api/apiFetch';
 
 // ─── Mirror of the server's event and widget contracts ───────────────────────
 
@@ -208,18 +209,18 @@ export const agentClient = {
         return streamPost('/ai/agent/approve', params, onEvent, signal);
     },
 
+    // These four are plain JSON requests (unlike chat/approve, which stream),
+    // so they go through the same apiFetch every other core service uses —
+    // one 401-retry-after-refresh, telemetry, consistent error parsing —
+    // instead of the bespoke bare `fetch()` this file used previously, which
+    // had none of that and would surface a silently-empty model list on a
+    // single stale-token blip rather than retrying.
     async models(): Promise<{ models: AssistantModel[]; default: string }> {
-        const apiUrl = getCore().env.apiUrl;
-        const resp = await fetch(`${apiUrl}/ai/agent/models`, { headers: await authHeaders() });
-        if (!resp.ok) throw new Error('Could not load models');
-        return resp.json();
+        return apiJson('/ai/agent/models');
     },
 
     async threads(): Promise<ThreadSummary[]> {
-        const apiUrl = getCore().env.apiUrl;
-        const resp = await fetch(`${apiUrl}/ai/agent/threads`, { headers: await authHeaders() });
-        if (!resp.ok) return [];
-        const data = await resp.json();
+        const data = await apiJson<{ threads?: ThreadSummary[] }>('/ai/agent/threads');
         return data.threads ?? [];
     },
 
@@ -229,17 +230,10 @@ export const agentClient = {
         messages: StoredMessage[];
         pending: { callId: string; toolName: string; args: Record<string, any>; proposal: Proposal } | null;
     }> {
-        const apiUrl = getCore().env.apiUrl;
-        const resp = await fetch(`${apiUrl}/ai/agent/threads/${id}`, { headers: await authHeaders() });
-        if (!resp.ok) throw new Error('Conversation not found');
-        return resp.json();
+        return apiJson(`/ai/agent/threads/${id}`);
     },
 
     async deleteThread(id: string): Promise<void> {
-        const apiUrl = getCore().env.apiUrl;
-        await fetch(`${apiUrl}/ai/agent/threads/${id}`, {
-            method: 'DELETE',
-            headers: await authHeaders(),
-        });
+        await apiFetch(`/ai/agent/threads/${id}`, { method: 'DELETE' });
     },
 };

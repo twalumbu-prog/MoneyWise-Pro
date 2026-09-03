@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, SectionList, StyleSheet, ActivityIndicator,
-    RefreshControl, TextInput, Pressable, ScrollView,
+    RefreshControl, TextInput, Pressable, ScrollView, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -14,6 +14,7 @@ import { RequisitionRow, type RequisitionRowData } from '../../src/components/re
 import { InflowCard } from '../../src/components/inflows/InflowCard';
 import { InflowDetailSheet } from '../../src/components/inflows/InflowDetailSheet';
 import type { InflowRow } from '../../src/components/inflows/inflowUtils';
+import { NewMenuSheet } from '../../src/components/requisitions/NewMenuSheet';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -40,6 +41,7 @@ export default function InboxScreen() {
     const [search, setSearch] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
     const [selectedInflow, setSelectedInflow] = useState<InflowRow | null>(null);
+    const [newMenuOpen, setNewMenuOpen] = useState(false);
 
     const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
         queryKey: ['requisitions'],
@@ -273,21 +275,31 @@ export default function InboxScreen() {
             />
             )}
 
-            {/* No role gate: POST /requisitions has none, so anyone in the org
-                may raise a request. Inflows has no mobile creation entry point yet —
-                web's "New Sale" invoice builder isn't ported, so the FAB is
-                outflows-only rather than opening a screen that doesn't exist. */}
-            {mode === 'outflows' && (
-                <Pressable
-                        style={[styles.fab, { bottom: 16 }]}
-                        onPress={() => router.push('/requisition/new')}
-                        accessibilityLabel="New request"
-                    >
-                        <Plus size={24} color="#FFFFFF" />
-                </Pressable>
-            )}
+            <Pressable
+                    style={[styles.fab, { bottom: 16 }]}
+                    onPress={() => setNewMenuOpen(true)}
+                    accessibilityLabel="New"
+                >
+                    <Plus size={24} color="#FFFFFF" />
+            </Pressable>
 
             <InflowDetailSheet inflow={selectedInflow} onClose={() => setSelectedInflow(null)} />
+
+            <NewMenuSheet
+                visible={newMenuOpen}
+                onClose={() => setNewMenuOpen(false)}
+                mode={mode}
+                userRole={userRole}
+                onNewSale={() => {
+                    setNewMenuOpen(false);
+                    Alert.alert('New Sale', 'Recording sales from the app is coming in a later update — use the web app for now.');
+                }}
+                onNewRequisition={() => { setNewMenuOpen(false); router.push('/requisition/new'); }}
+                onSalaryAdvance={() => { setNewMenuOpen(false); router.push('/requisition/new-advance'); }}
+                onStaffLoan={() => { setNewMenuOpen(false); router.push('/requisition/new-loan'); }}
+                onInvest={() => { setNewMenuOpen(false); router.push('/requisition/new-invest'); }}
+                onPayroll={() => { setNewMenuOpen(false); router.push('/apps/payroll/run'); }}
+            />
         </View>
     );
 }
@@ -317,9 +329,9 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
         backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border,
     },
-    tabActive: { backgroundColor: colors.tabActiveBg, borderColor: 'rgba(0,106,255,0.2)' },
+    tabActive: { backgroundColor: colors.chipActiveBg, borderColor: colors.chipActiveBg },
     tabText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textMuted },
-    tabTextActive: { color: colors.blue },
+    tabTextActive: { color: colors.text },
     centre: { paddingVertical: 48, alignItems: 'center' },
     list: { paddingHorizontal: 20, paddingTop: 16, paddingBottom: 120 },
     dateLabel: {
@@ -342,12 +354,15 @@ const styles = StyleSheet.create({
     emptySub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 6, textAlign: 'center', paddingHorizontal: 30 },
     modeRow: {
         flexDirection: 'row', gap: 4, marginHorizontal: 20, marginBottom: 12, padding: 4,
-        backgroundColor: colors.canvasAlt, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+        backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
     },
     modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: radius.pill },
-    modeBtnActive: { backgroundColor: colors.tabActiveBg },
+    modeBtnActive: {
+        backgroundColor: colors.surface,
+        shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
+    },
     modeBtnText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textFaint },
-    modeBtnTextActive: { fontFamily: fonts.bodyBold, color: colors.blue },
+    modeBtnTextActive: { fontFamily: fonts.bodyBold, color: colors.text },
     errorCard: {
         marginHorizontal: 20, marginTop: 12, backgroundColor: colors.surface,
         borderRadius: radius.md, padding: 16, borderWidth: 1, borderColor: colors.danger,
