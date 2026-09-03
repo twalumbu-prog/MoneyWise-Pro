@@ -3,6 +3,7 @@ import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator,
     KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, AlertCircle, ChevronRight } from 'lucide-react-native';
@@ -18,6 +19,7 @@ const REPAYMENT_OPTIONS = [3, 6, 12, 18, 24, 36];
 export default function NewStaffLoanScreen() {
     const router = useRouter();
     const qc = useQueryClient();
+    const insets = useSafeAreaInsets();
     const { data: org } = useQuery({ queryKey: ['organization'], queryFn: () => organizationService.getOrganization() });
 
     const [stage, setStage] = useState<Stage>(1);
@@ -86,7 +88,7 @@ export default function NewStaffLoanScreen() {
     return (
         <View style={styles.root}>
             <Stack.Screen options={{ headerShown: false }} />
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
                 <Pressable onPress={goBack} hitSlop={10}><ArrowLeft size={22} color={colors.text} /></Pressable>
                 <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
                 <Pressable onPress={() => router.back()} hitSlop={10}><X size={22} color={colors.textFaint} /></Pressable>

@@ -3,6 +3,7 @@ import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Modal,
     KeyboardAvoidingView, Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, AlertCircle, ChevronDown, ArrowRight } from 'lucide-react-native';
@@ -17,6 +18,7 @@ type Stage = 1 | 2;
 export default function NewSalaryAdvanceScreen() {
     const router = useRouter();
     const qc = useQueryClient();
+    const insets = useSafeAreaInsets();
 
     const [stage, setStage] = useState<Stage>(1);
     const [staffName, setStaffName] = useState('');
@@ -65,7 +67,7 @@ export default function NewSalaryAdvanceScreen() {
         <View style={styles.root}>
             <Stack.Screen options={{ headerShown: false }} />
 
-            <View style={styles.brandBar}>
+            <View style={[styles.brandBar, { paddingTop: insets.top }]}>
                 <Text style={styles.brandText}>MoneyWise<Text style={styles.brandAccent}>Pro</Text></Text>
             </View>
 
@@ -177,7 +179,7 @@ const SummaryRow: React.FC<{ label: string; value: string }> = ({ label, value }
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.surface },
-    brandBar: { height: 64, borderBottomWidth: 1, borderBottomColor: colors.canvasAlt, paddingHorizontal: 24, justifyContent: 'center' },
+    brandBar: { minHeight: 64, borderBottomWidth: 1, borderBottomColor: colors.canvasAlt, paddingHorizontal: 24, paddingBottom: 12, justifyContent: 'flex-end' },
     brandText: { fontFamily: fonts.bodyMedium, fontSize: 19, color: colors.navy },
     brandAccent: { fontFamily: fonts.bodyBold, color: colors.blue },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 16 },
