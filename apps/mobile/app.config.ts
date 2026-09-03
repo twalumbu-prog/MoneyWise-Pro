@@ -17,6 +17,11 @@ const config: ExpoConfig = {
     orientation: 'portrait',
     scheme: 'moneywise',
     userInterfaceStyle: 'light',
+    // Official brand mark — the white "M" waveform on the navy gradient.
+    // Also copied directly into ios/MoneyWisePro/Images.xcassets/AppIcon.appiconset
+    // since that native project is already generated (prebuilt); this field is
+    // what a future `expo prebuild` will read to regenerate it from scratch.
+    icon: './assets/icon.png',
     // No newArchEnabled flag: SDK 57 is New Architecture only.
 
     // Pinned to the native ABI so an over-the-air update can never ship JS that
@@ -43,7 +48,10 @@ const config: ExpoConfig = {
 
     android: {
         package: BUNDLE_ID,
-        adaptiveIcon: { backgroundColor: '#EEF5FF' },
+        // The source icon already bakes in its own navy background, so it's
+        // used as the foreground layer as-is rather than a transparent cutout
+        // over adaptiveIcon's backgroundColor.
+        adaptiveIcon: { foregroundImage: './assets/icon.png', backgroundColor: '#EEF5FF' },
         intentFilters: [
             {
                 action: 'VIEW',
