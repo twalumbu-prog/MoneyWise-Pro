@@ -6,9 +6,15 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Plus, ArrowUpDown, X, CalendarDays } from 'lucide-react-native';
-import { requisitionService, getStatusConfig, groupByDate } from 'core';
+import { Search, Plus, ArrowUpDown, X, CalendarDays, ArrowDownLeft, ArrowUpRight } from 'lucide-react-native';
+import {
+    requisitionService, getStatusConfig, groupByDate, cashbookService, payrollService, isRequestorRole,
+} from 'core';
 import { RequisitionRow, type RequisitionRowData } from '../../src/components/requisitions/RequisitionRow';
+import { InflowCard } from '../../src/components/inflows/InflowCard';
+import { InflowDetailSheet } from '../../src/components/inflows/InflowDetailSheet';
+import type { InflowRow } from '../../src/components/inflows/inflowUtils';
+import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 /** Status tabs, derived from core's config so they cannot drift from the web inbox. */
@@ -21,20 +27,55 @@ const TABS: { label: string; value: string }[] = [
     { label: 'Completed', value: 'COMPLETED' },
 ];
 
+type InboxMode = 'outflows' | 'inflows';
+
 export default function InboxScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const { user, userRole } = useAuth();
+    const isRequestor = isRequestorRole(userRole);
 
+    const [mode, setMode] = useState<InboxMode>('outflows');
     const [tab, setTab] = useState('ALL');
     const [search, setSearch] = useState('');
     const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+    const [selectedInflow, setSelectedInflow] = useState<InflowRow | null>(null);
 
     const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
         queryKey: ['requisitions'],
         queryFn: () => requisitionService.getAll(),
     });
 
+    // Requestors see their own payslips as "inflows"; everyone else sees the
+    // cash ledger's money-in entries — same split as web's RequisitionList.
+    const {
+        data: inflowsData, isLoading: inflowsLoading, isRefetching: inflowsRefetching, refetch: refetchInflows,
+    } = useQuery({
+        queryKey: ['inflows', isRequestor, user?.id],
+        queryFn: async (): Promise<InflowRow[]> => {
+            if (isRequestor && user?.id) {
+                const allStaff = await payrollService.listStaff();
+                const me = allStaff.find((s) => s.user_id === user.id);
+                if (!me) return [];
+                const history = await payrollService.getStaffPayrollHistory(me.id);
+                return history.map((h) => ({
+                    id: h.id,
+                    description: `Payroll Notification - ${h.payroll_runs.period_label}`,
+                    debit: h.net_pay,
+                    status: 'COMPLETED',
+                    date: h.payroll_runs.run_at || new Date().toISOString(),
+                    created_at: h.payroll_runs.run_at || new Date().toISOString(),
+                    reference_number: 'PAYROLL',
+                    account_type: 'BANK',
+                }));
+            }
+            return (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 1000 })) || [];
+        },
+        enabled: mode === 'inflows',
+    });
+
     const rows: RequisitionRowData[] = Array.isArray(data) ? data : [];
+    const inflows: InflowRow[] = Array.isArray(inflowsData) ? inflowsData : [];
 
     const sections = useMemo(() => {
         const q = search.trim().toLowerCase();
@@ -61,6 +102,24 @@ export default function InboxScreen() {
         [rows],
     );
 
+    const inflowSections = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        // Only settled money — PENDING intents never completed, and AR trackers
+        // belong to an Invoices view this app doesn't have yet.
+        const filtered = inflows.filter((row) => {
+            if (row.status === 'PENDING' || row.account_type === 'ACCOUNTS_RECEIVABLE') return false;
+            if (!q) return true;
+            return (
+                row.description?.toLowerCase().includes(q) ||
+                (row.reference_number || '').toLowerCase().includes(q)
+            );
+        });
+        return groupByDate(filtered, (r) => r.date || r.created_at || new Date().toISOString(), sortOrder).map((g) => ({
+            title: g.dateLabel,
+            data: g.items,
+        }));
+    }, [inflows, search, sortOrder]);
+
     const open = (id: string) => router.push(`/requisition/${id}`);
 
     return (
@@ -81,13 +140,24 @@ export default function InboxScreen() {
                 </View>
             </View>
 
+            <View style={styles.modeRow}>
+                <Pressable style={[styles.modeBtn, mode === 'outflows' && styles.modeBtnActive]} onPress={() => setMode('outflows')}>
+                    <ArrowUpRight size={14} color={mode === 'outflows' ? colors.blue : colors.textFaint} />
+                    <Text style={[styles.modeBtnText, mode === 'outflows' && styles.modeBtnTextActive]}>Outflows</Text>
+                </Pressable>
+                <Pressable style={[styles.modeBtn, mode === 'inflows' && styles.modeBtnActive]} onPress={() => setMode('inflows')}>
+                    <ArrowDownLeft size={14} color={mode === 'inflows' ? colors.blue : colors.textFaint} />
+                    <Text style={[styles.modeBtnText, mode === 'inflows' && styles.modeBtnTextActive]}>Inflows</Text>
+                </Pressable>
+            </View>
+
             <View style={styles.searchWrap}>
                 <Search size={16} color={colors.textFaint} />
                 <TextInput
                     style={styles.searchInput}
                     value={search}
                     onChangeText={setSearch}
-                    placeholder="Search requests"
+                    placeholder={mode === 'inflows' ? 'Search inflows' : 'Search requests'}
                     placeholderTextColor={colors.textFaint}
                     returnKeyType="search"
                     autoCorrect={false}
@@ -99,34 +169,36 @@ export default function InboxScreen() {
                 )}
             </View>
 
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.tabsScroll}
-                contentContainerStyle={styles.tabs}
-            >
-                {TABS.map((t) => {
-                    const active = tab === t.value;
-                    const n = countFor(t.value);
-                    return (
-                        <Pressable
-                            key={t.value}
-                            onPress={() => setTab(t.value)}
-                            style={[styles.tab, active && styles.tabActive]}
-                        >
-                            <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                                {t.label}{n > 0 ? ` ${n}` : ''}
-                            </Text>
-                        </Pressable>
-                    );
-                })}
-            </ScrollView>
+            {mode === 'outflows' && (
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.tabsScroll}
+                    contentContainerStyle={styles.tabs}
+                >
+                    {TABS.map((t) => {
+                        const active = tab === t.value;
+                        const n = countFor(t.value);
+                        return (
+                            <Pressable
+                                key={t.value}
+                                onPress={() => setTab(t.value)}
+                                style={[styles.tab, active && styles.tabActive]}
+                            >
+                                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                                    {t.label}{n > 0 ? ` ${n}` : ''}
+                                </Text>
+                            </Pressable>
+                        );
+                    })}
+                </ScrollView>
+            )}
 
-            {isLoading && (
+            {(mode === 'outflows' ? isLoading : inflowsLoading) && (
                 <View style={styles.centre}><ActivityIndicator color={colors.blue} /></View>
             )}
 
-            {isError && !isLoading && (
+            {mode === 'outflows' && isError && !isLoading && (
                 <View style={styles.errorCard}>
                     <Text style={styles.errorTitle}>Couldn’t load requests</Text>
                     <Text style={styles.errorBody}>{(error as Error)?.message}</Text>
@@ -134,6 +206,32 @@ export default function InboxScreen() {
                 </View>
             )}
 
+            {mode === 'inflows' ? (
+                <SectionList
+                    sections={inflowSections}
+                    keyExtractor={(item) => String(item.id)}
+                    stickySectionHeadersEnabled={false}
+                    contentContainerStyle={styles.list}
+                    refreshControl={
+                        <RefreshControl refreshing={inflowsRefetching} onRefresh={() => { void refetchInflows(); }} tintColor={colors.blue} />
+                    }
+                    renderSectionHeader={({ section }) => <Text style={styles.dateLabel}>{section.title}</Text>}
+                    renderItem={({ item, index, section }) => (
+                        <View style={[styles.card, index === 0 && styles.cardFirst, index === section.data.length - 1 && styles.cardLast]}>
+                            <InflowCard row={item} onPress={() => setSelectedInflow(item)} />
+                            {index < section.data.length - 1 && <View style={styles.rowGap} />}
+                        </View>
+                    )}
+                    ListEmptyComponent={
+                        !inflowsLoading ? (
+                            <View style={styles.empty}>
+                                <Text style={styles.emptyText}>{search ? 'Nothing matches that filter.' : 'No inflows yet.'}</Text>
+                                {!search && <Text style={styles.emptySub}>Money-in from sales, deposits and payments will show up here.</Text>}
+                            </View>
+                        ) : undefined
+                    }
+                />
+            ) : (
             <SectionList
                 sections={sections}
                 keyExtractor={(item) => String(item.id)}
@@ -173,16 +271,23 @@ export default function InboxScreen() {
                     ) : undefined
                 }
             />
+            )}
 
             {/* No role gate: POST /requisitions has none, so anyone in the org
-                may raise a request. */}
-            <Pressable
-                    style={[styles.fab, { bottom: 16 }]}
-                    onPress={() => router.push('/requisition/new')}
-                    accessibilityLabel="New request"
-                >
-                    <Plus size={24} color="#FFFFFF" />
-            </Pressable>
+                may raise a request. Inflows has no mobile creation entry point yet —
+                web's "New Sale" invoice builder isn't ported, so the FAB is
+                outflows-only rather than opening a screen that doesn't exist. */}
+            {mode === 'outflows' && (
+                <Pressable
+                        style={[styles.fab, { bottom: 16 }]}
+                        onPress={() => router.push('/requisition/new')}
+                        accessibilityLabel="New request"
+                    >
+                        <Plus size={24} color="#FFFFFF" />
+                </Pressable>
+            )}
+
+            <InflowDetailSheet inflow={selectedInflow} onClose={() => setSelectedInflow(null)} />
         </View>
     );
 }
@@ -234,6 +339,15 @@ const styles = StyleSheet.create({
     rowGap: { height: 28 },
     empty: { paddingVertical: 64, alignItems: 'center' },
     emptyText: { fontFamily: fonts.body, fontSize: 14, color: colors.textFaint },
+    emptySub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 6, textAlign: 'center', paddingHorizontal: 30 },
+    modeRow: {
+        flexDirection: 'row', gap: 4, marginHorizontal: 20, marginBottom: 12, padding: 4,
+        backgroundColor: colors.canvasAlt, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border,
+    },
+    modeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: radius.pill },
+    modeBtnActive: { backgroundColor: colors.tabActiveBg },
+    modeBtnText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textFaint },
+    modeBtnTextActive: { fontFamily: fonts.bodyBold, color: colors.blue },
     errorCard: {
         marginHorizontal: 20, marginTop: 12, backgroundColor: colors.surface,
         borderRadius: radius.md, padding: 16, borderWidth: 1, borderColor: colors.danger,

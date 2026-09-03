@@ -76,6 +76,7 @@ export default function RootLayout() {
                         <Stack.Screen name="wallet/new" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="wallet/pay-link" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="wallet/import" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="wallet/lenco-transfer" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="approvals" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="disbursements" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="vouchers/index" options={{ animation: 'slide_from_right' }} />
@@ -86,6 +87,7 @@ export default function RootLayout() {
                         <Stack.Screen name="settings/profile" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/general" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/team" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/integrations" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/payroll/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/payroll/config" options={{ animation: 'slide_from_right' }} />

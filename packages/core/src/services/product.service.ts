@@ -23,6 +23,35 @@ export const PRODUCT_TYPE_OPTIONS: { value: ProductType; label: string; hint: st
     { value: 'DIGITAL', label: 'Digital product', hint: 'Upload a file (e-book, template, audio, software). The buyer is emailed the file automatically the moment they pay.' },
 ];
 
+/** One product line item behind an inflow — the same order metadata InflowDetailDrawer shows on web. */
+export interface ProductSale {
+    id: string;
+    product_id: string;
+    customer_name: string;
+    customer_phone: string;
+    quantity: number;
+    amount_paid: number;
+    status: string;
+    created_at: string;
+    order_details?: {
+        mode?: 'deliver' | 'pickup';
+        country?: string;
+        state?: string;
+        street?: string;
+        apartment?: string;
+        rider_service?: string;
+        rider_service_name?: string;
+        delivery_charge?: number;
+    } | null;
+    products?: {
+        id: string;
+        name: string;
+        description?: string;
+        image_url?: string | null;
+        product_type?: string;
+    } | null;
+}
+
 export interface BookingRange {
     check_in: string;  // YYYY-MM-DD
     check_out: string; // YYYY-MM-DD (exclusive — turnover day stays bookable)
@@ -175,6 +204,11 @@ export const productService = {
 
     getProductSales(id: string): Promise<any[]> {
         return apiJson<any[]>(`/organizations/products/${id}/sales`);
+    },
+
+    /** Product line items for a given inflow's receipt/reference — 404 means it wasn't a product sale. */
+    getSalesByReference(reference: string): Promise<ProductSale[]> {
+        return apiJson<ProductSale[]>(`/organizations/products/sales-by-reference/${encodeURIComponent(reference)}`);
     },
 
     /**

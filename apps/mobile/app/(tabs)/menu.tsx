@@ -1,58 +1,22 @@
 import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
-    CheckSquare, Banknote, FileText, User, Settings as SettingsIcon, Users, LogOut,
+    User, Settings as SettingsIcon, Users, LogOut, Plug,
 } from 'lucide-react-native';
-import {
-    requisitionService, canAuthoriseRequisition, canDisburse, canManageVouchers,
-} from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 /**
- * The Menu tab, mirroring apps/web/src/pages/Menu.tsx: a profile card, the
- * Other Services grid, then settings. Work queues sit at the top because on a
- * phone they are what people open this tab for.
+ * The Menu tab, mirroring apps/web/src/pages/Menu.tsx exactly: a profile
+ * card, the Other Services grid, then settings — no separate queues section
+ * (Approvals/Disbursements/Vouchers aren't on web's Menu either).
  */
 export default function MenuScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const { user, userRole, userName, organizationName, signOut } = useAuth();
-
-    // Reuses the inbox query, so opening Menu costs nothing extra.
-    const { data } = useQuery({
-        queryKey: ['requisitions'],
-        queryFn: () => requisitionService.getAll(),
-    });
-    const rows: { status: string }[] = Array.isArray(data) ? data : [];
-    const count = (s: string) => rows.filter((r) => r.status === s).length;
-
-    const queues = [
-        {
-            show: canAuthoriseRequisition(userRole),
-            icon: CheckSquare, label: 'Approvals',
-            sub: 'Requests awaiting your decision',
-            badge: count('PENDING_APPROVAL'),
-            go: () => router.push('/approvals'),
-        },
-        {
-            show: canDisburse(userRole),
-            icon: Banknote, label: 'Disbursements',
-            sub: 'Approved requests to pay out',
-            badge: count('AUTHORISED'),
-            go: () => router.push('/disbursements'),
-        },
-        {
-            show: canManageVouchers(userRole),
-            icon: FileText, label: 'Vouchers',
-            sub: 'Journal vouchers and posting',
-            badge: 0,
-            go: () => router.push('/vouchers'),
-        },
-    ].filter((q) => q.show);
 
     const services = [
         { icon: ShieldCheck, label: 'Audit', go: () => router.push('/audit') },
@@ -79,31 +43,6 @@ export default function MenuScreen() {
                     <Text style={styles.email} numberOfLines={1}>{userName || user?.email}</Text>
                 </View>
             </View>
-
-            {queues.length > 0 && (
-                <View style={styles.card}>
-                    <Text style={styles.cardTitle}>Your queues</Text>
-                    {queues.map((q, i) => {
-                        const Icon = q.icon;
-                        return (
-                            <Pressable
-                                key={q.label}
-                                onPress={q.go}
-                                style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }, i > 0 && styles.rowBorder]}
-                            >
-                                <Icon size={18} color={colors.blue} />
-                                <View style={styles.rowMain}>
-                                    <Text style={styles.rowLabel}>{q.label}</Text>
-                                    <Text style={styles.rowSub}>{q.sub}</Text>
-                                </View>
-                                {q.badge > 0 && (
-                                    <View style={styles.badge}><Text style={styles.badgeText}>{q.badge}</Text></View>
-                                )}
-                            </Pressable>
-                        );
-                    })}
-                </View>
-            )}
 
             <View style={styles.card}>
                 <Text style={styles.cardTitle}>Other Services</Text>
@@ -156,6 +95,16 @@ export default function MenuScreen() {
                         <Text style={styles.rowSub}>Manage staff access</Text>
                     </View>
                 </Pressable>
+                <Pressable
+                    onPress={() => router.push('/settings/integrations')}
+                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                >
+                    <Plug size={18} color={colors.blue} />
+                    <View style={styles.rowMain}>
+                        <Text style={styles.rowLabel}>Integrations</Text>
+                        <Text style={styles.rowSub}>QuickBooks connection</Text>
+                    </View>
+                </Pressable>
             </View>
 
             <Pressable
@@ -201,11 +150,6 @@ const styles = StyleSheet.create({
     rowMain: { flex: 1, gap: 2 },
     rowLabel: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     rowSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint },
-    badge: {
-        minWidth: 22, height: 22, borderRadius: 11, paddingHorizontal: 6,
-        backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center',
-    },
-    badgeText: { fontFamily: fonts.bodyBold, fontSize: 11, color: '#FFFFFF' },
     grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
     gridItem: { width: '33.33%', alignItems: 'center', gap: 8, paddingVertical: 14 },
     gridIcon: {

@@ -58,6 +58,43 @@ export const lencoService = {
         return apiJson(`/requisitions/${requisitionId}/verify-disbursement`);
     },
 
+    /**
+     * The own-UX mobile-money checkout used by QuickPay/PublicPaymentLink —
+     * server-initiates the Lenco collection directly rather than opening
+     * Lenco's JS checkout widget (browser-only, no native equivalent).
+     * Wallet-scoped, not auth-scoped (`initiatePublicMobileMoneyCollection`
+     * resolves the organization from `walletId` itself), so it's exactly as
+     * safe to call authenticated with the caller's own wallet as it is
+     * unauthenticated from the public payment portal.
+     */
+    initiateMobileMoneyCollection(params: {
+        reference: string; amount: number; phone: string; operator: string; walletId: string;
+    }): Promise<{ success: boolean; data: { status: string } }> {
+        return apiJson('/lenco/public-collection/mobile-money', {
+            method: 'POST',
+            body: JSON.stringify(params),
+        });
+    },
+
+    /** Server-held long-poll (holds up to ~22s) — call in a loop until `verified`. */
+    longPollCollectionStatus(reference: string, organizationId: string): Promise<{
+        verified: boolean; status?: string; completedAt?: string; initiatedAt?: string; referenceNumber?: string;
+    }> {
+        return apiJson(`/lenco/public-collection-longpoll/${reference}?organizationId=${organizationId}`);
+    },
+
+    /** Idempotent — writes the ledger entry once Lenco has confirmed the collection. */
+    finalizeCollection(reference: string, organizationId: string): Promise<any> {
+        return apiJson(`/lenco/public-collection-finalize/${reference}?organizationId=${organizationId}`, { method: 'POST' });
+    },
+
+    cancelCollection(reference: string): Promise<any> {
+        return apiJson('/lenco/public-collection/cancel', {
+            method: 'POST',
+            body: JSON.stringify({ reference }),
+        });
+    },
+
     getSaleReceiptDetails(entryId: string): Promise<any> {
         return apiJson(`/lenco/sale-receipt/${entryId}`);
     },

@@ -133,6 +133,7 @@ export type {
     BookingRange,
     BookingTerminology,
     Product,
+    ProductSale,
     OrderDeliveryDetails,
     InvoiceLinkSnapshotItem,
     PaymentLink,

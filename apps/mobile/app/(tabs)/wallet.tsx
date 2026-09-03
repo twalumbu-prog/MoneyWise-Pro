@@ -175,12 +175,28 @@ export default function WalletScreen() {
                                 <View style={styles.actionDivider} />
                                 <Action icon={ArrowLeftRight} label="Transfer" onPress={() => router.push('/wallet/transfer')} />
                                 <View style={styles.actionDivider} />
-                                <Action icon={Link2} label="Pay Link" onPress={() => router.push('/wallet/pay-link')} />
+                                <Action
+                                    icon={Link2}
+                                    label="Pay Link"
+                                    onPress={() => {
+                                        const card = cards[Math.min(slide, cards.length - 1)];
+                                        router.push({
+                                            pathname: '/wallet/pay-link',
+                                            params: { walletId: card?.id ?? '', walletName: card?.name ?? '' },
+                                        });
+                                    }}
+                                />
                             </View>
                         )}
 
                         {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && (
                             <View style={styles.actionBar}>
+                                <Action
+                                    icon={ArrowLeftRight}
+                                    label="Transfer"
+                                    onPress={() => router.push('/wallet/lenco-transfer')}
+                                />
+                                <View style={styles.actionDivider} />
                                 <Action
                                     icon={FileSpreadsheet}
                                     label="Import statement"

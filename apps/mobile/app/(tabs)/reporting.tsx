@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react-native';
@@ -7,8 +7,52 @@ import {
     reportService, budgetService, accountService,
     buildReportGroups, computeReportTotals, formatKwacha,
 } from 'core';
-import type { ReportView, ExpenditureMode } from 'core';
+import type { ReportView, ExpenditureMode, ExpenditureAggregation } from 'core';
+import { ReportTrendChart, type ChartTimeframe, type TrendPoint } from '../../src/components/reporting/ReportTrendChart';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+
+const CHART_WIDTH = Dimensions.get('window').width - 80;
+
+/** Same bucketing idea as web's Reporting.tsx buildChartPeriods, with 1D/1W
+ * trimmed to trailing windows (see ReportTrendChart's doc comment). */
+function buildChartPeriods(tf: ChartTimeframe): { startDate: string; endDate: string; label: string }[] {
+    const periods: { startDate: string; endDate: string; label: string }[] = [];
+    const today = new Date();
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+    if (tf === '1D') {
+        for (let i = 29; i >= 0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
+            periods.push({ startDate: iso(d), endDate: iso(d), label: d.toLocaleDateString('en-US', { day: 'numeric' }) });
+        }
+    } else if (tf === '1W') {
+        let end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        for (let i = 0; i < 12; i++) {
+            const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
+            periods.unshift({ startDate: iso(start), endDate: iso(end), label: end.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) });
+            end = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 7);
+        }
+    } else if (tf === '3M') {
+        for (let i = 7; i >= 0; i--) {
+            const start = new Date(today.getFullYear(), today.getMonth() - i * 3, 1);
+            const end = new Date(start.getFullYear(), start.getMonth() + 3, 0);
+            periods.push({ startDate: iso(start), endDate: iso(end), label: start.toLocaleDateString('en-US', { month: 'short' }) });
+        }
+    } else if (tf === 'YTD') {
+        for (let mo = 0; mo <= today.getMonth(); mo++) {
+            const start = new Date(today.getFullYear(), mo, 1);
+            const end = new Date(today.getFullYear(), mo + 1, 0);
+            periods.push({ startDate: iso(start), endDate: iso(end), label: start.toLocaleDateString('en-US', { month: 'short' }) });
+        }
+    } else {
+        for (let i = 11; i >= 0; i--) {
+            const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+            periods.push({ startDate: iso(d), endDate: iso(end), label: d.toLocaleDateString('en-US', { month: 'short' }) });
+        }
+    }
+    return periods;
+}
 
 /** Local-time ISO date — matches core/format's date handling, so period
  * boundaries don't shift a day for a Lusaka user (UTC+2). */
@@ -40,16 +84,18 @@ function periodRange(period: Period): { start: string; end: string; prevStart: s
 }
 
 /**
- * Reporting — a focused subset of the web report. Ships the headline card,
- * period toggle and the grouped category breakdown with budget variance and
- * period-over-period change; the multi-point trend chart and budget-editing
- * UI stay on web for now (P5 follow-up).
+ * Reporting — a focused subset of the web report. Ships the headline card
+ * (tap to reveal the trend chart, matching web), period toggle and the
+ * grouped category breakdown with budget variance and period-over-period
+ * change; budget-editing UI stays on web for now.
  */
 export default function ReportingScreen() {
     const insets = useSafeAreaInsets();
     const [view, setView] = useState<ReportView>('PROFIT_LOSS');
     const [period, setPeriod] = useState<Period>('MONTH');
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
+    const [chartOpen, setChartOpen] = useState(false);
+    const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>('1M');
 
     const range = useMemo(() => periodRange(period), [period]);
 
@@ -82,6 +128,33 @@ export default function ReportingScreen() {
         return next;
     });
 
+    const chartPeriods = useMemo(() => buildChartPeriods(chartTimeframe), [chartTimeframe]);
+
+    const { data: chartRaw, isLoading: chartLoading } = useQuery({
+        queryKey: ['report-chart', view, chartTimeframe],
+        queryFn: async (): Promise<ExpenditureAggregation[][]> =>
+            Promise.all(chartPeriods.map((p) => reportService.getExpenditures(p.startDate, p.endDate, 'EXPENSE'))),
+        enabled: chartOpen,
+    });
+
+    const chartPoints: TrendPoint[] = useMemo(() => {
+        if (!chartRaw) return [];
+        return chartPeriods.map((p, i) => {
+            const exps = chartRaw[i] ?? [];
+            let value: number;
+            if (view === 'PROFIT_LOSS') {
+                const revenue = exps.filter((e) => e.type === 'INCOME').reduce((s, e) => s + e.total_amount, 0);
+                const expenses = exps.filter((e) => e.type === 'EXPENSE').reduce((s, e) => s + e.total_amount, 0);
+                value = revenue - expenses;
+            } else {
+                const assets = exps.filter((e) => e.type === 'ASSET').reduce((s, e) => s + e.total_amount, 0);
+                const liabilities = exps.filter((e) => e.type === 'LIABILITY').reduce((s, e) => s + e.total_amount, 0);
+                value = assets - liabilities;
+            }
+            return { label: p.label, shortLabel: p.label, value };
+        });
+    }, [chartRaw, chartPeriods, view]);
+
     return (
         <ScrollView style={styles.root} contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}>
             <Text style={styles.title}>Reporting</Text>
@@ -101,23 +174,38 @@ export default function ReportingScreen() {
             </View>
 
             <View style={styles.hero}>
-                <View style={styles.heroTop}>
-                    <Text style={styles.heroLabel}>{view === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}</Text>
-                </View>
-                {isLoading ? (
-                    <ActivityIndicator color="#FFFFFF" style={{ marginTop: 8, alignSelf: 'flex-start' }} />
-                ) : (
-                    <>
-                        <Text style={styles.heroValue}>{formatKwacha(headline)}</Text>
-                        <View style={styles.heroChange}>
-                            {headlineChange.isIncrease
-                                ? <ChevronRight size={13} color="#4ADE80" style={{ transform: [{ rotate: '-90deg' }] }} />
-                                : <ChevronRight size={13} color="#F87171" style={{ transform: [{ rotate: '90deg' }] }} />}
-                            <Text style={[styles.heroChangeText, { color: headlineChange.isIncrease ? '#4ADE80' : '#F87171' }]}>
-                                {headlineChange.value}% vs last year
-                            </Text>
-                        </View>
-                    </>
+                <Pressable onPress={() => setChartOpen((o) => !o)}>
+                    <View style={styles.heroTop}>
+                        <Text style={styles.heroLabel}>{view === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}</Text>
+                        <ChevronDown size={16} color="rgba(255,255,255,0.5)" style={chartOpen ? styles.heroChevronOpen : undefined} />
+                    </View>
+                    {isLoading ? (
+                        <ActivityIndicator color="#FFFFFF" style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+                    ) : (
+                        <>
+                            <Text style={styles.heroValue}>{formatKwacha(headline)}</Text>
+                            <View style={styles.heroChange}>
+                                {headlineChange.isIncrease
+                                    ? <ChevronRight size={13} color="#4ADE80" style={{ transform: [{ rotate: '-90deg' }] }} />
+                                    : <ChevronRight size={13} color="#F87171" style={{ transform: [{ rotate: '90deg' }] }} />}
+                                <Text style={[styles.heroChangeText, { color: headlineChange.isIncrease ? '#4ADE80' : '#F87171' }]}>
+                                    {headlineChange.value}% vs last year
+                                </Text>
+                            </View>
+                        </>
+                    )}
+                </Pressable>
+
+                {chartOpen && (
+                    <View style={styles.heroChartWrap}>
+                        <ReportTrendChart
+                            points={chartPoints}
+                            loading={chartLoading}
+                            timeframe={chartTimeframe}
+                            onTimeframeChange={setChartTimeframe}
+                            width={CHART_WIDTH}
+                        />
+                    </View>
                 )}
             </View>
 
@@ -205,6 +293,8 @@ const styles = StyleSheet.create({
     heroValue: { fontFamily: fonts.bodyBold, fontSize: 32, color: '#FFFFFF', marginTop: 4 },
     heroChange: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 8 },
     heroChangeText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
+    heroChevronOpen: { transform: [{ rotate: '180deg' }] },
+    heroChartWrap: { marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
     periodRow: { flexDirection: 'row', gap: 8 },
     periodChip: {
         paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
