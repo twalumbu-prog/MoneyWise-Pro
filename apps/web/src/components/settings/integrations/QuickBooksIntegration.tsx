@@ -69,6 +69,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
     const loadIntegrationData = async () => {
         try {
             setLoading(true);
+            setError(null);
 
             // Load status and local accounts
             const [statusData, accountsData] = await Promise.all([
@@ -79,6 +80,10 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
             setStatus(statusData);
             setLocalAccounts(accountsData);
 
+            if (statusData.needsReconnect) {
+                setError('Your QuickBooks connection has expired. Please reconnect below.');
+            }
+
             // If connected, load QB accounts
             if (statusData.connected) {
                 const qbData = await integrationService.getAccounts();
@@ -86,7 +91,7 @@ export const QuickBooksIntegration: React.FC<QuickBooksIntegrationProps> = ({ on
             }
         } catch (err: any) {
             console.error('Failed to load integration data:', err);
-            setError('Failed to load integration status');
+            setError(err?.message || 'Failed to load integration status');
         } finally {
             setLoading(false);
         }
