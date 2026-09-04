@@ -11,10 +11,26 @@
  * push equivalent and are intentionally not mirrored here.
  */
 
-import { Expo, type ExpoPushMessage, type ExpoPushTicket } from 'expo-server-sdk';
+import type { Expo as ExpoType, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import { supabase } from '../lib/supabase';
 
-const expo = new Expo();
+// expo-server-sdk ships ESM-only; a static import gets compiled to require()
+// on our CJS build target and crashes the whole function at cold start. Load
+// it lazily via dynamic import() instead, which works from CommonJS too.
+let expoModulePromise: Promise<typeof import('expo-server-sdk')> | undefined;
+function loadExpoModule() {
+    if (!expoModulePromise) expoModulePromise = import('expo-server-sdk');
+    return expoModulePromise;
+}
+
+let expoClient: ExpoType | undefined;
+async function getExpoClient(): Promise<ExpoType> {
+    if (!expoClient) {
+        const { Expo } = await loadExpoModule();
+        expoClient = new Expo();
+    }
+    return expoClient;
+}
 
 interface PushPayload {
     title: string;
@@ -46,6 +62,7 @@ async function getTokensForUserIds(userIds: string[]): Promise<string[]> {
  * send doesn't keep paying for it.
  */
 async function sendToTokens(tokens: string[], payload: PushPayload): Promise<void> {
+    const { Expo } = await loadExpoModule();
     const validTokens = tokens.filter((t) => Expo.isExpoPushToken(t));
     if (validTokens.length === 0) return;
 
@@ -57,6 +74,7 @@ async function sendToTokens(tokens: string[], payload: PushPayload): Promise<voi
         data: payload.data ?? {},
     }));
 
+    const expo = await getExpoClient();
     const chunks = expo.chunkPushNotifications(messages);
     const tickets: ExpoPushTicket[] = [];
     for (const chunk of chunks) {
@@ -80,6 +98,7 @@ async function sendToTokens(tokens: string[], payload: PushPayload): Promise<voi
 export const pushService = {
     /** Register (or refresh) a device's push token. Idempotent on the token itself. */
     async registerToken(userId: string, token: string, platform: 'ios' | 'android'): Promise<void> {
+        const { Expo } = await loadExpoModule();
         if (!Expo.isExpoPushToken(token)) {
             console.warn('[PushService] Ignoring non-Expo push token on register.');
             return;
