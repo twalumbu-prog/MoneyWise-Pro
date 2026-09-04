@@ -1185,6 +1185,21 @@ export class QuickBooksService {
         }));
     }
 
+    /** Create a Customer — used when a Master Fees student has no QuickBooks record at all. */
+    static async createCustomer(organizationId: string, displayName: string): Promise<{ success: boolean; qbId?: string; error?: any }> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+        const res = await fetch(`${apiBase}/${realmId}/customer?minorversion=70`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ DisplayName: displayName }),
+        });
+        const json = await res.json();
+        if (!res.ok) { console.error('[QB Customer] API Error:', JSON.stringify(json).slice(0, 500)); return { success: false, error: json }; }
+        console.log(`[QB Customer] ✅ Created ID: ${json.Customer?.Id}`);
+        return { success: true, qbId: json.Customer?.Id };
+    }
+
     /**
      * Create an Invoice. Used to post a Master Fees invoice that was never
      * mirrored into QuickBooks, so a payment has something to be applied
