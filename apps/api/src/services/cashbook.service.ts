@@ -5,11 +5,14 @@ import { RequisitionMessageService } from './requisition_message.service';
 import { ledgerService } from './ledger.service';
 import { withTiming } from '../utils/analytics';
 import { emailService } from './email.service';
+import { pushService } from './push.service';
 
 // Fire-and-forget: never let a notification failure affect the ledger write.
 const notifyInflowAsync = (organizationId: string, entry: any) => {
     emailService.notifyWalletInflow(organizationId, entry)
         .catch(err => console.error(`[Cashbook] Inflow notification failed for entry ${entry?.id}:`, err?.message));
+    pushService.notifyWalletInflow(organizationId, entry)
+        .catch(err => console.error(`[Cashbook] Inflow push failed for entry ${entry?.id}:`, err?.message));
 };
 
 // Fire-and-forget GL posting: never block or fail a cash write on a posting error

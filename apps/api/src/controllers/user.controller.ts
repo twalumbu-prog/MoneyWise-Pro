@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
 import { emailService } from '../services/email.service';
+import { pushService } from '../services/push.service';
 import { matchUserToStaff } from '../lib/staffUserMatching';
 
 const INVITE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
@@ -263,6 +264,8 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             } catch (emailErr: any) {
                 console.error('[CreateUser] Failed to send added-to-org email:', emailErr);
             }
+            pushService.notifyAddedToOrganization(targetUserId, orgRow?.name || 'your organization', role || 'REQUESTOR')
+                .catch(err => console.error('[CreateUser] Failed to send added-to-org push:', err));
 
             captureEvent('organization_invite_succeeded', {
                 feature: 'organization_invite', workflow_id: workflowId, organization_id, user_id: (req as any).user.id,
@@ -735,6 +738,40 @@ export const updatePaymentInfo = async (req: AuthRequest, res: any): Promise<any
     } catch (error: any) {
         console.error('Error updating payment info:', error);
         res.status(500).json({ error: 'Failed to update payment info', details: error.message });
+    }
+};
+
+export const registerPushToken = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const userId = (req as any).user.id;
+        const { token, platform } = req.body;
+
+        if (!token || typeof token !== 'string') {
+            return res.status(400).json({ error: 'token is required' });
+        }
+        if (platform !== 'ios' && platform !== 'android') {
+            return res.status(400).json({ error: "platform must be 'ios' or 'android'" });
+        }
+
+        await pushService.registerToken(userId, token, platform);
+        res.json({ message: 'Push token registered' });
+    } catch (error: any) {
+        console.error('Error registering push token:', error);
+        res.status(500).json({ error: 'Failed to register push token', details: error.message });
+    }
+};
+
+export const unregisterPushToken = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const { token } = req.body;
+        if (!token || typeof token !== 'string') {
+            return res.status(400).json({ error: 'token is required' });
+        }
+        await pushService.unregisterToken(token);
+        res.json({ message: 'Push token unregistered' });
+    } catch (error: any) {
+        console.error('Error unregistering push token:', error);
+        res.status(500).json({ error: 'Failed to unregister push token', details: error.message });
     }
 };
 

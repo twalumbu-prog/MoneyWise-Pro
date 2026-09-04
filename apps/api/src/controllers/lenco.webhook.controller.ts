@@ -10,6 +10,7 @@ import { applyProductRevenueRouting, markPaymentLinkPaid, confirmBookingsForRefe
 import { recordFeeCredit } from './billing.controller';
 import { whatsappService } from '../services/whatsapp.service';
 import { emailService } from '../services/email.service';
+import { pushService } from '../services/push.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
 
@@ -433,6 +434,8 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
             if (linkPaidOnHeal) {
                 await whatsappService.notifyPaymentLinkPaid(organizationId, reference);
                 await emailService.notifyPaymentLinkPaid(organizationId, reference);
+                pushService.notifyPaymentLinkPaid(organizationId, reference)
+                    .catch(err => console.error('[Lenco Webhook] Payment-link push failed:', err));
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
                     user_id: 'system', channel: 'whatsapp', notify_fn: 'notifyPaymentLinkPaid', status: 'attempted',
@@ -669,6 +672,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 Promise.all([
                     whatsappService.notifyPaymentLinkPaid(organizationId, reference),
                     emailService.notifyPaymentLinkPaid(organizationId, reference),
+                    pushService.notifyPaymentLinkPaid(organizationId, reference),
                 ]).catch(err => console.error(`[Lenco Webhook] notifyPaymentLinkPaid failed for ${reference}:`, err?.message));
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,
@@ -679,6 +683,7 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                 Promise.all([
                     whatsappService.notifyPublicSalePaid(organizationId, reference),
                     emailService.notifyPublicSalePaid(organizationId, reference),
+                    pushService.notifyPublicSalePaid(organizationId, reference),
                 ]).catch(err => console.error(`[Lenco Webhook] notifyPublicSalePaid failed for ${reference}:`, err?.message));
                 captureEvent('payment_receipt_notification_attempted', {
                     feature: 'payment_receipt_notification', workflow_id: reference, organization_id: organizationId,

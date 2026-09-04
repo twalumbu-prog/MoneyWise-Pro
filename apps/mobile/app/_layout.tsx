@@ -16,6 +16,7 @@ import {
 import { initCore } from '../src/platform';
 import { AuthProvider, useAuth } from '../src/context/AuthContext';
 import { queryClient, persister, MAX_CACHE_AGE_MS } from '../src/lib/queryClient';
+import { useNotificationNavigation } from '../src/hooks/useNotificationNavigation';
 import { colors } from '../src/theme/tokens';
 
 // Hand `core` its native implementations before any service call can fire.
@@ -53,6 +54,12 @@ const SessionGate: React.FC = () => {
             <ActivityIndicator size="large" color={colors.blue} />
         </View>
     );
+};
+
+/** Tapping a push notification navigates to the screen it's about. No UI of its own. */
+const PushNotificationTapHandler: React.FC = () => {
+    useNotificationNavigation();
+    return null;
 };
 
 export default function RootLayout() {
@@ -118,6 +125,7 @@ export default function RootLayout() {
                         <Stack.Screen name="apps/invest/product/[id]" options={{ animation: 'slide_from_right' }} />
                     </Stack>
                     <SessionGate />
+                    <PushNotificationTapHandler />
                 </AuthProvider>
             </PersistQueryClientProvider>
         </SafeAreaProvider>

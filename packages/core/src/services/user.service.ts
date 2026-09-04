@@ -80,6 +80,20 @@ export const userService = {
         });
     },
 
+    registerPushToken(token: string, platform: 'ios' | 'android'): Promise<{ message?: string }> {
+        return apiJson('/users/me/push-token', {
+            method: 'POST',
+            body: JSON.stringify({ token, platform }),
+        });
+    },
+
+    unregisterPushToken(token: string): Promise<{ message?: string }> {
+        return apiJson('/users/me/push-token', {
+            method: 'DELETE',
+            body: JSON.stringify({ token }),
+        });
+    },
+
     create(data: CreateUserInput): Promise<CreateUserResult> {
         return apiJson<CreateUserResult>('/users', {
             method: 'POST',

@@ -3,6 +3,7 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { emailService } from '../services/email.service';
+import { pushService } from '../services/push.service';
 import { ocrService } from '../services/ai/ocr.service';
 import { LencoService } from '../services/lenco.service';
 import { RequisitionMessageService } from '../services/requisition_message.service';
@@ -383,6 +384,9 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         emailService.notifyRequisitionEvent(id, 'CASH_DISBURSED').catch(err =>
             console.error('[Notification Error] Failed to send CASH_DISBURSED email:', err)
         );
+        pushService.notifyRequisitionEvent(id, 'CASH_DISBURSED').catch(err =>
+            console.error('[Notification Error] Failed to send CASH_DISBURSED push:', err)
+        );
 
         // 7. For cash disbursements, there is no Lenco webhook to confirm the
         // transfer, so we fire the scheduled Proof of Payment email here directly.
@@ -473,6 +477,7 @@ export const autoAuthorizeAndDisburse = async (req: any, res: any): Promise<any>
 
         // Fire the approval email + DISBURSAL message (non-blocking)
         emailService.notifyRequisitionEvent(id, 'REQUISITION_APPROVED').catch(() => {});
+        pushService.notifyRequisitionEvent(id, 'REQUISITION_APPROVED').catch(() => {});
         supabase.from('requisition_messages').insert({
             requisition_id: id,
             user_id: userId,
@@ -629,6 +634,9 @@ export const acknowledgeReceipt = async (req: any, res: any): Promise<any> => {
             // 8. Trigger Notification
             emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
                 console.error('[Notification Error] Failed to send REQUISITION_COMPLETED email:', err)
+            );
+            pushService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                console.error('[Notification Error] Failed to send REQUISITION_COMPLETED push:', err)
             );
 
             return;

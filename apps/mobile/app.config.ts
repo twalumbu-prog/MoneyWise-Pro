@@ -95,6 +95,14 @@ const config: ExpoConfig = {
                     'MoneyWise uses speech recognition to turn your dictation into text for the Assistant.',
             },
         ],
+        [
+            'expo-notifications',
+            {
+                // Brand navy, matching the splash/adaptive-icon background — shows
+                // behind the small Android status-bar notification icon.
+                color: '#002E3B',
+            },
+        ],
     ],
 
     experiments: {

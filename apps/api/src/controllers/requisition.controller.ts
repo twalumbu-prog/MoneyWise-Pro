@@ -5,6 +5,7 @@ import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
 import { emailService } from '../services/email.service';
+import { pushService } from '../services/push.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { ocrService } from '../services/ai/ocr.service';
 import { LencoService } from '../services/lenco.service';
@@ -311,6 +312,9 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
         // 4. Trigger notification
         emailService.notifyRequisitionEvent(requisition.id, 'NEW_REQUISITION').catch(err =>
             console.error('[Notification Error] Failed to send NEW_REQUISITION email:', err)
+        );
+        pushService.notifyRequisitionEvent(requisition.id, 'NEW_REQUISITION').catch(err =>
+            console.error('[Notification Error] Failed to send NEW_REQUISITION push:', err)
         );
     } catch (error: any) {
         console.error('Error creating requisition:', error);
@@ -640,13 +644,22 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
             emailService.notifyRequisitionEvent(id, 'REQUISITION_APPROVED').catch(err =>
                 console.error('[Notification Error] Failed to send REQUISITION_APPROVED email:', err)
             );
+            pushService.notifyRequisitionEvent(id, 'REQUISITION_APPROVED').catch(err =>
+                console.error('[Notification Error] Failed to send REQUISITION_APPROVED push:', err)
+            );
         } else if (status === 'REJECTED') {
             emailService.notifyRequisitionEvent(id, 'REQUISITION_REJECTED').catch(err =>
                 console.error('[Notification Error] Failed to send REQUISITION_REJECTED email:', err)
             );
+            pushService.notifyRequisitionEvent(id, 'REQUISITION_REJECTED').catch(err =>
+                console.error('[Notification Error] Failed to send REQUISITION_REJECTED push:', err)
+            );
         } else if (status === 'DISBURSED') {
             emailService.notifyRequisitionEvent(id, 'CASH_DISBURSED').catch(err =>
                 console.error('[Notification Error] Failed to send CASH_DISBURSED email:', err)
+            );
+            pushService.notifyRequisitionEvent(id, 'CASH_DISBURSED').catch(err =>
+                console.error('[Notification Error] Failed to send CASH_DISBURSED push:', err)
             );
 
             // Fire-and-forget: pre-classify line items in the background so the
@@ -1134,6 +1147,9 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
             emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
                 console.error('[Notification Error] Failed to send AUTO_COMPLETED email:', err)
             );
+            pushService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                console.error('[Notification Error] Failed to send AUTO_COMPLETED push:', err)
+            );
         } else {
             // Standard Cash Workflow: Just move to CHANGE_SUBMITTED
             const { error: statusError } = await supabase
@@ -1162,6 +1178,9 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
             // Trigger Notification
             emailService.notifyRequisitionEvent(id, 'CHANGE_SUBMITTED').catch(err =>
                 console.error('[Notification Error] Failed to send CHANGE_SUBMITTED email:', err)
+            );
+            pushService.notifyRequisitionEvent(id, 'CHANGE_SUBMITTED').catch(err =>
+                console.error('[Notification Error] Failed to send CHANGE_SUBMITTED push:', err)
             );
         }
     } catch (error: any) {
@@ -1386,6 +1405,9 @@ export const confirmChange = async (req: any, res: any): Promise<any> => {
         // 8. Trigger Notification
         emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
             console.error('[Notification Error] Failed to send REQUISITION_COMPLETED email:', err)
+        );
+        pushService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+            console.error('[Notification Error] Failed to send REQUISITION_COMPLETED push:', err)
         );
     } catch (error: any) {
         console.error('Error confirming change:', error);
@@ -2128,6 +2150,8 @@ export const autoCompleteRequisition = async (req: any, res: any): Promise<any> 
                 line_items:        lineItemSummary,
             }],
         }).catch(err => console.error('[AutoComplete] Email failed:', err.message));
+        pushService.notifyAutoCategorizationComplete([{ requestor_id }])
+            .catch(err => console.error('[AutoComplete] Push failed:', err.message));
 
         console.log(`[AutoComplete] Finished for ${id}`);
         res.json({ message: 'Auto-completion successful', requisition_id: id });
@@ -2164,6 +2188,8 @@ export const sendAutoCategorizationReminder = async (req: any, res: any): Promis
             organizationId: organization_id,
             requisitions: reqs || [],
         });
+        pushService.notifyAutoCategorizationReminder(reqs || [])
+            .catch(err => console.error('[AutoReminder] Push failed:', err.message));
 
         res.json({ message: 'Reminder sent', count: (reqs || []).length });
     } catch (err: any) {

@@ -3,6 +3,8 @@ import { AppState } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { clearCache } from '../platform/storage';
+import { registerForPushNotificationsAsync } from '../lib/pushNotifications';
+import { userService } from 'core';
 
 import type { UserRole } from 'core';
 export type { UserRole };
@@ -68,6 +70,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUserStatus(row.status ?? null);
             setOrganizationId(row.organization_id ?? null);
             setOrganizationName(row.organizations?.name ?? null);
+
+            // Fire-and-forget: a push-registration failure must never block sign-in.
+            registerForPushNotificationsAsync().then((result) => {
+                if (!result || !mounted.current) return;
+                userService.registerPushToken(result.token, result.platform)
+                    .catch((err) => console.warn('[Push] Failed to register token with backend:', err));
+            });
         };
 
         supabase.auth.getSession().then(async ({ data }) => {
@@ -123,6 +132,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     const signOut = async () => {
+        // Must run BEFORE supabase.auth.signOut() — the unregister call needs a
+        // still-valid session token, and a shared/reset device must stop
+        // receiving this user's pushes the moment they sign out, not linger
+        // registered to whoever signs in next.
+        try {
+            const result = await registerForPushNotificationsAsync();
+            if (result) await userService.unregisterPushToken(result.token);
+        } catch (err) {
+            console.warn('[Push] Failed to unregister token on sign-out:', err);
+        }
+
         await supabase.auth.signOut();
         // Financial data must never outlive the session on a shared device.
         clearCache();
