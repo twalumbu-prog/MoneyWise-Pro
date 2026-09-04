@@ -11,25 +11,50 @@
  * push equivalent and are intentionally not mirrored here.
  */
 
-import type { Expo as ExpoType, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk';
 import { supabase } from '../lib/supabase';
 
-// expo-server-sdk ships ESM-only; a static import gets compiled to require()
-// on our CJS build target and crashes the whole function at cold start. Load
-// it lazily via dynamic import() instead, which works from CommonJS too.
-let expoModulePromise: Promise<typeof import('expo-server-sdk')> | undefined;
-function loadExpoModule() {
-    if (!expoModulePromise) expoModulePromise = import('expo-server-sdk');
-    return expoModulePromise;
+// expo-server-sdk ships ESM-only, and this project's CJS build target
+// (tsconfig "module": "commonjs") downlevels even a dynamic import() back
+// into require(), so there is no way to load the package here without
+// crashing the function at cold start. Talk to Expo's push HTTP API
+// directly instead — it's a plain REST endpoint, no SDK required.
+const EXPO_PUSH_ENDPOINT = 'https://exp.host/--/api/v2/push/send';
+const EXPO_PUSH_TOKEN_RE = /^Expo(PushToken|nentPushToken)\[.+\]$/;
+
+function isExpoPushToken(token: string): boolean {
+    return typeof token === 'string' && EXPO_PUSH_TOKEN_RE.test(token);
 }
 
-let expoClient: ExpoType | undefined;
-async function getExpoClient(): Promise<ExpoType> {
-    if (!expoClient) {
-        const { Expo } = await loadExpoModule();
-        expoClient = new Expo();
-    }
-    return expoClient;
+interface ExpoPushMessage {
+    to: string;
+    sound: 'default';
+    title: string;
+    body: string;
+    data: Record<string, any>;
+}
+
+interface ExpoPushTicket {
+    status: 'ok' | 'error';
+    id?: string;
+    message?: string;
+    details?: { error?: string };
+}
+
+function chunkMessages(messages: ExpoPushMessage[], size = 100): ExpoPushMessage[][] {
+    const chunks: ExpoPushMessage[][] = [];
+    for (let i = 0; i < messages.length; i += size) chunks.push(messages.slice(i, i + size));
+    return chunks;
+}
+
+async function sendPushChunk(chunk: ExpoPushMessage[]): Promise<ExpoPushTicket[]> {
+    const res = await fetch(EXPO_PUSH_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify(chunk),
+    });
+    if (!res.ok) throw new Error(`Expo push API responded ${res.status}`);
+    const json = (await res.json()) as { data?: ExpoPushTicket[] };
+    return json.data ?? [];
 }
 
 interface PushPayload {
@@ -62,8 +87,7 @@ async function getTokensForUserIds(userIds: string[]): Promise<string[]> {
  * send doesn't keep paying for it.
  */
 async function sendToTokens(tokens: string[], payload: PushPayload): Promise<void> {
-    const { Expo } = await loadExpoModule();
-    const validTokens = tokens.filter((t) => Expo.isExpoPushToken(t));
+    const validTokens = tokens.filter(isExpoPushToken);
     if (validTokens.length === 0) return;
 
     const messages: ExpoPushMessage[] = validTokens.map((to) => ({
@@ -74,12 +98,11 @@ async function sendToTokens(tokens: string[], payload: PushPayload): Promise<voi
         data: payload.data ?? {},
     }));
 
-    const expo = await getExpoClient();
-    const chunks = expo.chunkPushNotifications(messages);
+    const chunks = chunkMessages(messages);
     const tickets: ExpoPushTicket[] = [];
     for (const chunk of chunks) {
         try {
-            tickets.push(...(await expo.sendPushNotificationsAsync(chunk)));
+            tickets.push(...(await sendPushChunk(chunk)));
         } catch (err) {
             console.error('[PushService] Chunk send failed:', err);
         }
@@ -98,8 +121,7 @@ async function sendToTokens(tokens: string[], payload: PushPayload): Promise<voi
 export const pushService = {
     /** Register (or refresh) a device's push token. Idempotent on the token itself. */
     async registerToken(userId: string, token: string, platform: 'ios' | 'android'): Promise<void> {
-        const { Expo } = await loadExpoModule();
-        if (!Expo.isExpoPushToken(token)) {
+        if (!isExpoPushToken(token)) {
             console.warn('[PushService] Ignoring non-Expo push token on register.');
             return;
         }
