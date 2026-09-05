@@ -56,7 +56,8 @@ const SearchableAccountSelect: React.FC<{
     options: any[];
     onChange: (value: string) => void;
     placeholder?: string;
-}> = ({ value, options, onChange, placeholder = "Select account..." }) => {
+    isSaving?: boolean;
+}> = ({ value, options, onChange, placeholder = "Select account...", isSaving = false }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [search, setSearch] = useState("");
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -73,25 +74,30 @@ const SearchableAccountSelect: React.FC<{
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const filteredOptions = options.filter(opt => 
-        (opt.name || "").toLowerCase().includes(search.toLowerCase()) || 
+    const filteredOptions = options.filter(opt =>
+        (opt.name || "").toLowerCase().includes(search.toLowerCase()) ||
         (opt.code || "").toLowerCase().includes(search.toLowerCase())
     );
 
     return (
         <div className="relative w-full" ref={dropdownRef}>
-            <div 
-                onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
-                className={`flex items-center justify-between px-3 py-2 bg-gray-50/50 border rounded-xl cursor-pointer transition-all text-xs font-medium
+            <div
+                onClick={(e) => { e.stopPropagation(); if (!isSaving) setIsOpen(!isOpen); }}
+                className={`flex items-center justify-between px-3 py-2 bg-gray-50/50 border rounded-xl transition-all text-xs font-medium
+                    ${isSaving ? 'opacity-60 cursor-wait' : 'cursor-pointer'}
                     ${isOpen ? 'border-blue-400 ring-4 ring-blue-50 bg-white' : 'border-gray-100 hover:border-blue-200'}`}
             >
                 <span className={`truncate mr-2 ${selectedOption ? 'text-gray-900 font-bold' : 'text-gray-400'}`}>
                     {selectedOption ? `${selectedOption.code} · ${selectedOption.name}` : placeholder}
                 </span>
-                <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                {isSaving ? (
+                    <Loader2 size={14} className="text-blue-400 flex-shrink-0 animate-spin" />
+                ) : (
+                    <ChevronDown size={14} className={`text-gray-400 flex-shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                )}
             </div>
 
-            {isOpen && (
+            {isOpen && !isSaving && (
                 <div 
                     className="absolute z-[100] w-full mt-2 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden animate-in fade-in zoom-in-95 duration-100"
                     onClick={(e) => e.stopPropagation()}
@@ -228,6 +234,9 @@ const renderMobileStatusIcon = (status: string) => {
 const CashLedger: React.FC = () => {
     const navigate = useNavigate();
     const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
+    // Which line-item/entry account dropdown currently has a save in flight —
+    // drives the inline spinner in SearchableAccountSelect for instant feedback.
+    const [savingAccountKey, setSavingAccountKey] = useState<string | null>(null);
     const [depositProofEntry, setDepositProofEntry] = useState<CashbookEntry | null>(null);
     const [postingReview, setPostingReview] = useState<{
         type: 'INFLOW' | 'REQUISITION';
@@ -364,6 +373,20 @@ const CashLedger: React.FC = () => {
     const recentExternalEntries: CashbookEntry[] = overview?.recent?.external ?? [];
     // Matches the old single loadData() flag for the spinner/glow logic.
     const loading = overviewFetching || !organizationId;
+
+    // Keep the open transaction-detail sidebar in sync with the query cache.
+    // `selectedEntry` is a snapshot taken when the row was clicked; without this,
+    // a mutation made from inside the sidebar (e.g. categorizing via the account
+    // dropdown) invalidates `entries` but the sidebar keeps rendering the stale
+    // object, so the change only appears after closing and reopening it.
+    useEffect(() => {
+        if (!selectedEntry) return;
+        const updated = entries.find(e => e.id === selectedEntry.id);
+        if (updated && updated !== selectedEntry) {
+            setSelectedEntry(updated);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [entries]);
 
     const { data: accounts = [] } = useQuery<Account[]>({
         queryKey: ['accounts', organizationId],
@@ -785,32 +808,41 @@ const CashLedger: React.FC = () => {
     };
 
     const handleAccountChange = async (lineItemId: string, accountId: string) => {
+        setSavingAccountKey(lineItemId);
         try {
             await requisitionService.updateLineItemAccount(lineItemId, accountId);
-            loadData();
+            await loadData();
         } catch (error: any) {
             alert('Failed to update account: ' + error.message);
+        } finally {
+            setSavingAccountKey(null);
         }
     };
 
     const handleLedgerAccountChange = async (entryId: string, accountId: string) => {
+        setSavingAccountKey(entryId);
         try {
             await cashbookService.updateAccount(entryId, accountId);
-            loadData();
+            await loadData();
         } catch (error: any) {
             alert('Failed to update account: ' + error.message);
+        } finally {
+            setSavingAccountKey(null);
         }
     };
 
     const handleAccountAndNarrate = async (entryId: string, description: string, accountId?: string) => {
+        setSavingAccountKey(entryId);
         try {
             await cashbookService.narrateEntry(entryId, description, accountId);
             const newEditing = { ...editingNarration };
             delete newEditing[entryId];
             setEditingNarration(newEditing);
-            loadData();
+            await loadData();
         } catch (error: any) {
             alert('Failed to save transaction details: ' + error.message);
+        } finally {
+            setSavingAccountKey(null);
         }
     };
 
@@ -2607,6 +2639,7 @@ Status: VERIFIED`;
                                                         options={accounts}
                                                         onChange={(val) => handleAccountChange(item.id, val)}
                                                         placeholder="Categorize expense…"
+                                                        isSaving={savingAccountKey === item.id}
                                                     />
                                                 </div>
                                             ))}
@@ -2693,6 +2726,7 @@ Status: VERIFIED`;
                                                     }
                                                 }}
                                                 placeholder={entry.entry_type === 'INFLOW' ? 'Select Credit Account…' : 'Select Debit Account…'}
+                                                isSaving={savingAccountKey === entry.id}
                                             />
                                         </div>
                                     </div>
