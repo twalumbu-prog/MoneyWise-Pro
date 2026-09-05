@@ -3125,7 +3125,14 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
             const amount = amountLine?.split(':')[1]?.trim() || `K${Number(meta.amount || disbursement?.total_prepared || 0).toLocaleString()}`;
             const method = methodLine?.split(':')[1]?.trim() || meta.payment_method || disbursement?.payment_method || 'N/A';
             const ref = refLine?.split(':')[1]?.trim() || meta.external_reference || disbursement?.external_reference || 'N/A';
-            const status = statusLine?.split(':')[1]?.trim() || 'SUCCESS';
+            const parsedStatus = statusLine?.split(':')[1]?.trim();
+            // The "Status:" line was frozen into this message's content at disbursal time and is
+            // never rewritten once the transfer settles. If it says PROCESSING but the requisition
+            // has since moved past PROCESSING (e.g. RECEIVED once Lenco confirms), trust the live
+            // requisition status instead of the stale text so the badge doesn't stay stuck forever.
+            const status = (parsedStatus === 'PROCESSING' && requisitionData?.status && requisitionData.status !== 'PROCESSING')
+                ? 'SUCCESS'
+                : (parsedStatus || 'SUCCESS');
             const recipientName = disbursement?.recipient_account_name || meta.recipient || null;
             const recipientAccount = disbursement?.recipient_account || null;
             const recipientBank = disbursement?.recipient_bank_code || null;
