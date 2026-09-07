@@ -305,6 +305,13 @@ export const cashbookService = {
             // can show who made the deposit without relying on description parsing.
             sender_name?: string | null;
             sender_phone?: string | null;
+            // Pre-classified inflows (e.g. the Blue Opus commission sweep and
+            // subscription credits, which have no human judgment call): stamp the
+            // income account and status IN THE SAME UPDATE that finalizes the row,
+            // so the fire-and-forget journal post below already sees a real contra
+            // account instead of racing a later categorization write into Suspense.
+            account_id?: string | null;
+            status?: string;
         }
     ): Promise<CashbookEntry> {
         const { data: intent, error: intentError } = await supabase
@@ -341,8 +348,9 @@ export const cashbookService = {
                 description: opts.description,
                 debit: opts.debit,
                 credit: 0,
-                status: 'COMPLETED',
+                status: opts.status || 'COMPLETED',
                 external_reference: externalReference,
+                ...(opts.account_id ? { account_id: opts.account_id } : {}),
                 reference_number: refNum,
                 date: newDate,
                 ...(opts.sender_name  != null ? { sender_name:  opts.sender_name  } : {}),
