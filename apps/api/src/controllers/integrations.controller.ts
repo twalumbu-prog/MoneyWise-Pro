@@ -55,6 +55,21 @@ export const getIntegrationStatus = async (req: AuthRequest, res: Response<any>)
         if (error || !data) {
             return res.json({ connected: false });
         }
+
+        // A row existing doesn't mean the stored token still works — validate it
+        // (refreshing if needed) so the frontend doesn't show "Connected" and then
+        // fail with an opaque error the moment it tries to use the connection.
+        try {
+            await QuickBooksService.getValidToken(organizationId);
+        } catch (tokenError: any) {
+            return res.json({
+                connected: false,
+                needsReconnect: true,
+                error: tokenError.message,
+                ...data,
+            });
+        }
+
         res.json({ connected: true, ...data });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
