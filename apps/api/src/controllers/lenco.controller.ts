@@ -1878,6 +1878,28 @@ export const getPublicSaleReceiptDetails = async (req: Request, res: Response) =
  * settlement merchant (Blue Opus Software), since it's the only org that both
  * receives "Split payment" credits and has this account.
  */
+/**
+ * Look up one of Blue Opus's auto-classified revenue accounts by name.
+ *
+ * Used to stamp `account_id` ON the ledger row as it is created, rather than
+ * patching it in afterwards. createEntry/finalizePendingIntent post the GL
+ * journal fire-and-forget; a post-hoc categorization re-post races that async
+ * post, and whichever finishes last wins — which is why roughly a third of the
+ * commission sweeps ended up credited to Uncategorised / Suspense instead of
+ * Transaction Service Revenue. Classifying up front makes both writers produce
+ * the same journal, so the race no longer matters.
+ */
+async function resolveAutoRevenueAccount(orgId: string, name: string): Promise<{ id: string; qb_account_id: string | null } | null> {
+    if (orgId !== BLUE_OPUS_ORG_ID) return null;
+    const { data } = await supabase
+        .from('accounts')
+        .select('id, qb_account_id')
+        .eq('organization_id', orgId)
+        .ilike('name', name)
+        .maybeSingle();
+    return data || null;
+}
+
 async function categorizeSplitPaymentRevenue(orgId: string, entryId: string) {
     if (orgId !== BLUE_OPUS_ORG_ID) return;
 
@@ -2454,6 +2476,14 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                 const isSubscriptionPayment = txnType === 'credit' &&
                     (resolvedRef.toUpperCase().startsWith('PG-SUB-') || txnRefRaw.toUpperCase().startsWith('PG-SUB-'));
 
+                // Resolve the income account BEFORE the row is written so the ledger
+                // row carries its contra account from the very first journal post.
+                const autoRevenueAccount = isSplitPaymentSweep
+                    ? await resolveAutoRevenueAccount(orgId, 'Transaction Service Revenue')
+                    : isSubscriptionPayment
+                        ? await resolveAutoRevenueAccount(orgId, 'Subscription Revenue')
+                        : null;
+
                 // ─── Check if cashbook entry already exists for this transaction ───
                 // Multi-row-safe: .maybeSingle() errors out (data=null) when more than
                 // one row matches — e.g. a finalized entry plus a stale PENDING twin —
@@ -2548,6 +2578,8 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                 date: txnDate || undefined,
                                 sender_name: sale?.senderName || null,
                                 sender_phone: sale?.senderPhone || null,
+                                account_id: autoRevenueAccount?.id || null,
+                                ...(autoRevenueAccount ? { status: 'ACCOUNTED' } : {}),
                             });
 
                             if (resolvedRef) {
@@ -2610,11 +2642,12 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                 credit: 0,
                                 entry_type: 'INFLOW',
                                 account_type: 'MONEYWISE_WALLET',
-                                status: entryStatus,
+                                status: autoRevenueAccount ? 'ACCOUNTED' : entryStatus,
                                 wallet_id: walletId,
                                 external_reference: entryExternalRef,
                                 sender_name: sale?.senderName || null,
                                 sender_phone: sale?.senderPhone || null,
+                                ...(autoRevenueAccount ? { account_id: autoRevenueAccount.id } : {}),
                             } as any);
                         } catch (createErr: any) {
                             // The resolved merchant reference can collide with another
@@ -2631,11 +2664,12 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
                                     credit: 0,
                                     entry_type: 'INFLOW',
                                     account_type: 'MONEYWISE_WALLET',
-                                    status: entryStatus,
+                                    status: autoRevenueAccount ? 'ACCOUNTED' : entryStatus,
                                     wallet_id: walletId,
                                     external_reference: txnId,
                                     sender_name: sale?.senderName || null,
                                     sender_phone: sale?.senderPhone || null,
+                                    ...(autoRevenueAccount ? { account_id: autoRevenueAccount.id } : {}),
                                 } as any);
                             } else {
                                 throw createErr;
