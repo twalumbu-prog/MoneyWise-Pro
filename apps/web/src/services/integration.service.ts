@@ -160,9 +160,11 @@ export const masterFeesService = {
         return response.json();
     },
 
-    async disconnect(): Promise<void> {
-        const response = await fetch(`${API_URL}/integrations/masterfees`, { method: 'DELETE', headers: await authHeaders() });
+    async disconnect(removeData: boolean = false): Promise<{ success: boolean; dataRemoved: boolean; purged?: { cashbookEntries: number; journals: number; records: number } }> {
+        const url = `${API_URL}/integrations/masterfees${removeData ? '?removeData=true' : ''}`;
+        const response = await fetch(url, { method: 'DELETE', headers: await authHeaders() });
         if (!response.ok) await parseError(response, 'Failed to disconnect Master Fees');
+        return response.json();
     },
 
     async getFeeCategories(): Promise<MasterFeesCategory[]> {
