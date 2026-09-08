@@ -1023,6 +1023,34 @@ export class QuickBooksService {
         return { success: true };
     }
 
+    /**
+     * Change which bank account a Payment was deposited into. Re-reads the
+     * current SyncToken first (QuickBooks rejects a stale one), then sends a
+     * sparse update carrying only DepositToAccountRef so nothing else on the
+     * payment (lines, customer, amount) is touched.
+     */
+    static async updatePaymentDepositAccount(organizationId: string, paymentId: string, newAccountId: string): Promise<{ success: boolean; error?: any }> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+
+        const readRes = await fetch(`${apiBase}/${realmId}/payment/${paymentId}?minorversion=70`, {
+            headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+        });
+        const readJson = await readRes.json();
+        const syncToken = readJson?.Payment?.SyncToken;
+        if (!readRes.ok || syncToken === undefined) return { success: false, error: readJson };
+
+        const res = await fetch(`${apiBase}/${realmId}/payment?minorversion=70`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+            body: JSON.stringify({ Id: paymentId, SyncToken: syncToken, sparse: true, DepositToAccountRef: { value: newAccountId } }),
+        });
+        const json = await res.json();
+        if (!res.ok) { console.error('[QB Payment Update] API Error:', JSON.stringify(json).slice(0, 500)); return { success: false, error: json }; }
+        console.log(`[QB Payment Update] ✅ Payment ${paymentId} deposit account updated`);
+        return { success: true };
+    }
+
     static async createLedgerPurchase(organizationId: string, entryId: string, debitAccountId: string, userId: string) {
         console.log(`[QB Ledger Purchase] Starting purchase creation for entry ${entryId}`);
         try {
