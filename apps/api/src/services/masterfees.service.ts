@@ -1192,6 +1192,76 @@ async function postPayment(
 // ─────────────────────────────────────────────────────────────────────────────
 // Lenco-mode auto-detection
 // ─────────────────────────────────────────────────────────────────────────────
+/**
+ * Full wipe of everything Master Fees ever wrote for this org: the 65/72-row-scale
+ * revenue-recognition journals, the cashbook inflows those payments posted (real
+ * recorded cash — removing this changes the org's cash-in totals, not just its
+ * integration config), and the sync-tracking rows. Used when an admin disconnects
+ * with "remove data" instead of the default "keep it" — irreversible, so the
+ * controller only calls this on an explicit opt-in.
+ */
+export async function purgeMasterFeesData(organizationId: string): Promise<{ cashbookEntries: number; journals: number; records: number }> {
+    // 1. Cashbook inflows this integration created directly (account_type
+    // MASTERFEES/MASTERFEES_MANUAL) — these carry real recorded cash, unlike the
+    // MASTERFEES-source journals below which are pure revenue/receivable postings.
+    const { data: entries } = await supabase
+        .from('cashbook_entries')
+        .select('id, date, created_at, account_type, wallet_id')
+        .eq('organization_id', organizationId)
+        .in('account_type', ['MASTERFEES', 'MASTERFEES_MANUAL']);
+
+    const affectedChains = new Map<string, { date: string; created_at: string; account_type: string; wallet_id: string | null }>();
+    for (const e of entries || []) {
+        // Recalc must start from the EARLIEST row per (account_type, wallet_id)
+        // chain, otherwise later balances are left stale after the delete.
+        const key = `${e.account_type}:${e.wallet_id || ''}`;
+        const cur = affectedChains.get(key);
+        if (!cur || e.date < cur.date || (e.date === cur.date && e.created_at < cur.created_at)) {
+            affectedChains.set(key, { date: e.date, created_at: e.created_at, account_type: e.account_type, wallet_id: e.wallet_id });
+        }
+    }
+
+    for (const e of entries || []) {
+        await ledgerService.removeForCashbookEntry(e.id, organizationId);
+    }
+    if (entries && entries.length > 0) {
+        await supabase
+            .from('cashbook_entries')
+            .delete()
+            .eq('organization_id', organizationId)
+            .in('id', entries.map(e => e.id));
+    }
+    for (const chain of affectedChains.values()) {
+        await cashbookService.recalculateBalancesFrom(organizationId, chain.date, chain.created_at, chain.account_type, chain.wallet_id || undefined);
+    }
+
+    // 2. Revenue-recognition / receivable journals posted directly (source_type
+    // 'MASTERFEES') — no cashbook row, no cash impact, just GL entries.
+    const { data: journals } = await supabase
+        .from('journal_entries')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('source_type', SOURCE_TYPE);
+    if (journals && journals.length > 0) {
+        await supabase.from('journal_lines').delete().in('journal_entry_id', journals.map(j => j.id));
+        await supabase.from('journal_entries').delete().in('id', journals.map(j => j.id));
+    }
+
+    // 3. Sync-tracking rows.
+    const { count: recordCount } = await supabase
+        .from('masterfees_records')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId);
+    await supabase.from('masterfees_records').delete().eq('organization_id', organizationId);
+
+    void broadcastInvalidate(organizationId, [
+        'cashbook-overview', 'cashbook-entries', 'cashbook-balance',
+        'external-balances', 'cashbook-recent', 'inflows', 'wallets',
+    ]);
+
+    return { cashbookEntries: entries?.length || 0, journals: journals?.length || 0, records: recordCount || 0 };
+}
+
 export async function detectLencoMode(organizationId: string, client: MasterFeesClient): Promise<'shared' | 'separate'> {
     // No linked Lenco subaccount at all → MoneyWise can't be seeing MF's cash.
     const { data: org } = await supabase
