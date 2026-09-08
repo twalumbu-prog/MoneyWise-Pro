@@ -12,6 +12,7 @@ import {
     recategorizeMasterfeesInvoices,
     applyPaymentDateCorrections,
     reconcileMasterfees,
+    purgeMasterFeesData,
     MasterFeesConfig,
 } from '../services/masterfees.service';
 
@@ -276,15 +277,27 @@ export const getMasterFeesStatus = async (req: AuthRequest, res: Response) => {
 export const disconnectMasterFees = async (req: AuthRequest, res: Response) => {
     try {
         const organizationId = req.user.organization_id;
+        // Default is "keep": journals + cashbook entries + provisioned accounts are
+        // left in place so historical reports stay intact and reconnecting resumes
+        // idempotently. `removeData=true` is an explicit, irreversible opt-in to
+        // wipe every journal, cashbook entry and sync record this integration ever
+        // wrote (see purgeMasterFeesData) — used when an admin wants zero trace of
+        // Master Fees left in the org's books, not just the connection severed.
+        const removeData = req.body?.removeData === true || req.query?.removeData === 'true';
+
         const { error } = await supabase
             .from('integrations')
             .delete()
             .eq('provider', PROVIDER)
             .eq('organization_id', organizationId);
         if (error) throw error;
-        // Journals + provisioned accounts are intentionally left in place so historical
-        // reports stay intact; reconnecting resumes idempotently.
-        res.json({ success: true });
+
+        let purged: { cashbookEntries: number; journals: number; records: number } | undefined;
+        if (removeData) {
+            purged = await purgeMasterFeesData(organizationId);
+        }
+
+        res.json({ success: true, dataRemoved: removeData, purged });
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

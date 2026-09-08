@@ -12,6 +12,8 @@ import {
     Scale,
     ChevronDown,
     Zap,
+    Trash2,
+    X,
 } from 'lucide-react';
 
 interface MasterfeesIntegrationProps {
@@ -41,6 +43,11 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
     const [categories, setCategories] = useState<MasterFeesCategory[]>([]);
     const [savingCat, setSavingCat] = useState<string | null>(null);
     const [reconcile, setReconcile] = useState<{ moneywiseReceivable: number; masterfeesOutstanding: number; difference: number; studentsWithBalance: number } | null>(null);
+
+    // Disconnect confirmation — lets the admin choose whether to keep the
+    // journals/cashbook entries this integration posted or wipe them entirely.
+    const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+    const [removeDataOnDisconnect, setRemoveDataOnDisconnect] = useState(false);
 
     // Silent background refresh indicator — separate from the manual "Sync now"
     // button's `syncing` state so opening this page doesn't look like the user
@@ -131,13 +138,18 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
     };
 
     const handleDisconnect = async () => {
-        if (!window.confirm('Disconnect Master Fees? Existing posted revenue and receivables are kept; new activity will stop syncing.')) return;
         try {
             setActionLoading(true);
-            await masterFeesService.disconnect();
+            const result = await masterFeesService.disconnect(removeDataOnDisconnect);
+            setShowDisconnectModal(false);
             setStatus({ connected: false });
             setCategories([]);
             setReconcile(null);
+            setNotice(
+                result.dataRemoved && result.purged
+                    ? `Master Fees disconnected. Removed ${result.purged.cashbookEntries} cashbook entries, ${result.purged.journals} journals and ${result.purged.records} sync records.`
+                    : 'Master Fees disconnected. Existing posted revenue and receivables were kept.'
+            );
         } catch (err: any) {
             setError(err.message);
         } finally {
@@ -246,7 +258,7 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
                                         <CheckCircle className="w-3 h-3 mr-1" /> Connected
                                     </span>
-                                    <button onClick={handleDisconnect} disabled={actionLoading} className="text-sm text-red-600 hover:text-red-900 font-medium">
+                                    <button onClick={() => { setRemoveDataOnDisconnect(false); setShowDisconnectModal(true); }} disabled={actionLoading} className="text-sm text-red-600 hover:text-red-900 font-medium">
                                         Disconnect
                                     </button>
                                 </div>
@@ -508,6 +520,51 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
                             </table>
                         </div>
                     )}
+                </div>
+            )}
+
+            {showDisconnectModal && (
+                <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md">
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+                            <h4 className="text-base font-bold text-gray-900">Disconnect Master Fees</h4>
+                            <button onClick={() => setShowDisconnectModal(false)} className="p-1 hover:bg-gray-100 rounded-full">
+                                <X className="h-4 w-4 text-gray-400" />
+                            </button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-sm text-gray-600">New activity will stop syncing either way. Choose what happens to what's already posted:</p>
+
+                            <label className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer ${!removeDataOnDisconnect ? 'border-brand-green bg-green-50' : 'border-gray-200'}`}>
+                                <input type="radio" name="disconnect-mode" className="mt-1" checked={!removeDataOnDisconnect} onChange={() => setRemoveDataOnDisconnect(false)} />
+                                <div>
+                                    <div className="text-sm font-semibold text-gray-900">Keep the data</div>
+                                    <div className="text-xs text-gray-500">Posted revenue, receivables and cashbook entries stay exactly as they are. Reconnecting later resumes where it left off.</div>
+                                </div>
+                            </label>
+
+                            <label className={`flex items-start space-x-3 p-3 rounded-xl border cursor-pointer ${removeDataOnDisconnect ? 'border-red-400 bg-red-50' : 'border-gray-200'}`}>
+                                <input type="radio" name="disconnect-mode" className="mt-1" checked={removeDataOnDisconnect} onChange={() => setRemoveDataOnDisconnect(true)} />
+                                <div>
+                                    <div className="text-sm font-semibold text-gray-900 flex items-center"><Trash2 className="h-3.5 w-3.5 mr-1 text-red-500" /> Remove all Master Fees data</div>
+                                    <div className="text-xs text-gray-500">Deletes every journal, cashbook entry (including any cash it recorded) and sync record this integration ever created. This cannot be undone.</div>
+                                </div>
+                            </label>
+                        </div>
+                        <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-gray-100">
+                            <button onClick={() => setShowDisconnectModal(false)} disabled={actionLoading} className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl">
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDisconnect}
+                                disabled={actionLoading}
+                                className={`px-4 py-2 text-sm font-medium text-white rounded-xl flex items-center ${removeDataOnDisconnect ? 'bg-red-600 hover:bg-red-700' : 'bg-brand-navy hover:bg-brand-navy/90'}`}
+                            >
+                                {actionLoading && <RefreshCw className="h-4 w-4 mr-2 animate-spin" />}
+                                {removeDataOnDisconnect ? 'Disconnect & remove data' : 'Disconnect'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             )}
         </div>

@@ -113,8 +113,8 @@ export const masterFeesService = {
         });
     },
 
-    async disconnect(): Promise<void> {
-        await apiFetch('/integrations/masterfees', { method: 'DELETE' });
+    async disconnect(removeData: boolean = false): Promise<{ success: boolean; dataRemoved: boolean; purged?: { cashbookEntries: number; journals: number; records: number } }> {
+        return apiJson('/integrations/masterfees' + (removeData ? '?removeData=true' : ''), { method: 'DELETE' });
     },
 
     getFeeCategories(): Promise<MasterFeesCategory[]> {
