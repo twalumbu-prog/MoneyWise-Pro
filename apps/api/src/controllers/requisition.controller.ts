@@ -1623,7 +1623,14 @@ export async function triggerAIReview(
                     metadata: { stage: 'POST_QUICKBOOKS' }
                 });
             }
-            
+
+            // This bypass auto-completes the requisition without going through
+            // approveCategorization, so it must repost the GL itself — otherwise
+            // the entries stay wherever they were posted (typically Suspense) even
+            // though every line item now has a resolved account_id.
+            ledgerService.repostForRequisition(requisitionId)
+                .catch(err => console.error(`[Ledger] repost after payroll bypass categorization failed for req ${requisitionId}:`, err?.message));
+
             console.log(`[AI Review] Completed deterministic payroll categorization for Req ${requisitionId}.`);
             return;
         }
@@ -1812,6 +1819,12 @@ export async function triggerAIReview(
             });
         }
 
+        // Move the GL out of Suspense to reflect what the loop above just wrote to
+        // line_items.account_id — approveCategorization may run later and repost
+        // again (idempotent), but the entries must not sit stale until then.
+        ledgerService.repostForRequisition(requisitionId)
+            .catch(err => console.error(`[Ledger] repost after AI review classification failed for req ${requisitionId}:`, err?.message));
+
         // 7. Always update the SAME message — clear isThinking and set final results
         await RequisitionMessageService.updateMessage(aiMessageId, {
             content: 'AI has categorized your transaction. Please review and approve.',
@@ -1930,6 +1943,14 @@ export async function triggerEarlyClassification(requisitionId: string, organiza
             .from('requisitions')
             .update({ pre_classified_at: new Date().toISOString() })
             .eq('id', requisitionId);
+
+        // The cashbook entry for this requisition may already be posted (e.g. a
+        // disbursement fires this right at DISBURSED) — move it out of Suspense
+        // now instead of leaving it stale until triggerAIReview eventually reposts.
+        if (classified > 0) {
+            ledgerService.repostForRequisition(requisitionId)
+                .catch(err => console.error(`[Ledger] repost after early classification failed for req ${requisitionId}:`, err?.message));
+        }
 
         console.log(`[Early Classification] Completed for ${requisitionId}: ${classified}/${lineItems.length} items classified.`);
     } catch (err: any) {
@@ -2291,6 +2312,12 @@ export const approveCategorization = async (req: AuthRequest, res: Response): Pr
             .eq('id', id);
 
         if (error) throw error;
+
+        // The user has now committed to this categorization (AI's own suggestions,
+        // possibly with overrides applied above) — repost so the GL reflects it
+        // instead of staying wherever it was posted last (typically Suspense).
+        ledgerService.repostForRequisition(id)
+            .catch(err => console.error(`[Ledger] repost after categorization approval failed for req ${id}:`, err?.message));
 
         // Re-approval (user edited the mapping after a prior approval and approved
         // again): remove the post-approval messages from the previous run so they
