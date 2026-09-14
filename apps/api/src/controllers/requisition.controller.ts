@@ -2432,7 +2432,7 @@ export const updateLineItemAccount = async (req: AuthRequest, res: Response): Pr
         // teach org memory immediately so this description auto-fills next time.
         const { data: li } = await supabase
             .from('line_items')
-            .select('description, requisition:requisitions!inner(organization_id)')
+            .select('description, requisition_id, requisition:requisitions!inner(organization_id)')
             .eq('id', itemId)
             .single();
 
@@ -2445,6 +2445,13 @@ export const updateLineItemAccount = async (req: AuthRequest, res: Response): Pr
                 authoritative: true,
                 source: 'inline_correction'
             }).catch(err => console.error('[AI Learning] inline correction learn failed:', err));
+        }
+
+        // Re-post the GL so this classification moves the entry out of Suspense
+        // into the real account instead of leaving the journal stale.
+        if (li?.requisition_id) {
+            ledgerService.repostForRequisition(li.requisition_id)
+                .catch(err => console.error(`[Ledger] repost after inline account correction failed for req ${li.requisition_id}:`, err?.message));
         }
 
         res.json({ success: true });
