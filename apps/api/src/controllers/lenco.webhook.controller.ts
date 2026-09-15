@@ -13,6 +13,7 @@ import { emailService } from '../services/email.service';
 import { pushService } from '../services/push.service';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { captureEvent, withTiming } from '../utils/analytics';
+import { ledgerService } from '../services/ledger.service';
 
 // MoneyWise settlement merchant (Blue Opus Software Technology). The platform
 // commission collected on external payment links is auto-forwarded here.
@@ -187,6 +188,16 @@ async function postProcessQuickLinkPayment(reference: string): Promise<void> {
                     .update({ account_id: accountId, status: 'ACCOUNTED' })
                     .eq('id', entry.id);
                 console.log(`[Quick Link] Auto-classified "${ql.purpose_label}" (ref ${reference}) -> account ${accountId}`);
+
+                // The initial GL post (fire-and-forget, from createEntry) may well have
+                // already run with account_id still null, landing the contra in Suspense.
+                // Re-post now that the entry carries a real account, mirroring the fix in
+                // lenco.controller.ts's categorizeSplitPaymentRevenue/categorizeSubscriptionRevenue.
+                try {
+                    await ledgerService.repostForCashbookEntry(entry.id);
+                } catch (glErr: any) {
+                    console.warn(`[Quick Link] GL re-post failed for entry ${entry.id}:`, glErr.message);
+                }
             }
         }
 
@@ -594,6 +605,13 @@ export async function handleCollectionSuccessful(data: any, forcedOrganizationId
                         .update({ account_id: ruleMatch.accountId, status: 'ACCOUNTED' })
                         .eq('id', newEntry.id);
                     console.log(`[Lenco Webhook] Auto-classified inflow "${actualNarration}" → account ${ruleMatch.accountId} (rule: ${ruleMatch.ruleId})`);
+
+                    // The initial GL post (fire-and-forget, kicked off when the entry was
+                    // created a moment ago) races this classification — whichever finishes
+                    // last wins. If the post already ran with account_id still null, the
+                    // contra landed in Suspense and stays there without this re-post.
+                    ledgerService.repostForCashbookEntry(newEntry.id)
+                        .catch(err => console.warn(`[Lenco Webhook] GL re-post failed for entry ${newEntry.id}:`, err?.message));
 
                     // Being "accounted" locally isn't the same as being posted to QuickBooks —
                     // actually push it now instead of leaving qb_sync_status stuck PENDING.

@@ -294,10 +294,32 @@ export const ledgerService = {
 
         // Contra leg(s).
         if (ce.requisition_id) {
-            const { data: lis } = await supabase
+            // Batch payouts (e.g. payroll) create one cashbook_entries row per
+            // recipient, each tied to a specific line item via disbursements
+            // (external_reference == this entry's reference_number). When that
+            // link exists, use ONLY that one line item — not every line item on
+            // the requisition — otherwise every entry in the batch double-(or
+            // n-times-)counts the full requisition and dumps a huge residual
+            // into Suspense.
+            let scopedLineItemIds: Set<string> | null = null;
+            if (ce.reference_number) {
+                const { data: disb } = await supabase
+                    .from('disbursements')
+                    .select('line_item_id')
+                    .eq('requisition_id', ce.requisition_id)
+                    .eq('external_reference', ce.reference_number)
+                    .not('line_item_id', 'is', null);
+                if (disb && disb.length > 0) {
+                    scopedLineItemIds = new Set(disb.map((d: any) => d.line_item_id as string));
+                }
+            }
+
+            let liQuery = supabase
                 .from('line_items')
-                .select('account_id, qb_account_id, actual_amount, estimated_amount')
+                .select('id, account_id, qb_account_id, actual_amount, estimated_amount')
                 .eq('requisition_id', ce.requisition_id);
+            if (scopedLineItemIds) liQuery = liQuery.in('id', Array.from(scopedLineItemIds));
+            const { data: lis } = await liQuery;
             for (const li of lis || []) {
                 const amt = Number(li.actual_amount ?? li.estimated_amount ?? 0);
                 if (amt <= 0) continue;

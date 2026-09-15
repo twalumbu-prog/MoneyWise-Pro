@@ -17,6 +17,7 @@ import {
 import type { PaymentInfo } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
+import { BankAvatar } from '../../src/components/BankAvatar';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 interface LineItem {
@@ -95,6 +96,7 @@ export default function NewRequisitionScreen() {
 
     const { data: banksRaw } = useQuery({ queryKey: ['lenco-banks'], queryFn: () => lencoService.getBanks() });
     const banks: any[] = Array.isArray(banksRaw) ? banksRaw : (banksRaw?.data || []);
+    const selectedBankName: string | undefined = banks.find((b) => String(b.id ?? b.code) === bankId)?.name;
 
     const { data: profile, isLoading: loadingProfile } = useQuery({
         queryKey: ['my-profile'], queryFn: () => userService.getMyProfile(),
@@ -313,11 +315,7 @@ export default function NewRequisitionScreen() {
         <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <Stack.Screen options={{ headerShown: false }} />
 
-            <View style={[styles.brandBar, { paddingTop: insets.top }]}>
-                <Text style={styles.brandText}>MoneyWise<Text style={styles.brandAccent}>Pro</Text></Text>
-            </View>
-
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
                 <Text style={styles.headerTitle}>New Requisition</Text>
                 <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={8} accessibilityLabel="Close">
                     <X size={16} color={colors.navy} strokeWidth={3} />
@@ -572,9 +570,12 @@ export default function NewRequisitionScreen() {
                                         <View style={styles.field}>
                                             <Text style={styles.label}>Bank</Text>
                                             <Pressable style={styles.selectInput} onPress={() => setBankPickerOpen(true)}>
-                                                <Text style={[styles.selectInputText, !bankId && styles.selectInputPlaceholder]}>
-                                                    {banks.find((b) => String(b.id ?? b.code) === bankId)?.name || 'Select Bank'}
-                                                </Text>
+                                                <View style={styles.selectInputMain}>
+                                                    {!!selectedBankName && <BankAvatar name={selectedBankName} size={22} />}
+                                                    <Text style={[styles.selectInputText, !bankId && styles.selectInputPlaceholder]}>
+                                                        {selectedBankName || 'Select Bank'}
+                                                    </Text>
+                                                </View>
                                                 <ChevronDown size={16} color={colors.textFaint} />
                                             </Pressable>
                                         </View>
@@ -693,7 +694,11 @@ export default function NewRequisitionScreen() {
             {activeTab === 'basic' && (
                 <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
                     {stage !== 4 ? (
-                        <View style={styles.footerRowEnd}>
+                        <View style={styles.footerRow}>
+                            <Pressable style={styles.backBtn} onPress={handleBack}>
+                                <ArrowLeft size={22} color={colors.blue} />
+                            </Pressable>
+                            <View style={styles.footerSpacer} />
                             <Pressable style={styles.proceedBtn} onPress={handleProceed}>
                                 <ArrowRight size={22} color="#FFFFFF" />
                             </Pressable>
@@ -737,6 +742,7 @@ export default function NewRequisitionScreen() {
                 items={banks.map((b) => ({ id: String(b.id ?? b.code), label: b.name }))}
                 searchable
                 onSelect={(item) => { setBankId(item.id); setBankPickerOpen(false); }}
+                renderIcon={(label) => <BankAvatar name={label} size={28} />}
             />
 
             <PickerSheet
@@ -771,7 +777,9 @@ const PickerSheet: React.FC<{
     visible: boolean; onClose: () => void; title: string;
     items: { id: string; label: string }[]; searchable?: boolean;
     onSelect: (item: { id: string; label: string }) => void;
-}> = ({ visible, onClose, title, items, searchable, onSelect }) => {
+    /** Optional leading icon per row, e.g. a bank logo — keyed by the row's label. */
+    renderIcon?: (label: string) => React.ReactNode;
+}> = ({ visible, onClose, title, items, searchable, onSelect, renderIcon }) => {
     const [query, setQuery] = useState('');
     const filtered = query ? items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())) : items;
 
@@ -799,6 +807,7 @@ const PickerSheet: React.FC<{
                         keyboardShouldPersistTaps="handled"
                         renderItem={({ item }) => (
                             <Pressable style={styles.pickerRow} onPress={() => onSelect(item)}>
+                                {renderIcon?.(item.label)}
                                 <Text style={styles.pickerRowText}>{item.label}</Text>
                             </Pressable>
                         )}
@@ -811,10 +820,10 @@ const PickerSheet: React.FC<{
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.surface },
-    brandBar: { borderBottomWidth: 1, borderBottomColor: colors.canvasAlt, paddingHorizontal: 24, paddingBottom: 16 },
-    brandText: { fontFamily: fonts.bodyMedium, fontSize: 19, color: colors.navy, marginTop: 12 },
-    brandAccent: { fontFamily: fonts.bodyBold, color: colors.blue },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 8 },
+    header: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24,
+        paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: colors.canvasAlt,
+    },
     headerTitle: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.navy },
     closeBtn: {
         width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
@@ -856,6 +865,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: colors.canvasAlt,
         borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 18, height: 52,
     },
+    selectInputMain: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
     selectInputText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
     selectInputPlaceholder: { color: colors.textFaint, fontFamily: fonts.body },
     toggleRow: {
@@ -936,8 +946,8 @@ const styles = StyleSheet.create({
     reviewTotalLabel: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
     insufficientText: { fontFamily: fonts.bodyMedium, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
     footer: { paddingHorizontal: 24, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
-    footerRowEnd: { flexDirection: 'row', justifyContent: 'flex-end' },
     footerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+    footerSpacer: { flex: 1 },
     proceedBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
     backBtn: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, borderColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
     submitBtn: { flex: 1, height: 56, borderRadius: 28, backgroundColor: colors.blue, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
@@ -949,6 +959,6 @@ const styles = StyleSheet.create({
     pickerSearchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 20, backgroundColor: colors.canvasAlt, borderRadius: radius.pill, paddingHorizontal: 14, height: 40, marginBottom: 8 },
     pickerSearchInput: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.text },
     pickerList: { paddingBottom: 32 },
-    pickerRow: { paddingHorizontal: 24, paddingVertical: 14 },
+    pickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 24, paddingVertical: 14 },
     pickerRowText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
 });

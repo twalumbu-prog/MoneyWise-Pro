@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { memoryService } from '../services/ai/memory.service';
 import { metricsService } from '../services/ai/metrics.service';
+import { ledgerService } from '../services/ledger.service';
 
 export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
     const stages: string[] = [];
@@ -66,6 +67,12 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
                 }
             }
         }
+
+        // Reflect the classification just saved (qb_account_id, possibly account_id
+        // via overrides) in the GL before posting to QuickBooks — otherwise the
+        // journal stays wherever it was last posted (typically Suspense).
+        ledgerService.repostForRequisition(id)
+            .catch(err => console.error(`[Ledger] repost after postVoucher classification failed for req ${id}:`, err?.message));
 
         // ── Stage 6: Post to QuickBooks ──
         stages.push('Stage 6: Posting to QuickBooks');

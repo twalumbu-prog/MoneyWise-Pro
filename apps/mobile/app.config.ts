@@ -10,6 +10,67 @@ const BUNDLE_ID = 'cloud.blueopus.moneywise';
 /** Public web origin. Backs universal/app links and anything we hand off to a browser. */
 const WEB_ORIGIN = 'https://moneywise.blueopus.cloud';
 
+/**
+ * Local `expo run:ios`/`prebuild` builds sign with whatever Apple ID is
+ * logged into Xcode. A free/personal team can't provision the Associated
+ * Domains or Push Notifications capabilities at all (Apple rejects the
+ * profile outright), so this flag drops both for a local device/simulator
+ * build and keeps them for the real EAS/production build, which signs with
+ * the paid team. Set MONEYWISE_PERSONAL_TEAM_BUILD=1 when running
+ * prebuild/run:ios locally with a personal team.
+ */
+const PERSONAL_TEAM_BUILD = process.env.MONEYWISE_PERSONAL_TEAM_BUILD === '1';
+/** Team ID for Stephen Kapambwe's personal Apple ID — local dev builds only. */
+const PERSONAL_TEAM_ID = 'K87UMM96D7';
+
+const PLUGINS: ExpoConfig['plugins'] = [
+    'expo-router',
+    'expo-secure-store',
+    'expo-font',
+    ['expo-splash-screen', { backgroundColor: '#EEF5FF', resizeMode: 'contain' }],
+    // The config plugin is what actually writes these strings into the native
+    // projects; the infoPlist block above only covers the iOS side and Android
+    // needs its own permission entries.
+    [
+        'expo-image-picker',
+        {
+            photosPermission:
+                'MoneyWise needs access to your photos so you can attach receipts to a request.',
+            cameraPermission:
+                'MoneyWise uses the camera so you can photograph receipts and attach them to a request.',
+        },
+    ],
+    // Sets the iOS deployment target to 16.4 -- expo-speech-recognition's
+    // native module requires it (Apple's on-device Speech APIs used there
+    // were introduced across 16.x). Every other native dependency here
+    // supports the default 15.1, so this floor exists solely for
+    // dictation. Reasonable for a 2026 app: iOS 16 shipped September
+    // 2022, so this excludes only very old, unsupported hardware.
+    ['expo-build-properties', { ios: { deploymentTarget: '16.4' } }],
+    [
+        'expo-speech-recognition',
+        {
+            microphonePermission:
+                'MoneyWise uses the microphone so you can dictate a question to the Assistant.',
+            speechRecognitionPermission:
+                'MoneyWise uses speech recognition to turn your dictation into text for the Assistant.',
+        },
+    ],
+];
+
+// Adds the Push Notifications capability, which a personal team can't
+// provision — omitted entirely for a local personal-team build.
+if (!PERSONAL_TEAM_BUILD) {
+    PLUGINS!.push([
+        'expo-notifications',
+        {
+            // Brand navy, matching the splash/adaptive-icon background — shows
+            // behind the small Android status-bar notification icon.
+            color: '#002E3B',
+        },
+    ]);
+}
+
 const config: ExpoConfig = {
     name: 'MoneyWise Pro',
     slug: 'moneywise-pro',
@@ -33,7 +94,9 @@ const config: ExpoConfig = {
     ios: {
         bundleIdentifier: BUNDLE_ID,
         supportsTablet: false,
-        associatedDomains: [`applinks:${WEB_ORIGIN.replace('https://', '')}`],
+        ...(PERSONAL_TEAM_BUILD
+            ? { appleTeamId: PERSONAL_TEAM_ID }
+            : { associatedDomains: [`applinks:${WEB_ORIGIN.replace('https://', '')}`] }),
         infoPlist: {
             // Receipts are the core input to a requisition; statements arrive as files.
             NSCameraUsageDescription:
@@ -62,48 +125,7 @@ const config: ExpoConfig = {
         ],
     },
 
-    plugins: [
-        'expo-router',
-        'expo-secure-store',
-        'expo-font',
-        ['expo-splash-screen', { backgroundColor: '#EEF5FF', resizeMode: 'contain' }],
-        // The config plugin is what actually writes these strings into the native
-        // projects; the infoPlist block above only covers the iOS side and Android
-        // needs its own permission entries.
-        [
-            'expo-image-picker',
-            {
-                photosPermission:
-                    'MoneyWise needs access to your photos so you can attach receipts to a request.',
-                cameraPermission:
-                    'MoneyWise uses the camera so you can photograph receipts and attach them to a request.',
-            },
-        ],
-        // Sets the iOS deployment target to 16.4 -- expo-speech-recognition's
-        // native module requires it (Apple's on-device Speech APIs used there
-        // were introduced across 16.x). Every other native dependency here
-        // supports the default 15.1, so this floor exists solely for
-        // dictation. Reasonable for a 2026 app: iOS 16 shipped September
-        // 2022, so this excludes only very old, unsupported hardware.
-        ['expo-build-properties', { ios: { deploymentTarget: '16.4' } }],
-        [
-            'expo-speech-recognition',
-            {
-                microphonePermission:
-                    'MoneyWise uses the microphone so you can dictate a question to the Assistant.',
-                speechRecognitionPermission:
-                    'MoneyWise uses speech recognition to turn your dictation into text for the Assistant.',
-            },
-        ],
-        [
-            'expo-notifications',
-            {
-                // Brand navy, matching the splash/adaptive-icon background — shows
-                // behind the small Android status-bar notification icon.
-                color: '#002E3B',
-            },
-        ],
-    ],
+    plugins: PLUGINS,
 
     experiments: {
         typedRoutes: true,

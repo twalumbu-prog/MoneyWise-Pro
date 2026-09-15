@@ -246,7 +246,22 @@ const num = (v: any): number => {
     const n = parseFloat(v);
     return Number.isFinite(n) ? n : 0;
 };
-const dateOnly = (v?: string): string => (v ? String(v).slice(0, 10) : new Date().toISOString().slice(0, 10));
+// Every org on this platform is Zambian (CAT, UTC+2, no DST) - see
+// perf/architecture notes. Master Fees timestamps (`completed_at`,
+// `date_issued`) come back as UTC ISO strings; slicing the first 10
+// characters directly (the old implementation) reads off the UTC calendar
+// date, which is WRONG for anything that happened 22:00-23:59:59 UTC -
+// that's already past midnight in Zambia, so it must be dated the next day.
+// Confirmed live: a payment completed at 2026-09-09T23:25:08Z (01:25 AM on
+// the 10th in Zambia, matching the CSV wallet-history export and the
+// mobile-money receipt's own embedded local timestamp) was being posted to
+// cashbook_entries.date as 2026-09-09 - a full day off - by the old slice.
+const ORG_TZ_OFFSET_MS = 2 * 60 * 60 * 1000;
+const dateOnly = (v?: string): string => {
+    const d = v ? new Date(v) : new Date();
+    if (isNaN(d.getTime())) return String(v).slice(0, 10);
+    return new Date(d.getTime() + ORG_TZ_OFFSET_MS).toISOString().slice(0, 10);
+};
 const catId = (c: MFFeeCategory | MFInvoiceItem): string | undefined =>
     (c as any).id || (c as any).category_id || (c as any).fee_category_id;
 
