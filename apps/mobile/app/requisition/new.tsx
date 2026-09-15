@@ -573,7 +573,7 @@ export default function NewRequisitionScreen() {
                                             <Text style={styles.label}>Bank</Text>
                                             <Pressable style={styles.selectInput} onPress={() => setBankPickerOpen(true)}>
                                                 <Text style={[styles.selectInputText, !bankId && styles.selectInputPlaceholder]}>
-                                                    {banks.find((b) => String(b.code ?? b.id) === bankId)?.name || 'Select Bank'}
+                                                    {banks.find((b) => String(b.id ?? b.code) === bankId)?.name || 'Select Bank'}
                                                 </Text>
                                                 <ChevronDown size={16} color={colors.textFaint} />
                                             </Pressable>
@@ -734,7 +734,7 @@ export default function NewRequisitionScreen() {
                 visible={bankPickerOpen}
                 onClose={() => setBankPickerOpen(false)}
                 title="Select Bank"
-                items={banks.map((b) => ({ id: String(b.code ?? b.id), label: b.name }))}
+                items={banks.map((b) => ({ id: String(b.id ?? b.code), label: b.name }))}
                 searchable
                 onSelect={(item) => { setBankId(item.id); setBankPickerOpen(false); }}
             />
