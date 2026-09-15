@@ -563,19 +563,51 @@ export const completeOnboarding = async (req: any, res: Response): Promise<any> 
         if (progress?.status === 'COMPLETED') {
             return res.json({ message: 'Onboarding already completed' });
         }
-        if (!progress?.coa_saved || !progress?.wallet_activated) {
-            return res.status(400).json({
-                error: 'Finish saving your chart of accounts and activating your wallet first',
-            });
+
+        // Auto-save default COA if it wasn't explicitly saved
+        if (!progress?.coa_saved) {
+            try {
+                const [orgRes, profileRes, productsRes] = await Promise.all([
+                    supabase.from('organizations').select('name').eq('id', organization_id).single(),
+                    supabase.from('business_profiles').select('industries, store_categories').eq('organization_id', organization_id).maybeSingle(),
+                    supabase.from('products').select('name, product_type, category').eq('organization_id', organization_id).limit(100),
+                ]);
+
+                const { accounts } = await generateOnboardingCoa({
+                    organizationName: orgRes.data?.name || 'Business',
+                    industries: profileRes.data?.industries || [],
+                    storeCategories: profileRes.data?.store_categories || [],
+                    products: productsRes.data || [],
+                });
+
+                if (accounts && accounts.length > 0) {
+                    const rows = accounts.map(acc => ({
+                        organization_id,
+                        code: acc.code,
+                        name: acc.name,
+                        type: acc.subtype === 'Revenue' || acc.subtype === 'Other Income' ? 'INCOME' : 'EXPENSE',
+                        subtype: acc.subtype,
+                        description: acc.description || null,
+                        is_active: true,
+                        updated_at: new Date().toISOString(),
+                    }));
+                    await supabase.from('accounts').upsert(rows, { onConflict: 'code,organization_id' });
+                }
+            } catch (e) {
+                console.warn('[Onboarding] Auto COA save error during completion:', e);
+            }
         }
 
-        const { error } = await supabase.from('onboarding_progress').update({
+        const { error } = await supabase.from('onboarding_progress').upsert({
+            organization_id,
             status: 'COMPLETED',
             current_step: TOTAL_STEPS + 1,
             completed_steps: Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1),
+            coa_saved: true,
             completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
-        }).eq('organization_id', organization_id);
+        }, { onConflict: 'organization_id' });
+
         if (error) throw error;
 
         captureEvent('onboarding_completed', {

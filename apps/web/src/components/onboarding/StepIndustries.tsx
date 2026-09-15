@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Check } from 'lucide-react';
+import { Search, Check, Plus } from 'lucide-react';
 import { INDUSTRIES } from './constants';
 import { StepFooter, ErrorBanner } from './ui';
 
@@ -21,16 +21,39 @@ export const StepIndustries: React.FC<Props> = ({ initial, onSave, onBack, savin
     const [query, setQuery] = useState('');
     const [error, setError] = useState<string | null>(null);
 
-    const filtered = useMemo(() => {
+    const customQuery = query.trim();
+    const exactMatch = useMemo(() => {
+        if (!customQuery) return true;
+        const q = customQuery.toLowerCase();
+        return INDUSTRIES.some(i => i.toLowerCase() === q) || selected.some(s => s.toLowerCase() === q);
+    }, [customQuery, selected]);
+
+    const canAddCustom = customQuery.length > 0 && !exactMatch;
+
+    const visibleIndustries = useMemo(() => {
         const q = query.trim().toLowerCase();
-        return INDUSTRIES.filter(i => !q || i.toLowerCase().includes(q));
-    }, [query]);
+        const presetMatches = INDUSTRIES.filter(i => !q || i.toLowerCase().includes(q));
+        const customSelectedMatches = selected.filter(
+            s => !(INDUSTRIES as readonly string[]).includes(s) && (!q || s.toLowerCase().includes(q))
+        );
+        return Array.from(new Set([...presetMatches, ...customSelectedMatches]));
+    }, [query, selected]);
 
     const toggle = (industry: string) => {
         setError(null);
         setSelected(prev =>
             prev.includes(industry) ? prev.filter(i => i !== industry) : [...prev, industry]
         );
+    };
+
+    const addCustomIndustry = (customName: string) => {
+        const trimmed = customName.trim();
+        if (!trimmed) return;
+        setError(null);
+        if (!selected.includes(trimmed)) {
+            setSelected(prev => [...prev, trimmed]);
+        }
+        setQuery('');
     };
 
     const handleContinue = async () => {
@@ -58,11 +81,21 @@ export const StepIndustries: React.FC<Props> = ({ initial, onSave, onBack, savin
                 />
             </div>
 
-            {filtered.length === 0 ? (
+            {visibleIndustries.length === 0 && !canAddCustom ? (
                 <p className="py-10 text-center text-sm text-gray-400">No industries match "{query}"</p>
             ) : (
                 <div className="flex flex-wrap gap-2.5" role="group" aria-label="Industries">
-                    {filtered.map(industry => {
+                    {canAddCustom && (
+                        <button
+                            type="button"
+                            onClick={() => addCustomIndustry(customQuery)}
+                            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold border-2 border-dashed border-blue-600 bg-blue-50/70 text-blue-700 hover:bg-blue-100 transition-all active:scale-95 focus:outline-none focus:ring-2 focus:ring-blue-600/30"
+                        >
+                            <Plus className="h-3.5 w-3.5" strokeWidth={3} />
+                            Add "{customQuery}"
+                        </button>
+                    )}
+                    {visibleIndustries.map(industry => {
                         const isSelected = selected.includes(industry);
                         return (
                             <button

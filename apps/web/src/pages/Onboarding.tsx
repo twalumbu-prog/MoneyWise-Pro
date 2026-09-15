@@ -242,6 +242,7 @@ export const Onboarding: React.FC = () => {
                     {step === 6 && (
                         <StepCategories
                             initial={state.profile?.store_categories || []}
+                            industries={state.profile?.industries || []}
                             onSave={(store_categories) => saveProfileAndAdvance({ store_categories }, 6)}
                             onBack={() => goBack(5)}
                             saving={savingStep}

@@ -28,7 +28,9 @@ import {
     Link2,
     ArrowDownToLine,
     ArrowLeftRight,
-    ListFilter
+    ListFilter,
+    Mail,
+    ArrowRight,
 } from 'lucide-react';
 import '../styles/cashbook.css';
 import CloseBalanceModal from '../components/CloseBalanceModal';
@@ -42,6 +44,7 @@ import ShareWalletLinkModal from '../components/ShareWalletLinkModal';
 import { useAuth } from '../context/AuthContext';
 import { getStatusConfig, requisitionService } from '../services/requisition.service';
 import { accountService, Account } from '../services/account.service';
+import { onboardingService, WalletStatus } from '../services/onboarding.service';
 import RequisitionModal from '../components/requisitions/RequisitionModal';
 import DepositProofPreview from '../components/wallets/DepositProofPreview';
 import { Requisition } from '../services/requisition.service';
@@ -304,6 +307,10 @@ const CashLedger: React.FC = () => {
     const { userRole, organizationName, organizationId, refreshNotifications } = useAuth();
     const isRequestor = userRole === 'REQUESTOR';
 
+    const [walletStatus, setWalletStatus] = useState<WalletStatus | null>(null);
+    const isInactiveWallet = !!(walletStatus && !walletStatus.activated && categoryGroup === 'MONEYWISE');
+    const hasAvailablePool = !!(walletStatus?.poolAvailable || walletStatus?.linked);
+
     // Stamp "wallets last visited" so the sidebar badge can clear after the
     // user lands here. Do it per org so org-switches don't bleed into each other.
     useEffect(() => {
@@ -314,8 +321,11 @@ const CashLedger: React.FC = () => {
             /* localStorage unavailable — badge just won't clear */
         }
         refreshNotifications();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [organizationId]);
+
+        onboardingService.getWalletStatus()
+            .then(s => setWalletStatus(s))
+            .catch(() => {});
+    }, [organizationId, refreshNotifications]);
 
     // Mobile wallet-card carousel (snap-scroll) state
     const walletScrollRef = useRef<HTMLDivElement>(null);
@@ -1486,13 +1496,46 @@ Status: VERIFIED`;
                     )}
 
                     {!loading && groupedEntries.length === 0 && (
-                        <div className="flex flex-col items-center justify-center py-24">
-                            <div className="p-5 bg-white rounded-full mb-4 shadow-sm border border-gray-100">
-                                <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
+                        isInactiveWallet ? (
+                            <div className="mx-4 my-10 p-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl flex flex-col items-center text-center gap-3 shadow-sm">
+                                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center flex-shrink-0">
+                                    <AlertCircle className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h4 className="text-base font-bold text-gray-900">Your Wallet is Inactive</h4>
+                                    <p className="text-xs text-gray-600 mt-1 max-w-sm">
+                                        {hasAvailablePool
+                                            ? 'You skipped wallet activation during setup. Activate your wallet now to complete account setup and start receiving payments.'
+                                            : 'An account has not been provisioned for your organization yet. Contact our team to have your wallet provisioned.'}
+                                    </p>
+                                </div>
+                                {hasAvailablePool ? (
+                                    <button
+                                        onClick={() => navigate('/onboarding')}
+                                        className="w-full max-w-xs py-3 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 mt-1"
+                                    >
+                                        <ArrowRight className="w-4 h-4" />
+                                        Activate Now
+                                    </button>
+                                ) : (
+                                    <a
+                                        href={`mailto:masterfees101@gmail.com?subject=Wallet%20Activation%20Request%20-%20${encodeURIComponent(organizationName || 'My Business')}&body=Hello%20MoneyWise%20Team%2C%0A%0APlease%20activate%20and%20provision%20a%20wallet%20for%20our%20organization%3A%20${encodeURIComponent(organizationName || 'My Business')}.%0A%0AThank%20you!`}
+                                        className="w-full max-w-xs py-3 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 mt-1"
+                                    >
+                                        <Mail className="w-4 h-4" />
+                                        Contact Team
+                                    </a>
+                                )}
                             </div>
-                            <p className="text-gray-900 font-bold">No transactions found</p>
-                            <p className="text-sm text-gray-400 mt-1">Try adjusting your date range or filters.</p>
-                        </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-24">
+                                <div className="p-5 bg-white rounded-full mb-4 shadow-sm border border-gray-100">
+                                    <Receipt className="h-10 w-10 text-gray-300" strokeWidth={1.5} />
+                                </div>
+                                <p className="text-gray-900 font-bold">No transactions found</p>
+                                <p className="text-sm text-gray-400 mt-1">Try adjusting your date range or filters.</p>
+                            </div>
+                        )
                     )}
 
                     {!loading && groupedEntries.map((group) => (
@@ -1664,7 +1707,7 @@ Status: VERIFIED`;
                                         disabled={!selectedWalletId || selectedWalletId === 'CASH'}
                                         onClick={() => setIsImportStatementOpen(true)}
                                     />
-                                </>
+                                 </>
                             )}
                         </div>
                     )}
@@ -1876,14 +1919,45 @@ Status: VERIFIED`;
                         <tbody>
                             {groupedEntries.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="py-24 text-center">
-                                        <div className="flex flex-col items-center justify-center">
-                                            <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
-                                                <Receipt size={32} strokeWidth={1.5} />
+                                    <td colSpan={7} className="py-20 text-center">
+                                        {isInactiveWallet ? (
+                                            <div className="flex flex-col items-center justify-center max-w-md mx-auto p-6 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 rounded-2xl shadow-sm">
+                                                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center mb-3">
+                                                    <AlertCircle className="w-6 h-6" />
+                                                </div>
+                                                <h4 className="text-base font-bold text-gray-900">Your Wallet is Inactive</h4>
+                                                <p className="text-xs text-gray-600 mt-1 mb-4">
+                                                    {hasAvailablePool
+                                                        ? 'You skipped wallet activation during setup. Activate your wallet now to complete account setup and start receiving payments.'
+                                                        : 'An account has not been provisioned for your organization yet. Contact our team to have your wallet provisioned and activated.'}
+                                                </p>
+                                                {hasAvailablePool ? (
+                                                    <button
+                                                        onClick={() => navigate('/onboarding')}
+                                                        className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+                                                    >
+                                                        <ArrowRight className="w-4 h-4" />
+                                                        Activate Now
+                                                    </button>
+                                                ) : (
+                                                    <a
+                                                        href={`mailto:masterfees101@gmail.com?subject=Wallet%20Activation%20Request%20-%20${encodeURIComponent(organizationName || 'My Business')}&body=Hello%20MoneyWise%20Team%2C%0A%0APlease%20activate%20and%20provision%20a%20wallet%20for%20our%20organization%3A%20${encodeURIComponent(organizationName || 'My Business')}.%0A%0AThank%20you!`}
+                                                        className="px-5 py-2.5 bg-gray-900 hover:bg-black text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+                                                    >
+                                                        <Mail className="w-4 h-4" />
+                                                        Contact Team
+                                                    </a>
+                                                )}
                                             </div>
-                                            <p className="text-[#111827] font-bold">No transactions found</p>
-                                            <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or search query.</p>
-                                        </div>
+                                        ) : (
+                                            <div className="flex flex-col items-center justify-center">
+                                                <div className="h-20 w-20 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-6 border border-[#E8EEF8]">
+                                                    <Receipt size={32} strokeWidth={1.5} />
+                                                </div>
+                                                <p className="text-[#111827] font-bold">No transactions found</p>
+                                                <p className="text-sm text-gray-400 mt-1">Try adjusting your filters or search query.</p>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ) : (

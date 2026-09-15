@@ -208,10 +208,22 @@ export const StepWalletActivation: React.FC<Props> = ({
                 <h2 className="text-xl font-bold text-gray-800 mb-2">We're preparing your wallet</h2>
                 <p className="text-sm text-gray-500 max-w-sm mx-auto mb-8">
                     All wallets are currently being provisioned. Our team has been notified and new
-                    wallets will be ready shortly. Everything you've set up so far is saved — just
-                    come back and pick up where you left off.
+                    wallets will be ready shortly. You can skip activation for now and start exploring your dashboard.
                 </p>
-                <PrimaryButton onClick={handleActivate} loading={claiming}>Try again</PrimaryButton>
+                <div className="flex flex-col gap-3 max-w-xs mx-auto">
+                    <PrimaryButton onClick={onProceed} loading={saving}>
+                        Skip for now & Continue
+                        <ArrowRight className="h-4 w-4 ml-1" />
+                    </PrimaryButton>
+                    <button
+                        type="button"
+                        onClick={handleActivate}
+                        disabled={claiming}
+                        className="text-xs font-bold text-gray-500 hover:text-gray-800 py-2"
+                    >
+                        {claiming ? 'Checking wallets...' : 'Try checking again'}
+                    </button>
+                </div>
             </div>
         );
     }
@@ -355,7 +367,7 @@ export const StepWalletActivation: React.FC<Props> = ({
                     The deposit remains yours and can be used for future transactions.
                 </p>
 
-                <StepFooter onBack={() => setPhase('INTRO')} disabled />
+                <StepFooter onBack={() => setPhase('INTRO')} onContinue={onProceed} continueLabel="Skip for now" />
             </div>
         );
     }
@@ -368,7 +380,7 @@ export const StepWalletActivation: React.FC<Props> = ({
             {/* Hero: wallet icon + title + description (this step is self-headed) */}
             <div className="flex flex-col items-center text-center gap-1.5 mb-9">
                 <WalletCards className="h-12 w-12 text-blue-700 mb-2.5" strokeWidth={2} />
-                <h2 className="text-gray-800 text-2xl font-bold leading-8">Activate your wallet</h2>
+                <h2 className="text-gray-800 text-2xl font-bold leading-8">Activate your wallet (Optional)</h2>
                 <p className="text-gray-600 text-lg font-normal leading-7">
                     All the money you make from your customers will be collected right here.
                 </p>
@@ -380,7 +392,7 @@ export const StepWalletActivation: React.FC<Props> = ({
                     <p className="text-gray-600 text-xs font-extrabold uppercase leading-4 tracking-wide">Main Wallet</p>
                     <p className="text-gray-800 text-xl font-bold leading-7">{currency} {amount.toFixed(2)}</p>
                     <p className="text-slate-400 text-xs leading-5">
-                        Kindly deposit a <span className="font-bold">{currency === 'ZMW' ? 'K' : currency}{amount.toFixed(2)}</span> into your wallet to activate it
+                        Kindly deposit <span className="font-bold">{currency === 'ZMW' ? 'K' : currency}{amount.toFixed(2)}</span> into your wallet to activate it
                     </p>
                 </div>
                 <button
@@ -411,7 +423,18 @@ export const StepWalletActivation: React.FC<Props> = ({
                 ))}
             </ul>
 
-            <StepFooter onBack={onBack} hideContinue />
+            <div className="mt-6 flex flex-col items-center gap-3">
+                <button
+                    type="button"
+                    onClick={onProceed}
+                    disabled={saving}
+                    className="text-sm font-semibold text-gray-500 hover:text-gray-900 transition-colors py-2"
+                >
+                    Skip for now & Continue to Dashboard →
+                </button>
+            </div>
+
+            <StepFooter onBack={onBack} onContinue={onProceed} continueLabel="Skip for now" />
         </div>
     );
 };
