@@ -135,7 +135,7 @@ export const getNotificationsSummary = async (req: AuthRequest, res: any): Promi
                 .from('cashbook_entries')
                 .select('*', { count: 'exact', head: true })
                 .eq('organization_id', organization_id)
-                .eq('type', 'INFLOW')
+                .eq('entry_type', 'INFLOW')
                 .eq('status', 'COMPLETED')
                 .gt('created_at', walletsSinceDate.toISOString());
             counts.wallets = walletsCount || 0;

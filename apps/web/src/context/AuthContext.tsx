@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { apiFetch } from '../lib/api';
@@ -91,7 +91,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // localStorage wallets_since key even from inside the 5-min interval.
     const orgIdRef = useRef<string | null>(null);
 
-    const refreshNotifications = async () => {
+    // Must keep a stable identity: consumers list it in effect deps (e.g.
+    // CashLedger), and it sets provider state — a fresh function per render
+    // re-fires those effects forever and floods the API/Supabase.
+    const refreshNotifications = useCallback(async () => {
         // Never poll signed-out — the login page and public payment pages mount
         // this provider too, and each unauthenticated tick is a guaranteed 401
         // (wasted mobile data + junk api_fetch_failed analytics events).
@@ -115,7 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (error) {
             console.error('Failed to fetch notifications:', error);
         }
-    };
+    }, []);
 
     useEffect(() => {
         const fetchRoleAndOrg = async (userId: string, email?: string) => {
