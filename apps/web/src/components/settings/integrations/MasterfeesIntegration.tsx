@@ -162,10 +162,43 @@ export const MasterfeesIntegration: React.FC<MasterfeesIntegrationProps> = ({ on
         setNotice(null);
         try {
             setSyncing(true);
-            const { summary } = await masterFeesService.sync();
-            const inv = summary?.invoices || {};
-            const pay = summary?.payments || {};
-            setNotice(`Sync complete. Invoices: ${inv.posted || 0} posted, ${inv.skipped || 0} unchanged. Payments: ${(pay.posted || 0) + (pay.reclassified || 0)} applied, ${pay.deferred || 0} deferred.${summary?.errors?.length ? ` ${summary.errors.length} warning(s).` : ''}`);
+            const MAX_PASSES = 6;
+            let pass = 1;
+            let totalInvPosted = 0;
+            let totalInvSkipped = 0;
+            let totalPayApplied = 0;
+            let totalPayDeferred = 0;
+            let lastWarnings = 0;
+            let hasMore = true;
+
+            while (hasMore && pass <= MAX_PASSES) {
+                if (pass > 1) {
+                    setNotice(`Large backlog detected. Continuing sync pass ${pass} of ${MAX_PASSES}...`);
+                    await new Promise(r => setTimeout(r, 1000));
+                }
+                const { summary } = await masterFeesService.sync();
+                const inv = summary?.invoices || {};
+                const pay = summary?.payments || {};
+
+                totalInvPosted += inv.posted || 0;
+                totalInvSkipped += inv.skipped || 0;
+                totalPayApplied += (pay.posted || 0) + (pay.reclassified || 0);
+                totalPayDeferred += pay.deferred || 0;
+                lastWarnings = summary?.errors?.length || 0;
+
+                const budgetHit = summary?.errors?.some((e: string) => /Time budget reached/i.test(e));
+                if (budgetHit) {
+                    pass++;
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            if (pass > MAX_PASSES && hasMore) {
+                setNotice(`Sync progress saved (${pass - 1} passes complete). Invoices: ${totalInvPosted} posted. Payments: ${totalPayApplied} applied. Click "Sync now" again to complete remaining items.`);
+            } else {
+                setNotice(`Sync complete (${pass} pass${pass > 1 ? 'es' : ''}). Invoices: ${totalInvPosted} posted, ${totalInvSkipped} unchanged. Payments: ${totalPayApplied} applied.${lastWarnings ? ` ${lastWarnings} warning(s).` : ''}`);
+            }
             await load();
         } catch (err: any) {
             setError(err.message);

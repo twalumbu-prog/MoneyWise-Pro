@@ -519,20 +519,20 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
             .order('config->>lastSyncedAt', { ascending: true, nullsFirst: true });
         if (error) throw error;
 
+        // Fast-path early exit: if no organizations are currently due for sync per
+        // adaptive backoff, return immediately in <50ms without initializing heavy clients.
+        const dueRows = (rows || []).filter(row => isMasterFeesSyncDue((row.config || {}) as MasterFeesConfig));
+        if (dueRows.length === 0) {
+            return res.json({ success: true, processed: 0, skippedNotDue: rows?.length || 0, results: [] });
+        }
+
         const results: any[] = [];
-        let skippedNotDue = 0;
-        for (const row of rows || []) {
+        let skippedNotDue = (rows || []).length - dueRows.length;
+        for (const row of dueRows) {
             const elapsed = Date.now() - START;
             if (elapsed > GLOBAL_BUDGET_MS) {
-                console.warn(`[MasterFees Sync] Time budget exceeded — deferring ${(rows!.length) - results.length - skippedNotDue} org(s).`);
+                console.warn(`[MasterFees Sync] Time budget exceeded — deferring ${dueRows.length - results.length} org(s).`);
                 break;
-            }
-            // Adaptive backoff — see isMasterFeesSyncDue. Master Fees' API has no
-            // "since" filter and returns rows unsorted, so every sync is a full
-            // walk; an org with no recent activity doesn't need one every minute.
-            if (!isMasterFeesSyncDue((row.config || {}) as MasterFeesConfig)) {
-                skippedNotDue++;
-                continue;
             }
             try {
                 const perOrgDeadline = START + GLOBAL_BUDGET_MS;
