@@ -859,10 +859,7 @@ const CashLedger: React.FC = () => {
     const confirmPostRequisition = async (req: any) => {
         try {
             setIsPosting(true);
-            const result = await requisitionService.postToQuickBooks(req.id, {
-                payment_account_id: 'CASH_ACCOUNT_ID', 
-                payment_account_name: 'Cash on hand'
-            });
+            const result = await requisitionService.postToQuickBooks(req.id, {});
             setPostSuccess({ qbId: result.qb_expense_id, type: 'Expense' });
             setPostingReview(null);
             loadData();
