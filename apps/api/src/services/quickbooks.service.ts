@@ -11,6 +11,34 @@ import { encrypt, decrypt } from '../utils/security.utils';
 const refreshLocks = new Map<string, Promise<{ accessToken: string; realmId: string }>>();
 
 export class QuickBooksService {
+    /** QB account Ids are always numeric strings — anything else is a placeholder/bug, never a real account. */
+    private static isValidQBAccountId(id: any): boolean {
+        return typeof id === 'string' && /^\d+$/.test(id);
+    }
+
+    /**
+     * Turn a raw QB Fault into an actionable message instead of surfacing QB's
+     * often-cryptic wording verbatim (e.g. "Invalid Reference Id ... you must
+     * restore Rent (deleted)" for an account that has nothing to do with what
+     * the user is posting — QB names the account by its last-known name, which
+     * can be stale/misleading).
+     */
+    private static formatQBError(result: any): string {
+        const qbError = result?.Fault?.Error?.[0];
+        const detail: string = qbError?.Detail || qbError?.Message || '';
+        const code = qbError?.code;
+
+        if (code === '2500') {
+            const match = detail.match(/restore\s+(.+?)\s*\(deleted\)/i);
+            const accountName = match ? match[1] : 'one of the mapped accounts';
+            return `A QuickBooks account ("${accountName}") used in this transaction has been deleted. Please re-map the affected category in Settings → Integrations → QuickBooks, then try posting again.`;
+        }
+        if (code === '6000') {
+            return `One of the mapped QuickBooks accounts has an incompatible type for this transaction.`;
+        }
+        return detail || JSON.stringify(result);
+    }
+
     private static getEnv() {
         const isProduction = process.env.QB_ENVIRONMENT === 'production' || process.env.NODE_ENV === 'production';
         return {
@@ -414,12 +442,19 @@ export class QuickBooksService {
 
             const expenseLines = requisition.line_items.map((item: any) => {
                 const amount = item.actual_amount ?? item.estimated_amount ?? 0;
-                
-                // Fallback to joined account data if qb_account_id is missing on the line item
-                const qbAccountId = item.qb_account_id || item.accounts?.qb_account_id;
+
+                // Prefer the linked account's CURRENT mapping over the line item's own
+                // cached qb_account_id — the cache goes stale if the account gets
+                // remapped after this line item was categorised, and would otherwise
+                // keep posting to a dead/wrong QB account forever. Only fall back to
+                // the line item's own value when there's no linked account at all.
+                const qbAccountId = item.accounts?.qb_account_id || item.qb_account_id;
 
                 if (!qbAccountId) {
                     throw new Error(`Line item "${item.description}" has no QuickBooks account mapped. Please categorise all items before posting.`);
+                }
+                if (!this.isValidQBAccountId(qbAccountId)) {
+                    throw new Error(`Line item "${item.description}" is mapped to an invalid QuickBooks account reference ("${qbAccountId}"). Please re-categorise it in Settings → Integrations → QuickBooks.`);
                 }
 
                 return {
@@ -531,6 +566,17 @@ export class QuickBooksService {
                 }
             }
 
+            // Discard anything that isn't a real QB account id — a placeholder string
+            // (from a bug, or a previously-saved bad mapping) is worse than nothing:
+            // it would fail at QuickBooks with a cryptic error instead of the clear
+            // "please select a payment account" message below, and step 4c would
+            // re-save it, poisoning the mapping for every future transaction.
+            if (sourceAccountId && !this.isValidQBAccountId(sourceAccountId)) {
+                console.warn(`[QB Purchase] Discarding invalid source account reference "${sourceAccountId}" for method ${method}`);
+                sourceAccountId = '';
+                sourceAccountName = undefined;
+            }
+
             // 4c. If we have a source account now (especially if it was manually provided), save it to mappings
             if (sourceAccountId && paymentAccountId) {
                 console.log(`[QB Purchase] Saving/Updating mapping for ${method} -> ${sourceAccountId}`);
@@ -625,6 +671,8 @@ export class QuickBooksService {
                     });
                 }
 
+                const friendlyError = this.formatQBError(result);
+
                 // Log failure to sync_logs
                 await supabase.from('sync_logs').insert({
                     requisition_id: requisitionId,
@@ -635,11 +683,11 @@ export class QuickBooksService {
 
                 await supabase.from('requisitions').update({
                     qb_sync_status: 'FAILED',
-                    qb_sync_error: JSON.stringify(result),
+                    qb_sync_error: friendlyError,
                     qb_sync_at: new Date().toISOString()
                 }).eq('id', requisitionId);
 
-                return { success: false, error: result };
+                return { success: false, error: result, friendlyError, qbId: undefined };
             }
 
             console.log(`[QB Purchase] ✅ Purchase created in QuickBooks! ID: ${result.Purchase?.Id}`);
@@ -660,7 +708,7 @@ export class QuickBooksService {
                 qb_sync_at: new Date().toISOString()
             }).eq('id', requisitionId);
 
-            return { success: true, qbId: result.Purchase.Id };
+            return { success: true, qbId: result.Purchase.Id, friendlyError: undefined };
 
         } catch (error: any) {
             console.error('[QB Purchase] Exception:', error.message);
@@ -683,7 +731,7 @@ export class QuickBooksService {
                 console.error('[QB Expense] Failed to log error to database:', logError);
             }
 
-            return { success: false, error: error.message };
+            return { success: false, error: error.message, friendlyError: error.message, qbId: undefined };
         }
     }
 
@@ -760,6 +808,8 @@ export class QuickBooksService {
         if (!response.ok) {
             console.error(`[QB JournalEntry] API rejected JE (HTTP ${response.status}):`, JSON.stringify(result));
 
+            const friendlyError = this.formatQBError(result);
+
             await supabase.from('sync_logs').insert({
                 requisition_id: requisitionId,
                 synced_by: userId,
@@ -769,11 +819,11 @@ export class QuickBooksService {
 
             await supabase.from('requisitions').update({
                 qb_sync_status: 'FAILED',
-                qb_sync_error: JSON.stringify(result),
+                qb_sync_error: friendlyError,
                 qb_sync_at: new Date().toISOString()
             }).eq('id', requisitionId);
 
-            return { success: false, error: result };
+            return { success: false, error: result, friendlyError, qbId: undefined };
         }
 
         const jeId = result.JournalEntry?.Id;
@@ -794,7 +844,7 @@ export class QuickBooksService {
             qb_sync_at: new Date().toISOString()
         }).eq('id', requisitionId);
 
-        return { success: true, qbId: jeId };
+        return { success: true, qbId: jeId, friendlyError: undefined };
     }
 
     /**

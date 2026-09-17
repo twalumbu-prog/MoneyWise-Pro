@@ -2402,9 +2402,10 @@ export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise
         );
 
         if (!qbResult.success) {
-            const errorMsg = typeof qbResult.error === 'object'
-                ? (qbResult.error?.Fault?.Error?.[0]?.Detail || qbResult.error?.Fault?.Error?.[0]?.Message || JSON.stringify(qbResult.error))
-                : String(qbResult.error);
+            const errorMsg = (qbResult as any).friendlyError
+                || (typeof qbResult.error === 'object'
+                    ? (qbResult.error?.Fault?.Error?.[0]?.Detail || qbResult.error?.Fault?.Error?.[0]?.Message || JSON.stringify(qbResult.error))
+                    : String(qbResult.error));
             throw new Error(errorMsg);
         }
 
