@@ -2993,9 +2993,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                         {qbAccounts.length > 0 ? (
                                                             qbAccounts
                                                                 .filter(a =>
-                                                                    (a.AccountType === 'Bank' || a.AccountType === 'Credit Card' || a.AccountType === 'Other Current Asset') &&
-                                                                    (a.Name.toLowerCase().includes(qbCreditSearch.toLowerCase()) ||
-                                                                     a.AccountType.toLowerCase().includes(qbCreditSearch.toLowerCase()))
+                                                                    a.Name.toLowerCase().includes(qbCreditSearch.toLowerCase()) ||
+                                                                    a.AccountType.toLowerCase().includes(qbCreditSearch.toLowerCase())
                                                                 )
                                                                 .map((acc) => (
                                                                     <button

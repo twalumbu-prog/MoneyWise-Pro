@@ -602,6 +602,29 @@ export class QuickBooksService {
             if (!response.ok) {
                 console.error(`[QB Purchase] QuickBooks API rejected purchase (HTTP ${response.status}):`, JSON.stringify(result));
 
+                // Check if this is an account-type error — if so, fall back to a Journal Entry
+                // which accepts any account type on any line.
+                const qbError = result?.Fault?.Error?.[0];
+                const isAccountTypeError = qbError?.code === '6000' ||
+                    (qbError?.Detail || '').toLowerCase().includes('invalid account type') ||
+                    (qbError?.Message || '').toLowerCase().includes('invalid account type');
+
+                if (isAccountTypeError) {
+                    console.log('[QB Purchase] Account type mismatch — falling back to Journal Entry');
+                    return this.createJournalEntry({
+                        requisitionId,
+                        userId,
+                        organizationId,
+                        accessToken,
+                        realmId,
+                        txnDate,
+                        expenseLines,
+                        sourceAccountId,
+                        sourceAccountName,
+                        privateNote: `MoneyWise Requisition: ${requisition.reference_number || requisition.id}`
+                    });
+                }
+
                 // Log failure to sync_logs
                 await supabase.from('sync_logs').insert({
                     requisition_id: requisitionId,
@@ -627,7 +650,7 @@ export class QuickBooksService {
                 qb_expense_id: result.Purchase.Id,
                 synced_by: userId,
                 status: 'SUCCESS',
-                details: JSON.stringify({ qb_ref: result.Purchase.Id })
+                details: JSON.stringify({ qb_ref: result.Purchase.Id, txn_type: 'Purchase' })
             });
 
             await supabase.from('requisitions').update({
@@ -662,6 +685,116 @@ export class QuickBooksService {
 
             return { success: false, error: error.message };
         }
+    }
+
+    /**
+     * Post a requisition to QuickBooks as a Journal Entry instead of a Purchase.
+     * A JE accepts any account type on any line, so it works regardless of
+     * whether the categorised accounts are Expense, Income, Asset, etc.
+     *
+     * Each expense line becomes a Debit on the categorised account.
+     * The payment/source account receives a single Credit for the total.
+     * (For Income-type line accounts the economic direction is the same from
+     * a double-entry perspective — the JE is the book entry, not a cash-flow
+     * statement.)
+     */
+    private static async createJournalEntry(params: {
+        requisitionId: string;
+        userId: string | undefined;
+        organizationId: string;
+        accessToken: string;
+        realmId: string;
+        txnDate: string;
+        expenseLines: Array<{ Description: string; Amount: number; AccountBasedExpenseLineDetail: { AccountRef: { value: string; name: string } } }>;
+        sourceAccountId: string;
+        sourceAccountName: string | undefined;
+        privateNote: string;
+    }) {
+        const { requisitionId, userId, organizationId, accessToken, realmId, txnDate, expenseLines, sourceAccountId, sourceAccountName, privateNote } = params;
+
+        const totalAmount = expenseLines.reduce((sum, l) => sum + l.Amount, 0);
+
+        // One Debit line per categorised account
+        const debitLines = expenseLines.map(line => ({
+            Amount: line.Amount,
+            Description: line.Description,
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+                PostingType: 'Debit',
+                AccountRef: line.AccountBasedExpenseLineDetail.AccountRef
+            }
+        }));
+
+        // Single Credit line on the payment/source account
+        const creditLine = {
+            Amount: totalAmount,
+            Description: 'Payment',
+            DetailType: 'JournalEntryLineDetail',
+            JournalEntryLineDetail: {
+                PostingType: 'Credit',
+                AccountRef: { value: sourceAccountId, name: sourceAccountName }
+            }
+        };
+
+        const journalEntry = {
+            TxnDate: txnDate,
+            PrivateNote: privateNote,
+            Line: [...debitLines, creditLine]
+        };
+
+        console.log(`[QB JournalEntry] Posting JE with ${debitLines.length} debit lines, total ${totalAmount}, credit to ${sourceAccountName}`);
+
+        const { apiBase } = this.getEnv();
+        const response = await fetch(`${apiBase}/${realmId}/journalentry?minorversion=70`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(journalEntry)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            console.error(`[QB JournalEntry] API rejected JE (HTTP ${response.status}):`, JSON.stringify(result));
+
+            await supabase.from('sync_logs').insert({
+                requisition_id: requisitionId,
+                synced_by: userId,
+                status: 'FAILED',
+                details: JSON.stringify({ http_status: response.status, error: result, txn_type: 'JournalEntry' })
+            });
+
+            await supabase.from('requisitions').update({
+                qb_sync_status: 'FAILED',
+                qb_sync_error: JSON.stringify(result),
+                qb_sync_at: new Date().toISOString()
+            }).eq('id', requisitionId);
+
+            return { success: false, error: result };
+        }
+
+        const jeId = result.JournalEntry?.Id;
+        console.log(`[QB JournalEntry] ✅ Journal Entry created in QuickBooks! ID: ${jeId}`);
+
+        await supabase.from('sync_logs').insert({
+            requisition_id: requisitionId,
+            qb_expense_id: jeId,
+            synced_by: userId,
+            status: 'SUCCESS',
+            details: JSON.stringify({ qb_ref: jeId, txn_type: 'JournalEntry' })
+        });
+
+        await supabase.from('requisitions').update({
+            qb_expense_id: jeId,
+            qb_sync_status: 'SUCCESS',
+            qb_sync_error: null,
+            qb_sync_at: new Date().toISOString()
+        }).eq('id', requisitionId);
+
+        return { success: true, qbId: jeId };
     }
 
     /**
