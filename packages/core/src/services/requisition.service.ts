@@ -442,7 +442,7 @@ export const requisitionService = {
         return response.json();
     },
 
-    async postToQuickBooks(id: string, data: { payment_account_id: string, payment_account_name: string }) {
+    async postToQuickBooks(id: string, data: { payment_account_id?: string, payment_account_name?: string }) {
         const response = await apiFetch(`/requisitions/${id}/post-quickbooks`, {
             method: 'POST',
             body: JSON.stringify(data),
