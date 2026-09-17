@@ -143,11 +143,8 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
 }
 
 async function doApiFetch(path: string, options: RequestInit = {}) {
-    console.log(`[API Client] Fetching: ${path}`);
-
     const token = await getAccessToken();
     let response = await sendRequest(path, options, token);
-    console.log(`[API Client] Response status: ${response.status} for ${path}`);
 
     if (response.status === 401) {
         // A 401 is NOT proof the session is dead. Most 401s here are self-inflicted:
@@ -157,7 +154,6 @@ async function doApiFetch(path: string, options: RequestInit = {}) {
         const refresh = await refreshAccessToken();
         if (refresh.status === 'refreshed') {
             response = await sendRequest(path, options, refresh.token);
-            console.log(`[API Client] Retry after refresh: ${response.status} for ${path}`);
         }
 
         if (response.status === 401) {
