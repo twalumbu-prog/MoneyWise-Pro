@@ -14,6 +14,9 @@ export const AchievementTourOverlay: React.FC = () => {
     const [bounds, setBounds] = useState<ElementBounds | null>(null);
     const [isFadedBackdrop, setIsFadedBackdrop] = useState(false);
     const [isStuck, setIsStuck] = useState(false);
+    // Matches Tailwind's `md` breakpoint, which is also where the sidebar
+    // layout switches to the mobile bottom-nav / sticky-header layout.
+    const [isMobileViewport, setIsMobileViewport] = useState(() => window.innerWidth < 768);
     const targetRef = useRef<Element | null>(null);
     const boundsRef = useRef<ElementBounds | null>(null);
 
@@ -38,13 +41,25 @@ export const AchievementTourOverlay: React.FC = () => {
         }
 
         const selector = activeStep.targetSelector;
-        let el: Element | null = null;
+        const cssSelector = selector.startsWith('data-tour-target=')
+            ? `[data-tour-target="${selector.split('=')[1].replace(/['"]/g, '')}"]`
+            : selector;
 
-        if (selector.startsWith('data-tour-target=')) {
-            const attrVal = selector.split('=')[1].replace(/['"]/g, '');
-            el = document.querySelector(`[data-tour-target="${attrVal}"]`);
-        } else {
-            el = document.querySelector(selector);
+        // The same tour target can exist twice in the DOM at once — the desktop
+        // sidebar and the mobile bottom nav both render (one is just CSS-hidden
+        // via `display:none`, not unmounted). querySelector() would always
+        // return the first one in document order regardless of which layout is
+        // actually visible, so instead pick the first match with real on-screen
+        // dimensions — a display:none ancestor collapses getBoundingClientRect()
+        // to 0x0, which a genuinely visible element (even position:fixed) never has.
+        let el: Element | null = null;
+        const candidates = document.querySelectorAll(cssSelector);
+        for (const candidate of candidates) {
+            const r = candidate.getBoundingClientRect();
+            if (r.width > 0 && r.height > 0) {
+                el = candidate;
+                break;
+            }
         }
 
         if (el) {
@@ -85,13 +100,17 @@ export const AchievementTourOverlay: React.FC = () => {
         updateBounds();
         const interval = setInterval(updateBounds, 150);
         const stuckTimer = setTimeout(() => setIsStuck(true), 6000);
-        window.addEventListener('resize', updateBounds);
+        const handleResize = () => {
+            updateBounds();
+            setIsMobileViewport(window.innerWidth < 768);
+        };
+        window.addEventListener('resize', handleResize);
         window.addEventListener('scroll', updateBounds, true);
 
         return () => {
             clearInterval(interval);
             clearTimeout(stuckTimer);
-            window.removeEventListener('resize', updateBounds);
+            window.removeEventListener('resize', handleResize);
             window.removeEventListener('scroll', updateBounds, true);
         };
     }, [activeStep, updateBounds]);
@@ -119,7 +138,7 @@ export const AchievementTourOverlay: React.FC = () => {
     if (!activeMission || !activeStep) return null;
 
     const totalSteps = activeMission.steps.length;
-    const arrowPos = activeStep.arrowPosition || 'top';
+    const arrowPos = (isMobileViewport && activeStep.mobileArrowPosition) || activeStep.arrowPosition || 'top';
 
     // If bounds are not resolved yet (e.g., page loading or tab switching), render dark backdrop smoothly
     if (!bounds) {

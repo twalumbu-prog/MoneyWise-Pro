@@ -25,41 +25,37 @@ export const AchievementsDropdown: React.FC = () => {
             />
 
             {/* Dropdown Container */}
-            <div className="absolute right-0 mt-3 w-96 bg-white rounded-3xl shadow-2xl border border-[#E8EEF8] z-50 overflow-hidden transform origin-top-right animate-in fade-in slide-in-from-top-2 duration-200">
-                {/* Header Banner */}
-                <div className="p-5 bg-gradient-to-r from-brand-navy via-[#004BBD] to-[#006AFF] text-white">
-                    <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 rounded-xl bg-white/15 backdrop-blur-md flex items-center justify-center">
-                                <Trophy size={18} className="text-yellow-300" />
+            <div className="absolute right-0 mt-3 w-96 bg-white rounded-2xl shadow-xl border border-[#E8EEF8] z-50 overflow-hidden transform origin-top-right animate-in fade-in slide-in-from-top-2 duration-200">
+                {/* Header */}
+                <div className="p-5 bg-white border-b border-[#E8EEF8]">
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-9 h-9 rounded-xl bg-[#006AFF]/10 flex items-center justify-center">
+                                <Trophy size={16} className="text-[#006AFF]" />
                             </div>
                             <div>
-                                <h3 className="font-bold text-sm leading-tight text-white">Achievements & Missions</h3>
-                                <p className="text-[10px] text-blue-100 font-medium">Gamified Onboarding Guide</p>
+                                <h3 className="font-bold text-sm leading-tight text-brand-navy">Guided Missions</h3>
+                                <p className="text-[11px] text-gray-400 font-medium">Learn MoneyWise Pro, step by step</p>
                             </div>
                         </div>
                         <button
                             onClick={() => setDesktopDropdownOpen(false)}
-                            className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white/80 hover:text-white transition-colors"
+                            className="w-7 h-7 rounded-full hover:bg-gray-100 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
                         >
                             <X size={14} />
                         </button>
                     </div>
 
                     {/* Progress Bar & XP */}
-                    <div className="bg-white/10 rounded-2xl p-3 border border-white/10 backdrop-blur-xs">
-                        <div className="flex items-center justify-between text-xs font-bold mb-1.5">
-                            <span className="text-white/90">{completedCount} of {totalCount} Missions Completed</span>
-                            <span className="text-yellow-300 flex items-center gap-1 text-[11px]">
-                                <Zap size={12} className="fill-yellow-300" /> {earnedXp} / {totalXp} XP
-                            </span>
-                        </div>
-                        <div className="w-full bg-black/20 h-2 rounded-full overflow-hidden">
-                            <div
-                                className="bg-gradient-to-r from-yellow-400 to-amber-300 h-full rounded-full transition-all duration-500 ease-out"
-                                style={{ width: `${percentage}%` }}
-                            />
-                        </div>
+                    <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                        <span className="text-gray-600">{completedCount} of {totalCount} missions completed</span>
+                        <span className="text-gray-400 font-medium">{earnedXp} / {totalXp} XP</span>
+                    </div>
+                    <div className="w-full bg-[#E8EEF8] h-1.5 rounded-full overflow-hidden">
+                        <div
+                            className="bg-[#006AFF] h-full rounded-full transition-all duration-500 ease-out"
+                            style={{ width: `${percentage}%` }}
+                        />
                     </div>
                 </div>
 
@@ -103,18 +99,13 @@ export const AchievementsDropdown: React.FC = () => {
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <span
-                                                className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full"
-                                                style={{
-                                                    backgroundColor: `${item.badgeColor}15`,
-                                                    color: item.badgeColor,
-                                                }}
-                                            >
-                                                {item.category}
+                                        <div className="flex items-center gap-1.5 mb-1">
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                                                {item.category.replace('_', ' ')}
                                             </span>
-                                            <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
-                                                <Zap size={10} className="fill-amber-500 text-amber-500" />
+                                            <span className="text-gray-200 text-[9px]">&bull;</span>
+                                            <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-0.5">
+                                                <Zap size={10} className="fill-emerald-500 text-emerald-500" />
                                                 +{item.xp} XP
                                             </span>
                                         </div>
@@ -146,7 +137,7 @@ export const AchievementsDropdown: React.FC = () => {
                                     key={item.id}
                                     className={`p-3 rounded-2xl border text-center transition-all ${
                                         item.completed
-                                            ? 'bg-gradient-to-b from-blue-50/50 to-white border-blue-100'
+                                            ? 'bg-white border-[#E8EEF8] shadow-xs'
                                             : 'bg-gray-50 border-gray-100 opacity-50 grayscale'
                                     }`}
                                 >
@@ -172,7 +163,7 @@ export const AchievementsDropdown: React.FC = () => {
                 {/* Footer Note */}
                 <div className="p-3 bg-[#F8FAFC] border-t border-[#E8EEF8] text-center">
                     <p className="text-[10px] font-medium text-gray-400">
-                        Guided missions show you how to master MoneyWise Pro.
+                        Complete missions to master MoneyWise Pro, one feature at a time.
                     </p>
                 </div>
             </div>

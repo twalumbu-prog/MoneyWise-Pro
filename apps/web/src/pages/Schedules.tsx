@@ -963,6 +963,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
             {/* FAB */}
             <button type="button"
                 onClick={() => { setEditItem(null); setShowAddModal(true); }}
+                data-tour-target="new-schedule-btn"
                 className="fixed bottom-8 right-5 z-30 w-14 h-14 bg-blue-700 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
                 aria-label="Add to Schedule">
                 <Plus size={26} className="text-white" />

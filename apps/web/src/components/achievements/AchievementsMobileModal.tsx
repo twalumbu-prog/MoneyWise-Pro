@@ -30,12 +30,12 @@ export const AchievementsMobileModal: React.FC = () => {
                     aria-label="Back to Inbox"
                 >
                     <ArrowLeft size={22} />
-                    <span className="font-bold text-lg text-brand-navy">Achievements</span>
+                    <span className="font-bold text-lg text-brand-navy">Missions</span>
                 </button>
 
-                <div className="flex items-center gap-1.5 bg-amber-50 border border-amber-200/60 px-3 py-1 rounded-full">
-                    <Zap size={14} className="fill-amber-500 text-amber-500" />
-                    <span className="text-xs font-black text-amber-700">{earnedXp} XP</span>
+                <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/60 px-3 py-1 rounded-full">
+                    <Zap size={14} className="fill-emerald-500 text-emerald-500" />
+                    <span className="text-xs font-black text-emerald-700">{earnedXp} XP</span>
                 </div>
             </div>
 
@@ -46,9 +46,9 @@ export const AchievementsMobileModal: React.FC = () => {
                     <div className="absolute -right-6 -bottom-6 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
                     <div className="relative z-10">
-                        <div className="flex items-center gap-2 text-yellow-300 font-extrabold text-xs uppercase tracking-widest mb-1">
+                        <div className="flex items-center gap-2 text-blue-200 font-extrabold text-xs uppercase tracking-widest mb-1">
                             <Sparkles size={14} />
-                            Onboarding Objectives
+                            Guided Missions
                         </div>
                         <h2 className="text-2xl font-black tracking-tight text-white mb-2">
                             Master MoneyWise Pro
@@ -60,12 +60,12 @@ export const AchievementsMobileModal: React.FC = () => {
                         {/* Progress Container */}
                         <div className="bg-white/15 backdrop-blur-md rounded-2xl p-4 border border-white/15">
                             <div className="flex items-center justify-between text-xs font-bold mb-2 text-white">
-                                <span>Level Progress</span>
+                                <span>Progress</span>
                                 <span>{completedCount} / {totalCount} Completed ({percentage}%)</span>
                             </div>
                             <div className="w-full bg-black/20 h-2.5 rounded-full overflow-hidden mb-3">
                                 <div
-                                    className="bg-gradient-to-r from-yellow-400 to-amber-300 h-full rounded-full transition-all duration-500"
+                                    className="bg-gradient-to-r from-[#03D47C] to-emerald-300 h-full rounded-full transition-all duration-500"
                                     style={{ width: `${percentage}%` }}
                                 />
                             </div>
@@ -81,7 +81,7 @@ export const AchievementsMobileModal: React.FC = () => {
                                 </div>
                                 <div>
                                     <p className="text-[10px] text-blue-200 font-medium">Total XP</p>
-                                    <p className="text-sm font-black text-yellow-300">{earnedXp}</p>
+                                    <p className="text-sm font-black text-emerald-300">{earnedXp}</p>
                                 </div>
                             </div>
                         </div>
@@ -127,18 +127,13 @@ export const AchievementsMobileModal: React.FC = () => {
                                 }`}
                             >
                                 <div className="flex items-start justify-between gap-3 mb-2">
-                                    <div className="flex items-center gap-2">
-                                        <span
-                                            className="text-[9px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full"
-                                            style={{
-                                                backgroundColor: `${item.badgeColor}18`,
-                                                color: item.badgeColor,
-                                            }}
-                                        >
-                                            {item.category}
+                                    <div className="flex items-center gap-1.5">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                                            {item.category.replace('_', ' ')}
                                         </span>
-                                        <span className="text-[10px] font-extrabold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg flex items-center gap-1">
-                                            <Zap size={11} className="fill-amber-500 text-amber-500" />
+                                        <span className="text-gray-200 text-[9px]">&bull;</span>
+                                        <span className="text-[10px] font-bold text-emerald-600 flex items-center gap-1">
+                                            <Zap size={11} className="fill-emerald-500 text-emerald-500" />
                                             +{item.xp} XP
                                         </span>
                                     </div>
@@ -173,7 +168,7 @@ export const AchievementsMobileModal: React.FC = () => {
                                     key={item.id}
                                     className={`p-4 rounded-3xl border text-center transition-all ${
                                         item.completed
-                                            ? 'bg-white border-blue-100 shadow-md'
+                                            ? 'bg-white border-[#E8EEF8] shadow-sm'
                                             : 'bg-gray-50 border-gray-100 opacity-60 grayscale'
                                     }`}
                                 >

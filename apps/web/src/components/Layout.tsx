@@ -126,11 +126,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                                         type="button"
                                         onClick={toggleMobileModal}
                                         aria-label="Achievements & Missions"
-                                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-amber-500 overflow-hidden shadow-sm active:scale-95 transition-all relative"
+                                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-[#006AFF] overflow-hidden shadow-sm active:scale-95 transition-all relative"
                                     >
-                                        <Trophy size={18} className="fill-amber-400 text-amber-500" />
+                                        <Trophy size={18} />
                                         {completedCount < totalCount && (
-                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#03D47C] animate-pulse" />
                                         )}
                                     </button>
                                     <button

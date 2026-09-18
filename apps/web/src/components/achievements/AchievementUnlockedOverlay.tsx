@@ -42,9 +42,9 @@ export const AchievementUnlockedOverlay: React.FC = () => {
                     </div>
 
                     {/* Celebration Header */}
-                    <div className="inline-flex items-center gap-1.5 text-xs font-black text-amber-600 bg-amber-50 px-3 py-1 rounded-full mb-2">
-                        <Zap size={14} className="fill-amber-500 text-amber-500" />
-                        ACHIEVEMENT UNLOCKED • +{recentlyUnlocked.xp} XP
+                    <div className="inline-flex items-center gap-1.5 text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full mb-2">
+                        <Zap size={14} className="fill-emerald-500 text-emerald-500" />
+                        MISSION COMPLETE • +{recentlyUnlocked.xp} XP
                     </div>
 
                     <h2 className="text-2xl font-black text-brand-navy tracking-tight mb-1">

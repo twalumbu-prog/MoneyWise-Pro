@@ -5,6 +5,13 @@ export interface MissionStep {
     targetPath: string;
     targetSelector: string;
     arrowPosition?: 'top' | 'bottom' | 'left' | 'right';
+    /**
+     * Overrides `arrowPosition` on narrow (mobile web) viewports. The desktop
+     * left sidebar and the mobile bottom nav / sticky header put the same
+     * logical target in a completely different part of the screen (vertical
+     * list vs. horizontal bar), so a single arrow direction can't serve both.
+     */
+    mobileArrowPosition?: 'top' | 'bottom' | 'left' | 'right';
 }
 
 export interface OnboardingAchievement {
@@ -29,7 +36,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
         category: 'ONBOARDING',
         icon: 'Users',
         badgeName: 'Team Builder',
-        badgeColor: '#006AFF',
+        badgeColor: '#006AFF', // ONBOARDING tier
         xp: 100,
         completed: false,
         steps: [
@@ -40,6 +47,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
                 targetPath: '/requisitions',
                 targetSelector: 'data-tour-target="nav-settings"',
                 arrowPosition: 'right',
+                mobileArrowPosition: 'top',
             },
             {
                 id: 'step_click_team_tab',
@@ -74,7 +82,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
         category: 'ONBOARDING',
         icon: 'FilePlus',
         badgeName: 'Request Starter',
-        badgeColor: '#10B981',
+        badgeColor: '#006AFF', // ONBOARDING tier
         xp: 150,
         completed: false,
         steps: [
@@ -111,7 +119,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
         category: 'EXPLORER',
         icon: 'Sparkles',
         badgeName: 'Data Voyager',
-        badgeColor: '#8B5CF6',
+        badgeColor: '#03D47C', // EXPLORER tier
         xp: 120,
         completed: false,
         steps: [
@@ -122,6 +130,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
                 targetPath: '/requisitions',
                 targetSelector: 'data-tour-target="nav-bi-tab"',
                 arrowPosition: 'right',
+                mobileArrowPosition: 'top',
             },
             {
                 id: 'step_explore_insights',
@@ -140,7 +149,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
         category: 'EXPLORER',
         icon: 'ArrowDownLeft',
         badgeName: 'Cash Commander',
-        badgeColor: '#F59E0B',
+        badgeColor: '#03D47C', // EXPLORER tier
         xp: 100,
         completed: false,
         steps: [
@@ -161,7 +170,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
         category: 'POWER_USER',
         icon: 'Calendar',
         badgeName: 'Automation Pro',
-        badgeColor: '#EC4899',
+        badgeColor: '#002E3B', // POWER_USER tier
         xp: 200,
         completed: false,
         steps: [
@@ -172,6 +181,7 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
                 targetPath: '/requisitions',
                 targetSelector: 'data-tour-target="nav-schedules-tab"',
                 arrowPosition: 'right',
+                mobileArrowPosition: 'bottom',
             },
             {
                 id: 'step_click_new_schedule',
@@ -180,6 +190,9 @@ export const INITIAL_ACHIEVEMENTS: OnboardingAchievement[] = [
                 targetPath: '/schedules',
                 targetSelector: 'data-tour-target="new-schedule-btn"',
                 arrowPosition: 'bottom',
+                // Desktop's button sits in the page header (room below it); mobile's
+                // is a FAB pinned to the bottom-right corner (only room above it).
+                mobileArrowPosition: 'top',
             },
             {
                 id: 'step_save_schedule',

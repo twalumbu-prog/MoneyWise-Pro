@@ -104,14 +104,14 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
                         aria-label="Achievements & Missions"
                         className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-white border border-[#E8EEF8] hover:border-blue-200 hover:bg-blue-50/50 transition-all text-[#111827] shadow-xs active:scale-95 group"
                     >
-                        <div className="w-6 h-6 rounded-xl bg-amber-500/10 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
-                            <Trophy size={14} className="fill-amber-400 text-amber-500" />
+                        <div className="w-6 h-6 rounded-xl bg-[#006AFF]/10 text-[#006AFF] flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <Trophy size={14} />
                         </div>
                         <span className="text-xs font-bold text-gray-700 group-hover:text-[#006AFF]">
                             Missions ({completedCount}/{totalCount})
                         </span>
                         {completedCount < totalCount && (
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                            <span className="w-2 h-2 rounded-full bg-[#03D47C] animate-pulse" />
                         )}
                     </button>
 
