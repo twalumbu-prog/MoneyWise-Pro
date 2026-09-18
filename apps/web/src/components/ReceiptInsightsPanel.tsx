@@ -22,6 +22,8 @@ export interface ReceiptOcrData {
     vat_amount?: number | null;
     vat_rate?: number | null;
     currency?: string | null;
+    exchange_rate?: number | null;   // rate used to convert currency → ZMW
+    zmw_equivalent?: number | null;  // total_amount converted to ZMW
     payment_method?: string | null;
     receipt_number?: string | null;
     til_number?: string | null;
@@ -45,28 +47,47 @@ const formatCurrency = (amount: number | null | undefined, currency = 'ZMW') => 
     return `${currency} ${Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 };
 
-const VerificationBadge: React.FC<{ receiptAmount?: number | null; expectedAmount?: number }> = ({ receiptAmount, expectedAmount }) => {
-    if (receiptAmount == null || expectedAmount == null) return null;
+const VerificationBadge: React.FC<{
+    receiptAmount?: number | null;
+    expectedAmount?: number;
+    currency?: string | null;
+    zmwEquivalent?: number | null;
+    exchangeRate?: number | null;
+}> = ({ receiptAmount, expectedAmount, currency, zmwEquivalent, exchangeRate }) => {
+    if (receiptAmount == null || expectedAmount == null || expectedAmount === 0) return null;
 
-    const diff = Math.abs(receiptAmount - expectedAmount);
-    const tolerance = 0.05; // 5 cents tolerance
+    const isForeign = currency && currency.toUpperCase() !== 'ZMW';
+    // For foreign-currency receipts use the ZMW equivalent if we have it; otherwise fall back to
+    // the raw amount so we still show something (it'll likely flag as mismatch, which is correct).
+    const compareAmount = isForeign && zmwEquivalent != null ? zmwEquivalent : receiptAmount;
+    const diff = Math.abs(compareAmount - expectedAmount);
+    const pct = diff / expectedAmount;
 
-    if (diff <= tolerance) {
+    // Foreign-currency comparisons get a much wider tolerance because exchange-rate providers
+    // quote different mid-market rates and the user's bank/card likely added a spread on top.
+    const verifiedThreshold  = isForeign ? 0.15 : 0.005; // 15 % vs ~K0.005
+    const varianceThreshold  = isForeign ? 0.30 : 0.10;  // 30 % vs 10 %
+
+    const rateNote = isForeign && exchangeRate
+        ? ` (${currency} at K${exchangeRate.toFixed(2)})`
+        : '';
+
+    if (pct <= verifiedThreshold) {
         return (
             <span className="flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
-                <CheckCircle className="h-3 w-3" /> Amount Verified
+                <CheckCircle className="h-3 w-3" /> Amount Verified{rateNote}
             </span>
         );
-    } else if (diff / expectedAmount <= 0.1) {
+    } else if (pct <= varianceThreshold) {
         return (
             <span className="flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                <AlertTriangle className="h-3 w-3" /> Minor Variance (K{diff.toFixed(2)})
+                <AlertTriangle className="h-3 w-3" /> Minor Variance (K{diff.toFixed(2)}){rateNote}
             </span>
         );
     } else {
         return (
             <span className="flex items-center gap-1 text-xs font-bold text-red-700 bg-red-100 px-2 py-0.5 rounded-full">
-                <XCircle className="h-3 w-3" /> Amount Mismatch (K{diff.toFixed(2)})
+                <XCircle className="h-3 w-3" /> Amount Mismatch (K{diff.toFixed(2)}){rateNote}
             </span>
         );
     }
@@ -135,7 +156,13 @@ export const ReceiptInsightsPanel: React.FC<Props> = ({
                                 {isPending ? 'Analyzing Receipt…' : hasFailed ? 'Analysis Failed' : `AI Receipt Insights${ocrData?.vendor ? ` — ${ocrData.vendor}` : ''}`}
                             </span>
                             {hasDone && (
-                                <VerificationBadge receiptAmount={ocrData?.total_amount} expectedAmount={expectedAmount} />
+                                <VerificationBadge
+                                    receiptAmount={ocrData?.total_amount}
+                                    expectedAmount={expectedAmount}
+                                    currency={ocrData?.currency}
+                                    zmwEquivalent={ocrData?.zmw_equivalent}
+                                    exchangeRate={ocrData?.exchange_rate}
+                                />
                             )}
                         </div>
                         <div className="flex items-center gap-3" onClick={e => e.stopPropagation()}>
@@ -198,6 +225,16 @@ export const ReceiptInsightsPanel: React.FC<Props> = ({
                                             <p className="text-sm font-bold text-gray-900">
                                                 {formatCurrency(ocrData.total_amount, ocrData.currency || 'ZMW')}
                                             </p>
+                                            {ocrData.zmw_equivalent != null && ocrData.currency && ocrData.currency.toUpperCase() !== 'ZMW' && (
+                                                <p className="text-xs text-indigo-500 font-semibold mt-0.5">
+                                                    ≈ {formatCurrency(ocrData.zmw_equivalent, 'ZMW')}
+                                                    {ocrData.exchange_rate && (
+                                                        <span className="text-[10px] text-gray-400 font-normal ml-1">
+                                                            (rate {ocrData.exchange_rate.toFixed(2)})
+                                                        </span>
+                                                    )}
+                                                </p>
+                                            )}
                                             {ocrData.subtotal != null && ocrData.subtotal !== ocrData.total_amount && (
                                                 <p className="text-xs text-gray-400">Subtotal: {formatCurrency(ocrData.subtotal, ocrData.currency || 'ZMW')}</p>
                                             )}
