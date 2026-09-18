@@ -122,11 +122,11 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                             value: 'inflows',
                             buttonClassName: 'flex items-center gap-2 px-3 h-8',
                             label: (
-                                <>
+                                <div data-tour-target="inbox-mode-inflows" className="flex items-center gap-2">
                                     {mode === 'inflows' && <span className="w-1 h-1 rounded-full bg-[#0058DB]" />}
                                     <span className={`text-sm ${mode === 'inflows' ? 'font-bold text-[#111827]' : 'font-normal text-gray-400'}`}>Inflows</span>
                                     <span className="min-w-[18px] px-1 bg-[#F3F5FC] rounded text-center text-[10px] text-neutral-500">{inflowCount}</span>
-                                </>
+                                </div>
                             ),
                         },
                     ]}
@@ -134,7 +134,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
 
                 {showNew && (
                     newMenuItems && newMenuItems.length > 0 ? (
-                        <div className="relative" ref={newMenuRef}>
+                        <div className="relative" ref={newMenuRef} data-tour-target="new-request-btn">
                             <button
                                 onClick={() => setIsNewMenuOpen(prev => !prev)}
                                 className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
@@ -171,6 +171,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                         </div>
                     ) : (
                         <button
+                            data-tour-target="new-request-btn"
                             onClick={onNew}
                             className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                         >

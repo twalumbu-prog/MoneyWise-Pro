@@ -32,6 +32,7 @@ export const Intelligence: React.FC = () => {
                             {TABS.map(tab => (
                                 <button
                                     key={tab.id}
+                                    {...(tab.id === 'insights' ? { 'data-tour-target': 'bi-insight-card' } : {})}
                                     onClick={() => setActiveTab(tab.id)}
                                     className={`flex-1 whitespace-nowrap rounded-xl px-4 py-2.5 text-[11px] font-black transition-all md:flex-none md:px-8 md:text-[13px] ${
                                         activeTab === tab.id

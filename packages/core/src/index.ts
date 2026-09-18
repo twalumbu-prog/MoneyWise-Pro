@@ -60,6 +60,9 @@ export type {
     Achievement,
 } from './services/highlights.service';
 
+export { loadAchievementsState, saveAchievementsState, INITIAL_ACHIEVEMENTS } from './achievements';
+export type { OnboardingAchievement, MissionStep } from './achievements';
+
 export { reportService } from './services/report.service';
 export type {
     ExpenditureAggregation,

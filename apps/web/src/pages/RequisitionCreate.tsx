@@ -637,6 +637,7 @@ export const RequisitionCreate: React.FC = () => {
                                 </label>
                                 <textarea
                                     id="description"
+                                    data-tour-target="req-input-description"
                                     value={description}
                                     onChange={(e) => setDescription(e.target.value)}
                                     rows={3}
@@ -1150,6 +1151,7 @@ export const RequisitionCreate: React.FC = () => {
                         </button>
                         <button
                             type="submit"
+                            data-tour-target="req-submit-btn"
                             disabled={loading || isBlocked || !allPayrollVerified || isVerifying}
                             className="px-6 py-2.5 bg-brand-green text-white font-bold rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-200 transition-all transform hover:-translate-y-0.5"
                         >

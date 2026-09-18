@@ -395,7 +395,9 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                     <div className="px-6 py-5 space-y-4">
                         <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Title</label>
-                            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+                            <input type="text"
+                                data-tour-target="schedule-title-input"
+                                value={title} onChange={e => setTitle(e.target.value)}
                                 placeholder="e.g. Director's Monthly Rental"
                                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition" />
                         </div>
@@ -516,7 +518,9 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                             className="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition">
                             Cancel
                         </button>
-                        <button type="submit" disabled={saving}
+                        <button type="submit"
+                            data-tour-target="save-schedule-btn"
+                            disabled={saving}
                             className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
                             {saving && <Loader2 size={12} className="animate-spin text-white" />}
                             <span className="text-white text-xs font-bold">
@@ -1099,6 +1103,7 @@ export const Schedules: React.FC = () => {
                         </div>
                         <div className="flex-1" />
                         <button type="button"
+                            data-tour-target="new-schedule-btn"
                             onClick={() => { setEditItem(null); setShowAddModal(true); }}
                             className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                             <Plus size={13} className="text-white" />
@@ -1121,6 +1126,7 @@ export const Schedules: React.FC = () => {
                                 <p className="text-sm font-bold text-gray-800 mb-1">No scheduled items</p>
                                 <p className="text-xs text-gray-400 mb-5">Add recurring bills, subscriptions, or payments to keep track automatically.</p>
                                 <button type="button"
+                                    data-tour-target="new-schedule-btn"
                                     onClick={() => { setEditItem(null); setShowAddModal(true); }}
                                     className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                                     <Plus size={13} className="text-white" />
