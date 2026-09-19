@@ -550,19 +550,31 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
             }
         }
 
-        // Generate Sequential Reference ONLY if status is AUTHORISED and it doesn't have one yet
-        let refNum = null;
-        if (status === 'AUTHORISED') {
-            const { data: currentReq } = await supabase
-                .from('requisitions')
-                .select('reference_number')
-                .eq('id', id)
-                .single();
+        // Fetch existing requisition first for idempotency & org verification
+        const { data: currentReq, error: fetchError } = await supabase
+            .from('requisitions')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
 
-            if (currentReq && !currentReq.reference_number) {
+        if (fetchError || !currentReq) {
+            return res.status(404).json({ error: 'Requisition not found' });
+        }
+
+        // Check organization permission (allow ADMIN or matching org)
+        if (userRole !== 'ADMIN' && org_id && currentReq.organization_id !== org_id) {
+            return res.status(403).json({ error: 'Unauthorized: Requisition belongs to another organization' });
+        }
+
+        let data = currentReq;
+
+        // Perform update only if status is changing
+        if (currentReq.status !== status) {
+            let refNum = null;
+            if (status === 'AUTHORISED' && !currentReq.reference_number) {
                 const { data: newRef, error: refError } = await supabase
                     .rpc('generate_sequential_reference', {
-                        p_org_id: (req as any).user.organization_id,
+                        p_org_id: currentReq.organization_id,
                         p_entity_type: 'REQUISITION',
                         p_prefix: 'REQ'
                     });
@@ -573,28 +585,26 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
                     console.error('Error generating reference number during approval:', refError);
                 }
             }
+
+            const updateData: any = {
+                status,
+                updated_at: new Date().toISOString()
+            };
+
+            if (refNum) {
+                updateData.reference_number = refNum;
+            }
+
+            const { data: updatedReq, error: updateError } = await supabase
+                .from('requisitions')
+                .update(updateData)
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (updateError) throw updateError;
+            data = updatedReq;
         }
-
-        const updateData: any = {
-            status,
-            updated_at: new Date().toISOString()
-        };
-
-        if (refNum) {
-            updateData.reference_number = refNum;
-        }
-
-        const { data, error } = await supabase
-            .from('requisitions')
-            .update(updateData)
-            .eq('id', id)
-            .eq('organization_id', (req as any).user.organization_id)
-            .neq('status', status)
-            .select()
-            .single();
-
-        if (error) throw error;
-        if (!data) return res.status(404).json({ error: 'Requisition not found' });
 
         // Determine if we need a system message and its stage
         const stageToCreate = status === 'AUTHORISED' ? 'DISBURSAL' : 
@@ -618,19 +628,23 @@ export const updateRequisitionStatus = async (req: any, res: any): Promise<any> 
         }
 
         if (shouldCreateMessage) {
-            // Trigger system message
-            await RequisitionMessageService.createMessage({
-                requisitionId: id,
-                userId: (req as any).user.id,
-                content: status === 'AUTHORISED' ? 'How would you like to disburse these funds?' : 
-                         status === 'DISBURSED' ? 'Transaction needs to be expensed' : 
-                         `Status updated to ${status}`,
-                type: 'SYSTEM',
-                metadata: { 
-                    status,
-                    stage: stageToCreate
-                }
-            });
+            try {
+                // Trigger system message
+                await RequisitionMessageService.createMessage({
+                    requisitionId: id,
+                    userId: (req as any).user.id,
+                    content: status === 'AUTHORISED' ? 'How would you like to disburse these funds?' : 
+                             status === 'DISBURSED' ? 'Transaction needs to be expensed' : 
+                             `Status updated to ${status}`,
+                    type: 'SYSTEM',
+                    metadata: { 
+                        status,
+                        stage: stageToCreate
+                    }
+                });
+            } catch (msgError: any) {
+                console.error('[updateRequisitionStatus] Warning: Failed to create system message:', msgError);
+            }
         }
 
         // NOTE: AI memory learning is intentionally NOT triggered here. At AUTHORISED
