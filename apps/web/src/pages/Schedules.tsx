@@ -20,24 +20,23 @@ import { SegmentedControl, AnimatedTabContent } from '../components/AnimatedTabs
 import { lencoService } from '../services/lenco.service';
 import { useAuth } from '../context/AuthContext';
 import { format, parseISO, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isToday } from 'date-fns';
+import { formatKwacha } from 'core';
+import { SCHEDULE_CATEGORIES, SCHEDULE_CADENCES } from 'core';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-const CATEGORIES: { value: ScheduleCategory; label: string; icon: React.ElementType }[] = [
-    { value: 'BILLS',            label: 'Bills',            icon: Receipt },
-    { value: 'SUBSCRIPTIONS',    label: 'Subscriptions',    icon: CreditCard },
-    { value: 'INVESTMENTS',      label: 'Investments',      icon: TrendingUp },
-    { value: 'LOAN_REPAYMENTS',  label: 'Loan Repayments',  icon: Landmark },
-    { value: 'GENERAL_EXPENSES', label: 'General Expenses', icon: Wallet },
-];
-
-const CADENCES: { value: ScheduleCadence; label: string }[] = [
-    { value: 'DAILY',     label: 'Daily' },
-    { value: 'WEEKLY',    label: 'Weekly' },
-    { value: 'BIWEEKLY',  label: 'Bi-weekly' },
-    { value: 'MONTHLY',   label: 'Monthly' },
-    { value: 'QUARTERLY', label: 'Quarterly' },
-];
+// Labels live in `core` (reference/schedules.ts) so the phone's category picker
+// can't drift from this one in wording or order. Icons are a web-only concern,
+// mapped onto the shared value list here.
+const CATEGORY_ICONS: Record<ScheduleCategory, React.ElementType> = {
+    BILLS: Receipt,
+    SUBSCRIPTIONS: CreditCard,
+    INVESTMENTS: TrendingUp,
+    LOAN_REPAYMENTS: Landmark,
+    GENERAL_EXPENSES: Wallet,
+};
+const CATEGORIES = SCHEDULE_CATEGORIES.map(c => ({ ...c, icon: CATEGORY_ICONS[c.value] }));
+const CADENCES = SCHEDULE_CADENCES;
 
 const CATEGORY_COLORS: Record<string, string> = {
     BILLS:            'bg-orange-100 text-orange-700',
@@ -79,9 +78,7 @@ function isPhoneComplete(phone: string): boolean {
 
 function categoryLabel(cat: string) { return CATEGORIES.find(c => c.value === cat)?.label ?? cat; }
 function cadenceLabel(cad: string)  { return CADENCES.find(c => c.value === cad)?.label ?? cad; }
-function formatCurrency(n: number) {
-    return `K${n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
+const formatCurrency = formatKwacha;
 function formatDueDate(dateStr: string) {
     try {
         const d = parseISO(dateStr);
@@ -398,7 +395,9 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                     <div className="px-6 py-5 space-y-4">
                         <div>
                             <label className="block text-xs font-semibold text-gray-600 mb-1">Title</label>
-                            <input type="text" value={title} onChange={e => setTitle(e.target.value)}
+                            <input type="text"
+                                data-tour-target="schedule-title-input"
+                                value={title} onChange={e => setTitle(e.target.value)}
                                 placeholder="e.g. Director's Monthly Rental"
                                 className="w-full px-3 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 transition" />
                         </div>
@@ -519,7 +518,9 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ initial, onClose, onSave,
                             className="px-4 py-2 text-xs font-semibold text-gray-500 hover:bg-gray-100 rounded-xl transition">
                             Cancel
                         </button>
-                        <button type="submit" disabled={saving}
+                        <button type="submit"
+                            data-tour-target="save-schedule-btn"
+                            disabled={saving}
                             className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity disabled:opacity-60">
                             {saving && <Loader2 size={12} className="animate-spin text-white" />}
                             <span className="text-white text-xs font-bold">
@@ -962,6 +963,7 @@ const MobileSchedules: React.FC<MobileSchedulesProps> = ({
             {/* FAB */}
             <button type="button"
                 onClick={() => { setEditItem(null); setShowAddModal(true); }}
+                data-tour-target="new-schedule-btn"
                 className="fixed bottom-8 right-5 z-30 w-14 h-14 bg-blue-700 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all"
                 aria-label="Add to Schedule">
                 <Plus size={26} className="text-white" />
@@ -1102,6 +1104,7 @@ export const Schedules: React.FC = () => {
                         </div>
                         <div className="flex-1" />
                         <button type="button"
+                            data-tour-target="new-schedule-btn"
                             onClick={() => { setEditItem(null); setShowAddModal(true); }}
                             className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                             <Plus size={13} className="text-white" />
@@ -1124,6 +1127,7 @@ export const Schedules: React.FC = () => {
                                 <p className="text-sm font-bold text-gray-800 mb-1">No scheduled items</p>
                                 <p className="text-xs text-gray-400 mb-5">Add recurring bills, subscriptions, or payments to keep track automatically.</p>
                                 <button type="button"
+                                    data-tour-target="new-schedule-btn"
                                     onClick={() => { setEditItem(null); setShowAddModal(true); }}
                                     className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity">
                                     <Plus size={13} className="text-white" />

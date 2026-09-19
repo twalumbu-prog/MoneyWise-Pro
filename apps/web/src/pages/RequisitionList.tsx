@@ -31,6 +31,7 @@ import { payrollService } from '../services/payroll.service';
 import { paymentLinkService, PaymentLink, UpdateInvoiceLinkPayload } from '../services/product.service';
 import { useNewnessTracker } from '../hooks/useNewnessTracker';
 import InflowDetailDrawer from '../components/InflowDetailDrawer';
+import { groupByDate } from 'core';
 
 interface Requisition {
     id: string;
@@ -428,67 +429,16 @@ export const RequisitionList: React.FC = () => {
     const inflowTotalCount = inflows.filter(i => i.status !== 'PENDING').length;
     const hasActiveDesktopFilters = !activeTab.includes('ALL') || filterRead !== 'ALL' || (useDepartments && !filterDepartment.includes('ALL')) || !!filterStartDate || !!filterEndDate;
 
-    interface DateGroup {
-        dateLabel: string;
-        dateKey: string;
-        requisitions: Requisition[];
-    }
+    // Day bucketing lives in `core` so the web inbox and the native inbox cannot
+    // drift on how rows are grouped or how the date header reads. The wrappers
+    // only rename `items` to the key each list already renders with.
+    const groupRequisitionsByDate = (reqs: Requisition[]) =>
+        groupByDate(reqs, r => r.created_at, sortOrder)
+            .map(g => ({ dateLabel: g.dateLabel, dateKey: g.dateKey, requisitions: g.items }));
 
-    const groupRequisitionsByDate = (reqs: Requisition[]): DateGroup[] => {
-        const groupsMap: { [key: string]: Requisition[] } = {};
-        reqs.forEach(req => {
-            const dateObj = new Date(req.created_at);
-            const yyyy = dateObj.getFullYear();
-            const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const dd = String(dateObj.getDate()).padStart(2, '0');
-            const dateKey = `${yyyy}-${mm}-${dd}`;
-            
-            if (!groupsMap[dateKey]) {
-                groupsMap[dateKey] = [];
-            }
-            groupsMap[dateKey].push(req);
-        });
-
-        const sortedKeys = Object.keys(groupsMap).sort((a, b) => {
-            return sortOrder === 'desc' 
-                ? b.localeCompare(a) 
-                : a.localeCompare(b);
-        });
-
-        return sortedKeys.map(key => {
-            const firstReq = groupsMap[key][0];
-            const dateObj = new Date(firstReq.created_at);
-            const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'long' });
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const year = dateObj.getFullYear();
-            const dateLabel = `${dayName} - ${day}/${month}/${year}`;
-            
-            return {
-                dateLabel,
-                dateKey: key,
-                requisitions: groupsMap[key]
-            };
-        });
-    };
-
-    // Same day-grouping shape as requisitions, keyed on the inflow's ledger date.
-    const groupInflowsByDate = (rows: InflowRow[]) => {
-        const groupsMap: { [key: string]: InflowRow[] } = {};
-        rows.forEach(row => {
-            const dateKey = (row.date || '').slice(0, 10) || new Date(row.created_at || Date.now()).toISOString().slice(0, 10);
-            if (!groupsMap[dateKey]) groupsMap[dateKey] = [];
-            groupsMap[dateKey].push(row);
-        });
-        const sortedKeys = Object.keys(groupsMap).sort((a, b) =>
-            sortOrder === 'desc' ? b.localeCompare(a) : a.localeCompare(b)
-        );
-        return sortedKeys.map(key => {
-            const [year, month, day] = key.split('-');
-            const dayName = new Date(`${key}T00:00:00`).toLocaleDateString('en-US', { weekday: 'long' });
-            return { dateLabel: `${dayName} - ${day}/${month}/${year}`, dateKey: key, rows: groupsMap[key] };
-        });
-    };
+    const groupInflowsByDate = (rows: InflowRow[]) =>
+        groupByDate(rows, r => r.date || r.created_at || new Date(), sortOrder)
+            .map(g => ({ dateLabel: g.dateLabel, dateKey: g.dateKey, rows: g.items }));
 
     // Desktop "New" dropdown — mirrors the mobile bottom sheet options.
     const desktopNewMenuItems: NewMenuItem[] = [

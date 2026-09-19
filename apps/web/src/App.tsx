@@ -159,14 +159,17 @@ const SpeedInsightsRouteTracker: React.FC = () => {
     return <SpeedInsights route={location.pathname} />;
 };
 
+import { AchievementsProvider } from './context/AchievementsContext';
+
 function App() {
     return (
         <AuthProvider>
             {/* Live cross-device cache invalidation (no-op while signed out) */}
             <RealtimeCacheSync />
             <Router>
-                <SpeedInsightsRouteTracker />
-                <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-600" /></div>}>
+                <AchievementsProvider>
+                    <SpeedInsightsRouteTracker />
+                    <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-[#006AFF]" /></div>}>
                     <Routes>
                         <Route path="/login" element={<Login />} />
                         <Route path="/join" element={<Join />} />
@@ -364,6 +367,7 @@ function App() {
                 </React.Suspense>
                 <UpdatePrompt />
                 <PWAInstallPrompt />
+                </AchievementsProvider>
             </Router>
         </AuthProvider>
     );

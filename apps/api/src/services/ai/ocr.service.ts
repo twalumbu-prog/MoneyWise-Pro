@@ -17,6 +17,8 @@ export interface ReceiptOcrData {
     vat_amount?: number | null;
     vat_rate?: number | null;     // percentage e.g. 16 for 16%
     currency?: string | null;     // e.g. "ZMW", "USD"
+    exchange_rate?: number | null; // rate used to convert currency → ZMW (populated for non-ZMW receipts)
+    zmw_equivalent?: number | null; // total_amount converted to ZMW using exchange_rate
     payment_method?: string | null;
     receipt_number?: string | null;
     til_number?: string | null;
@@ -97,6 +99,21 @@ Return ONLY a JSON object:
 }
 `;
 
+/** Fetch the ZMW exchange rate for a given currency code using open.er-api.com (free, no key). */
+async function fetchZmwRate(currency: string): Promise<number | null> {
+    try {
+        const res = await fetch(`https://open.er-api.com/v6/latest/${currency.toUpperCase()}`, {
+            signal: AbortSignal.timeout(5000)
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const rate = data?.rates?.ZMW;
+        return typeof rate === 'number' ? rate : null;
+    } catch {
+        return null;
+    }
+}
+
 export const ocrService = {
     async analyzeReceipt(imageUrl?: string, imageData?: Buffer | Uint8Array): Promise<ReceiptOcrData> {
         const hasGemini = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY');
@@ -157,7 +174,22 @@ export const ocrService = {
                 try {
                     const jsonText = resp.text.replace(/```json\n?|\n?```/g, '').trim();
                     const parsed: ReceiptOcrData = JSON.parse(jsonText);
-                    console.log(`[OCR Service] Receipt analyzed via ${resp.provider}. Vendor: ${parsed.vendor}, Total: ${parsed.total_amount}`);
+                    console.log(`[OCR Service] Receipt analyzed via ${resp.provider}. Vendor: ${parsed.vendor}, Total: ${parsed.total_amount}, Currency: ${parsed.currency}`);
+
+                    // If the receipt is in a foreign currency, fetch the live ZMW rate so the
+                    // frontend can do an apples-to-apples comparison with the ZMW request amount.
+                    const currency = (parsed.currency || '').toUpperCase();
+                    if (currency && currency !== 'ZMW' && parsed.total_amount != null) {
+                        const rate = await fetchZmwRate(currency);
+                        if (rate != null) {
+                            parsed.exchange_rate = rate;
+                            parsed.zmw_equivalent = Math.round(parsed.total_amount * rate * 100) / 100;
+                            console.log(`[OCR Service] FX: ${parsed.total_amount} ${currency} ≈ K${parsed.zmw_equivalent} (rate ${rate})`);
+                        } else {
+                            console.warn(`[OCR Service] Could not fetch ZMW rate for ${currency}; skipping conversion`);
+                        }
+                    }
+
                     return parsed;
                 } catch (parseErr: any) {
                     lastErr = parseErr.message;

@@ -69,7 +69,17 @@ export const DisbursementDetailOverlay: React.FC<DisbursementDetailOverlayProps>
     };
 
     const proofUrl = disbursement.transfer_proof_url ? requisitionService.getFileUrl(disbursement.transfer_proof_url) : null;
-    const amountMismatch = aiResult && Math.abs(aiResult.ocrData.total_amount - aiResult.recordedAmount) > 0.01;
+    const amountMismatch = (() => {
+        if (!aiResult) return false;
+        const ocr = aiResult.ocrData;
+        const isForeign = ocr.currency && ocr.currency.toUpperCase() !== 'ZMW';
+        // For foreign-currency receipts compare the ZMW-equivalent (if available) against the
+        // recorded ZMW amount, with a 15 % tolerance for exchange-rate spread.
+        if (isForeign && ocr.zmw_equivalent != null) {
+            return Math.abs(ocr.zmw_equivalent - aiResult.recordedAmount) / aiResult.recordedAmount > 0.15;
+        }
+        return Math.abs(ocr.total_amount - aiResult.recordedAmount) > 0.01;
+    })();
 
     return (
         <div className="fixed inset-0 bg-brand-navy/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">

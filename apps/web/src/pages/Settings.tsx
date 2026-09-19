@@ -83,6 +83,7 @@ export const Settings: React.FC = () => {
                                     ].map(tab => (
                                         <button
                                             key={tab.id}
+                                            {...(tab.id === 'users' ? { 'data-tour-target': 'settings-team-tab' } : {})}
                                             onClick={() => handleTabChange(tab.id)}
                                             className={`px-3.5 py-1.5 rounded-lg text-[11px] whitespace-nowrap transition-all flex items-center gap-1.5 ${
                                                 activeTab === tab.id
