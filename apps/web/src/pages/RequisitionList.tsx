@@ -18,7 +18,7 @@ import { DesktopStaffLoanWorkspace } from '../components/requisitions/DesktopSta
 import { DesktopSalaryAdvanceWorkspace } from '../components/requisitions/DesktopSalaryAdvanceWorkspace';
 import { DesktopPayrollWorkspace } from '../components/requisitions/DesktopPayrollWorkspace';
 import { useSearchParams } from 'react-router-dom';
-import { Search, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag } from 'lucide-react';
+import { Search, Plus, Clock, CheckCircle2, Check, AlertCircle, RotateCcw, ArrowUpDown, ListFilter, ShoppingBag, ArrowRight } from 'lucide-react';
 import { Requisition as RequisitionType, REQUISITION_STATUS_CONFIG, getStatusConfig } from '../services/requisition.service';
 import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
@@ -228,6 +228,14 @@ export const RequisitionList: React.FC = () => {
     }, [searchParams]);
 
     const isRequestor = userRole === 'REQUESTOR';
+
+    const blockingRequisitions = React.useMemo(() => {
+        if (!user?.id) return [];
+        return requisitions.filter(r => 
+            ['DISBURSED', 'EXPENSED'].includes(r.status) && 
+            String((r as any).requestor_id) === String(user.id)
+        );
+    }, [requisitions, user?.id]);
 
     // "New since last visit" glow — one tracker per tab so an unread inflow
     // doesn't also light up outflow rows and vice versa.
@@ -533,6 +541,47 @@ export const RequisitionList: React.FC = () => {
         <>
             <Layout noPadding={true} backgroundColor="bg-gray-50">
             <div className={`space-y-0 ${isRequestor ? 'pb-32' : ''} md:px-4 md:pb-4`}>
+                {blockingRequisitions.length > 0 && (
+                    <div className="mx-4 mt-3 mb-1 bg-amber-50 border border-amber-200/80 rounded-2xl p-4 shadow-sm animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                                <div className="p-2 bg-amber-100/80 rounded-xl shrink-0 mt-0.5 sm:mt-0">
+                                    <AlertCircle className="h-5 w-5 text-amber-700" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs font-black text-amber-900 uppercase tracking-widest">Accountability Safeguard Active</span>
+                                        <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-200/80 text-amber-800 rounded-full">
+                                            {blockingRequisitions.length} Pending
+                                        </span>
+                                    </div>
+                                    <p className="text-xs text-amber-800 mt-1 font-medium leading-relaxed">
+                                        You have an outstanding requisition requiring reconciliation. Complete the expense/change cycle before submitting new requests.
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0 w-full sm:w-auto">
+                                {blockingRequisitions.map(req => (
+                                    <button
+                                        key={req.id}
+                                        onClick={async () => {
+                                            try {
+                                                const full = await requisitionService.getById(req.id);
+                                                setSelectedRequisition(full);
+                                            } catch {
+                                                setSearchParams({ id: req.id });
+                                            }
+                                        }}
+                                        className="w-full sm:w-auto px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-amber-200/50 flex items-center justify-center gap-2 cursor-pointer"
+                                    >
+                                        <span>Reconcile #{req.id.slice(0, 8)}</span>
+                                        <ArrowRight size={14} />
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
                 {/* Helper to get counts */}
                 {(() => {
                     return (
