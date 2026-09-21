@@ -11,7 +11,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUp, Check, ChevronDown, Loader2, Mic, Paperclip, Square, X } from 'lucide-react';
-import type { AssistantModel } from '../../lib/agentClient';
+import type { AssistantModel } from 'core';
 import { VendorLogo } from './VendorLogos';
 
 const ACCEPTED_ATTACHMENT_TYPES = '.csv,.xlsx,.xls';

@@ -175,7 +175,10 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                                 amount: total_prepared,
                                 reference: resolvedRef,
                                 phone: recipient_account,
-                                operator: recipient_bank_code,
+                                // Lenco's transfer API is case-sensitive on operator; the requisition
+                                // may have stored it uppercase (UI display convention on both web and
+                                // mobile), so normalize here rather than trust every caller to.
+                                operator: (recipient_bank_code || '').toLowerCase(),
                                 narration: `Disbursement for Requisition #${id.slice(0, 8)}`
                             }, org.lenco_subaccount_id, org.lenco_secret_key);
                         } else {
@@ -1311,7 +1314,10 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
                                 amount: payoutAmount,
                                 reference: resolvedRef,
                                 phone: recipient_account,
-                                operator: recipient_bank_code,
+                                // Lenco's transfer API is case-sensitive on operator; the requisition
+                                // may have stored it uppercase (UI display convention on both web and
+                                // mobile), so normalize here rather than trust every caller to.
+                                operator: (recipient_bank_code || '').toLowerCase(),
                                 narration: `Excess Disbursement for Req #${id.slice(0, 8)}`
                             }, org.lenco_subaccount_id, org.lenco_secret_key);
                         } else {

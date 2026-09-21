@@ -57,6 +57,9 @@ export default defineConfig({
             // it as ESM (named exports work). The CJS dist/ build is what the API
             // (CommonJS) consumes; the web app (ESM) needs the source.
             shared: fileURLToPath(new URL('../../packages/shared/src/index.ts', import.meta.url)),
+            // Same reasoning as `shared`: compile the workspace source as ESM
+            // rather than resolving a built dist that can go stale mid-edit.
+            core: fileURLToPath(new URL('../../packages/core/src/index.ts', import.meta.url)),
         },
     },
     server: {

@@ -1,0 +1,23 @@
+{
+    "root": true,
+    "parser": "@typescript-eslint/parser",
+    "rules": {
+        "no-restricted-globals": [
+            "error",
+            { "name": "window", "message": "core must stay platform-agnostic - go through the Platform adapter." },
+            { "name": "document", "message": "core must stay platform-agnostic - go through the Platform adapter." },
+            { "name": "localStorage", "message": "Use platform.storage (web: localStorage, native: MMKV)." },
+            { "name": "sessionStorage", "message": "Use platform.storage." },
+            { "name": "navigator", "message": "core must stay platform-agnostic." },
+            { "name": "performance", "message": "Use platform.now()." },
+            { "name": "crypto", "message": "Use platform.randomUUID()." }
+        ],
+        "no-restricted-syntax": [
+            "error",
+            {
+                "selector": "MemberExpression[object.type='MetaProperty']",
+                "message": "import.meta.env is Vite-only - read config from platform.env."
+            }
+        ]
+    }
+}

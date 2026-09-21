@@ -6,6 +6,7 @@ import { userService, UserProfile } from '../../services/user.service';
 import { useAuth } from '../../context/AuthContext';
 import { X, ChevronRight, Loader2, CheckCircle2, AlertCircle, CreditCard, Smartphone } from 'lucide-react';
 import BankSelect from '../BankSelect';
+import { detectMobileNetwork } from 'core';
 
 interface Props {
     onClose: () => void;
@@ -25,13 +26,7 @@ const INPUT = 'w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-g
 const LABEL = 'block text-[10px] font-semibold text-gray-500 uppercase tracking-wide mb-1';
 const SELECT = `${INPUT} appearance-none bg-white`;
 
-function detectNetwork(phone: string): string {
-    const n = phone.replace(/[^0-9]/g, '');
-    if (n.startsWith('097') || n.startsWith('077')) return 'AIRTEL';
-    if (n.startsWith('096') || n.startsWith('076')) return 'MTN';
-    if (n.startsWith('095') || n.startsWith('075')) return 'ZAMTEL';
-    return '';
-}
+// detectNetwork now lives in core (reference/mobileMoney.ts) as detectMobileNetwork.
 
 const networkColors: Record<string, string> = {
     AIRTEL: 'text-red-600 border-red-200 bg-red-50',
@@ -151,7 +146,7 @@ export const AddStaffWizard: React.FC<Props> = ({ onClose, onSuccess }) => {
     // Auto-detect mobile network and resolve
     useEffect(() => {
         if (!mobileEnabled) return;
-        const network = detectNetwork(mobileNumber);
+        const network = detectMobileNetwork(mobileNumber);
         setMobileNetwork(network);
         setMobileResolvedName('');
         setMobileResolveError('');
