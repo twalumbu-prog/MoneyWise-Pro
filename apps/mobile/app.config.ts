@@ -27,7 +27,12 @@ const PLUGINS: ExpoConfig['plugins'] = [
     'expo-router',
     'expo-secure-store',
     'expo-font',
-    ['expo-splash-screen', { backgroundColor: '#EEF5FF', resizeMode: 'contain' }],
+    // `image` is required for Android — without it the config plugin never
+    // generates the splashscreen_logo drawable and resource linking fails at
+    // build time. iOS never needed it because its splash asset was copied
+    // into Images.xcassets by hand (see the AppIcon.appiconset comment above),
+    // which papered over the same gap there.
+    ['expo-splash-screen', { image: './assets/icon.png', backgroundColor: '#EEF5FF', resizeMode: 'contain' }],
     // The config plugin is what actually writes these strings into the native
     // projects; the infoPlist block above only covers the iOS side and Android
     // needs its own permission entries.
