@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { waitUntil } from '@vercel/functions';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { memoryService } from '../services/ai/memory.service';
@@ -772,69 +773,16 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             })
             .eq('id', id);
 
-        // 4. Trigger OCR analysis synchronously for Vercel compatibility 
-        // (Serverless functions terminate background tasks upon response)
-        const itemsWithNewReceipts = items.filter((item: any) => item.receipt_url);
-        if (itemsWithNewReceipts.length > 0) {
-            console.log(`[OCR] Processing ${itemsWithNewReceipts.length} receipts synchronously...`);
-            const startTime = Date.now();
-            
-            await Promise.all(itemsWithNewReceipts.map(async (item: any) => {
-                const itemStart = Date.now();
-                try {
-                    // Build public URL from path
-                    const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
-                    const publicUrl = urlData.publicUrl;
-
-                    // Skip PDFs for now
-                    if (item.receipt_url.match(/\.pdf$/i)) {
-                        await supabase.from('line_items').update({
-                            receipt_ocr_status: 'FAILED',
-                            receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
-                        }).eq('id', item.id);
-                        return;
-                    }
-
-                    const ocrData = await ocrService.analyzeReceipt(publicUrl);
-
-                    await supabase.from('line_items').update({
-                        receipt_ocr_data: ocrData,
-                        receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
-                    }).eq('id', item.id);
-
-                    const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
-                    console.log(`[OCR] Completed for item ${item.id} in ${duration}s: ${ocrData.vendor || 'Unknown vendor'}`);
-                } catch (ocrErr: any) {
-                    const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
-                    console.error(`[OCR] Failed for item ${item.id} after ${duration}s:`, ocrErr.message);
-                    await supabase.from('line_items').update({
-                        receipt_ocr_status: 'FAILED',
-                        receipt_ocr_data: { error: ocrErr.message }
-                    }).eq('id', item.id);
-                }
-            }));
-            
-            const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
-            console.log(`[OCR] All items processed in ${totalDuration}s`);
-        }
-
-        // Re-post the GL so the expense split reflects the submitted actual amounts.
-        ledgerService.repostForRequisition(id)
-            .catch(err => console.error(`[Ledger] repost after expense submission failed for req ${id}:`, err?.message));
-
-        // 5. Advance the workflow synchronously, BEFORE responding. On serverless
-        // (Vercel) any work after res.json is terminated — performing the AI-review
-        // trigger as a post-response background task is exactly what left "no
-        // change" requisitions stuck at the expense stage with no categorization.
+        // 4. Persist the EXPENSE_SUMMARY message synchronously — it's a plain DB
+        // write (no AI calls) and the client needs it to render immediately.
         const organizationId = (req as any).user.organization_id;
-        
-        // Calculate change for the summary message
+
         const change = (estimatedTotal || 0) - actualTotal;
         const isExcess = change < -0.01;
         const changeText = isExcess
             ? ` Excess expenditure to disburse: K${Math.abs(change).toLocaleString(undefined, { minimumFractionDigits: 2 })}.`
-            : change > 0 
-                ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.` 
+            : change > 0
+                ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`
                 : ' No change to submit.';
 
         // Check if a repaired/duplicate EXPENSE_SUMMARY message exists and remove/update it
@@ -870,24 +818,83 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             });
         }
 
-        if (change >= -0.01) {
-            if (change <= 0.01) {
-                // No change, no excess: advance straight to AI categorization.
-                // Awaited (not delayed/backgrounded) so it reliably completes within
-                // the request lifetime, including on serverless. triggerAIReview
-                // handles its own errors and leaves a retryable AI_REVIEW card, so a
-                // failure here never blocks the (already-persisted) expense save.
-                await triggerAIReview(id, organizationId, userId).catch(err =>
-                    console.error('[AI Review] Auto-trigger failed:', err)
-                );
-            } else {
-                console.log(`[updateRequisitionExpenses] Change is K${change}. Halting workflow at EXPENSED to allow user to submit change.`);
-            }
-        } else {
-            console.log(`[updateRequisitionExpenses] Excess is K${Math.abs(change)}. Halting workflow at EXPENSED to allow user to disburse excess.`);
-        }
+        // 5. Respond immediately. Everything below is AI work (per-receipt vision
+        // OCR, then categorization) that can legitimately take longer than
+        // Vercel's function budget once more than a couple of receipts are
+        // attached — that's what was timing out "Confirm Expenses" in production.
+        // It's handed to waitUntil() so it keeps running on the platform's own
+        // clock after the response is sent, instead of racing the client's
+        // request for a shared 45s budget. The UI already tracks this via
+        // receipt_ocr_status (PENDING -> DONE/FAILED) and the AI_REVIEW card
+        // appearing once triggerAIReview posts it, so no client change is needed
+        // — a refresh a few seconds later just shows the completed state.
+        res.json({ message: 'Expenses updated. Receipts are being analyzed...', actual_total: actualTotal });
 
-        res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
+        waitUntil((async () => {
+            const itemsWithNewReceipts = items.filter((item: any) => item.receipt_url);
+            if (itemsWithNewReceipts.length > 0) {
+                console.log(`[OCR] Processing ${itemsWithNewReceipts.length} receipts in background...`);
+                const startTime = Date.now();
+
+                await Promise.all(itemsWithNewReceipts.map(async (item: any) => {
+                    const itemStart = Date.now();
+                    try {
+                        // Build public URL from path
+                        const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
+                        const publicUrl = urlData.publicUrl;
+
+                        // Skip PDFs for now
+                        if (item.receipt_url.match(/\.pdf$/i)) {
+                            await supabase.from('line_items').update({
+                                receipt_ocr_status: 'FAILED',
+                                receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
+                            }).eq('id', item.id);
+                            return;
+                        }
+
+                        const ocrData = await ocrService.analyzeReceipt(publicUrl);
+
+                        await supabase.from('line_items').update({
+                            receipt_ocr_data: ocrData,
+                            receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
+                        }).eq('id', item.id);
+
+                        const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
+                        console.log(`[OCR] Completed for item ${item.id} in ${duration}s: ${ocrData.vendor || 'Unknown vendor'}`);
+                    } catch (ocrErr: any) {
+                        const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
+                        console.error(`[OCR] Failed for item ${item.id} after ${duration}s:`, ocrErr.message);
+                        await supabase.from('line_items').update({
+                            receipt_ocr_status: 'FAILED',
+                            receipt_ocr_data: { error: ocrErr.message }
+                        }).eq('id', item.id);
+                    }
+                }));
+
+                const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
+                console.log(`[OCR] All items processed in ${totalDuration}s`);
+            }
+
+            // Re-post the GL so the expense split reflects the submitted actual amounts.
+            await ledgerService.repostForRequisition(id)
+                .catch(err => console.error(`[Ledger] repost after expense submission failed for req ${id}:`, err?.message));
+
+            if (change >= -0.01) {
+                if (change <= 0.01) {
+                    // No change, no excess: advance straight to AI categorization.
+                    // triggerAIReview handles its own errors and leaves a retryable
+                    // AI_REVIEW card, so a failure here never affects the
+                    // already-persisted expense save.
+                    await triggerAIReview(id, organizationId, userId).catch(err =>
+                        console.error('[AI Review] Auto-trigger failed:', err)
+                    );
+                } else {
+                    console.log(`[updateRequisitionExpenses] Change is K${change}. Halting workflow at EXPENSED to allow user to submit change.`);
+                }
+            } else {
+                console.log(`[updateRequisitionExpenses] Excess is K${Math.abs(change)}. Halting workflow at EXPENSED to allow user to disburse excess.`);
+            }
+        })().catch(err => console.error(`[updateRequisitionExpenses] Background processing failed for req ${id}:`, err?.message)));
 
     } catch (error: any) {
         console.error('Error updating expenses:', error);
