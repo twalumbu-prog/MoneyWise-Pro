@@ -4,6 +4,8 @@ const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replac
 
 export interface IntegrationStatus {
     connected: boolean;
+    needsReconnect?: boolean;
+    error?: string;
     companyName?: string;
     lastSync?: string;
     details?: any;
@@ -23,7 +25,10 @@ export const integrationService = {
             return { connected: false, details: null };
         }
 
-        if (!response.ok) throw new Error('Failed to fetch integration status');
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to fetch integration status');
+        }
         return response.json();
     },
 
@@ -57,7 +62,10 @@ export const integrationService = {
                 'Authorization': `Bearer ${session?.access_token}`
             }
         });
-        if (!response.ok) throw new Error('Failed to fetch QuickBooks accounts');
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({}));
+            throw new Error(err.error || 'Failed to fetch QuickBooks accounts');
+        }
         return response.json();
     },
 
