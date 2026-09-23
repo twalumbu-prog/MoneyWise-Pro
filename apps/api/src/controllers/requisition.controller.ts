@@ -970,6 +970,45 @@ export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
     }
 };
 
+/**
+ * Rewrites the EXPENSE_SUMMARY card once change has actually been submitted.
+ * Its text is generated at expense-tracking time and was never revisited, so it
+ * kept reading "Change to Submit: K4" long after the money came back — which,
+ * to the person reading the thread, is indistinguishable from nothing happening.
+ */
+async function markChangeSubmittedOnSummary(requisitionId: string, changeAmount: number, method: string) {
+    try {
+        const { data: rows } = await supabase
+            .from('requisition_messages')
+            .select('id, content, metadata')
+            .eq('requisition_id', requisitionId)
+            .contains('metadata', { stage: 'EXPENSE_SUMMARY' })
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        const summary = rows?.[0];
+        if (!summary) return;
+
+        const label = method === 'MONEYWISE_WALLET' ? 'deposited to the wallet' : 'returned in cash';
+        const base = String(summary.content || '')
+            .split(' Change to Submit:')[0]
+            .split(' Excess expenditure to disburse:')[0]
+            .split(' No change to submit.')[0];
+
+        await RequisitionMessageService.updateMessage(summary.id, {
+            content: `${base} Change of K${Number(changeAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${label}.`,
+            metadata: {
+                ...(summary.metadata || {}),
+                changeAmount: 0,
+                changeSubmitted: true,
+                changeSubmissionMethod: method,
+            },
+        });
+    } catch (err: any) {
+        console.error(`[SubmitChange] Failed to refresh EXPENSE_SUMMARY for ${requisitionId}:`, err?.message);
+    }
+}
+
 export const submitChange = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
@@ -1025,22 +1064,65 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 throw new Error("Required information for automated finalization is missing");
             }
 
-            // A. Verify External Reference
-            if (!change_external_reference && !disbursement.change_external_reference) {
+            // A. Resolve the deposit reference. Wallet change references embed the
+            // requisition id (CHG-<ts>-<requisitionId>), so a deposit that settled
+            // after the app was closed — or whose confirmation never made it back to
+            // the client — is still recoverable from the ledger, instead of stranding
+            // money that has already been paid back and inviting a second payment.
+            let activeRef: string | null =
+                change_external_reference || disbursement.change_external_reference || null;
+
+            if (!activeRef) {
+                const { data: settledDeposit } = await supabase
+                    .from('cashbook_entries')
+                    .select('external_reference')
+                    .eq('organization_id', organizationId)
+                    .like('external_reference', `CHG-%-${id}`)
+                    .neq('status', 'PENDING')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (settledDeposit?.external_reference) {
+                    activeRef = settledDeposit.external_reference;
+                    console.log(`[SubmitChange] Recovered settled change deposit ${activeRef} for req ${id}`);
+                    await supabase
+                        .from('disbursements')
+                        .update({ change_external_reference: activeRef })
+                        .eq('id', disbursement.id);
+                }
+            }
+
+            if (!activeRef) {
                 return res.status(400).json({ error: 'Missing external reference for wallet submission' });
             }
 
-            const activeRef = change_external_reference || disbursement.change_external_reference;
-
-            // B. Ensure Entry exists in Cashbook (Process Lenco status if needed)
+            // B. Confirm the money actually arrived. A PENDING row is only the intent
+            // written before the charge is fired, so counting it as proof would
+            // finalize change that was never actually received.
             const isAlreadyConfirmed = Number(disbursement.confirmed_change_amount || 0) > 0;
-            
+
             if (!isAlreadyConfirmed) {
-                const { data: existingEntry } = await supabase
+                // The indexed reference column is the reliable match; the description
+                // fallback covers older entries written before it was populated.
+                const { data: byReference } = await supabase
                     .from('cashbook_entries')
                     .select('id')
-                    .like('description', `%${activeRef}`)
-                    .maybeSingle();
+                    .eq('external_reference', activeRef)
+                    .neq('status', 'PENDING')
+                    .limit(1);
+
+                let existingEntry = byReference?.[0] || null;
+
+                if (!existingEntry) {
+                    const { data: byDescription } = await supabase
+                        .from('cashbook_entries')
+                        .select('id')
+                        .like('description', `%${activeRef}`)
+                        .neq('status', 'PENDING')
+                        .limit(1);
+                    existingEntry = byDescription?.[0] || null;
+                }
 
                 if (!existingEntry) {
                     console.log(`[SubmitChange] Ref ${activeRef} not in ledger. Checking Lenco...`);
@@ -1159,18 +1241,35 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 submission_method
             );
 
-            // G. Trigger AI Review & Categorization
-            await triggerAIReview(id, organizationId, user_id);
+            // G. Move the requisition off EXPENSED before responding. triggerAIReview
+            // sets this again, but it now runs after the response — and leaving the
+            // status untouched until then is what kept the card showing "Change to
+            // Submit" with its submit buttons live, inviting a second payment for
+            // change that had already been deposited.
+            await supabase
+                .from('requisitions')
+                .update({ status: 'CATEGORIZING', updated_at: new Date().toISOString() })
+                .eq('id', id);
+
+            await markChangeSubmittedOnSummary(id, confirmedChange, 'MONEYWISE_WALLET');
 
             res.json({ message: 'Change submitted and logged via Wallet. Proceeding to AI Review.', voucher_id: voucher.id });
-            
-            // H. Trigger Notification
-            emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
-                console.error('[Notification Error] Failed to send AUTO_COMPLETED email:', err)
-            );
-            pushService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
-                console.error('[Notification Error] Failed to send AUTO_COMPLETED push:', err)
-            );
+
+            // H. Categorization is a multi-second model call per line item, so it
+            // runs after the response — awaiting it inline risked exceeding the
+            // serverless budget and leaving the submission half-applied.
+            waitUntil((async () => {
+                await triggerAIReview(id, organizationId, user_id);
+
+                await emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                    console.error('[Notification Error] Failed to send AUTO_COMPLETED email:', err)
+                );
+                await pushService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                    console.error('[Notification Error] Failed to send AUTO_COMPLETED push:', err)
+                );
+            })().catch(err =>
+                console.error(`[SubmitChange] Background finalization failed for req ${id}:`, err?.message)
+            ));
         } else {
             // Standard Cash Workflow: Just move to CHANGE_SUBMITTED
             const { error: statusError } = await supabase
@@ -1193,6 +1292,8 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                     externalReference: change_external_reference
                 }
             });
+
+            await markChangeSubmittedOnSummary(id, Number(change_amount || 0), submission_method || 'CASH');
 
             res.json({ message: 'Change submitted successfully' });
 
