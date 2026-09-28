@@ -213,6 +213,7 @@ export {
 export type { PayrollRunLineInput } from './payroll/calc';
 
 export { detectMobileNetwork } from './reference/mobileMoney';
+export { isPersonalOrgName } from './reference/orgType';
 
 export {
     generateDailyHistory, generateIntradayHistory, sliceForTimeframe, formatAxisDate,

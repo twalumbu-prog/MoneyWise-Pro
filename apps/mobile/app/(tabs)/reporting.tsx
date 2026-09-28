@@ -4,17 +4,20 @@ import {
     Modal, TextInput, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    ChevronDown, ChevronRight, Filter, ArrowUpDown, CalendarDays, X, Check,
+    ChevronDown, ChevronRight, Filter, ArrowUpDown, CalendarDays, X, Check, Settings, Share2,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
-    reportService, budgetService, accountService,
+    reportService, budgetService, accountService, isPersonalOrgName,
     buildReportGroups, computeReportTotals, formatKwacha,
 } from 'core';
 import type { ReportView, ExpenditureMode, ExpenditureItem } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
+import { cacheStoreSync } from '../../src/platform/storage';
+import { budgetsActivatedKey } from '../budgets';
 import { extractEmojiAndName, getAccountEmoji } from '../../src/utils/emoji';
 import { FinancialHighlights } from '../../src/components/reporting/FinancialHighlights';
 import { BucketProgressBar } from '../../src/components/reporting/BucketProgressBar';
@@ -84,14 +87,51 @@ function buildChartPeriods(tf: ChartTimeframe): { startDate: string; endDate: st
 const toLocalISODate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
+/** Budgets are always current-month (matching how the Budgets screen saves
+ * them), independent of whatever date range the report itself is showing —
+ * fetching with the report's own range excludes the in-progress month, since
+ * its end_date (the last day of the month) hasn't happened yet and fails a
+ * "budget ends on/before <today>" filter on the backend. */
+function currentMonthRange() {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    return { start: toLocalISODate(start), end: toLocalISODate(end) };
+}
+
+/**
+ * Per-account budget-progress color. The two account types read opposite
+ * directions — overspending an expense target is bad (red), while exceeding
+ * an income target is the goal (green) — so the same percentage means the
+ * opposite thing depending on `accountType`, not just a single threshold.
+ */
+function budgetBarColor(accountType: string, pct: number): string {
+    if (accountType === 'INCOME') return pct >= 100 ? colors.positiveInk : colors.blue;
+    if (pct >= 100) return colors.danger;
+    if (pct >= 80) return colors.warn;
+    return colors.blue;
+}
+
 export default function ReportingScreen() {
     const insets = useSafeAreaInsets();
+    const router = useRouter();
     const queryClient = useQueryClient();
-    const { organizationId } = useAuth();
+    const { organizationId, organizationName, userOrganizations } = useAuth();
+    const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
+    const isPersonal = isPersonalOrgName(currentOrg?.name || organizationName || '');
+
     const [view, setView] = useState<ReportView>('PROFIT_LOSS');
     const [refreshing, setRefreshing] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
     const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
+
+    // Budgets: device-local "activated" toggle set on the Budgets settings
+    // screen. Re-read on focus so returning from there reflects the change
+    // immediately without needing a full remount.
+    const [budgetsActivated, setBudgetsActivated] = useState(() => cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) === 'true');
+    useFocusEffect(useCallback(() => {
+        setBudgetsActivated(cacheStoreSync.getItem(budgetsActivatedKey(organizationId)) === 'true');
+    }, [organizationId]));
 
     // Toolbar filters & settings
     const [excludeZeroSpend, setExcludeZeroSpend] = useState(true);
@@ -130,9 +170,10 @@ export default function ReportingScreen() {
         queryKey: ['report', organizationId, view, range.start, range.end],
         queryFn: async () => {
             const mode: ExpenditureMode = view === 'PROFIT_LOSS' ? 'EXPENSE' : 'CASH_OUTFLOW';
+            const monthRange = currentMonthRange();
             const [expData, budData, accData, prevExpData] = await Promise.all([
                 reportService.getExpenditures(range.start, range.end, mode),
-                budgetService.getBudgets(range.start, range.end, 'MONTHLY'),
+                budgetService.getBudgets(monthRange.start, monthRange.end, 'MONTHLY'),
                 accountService.getAll(),
                 reportService.getExpenditures(prevRange.start, prevRange.end, mode),
             ]);
@@ -256,7 +297,23 @@ export default function ReportingScreen() {
                 <RefreshControl refreshing={refreshing || isRefetching} onRefresh={onRefresh} tintColor={colors.blue} />
             }
         >
-            <Text style={styles.title}>Reporting</Text>
+            <View style={styles.header}>
+                <Text style={styles.title}>Reporting</Text>
+                {isPersonal && (
+                    <View style={styles.headerActions}>
+                        <Pressable style={styles.iconBtn} onPress={() => router.push('/budgets')} accessibilityLabel="Budget Settings">
+                            <Settings size={18} color={colors.textMuted} />
+                        </Pressable>
+                        <Pressable
+                            style={styles.iconBtn}
+                            onPress={() => { /* Sharing reports is coming soon. */ }}
+                            accessibilityLabel="Share"
+                        >
+                            <Share2 size={18} color={colors.textMuted} />
+                        </Pressable>
+                    </View>
+                )}
+            </View>
 
             {/* Segmented View Toggle: Profit/Loss vs Net Worth */}
             <AnimatedSegmented
@@ -419,6 +476,24 @@ export default function ReportingScreen() {
                                                             </Text>
                                                         </Pressable>
 
+                                                        {budgetsActivated && (() => {
+                                                            const hasTarget = item.budgeted_amount > 0;
+                                                            const pct = hasTarget ? (item.total_amount / item.budgeted_amount) * 100 : 0;
+                                                            const barColor = hasTarget ? budgetBarColor(item.type, pct) : colors.borderStrong;
+                                                            return (
+                                                                <View style={styles.budgetBarWrap}>
+                                                                    <View style={styles.budgetBarTrack}>
+                                                                        <View style={[styles.budgetBarFill, { width: `${Math.min(pct, 100)}%`, backgroundColor: barColor }]} />
+                                                                    </View>
+                                                                    <Text style={styles.budgetBarLabel}>
+                                                                        {hasTarget
+                                                                            ? `${formatKwacha(item.total_amount)} of ${formatKwacha(item.budgeted_amount)} · ${Math.round(pct)}%`
+                                                                            : 'No target set'}
+                                                                    </Text>
+                                                                </View>
+                                                            );
+                                                        })()}
+
                                                         {/* Color-coded time bucket progress bar on expansion */}
                                                         {isAccExpanded && (
                                                             <View style={styles.expandContent}>
@@ -554,6 +629,12 @@ const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.canvasAlt },
     scroll: { paddingHorizontal: 20, paddingBottom: 100, gap: 14 },
     title: { fontFamily: fonts.display, fontSize: 30, color: '#000000' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    headerActions: { flexDirection: 'row', gap: 8 },
+    iconBtn: {
+        width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface,
+        borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
+    },
     segment: {
         flexDirection: 'row', padding: 4, backgroundColor: colors.chipActiveBg,
         borderRadius: radius.pill,
@@ -596,6 +677,10 @@ const styles = StyleSheet.create({
     progressTrack: { height: 4, borderRadius: 2, backgroundColor: colors.canvasAlt, marginTop: 10, overflow: 'hidden' },
     progressFill: { height: '100%', backgroundColor: colors.blue, borderRadius: 2 },
     progressOver: { backgroundColor: colors.danger },
+    budgetBarWrap: { paddingHorizontal: 22, paddingBottom: 6, gap: 3 },
+    budgetBarTrack: { height: 4, borderRadius: 2, backgroundColor: colors.canvasAlt, overflow: 'hidden' },
+    budgetBarFill: { height: '100%', borderRadius: 2 },
+    budgetBarLabel: { fontFamily: fonts.bodyMedium, fontSize: 10, color: colors.textFaint },
     subaccountsList: { marginTop: 10, gap: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6 },
     subaccountBox: { paddingVertical: 6 },
     subaccountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
