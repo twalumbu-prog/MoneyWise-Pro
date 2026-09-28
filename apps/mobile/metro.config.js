@@ -2,6 +2,7 @@
 // outside this app's folder, so without watchFolders their sources are never
 // watched and `import from 'core'` resolves in tsc but fails at bundle time.
 const { getDefaultConfig } = require('expo/metro-config');
+const metroResolver = require('metro-resolver');
 const path = require('path');
 
 const projectRoot = __dirname;
@@ -33,17 +34,13 @@ config.resolver.disableHierarchicalLookup = true;
 
 // Resolve ESM explicit extensions (.js, .mjs, etc.) in node_modules imports
 // to prevent Metro from looking for file.js.js or file.js.ts
-const standardResolve = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+    let targetName = moduleName;
     if ((moduleName.startsWith('./') || moduleName.startsWith('../')) && (moduleName.endsWith('.js') || moduleName.endsWith('.mjs'))) {
-        const trimmedName = moduleName.replace(/\.(m)?js$/, '');
-        try {
-            return context.resolveRequest(context, trimmedName, platform);
-        } catch (e) {
-            // ignore and fallback
-        }
+        targetName = moduleName.replace(/\.(m)?js$/, '');
     }
-    return (standardResolve || context.resolveRequest)(context, moduleName, platform);
+    const { resolveRequest, ...restContext } = context;
+    return metroResolver.resolve(restContext, targetName, platform);
 };
 
 module.exports = config;
