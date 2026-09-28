@@ -3,28 +3,63 @@ import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { aiService } from '../services/ai/ai.service';
 import { QuickBooksService } from '../services/quickbooks.service';
-import pool from '../db';
-
+import { seedPersonalAccounts } from '../services/account-provisioning.service';
 
 export const getAccounts = async (req: AuthRequest, res: any): Promise<any> => {
     try {
         const organization_id = (req as any).user.organization_id;
+        const includeInactive = req.query.include_inactive === 'true';
 
         if (!organization_id) {
             return res.status(400).json({ error: 'User not in organization' });
         }
 
-        console.log(`[Accounts] Fetching accounts for Org ${organization_id.slice(0, 8)}...`);
-        const { data, error } = await supabase
+        const { data: orgRow } = await supabase
+            .from('organizations')
+            .select('name')
+            .eq('id', organization_id)
+            .single();
+
+        const orgName = (orgRow?.name || '').toLowerCase();
+        const isPersonalOrg = orgName.includes('workspace') ||
+            orgName.includes('personal') ||
+            orgName.includes('individual') ||
+            orgName.includes('private');
+
+        let query = supabase
             .from('accounts')
             .select('*')
-            .eq('organization_id', organization_id) // Filter by org
-            .eq('is_active', true)
-            .order('code', { ascending: true });
+            .eq('organization_id', organization_id);
+
+        if (!includeInactive) {
+            query = query.eq('is_active', true);
+        }
+
+        let { data, error } = await query.order('code', { ascending: true });
 
         if (error) {
             console.error('[Accounts] ❌ Error fetching accounts:', error);
             throw error;
+        }
+
+        if (isPersonalOrg) {
+            const hasPersonalIncome = data?.some(a => a.code === 'INC-101' || a.name.includes('Salary'));
+            const hasPersonalExpense = data?.some(a => a.code === 'EXP-202' || a.name.includes('Groceries'));
+            const hasBusinessTemplate = data?.some(a => a.name === 'Cost of Goods Sold' || a.name === 'Inventory Shrinkage' || a.name === 'Sales Revenue');
+
+            if (!hasPersonalIncome || !hasPersonalExpense || hasBusinessTemplate) {
+                console.log(`[Accounts] Enforcing clean personal chart of accounts for Org ${organization_id.slice(0, 8)}...`);
+                await seedPersonalAccounts(organization_id);
+                let reQuery = supabase
+                    .from('accounts')
+                    .select('*')
+                    .eq('organization_id', organization_id);
+                if (!includeInactive) {
+                    reQuery = reQuery.eq('is_active', true);
+                }
+                const { data: reFetched } = await reQuery.order('code', { ascending: true });
+                data = reFetched || data;
+            }
         }
 
         console.log(`[Accounts] ✅ Successfully fetched ${data?.length || 0} accounts.`);
@@ -135,6 +170,30 @@ export const updateAccount = async (req: AuthRequest, res: any): Promise<any> =>
     }
 };
 
+export const deleteAccount = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organization_id = (req as any).user.organization_id;
+
+        if (!organization_id) {
+            return res.status(400).json({ error: 'User not in organization' });
+        }
+
+        const { data: account } = await supabase.from('accounts').select('organization_id').eq('id', id).single();
+        if (!account || account.organization_id !== organization_id) {
+            return res.status(404).json({ error: 'Account not found in organization' });
+        }
+
+        const { error } = await supabase.from('accounts').delete().eq('id', id);
+        if (error) throw error;
+
+        res.json({ success: true, message: 'Account deleted successfully' });
+    } catch (error: any) {
+        console.error('Error deleting account:', error);
+        res.status(500).json({ error: 'Failed to delete account', details: error.message });
+    }
+};
+
 export const suggestAccount = async (req: any, res: any): Promise<any> => {
     try {
         console.log('[Account Controller] suggestAccount: Received request');
@@ -162,11 +221,18 @@ export const suggestAccount = async (req: any, res: any): Promise<any> => {
                 description: a.description || a.Description || ''
             }));
         } else {
-            console.log('[Account Controller] suggestAccount: Fetching local accounts from DB.');
-            const { data: accountsData, error: accError } = await supabase
+            const organization_id = (req as any).user?.organization_id;
+            console.log(`[Account Controller] suggestAccount: Fetching local accounts from DB for org ${organization_id || 'all'}.`);
+            let query = supabase
                 .from('accounts')
                 .select('*')
                 .eq('is_active', true);
+
+            if (organization_id) {
+                query = query.eq('organization_id', organization_id);
+            }
+
+            const { data: accountsData, error: accError } = await query;
 
             if (accError) {
                 console.error('[Account Controller] suggestAccount: Database error fetching accounts:', accError);

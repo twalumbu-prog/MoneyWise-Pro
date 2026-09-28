@@ -11,6 +11,7 @@ import {
 } from 'core';
 import type { AllowanceConfig, DeductionConfig } from 'core';
 import { ScreenHeader } from '../../../../src/components/ScreenHeader';
+import { useAuth } from '../../../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../../../src/theme/tokens';
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -54,6 +55,7 @@ interface RunItem {
 export default function RunPayrollScreen() {
     const router = useRouter();
     const qc = useQueryClient();
+    const { organizationId } = useAuth();
     const now = new Date();
 
     const [stepIdx, setStepIdx] = useState(0);
@@ -65,12 +67,13 @@ export default function RunPayrollScreen() {
     const [stepSearch, setStepSearch] = useState('');
     const [saving, setSaving] = useState(false);
 
-    const { data: allStaff } = useQuery({ queryKey: ['payroll-staff-all'], queryFn: () => payrollService.listStaff() });
-    const { data: wallets } = useQuery({ queryKey: ['wallets'], queryFn: () => cashbookService.getWallets() });
-    const { data: config } = useQuery({ queryKey: ['payroll-config'], queryFn: () => payrollService.getPayrollConfig() });
+    const { data: allStaff } = useQuery({ queryKey: ['payroll-staff-all', organizationId], queryFn: () => payrollService.listStaff(), enabled: !!organizationId });
+    const { data: wallets } = useQuery({ queryKey: ['wallets', organizationId], queryFn: () => cashbookService.getWallets(), enabled: !!organizationId });
+    const { data: config } = useQuery({ queryKey: ['payroll-config', organizationId], queryFn: () => payrollService.getPayrollConfig(), enabled: !!organizationId });
     const { data: suggestedDeductions } = useQuery({
-        queryKey: ['suggested-deductions', month, year],
+        queryKey: ['suggested-deductions', organizationId, month, year],
         queryFn: () => payrollService.getSuggestedDeductions(month, year),
+        enabled: !!organizationId,
     });
 
     const allowanceTypes: AllowanceConfig[] = config?.allowance_types ?? [];

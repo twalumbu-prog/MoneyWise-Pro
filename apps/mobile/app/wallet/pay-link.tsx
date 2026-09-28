@@ -10,6 +10,7 @@ import { Store, Zap, Copy, Check, ExternalLink } from 'lucide-react-native';
 import { organizationService } from 'core';
 import { WEB_ORIGIN } from '../../src/platform';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
+import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 type Tab = 'store' | 'quickpay';
@@ -24,15 +25,17 @@ type Tab = 'store' | 'quickpay';
  */
 export default function PayLinkScreen() {
     const { walletId, walletName } = useLocalSearchParams<{ walletId: string; walletName?: string }>();
+    const { organizationId } = useAuth();
     const [tab, setTab] = useState<Tab>('store');
     const [copied, setCopied] = useState(false);
 
-    const { data: org } = useQuery({ queryKey: ['organization'], queryFn: () => organizationService.getOrganization() });
+    const { data: org } = useQuery({ queryKey: ['organization', organizationId], queryFn: () => organizationService.getOrganization(), enabled: !!organizationId });
     const {
         data: quickLinkUsername, isLoading: quickLinkLoading, isError: quickLinkErrored, refetch: retryQuickLink,
     } = useQuery({
-        queryKey: ['quick-link-username'],
+        queryKey: ['quick-link-username', organizationId],
         queryFn: () => organizationService.getOrCreateQuickLinkUsername(),
+        enabled: !!organizationId,
     });
 
     const storeUrl = walletId ? `${WEB_ORIGIN}/pay/${walletId}` : '';

@@ -1,6 +1,6 @@
 import express from 'express';
 import { supabase } from '../lib/supabase';
-import { seedDefaultAccounts } from '../services/account-provisioning.service';
+import { seedDefaultAccounts, seedPersonalAccounts } from '../services/account-provisioning.service';
 import { captureEvent } from '../utils/analytics';
 import { emailService } from '../services/email.service';
 
@@ -802,4 +802,108 @@ export const switchOrganization = async (req: any, res: any): Promise<any> => {
         res.status(500).json({ error: 'Failed to switch organization', details: error.message });
     }
 };
+
+export const ensurePersonalWorkspace = async (req: any, res: any): Promise<any> => {
+    try {
+        const userId = req.user.id;
+
+        // Fetch user profile
+        const { data: userRow } = await supabase
+            .from('users')
+            .select('id, name, email')
+            .eq('id', userId)
+            .single();
+
+        if (!userRow) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        // Check existing memberships for a personal workspace
+        const { data: memberships } = await supabase
+            .from('user_organizations')
+            .select(`
+                organization_id,
+                role,
+                status,
+                organization:organizations (
+                    id, name, slug, logo_url
+                )
+            `)
+            .eq('user_id', userId);
+
+        let personalOrg = memberships?.find((m: any) =>
+            m.organization?.name?.toLowerCase().includes('workspace') ||
+            m.organization?.name?.toLowerCase().includes('personal') ||
+            m.organization?.name?.toLowerCase().includes('individual')
+        );
+
+        if (personalOrg && personalOrg.organization_id) {
+            const orgObj: any = personalOrg.organization;
+            const orgName = Array.isArray(orgObj) ? orgObj[0]?.name : orgObj?.name;
+
+            await supabase
+                .from('users')
+                .update({ organization_id: personalOrg.organization_id, role: personalOrg.role || 'ADMIN' })
+                .eq('id', userId);
+
+            return res.json({
+                message: 'Switched to existing personal workspace',
+                organizationId: personalOrg.organization_id,
+                organizationName: orgName || 'Personal Workspace'
+            });
+        }
+
+        // Create new Personal Workspace on the fly for the user
+        const displayName = userRow.name || userRow.email?.split('@')[0] || 'Personal';
+        const orgName = `${displayName}'s Personal Account`;
+        const slug = orgName.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + Date.now();
+
+        const { data: newOrg, error: createError } = await supabase
+            .from('organizations')
+            .insert({
+                name: orgName,
+                slug: slug,
+                email: userRow.email
+            })
+            .select()
+            .single();
+
+        if (createError || !newOrg) {
+            return res.status(500).json({ error: 'Failed to create personal workspace: ' + createError?.message });
+        }
+
+        const employeeId = `PERS-${Date.now().toString().slice(-6)}`;
+
+        // Link user to new personal organization as ADMIN
+        await supabase.from('user_organizations').insert({
+            user_id: userId,
+            organization_id: newOrg.id,
+            role: 'ADMIN',
+            employee_id: employeeId,
+            status: 'ACTIVE'
+        });
+
+        // Update active user organization
+        await supabase
+            .from('users')
+            .update({ organization_id: newOrg.id, role: 'ADMIN' })
+            .eq('id', userId);
+
+        // Seed personal chart of accounts and main wallet
+        await seedPersonalAccounts(newOrg.id);
+        await supabase
+            .from('organization_wallets')
+            .insert({ organization_id: newOrg.id, name: 'Main Wallet', is_main: true });
+
+        return res.json({
+            message: 'Personal workspace created successfully',
+            organizationId: newOrg.id,
+            organizationName: newOrg.name
+        });
+    } catch (err: any) {
+        console.error('Error ensuring personal workspace:', err);
+        return res.status(500).json({ error: 'Internal server error: ' + err.message });
+    }
+};
+
 

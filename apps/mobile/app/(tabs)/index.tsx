@@ -6,15 +6,17 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Search, Plus, ArrowUpDown, X, CalendarDays, ArrowDownLeft, ArrowUpRight } from 'lucide-react-native';
+import { Search, Plus, User, X, CalendarDays, ArrowDownLeft, ArrowUpRight, Trophy } from 'lucide-react-native';
 import {
     requisitionService, getStatusConfig, groupByDate, cashbookService, payrollService, isRequestorRole,
 } from 'core';
 import { RequisitionRow, type RequisitionRowData } from '../../src/components/requisitions/RequisitionRow';
 import { InflowCard } from '../../src/components/inflows/InflowCard';
 import { InflowDetailSheet } from '../../src/components/inflows/InflowDetailSheet';
-import type { InflowRow } from '../../src/components/inflows/inflowUtils';
+import { INFLOW_TABS, getInflowTab, type InflowRow } from '../../src/components/inflows/inflowUtils';
 import { NewMenuSheet } from '../../src/components/requisitions/NewMenuSheet';
+import { AccountMenuSheet } from '../../src/components/requisitions/AccountMenuSheet';
+import { GuidedMissionsModal } from '../../src/components/onboarding/GuidedMissionsModal';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -34,19 +36,30 @@ type InboxMode = 'outflows' | 'inflows';
 export default function InboxScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { user, userRole } = useAuth();
+    const { user, userRole, organizationId, organizationName, userOrganizations } = useAuth();
     const isRequestor = isRequestorRole(userRole);
+
+    const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
+    const activeOrgName = currentOrg?.name || organizationName || '';
+    const isPersonal = activeOrgName.toLowerCase().includes('workspace') ||
+        activeOrgName.toLowerCase().includes('personal') ||
+        activeOrgName.toLowerCase().includes('individual') ||
+        activeOrgName.toLowerCase().includes('private');
 
     const [mode, setMode] = useState<InboxMode>('outflows');
     const [tab, setTab] = useState('ALL');
+    const [inflowTab, setInflowTab] = useState('ALL');
     const [search, setSearch] = useState('');
-    const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
+    const sortOrder: 'desc' | 'asc' = 'desc';
     const [selectedInflow, setSelectedInflow] = useState<InflowRow | null>(null);
     const [newMenuOpen, setNewMenuOpen] = useState(false);
+    const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+    const [missionsOpen, setMissionsOpen] = useState(false);
 
     const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
-        queryKey: ['requisitions'],
+        queryKey: ['requisitions', organizationId],
         queryFn: () => requisitionService.getAll(),
+        enabled: !!organizationId,
     });
 
     // Requestors see their own payslips as "inflows"; everyone else sees the
@@ -54,7 +67,7 @@ export default function InboxScreen() {
     const {
         data: inflowsData, isLoading: inflowsLoading, isRefetching: inflowsRefetching, refetch: refetchInflows,
     } = useQuery({
-        queryKey: ['inflows', isRequestor, user?.id],
+        queryKey: ['inflows', organizationId, isRequestor, user?.id],
         queryFn: async (): Promise<InflowRow[]> => {
             if (isRequestor && user?.id) {
                 const allStaff = await payrollService.listStaff();
@@ -74,14 +87,15 @@ export default function InboxScreen() {
             }
             return (await cashbookService.getEntries({ entryType: 'INFLOW', limit: 1000 })) || [];
         },
-        // Fetched up front — same as web's RequisitionList — not gated on
-        // `mode === 'inflows'`. Gating it on the active tab meant the query
-        // was always cold the first time you switched to Inflows (nothing
-        // to prefetch it while you were on Outflows), so every such switch
-        // showed a live spinner instead of painting from cache. Fetching
-        // eagerly here means it's already warm by the time you tap the tab.
-        enabled: !!user,
+        enabled: !!user && !!organizationId,
     });
+
+    const visibleTabs = useMemo(() => {
+        if (isPersonal) {
+            return TABS.filter((t) => t.value !== 'PENDING_APPROVAL' && t.value !== 'REVIEWED');
+        }
+        return TABS;
+    }, [isPersonal]);
 
     const rows: RequisitionRowData[] = Array.isArray(data) ? data : [];
     const inflows: InflowRow[] = Array.isArray(inflowsData) ? inflowsData : [];
@@ -111,12 +125,18 @@ export default function InboxScreen() {
         [rows],
     );
 
+    const inflowCountFor = useCallback(
+        (value: string) =>
+            value === 'ALL'
+                ? inflows.length
+                : inflows.filter((r) => getInflowTab(r) === value).length,
+        [inflows],
+    );
+
     const inflowSections = useMemo(() => {
         const q = search.trim().toLowerCase();
-        // Only settled money — PENDING intents never completed, and AR trackers
-        // belong to an Invoices view this app doesn't have yet.
         const filtered = inflows.filter((row) => {
-            if (row.status === 'PENDING' || row.account_type === 'ACCOUNTS_RECEIVABLE') return false;
+            if (inflowTab !== 'ALL' && getInflowTab(row) !== inflowTab) return false;
             if (!q) return true;
             return (
                 row.description?.toLowerCase().includes(q) ||
@@ -127,7 +147,7 @@ export default function InboxScreen() {
             title: g.dateLabel,
             data: g.items,
         }));
-    }, [inflows, search, sortOrder]);
+    }, [inflows, inflowTab, search, sortOrder]);
 
     const open = (id: string) => router.push(`/requisition/${id}`);
 
@@ -138,13 +158,20 @@ export default function InboxScreen() {
                 <View style={styles.headerActions}>
                     <Pressable
                         style={styles.iconBtn}
-                        onPress={() => setSortOrder((s) => (s === 'desc' ? 'asc' : 'desc'))}
-                        accessibilityLabel={sortOrder === 'desc' ? 'Sort oldest first' : 'Sort newest first'}
+                        onPress={() => setMissionsOpen(true)}
+                        accessibilityLabel="Guided Missions"
                     >
-                        <ArrowUpDown size={18} color={colors.textMuted} />
+                        <Trophy size={18} color={colors.blue} />
                     </Pressable>
                     <Pressable style={styles.iconBtn} onPress={() => router.push('/schedules')} accessibilityLabel="Schedules">
                         <CalendarDays size={18} color={colors.textMuted} />
+                    </Pressable>
+                    <Pressable
+                        style={styles.iconBtn}
+                        onPress={() => setAccountMenuOpen(true)}
+                        accessibilityLabel="Account and Organizations"
+                    >
+                        <User size={18} color={colors.textMuted} />
                     </Pressable>
                 </View>
             </View>
@@ -195,20 +222,43 @@ export default function InboxScreen() {
                 )}
             </View>
 
-            {mode === 'outflows' && (
+            {mode === 'outflows' ? (
                 <ScrollView
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     style={styles.tabsScroll}
                     contentContainerStyle={styles.tabs}
                 >
-                    {TABS.map((t) => {
+                    {visibleTabs.map((t) => {
                         const active = tab === t.value;
                         const n = countFor(t.value);
                         return (
                             <Pressable
                                 key={t.value}
                                 onPress={() => setTab(t.value)}
+                                style={[styles.tab, active && styles.tabActive]}
+                            >
+                                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                                    {t.label}{n > 0 ? ` ${n}` : ''}
+                                </Text>
+                            </Pressable>
+                        );
+                    })}
+                </ScrollView>
+            ) : (
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.tabsScroll}
+                    contentContainerStyle={styles.tabs}
+                >
+                    {INFLOW_TABS.map((t) => {
+                        const active = inflowTab === t.value;
+                        const n = inflowCountFor(t.value);
+                        return (
+                            <Pressable
+                                key={t.value}
+                                onPress={() => setInflowTab(t.value)}
                                 style={[styles.tab, active && styles.tabActive]}
                             >
                                 <Text style={[styles.tabText, active && styles.tabTextActive]}>
@@ -252,8 +302,8 @@ export default function InboxScreen() {
                     ListEmptyComponent={
                         !inflowsLoading ? (
                             <View style={styles.empty}>
-                                <Text style={styles.emptyText}>{search ? 'Nothing matches that filter.' : 'No inflows yet.'}</Text>
-                                {!search && <Text style={styles.emptySub}>Money-in from sales, deposits and payments will show up here.</Text>}
+                                <Text style={styles.emptyText}>{search || inflowTab !== 'ALL' ? 'Nothing matches that filter.' : 'No inflows yet.'}</Text>
+                                {!search && inflowTab === 'ALL' && <Text style={styles.emptySub}>Money-in from sales, deposits and payments will show up here.</Text>}
                             </View>
                         ) : undefined
                     }
@@ -311,11 +361,16 @@ export default function InboxScreen() {
 
             <InflowDetailSheet inflow={selectedInflow} onClose={() => setSelectedInflow(null)} />
 
+            <AccountMenuSheet visible={accountMenuOpen} onClose={() => setAccountMenuOpen(false)} />
+
+            <GuidedMissionsModal visible={missionsOpen} onClose={() => setMissionsOpen(false)} />
+
             <NewMenuSheet
                 visible={newMenuOpen}
                 onClose={() => setNewMenuOpen(false)}
                 mode={mode}
                 userRole={userRole}
+                isPersonal={isPersonal}
                 onNewSale={() => {
                     setNewMenuOpen(false);
                     Alert.alert('New Sale', 'Recording sales from the app is coming in a later update — use the web app for now.');

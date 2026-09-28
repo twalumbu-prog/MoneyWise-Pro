@@ -1,28 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import {
-    ChevronDown, Check, X, User, FileText, Building2, RefreshCw, Coins,
+    ChevronDown, Check, X, User, FileText, Building2, RefreshCw, Coins, Wallet,
 } from 'lucide-react-native';
-import { formatKwacha, requisitionService, isPrivilegedRole } from 'core';
+import { formatKwacha, requisitionService, accountService, cashbookService, isPrivilegedRole } from 'core';
 import type { RequisitionMessage } from 'core';
 import { useAuth } from '../../context/AuthContext';
 import { DisburseSheet } from './DisburseSheet';
 import { PayrollDisburseSheet } from './PayrollDisburseSheet';
-import { ReceiptCapture } from './ReceiptCapture';
+import { ExpenseTracker } from './ExpenseTracker';
+import { QuickBooksPostSheet } from './QuickBooksPostSheet';
+import { AccountPickerModal } from './AccountPickerModal';
+import { DepositChangeSheet } from './DepositChangeSheet';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 /**
  * Native port of apps/web/src/components/requisitions/RequisitionMessageCard.tsx,
  * covering every stage a requisition passes through: creation (requestor +
  * line items + Approve/Reject), disbursal (embeds the existing DisburseSheet/
- * PayrollDisburseSheet), AI categorization review (Approve Categorizations —
- * without web's inline per-line account-override editor, a search-and-pick
- * dropdown that doesn't have a mobile equivalent yet), QuickBooks posting
- * (read-only ledger summary — posting itself needs the credit-account search
- * picker web has and this doesn't), the fund-confirmation/expense-summary
- * step (Return Cash — web's Lenco-SDK deposit-to-wallet and excess-disbursement
- * paths aren't ported), expense-tracking (embeds ReceiptCapture), plain chat
- * bubbles, and a generic pill for anything else so nothing silently vanishes.
+ * PayrollDisburseSheet), AI categorization review (per-line account-override
+ * picker plus Approve Categorizations), QuickBooks posting (credit-account
+ * picker plus Post, via QuickBooksPostSheet), the fund-confirmation/expense-
+ * summary step (Return Cash, Deposit to Wallet via DepositChangeSheet — the
+ * native-compatible replacement for web's browser-only Lenco-SDK widget,
+ * built on the same server-initiated mobile-money collection InvestPaymentFlow
+ * already uses — and Disburse Excess via DisburseSheet in DISBURSE_EXCESS
+ * mode), expense-tracking (embeds
+ * ReceiptCapture), plain chat bubbles, and a generic pill for anything else
+ * so nothing silently vanishes.
  */
 export const RequisitionMessageCard: React.FC<{
     message: RequisitionMessage;
@@ -41,12 +46,47 @@ export const RequisitionMessageCard: React.FC<{
     const [isApprovingAI, setIsApprovingAI] = useState(false);
     const [isReloadingAI, setIsReloadingAI] = useState(false);
     const [isSubmittingChange, setIsSubmittingChange] = useState(false);
+    const [chartAccounts, setChartAccounts] = useState<any[]>([]);
+    const [editableItems, setEditableItems] = useState<any[]>([]);
+    const [accountPickerIdx, setAccountPickerIdx] = useState<number | null>(null);
+    const [mainWalletId, setMainWalletId] = useState<string | null>(null);
+    const [depositSheetOpen, setDepositSheetOpen] = useState(false);
 
     const isSystem = message.message_type === 'SYSTEM';
     const status = requisitionData?.status;
     const isRejected = status === 'REJECTED';
     const isPastApproval = !['DRAFT', 'PENDING_APPROVAL'].includes(status);
     const isPrivileged = isPrivilegedRole(userRole);
+    const isAIReviewMsg = isSystem && message.metadata?.stage === 'AI_REVIEW';
+    const isExpenseSummaryMsg = isSystem && message.metadata?.stage === 'EXPENSE_SUMMARY';
+
+    // Fetch the org's wallet once, so "Deposit to Wallet" knows where the
+    // mobile-money collection should land.
+    useEffect(() => {
+        if (!isExpenseSummaryMsg || mainWalletId) return;
+        let cancelled = false;
+        cashbookService.getWallets().then((wallets: any[]) => {
+            if (!cancelled && wallets?.[0]?.id) setMainWalletId(wallets[0].id);
+        }).catch(() => {});
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isExpenseSummaryMsg]);
+
+    // Seed the editable rows whenever the AI's suggestions arrive/change.
+    useEffect(() => {
+        if (isAIReviewMsg && message.metadata?.items) {
+            setEditableItems(message.metadata.items.map((item: any) => ({ ...item })));
+        }
+    }, [isAIReviewMsg, message.metadata?.items]);
+
+    // Fetch the chart of accounts once, so the override picker has options.
+    useEffect(() => {
+        if (!isAIReviewMsg || chartAccounts.length > 0) return;
+        let cancelled = false;
+        accountService.getAll().then((accs) => { if (!cancelled) setChartAccounts(accs || []); }).catch(() => {});
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isAIReviewMsg]);
 
     if (isSystem) {
         const stage = message.metadata?.stage;
@@ -57,6 +97,7 @@ export const RequisitionMessageCard: React.FC<{
         const isAIReview = stage === 'AI_REVIEW';
         const isQBPosting = stage === 'QUICKBOOKS_POSTING';
         const isExpenseSummary = stage === 'EXPENSE_SUMMARY';
+        const isDisbursalSummary = stage === 'DISBURSAL_SUMMARY' || content?.startsWith('Funds Disbursed:') || content?.startsWith('Disbursement Processing:');
 
         if (!isPrivileged && (isAIReview || isQBPosting)) return null;
 
@@ -177,8 +218,7 @@ export const RequisitionMessageCard: React.FC<{
                 <View style={styles.cardWrap}>
                     <View style={styles.card}>
                         <View style={styles.cardBody}>
-                            <Text style={styles.disbursalTitle}>{content || 'This request needs to be expensed.'}</Text>
-                            {canAction && <ReceiptCapture requisitionId={requisitionData.id} onUploaded={onReceiptUploaded} />}
+                            <ExpenseTracker requisitionData={requisitionData} onRefresh={onReceiptUploaded} />
                         </View>
                     </View>
                     <Text style={styles.timestamp}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
@@ -189,7 +229,7 @@ export const RequisitionMessageCard: React.FC<{
         if (isAIReview) {
             const isCompleted = requisitionData?.status === 'CATEGORIZED' || requisitionData?.status === 'ACCOUNTED';
             const isFullyCompleted = requisitionData?.status === 'ACCOUNTED';
-            const items = message.metadata?.items ?? [];
+            const items = editableItems.length > 0 ? editableItems : (message.metadata?.items ?? []);
             const isThinking = !!message.metadata?.isThinking;
             const hasError = !!message.metadata?.hasError;
 
@@ -208,13 +248,30 @@ export const RequisitionMessageCard: React.FC<{
             const approve = async () => {
                 setIsApprovingAI(true);
                 try {
-                    await requisitionService.approveCategorization(requisitionData?.id || message.requisition_id, []);
+                    const overrides = editableItems
+                        .filter((item) => item.is_manual)
+                        .map((item) => ({
+                            id: item.id,
+                            account_id: item.account_id || chartAccounts.find((a) => a.code === item.category_code)?.id,
+                        }));
+                    await requisitionService.approveCategorization(requisitionData?.id || message.requisition_id, overrides);
                     onDisbursed();
                 } catch (e: any) {
                     Alert.alert('Could not approve categorization', e?.message ?? 'Please try again.');
                 } finally {
                     setIsApprovingAI(false);
                 }
+            };
+
+            const hasCategory = (item: any) => !!(item.category_code || item.category_name);
+
+            const methodLabel = (item: any) => {
+                if (item.is_manual) return 'Manual override';
+                const method = typeof item.method === 'string' ? item.method : '';
+                if (method.startsWith('MEMORY')) return 'Learned from history';
+                if (method.startsWith('RULE')) return 'Accounting rule';
+                if (item.confidence) return `${Math.round(item.confidence * 100)}% confidence`;
+                return 'No suggestion';
             };
 
             return (
@@ -243,18 +300,27 @@ export const RequisitionMessageCard: React.FC<{
                                 <Text style={styles.stageMuted}>AI categorization encountered an error. Tap reload to try again.</Text>
                             ) : (
                                 <>
-                                    <Text style={styles.stageBody}>The AI suggested the following account mapping.</Text>
+                                    <Text style={styles.stageBody}>
+                                        {isCompleted ? 'The following account mapping was approved.' : 'The AI suggested the following account mapping. Tap a row to change the account.'}
+                                    </Text>
                                     <View style={styles.itemsTable}>
                                         {items.map((item: any, idx: number) => (
-                                            <View key={idx} style={[styles.itemRow, idx > 0 && styles.itemRowBorder]}>
+                                            <Pressable
+                                                key={idx}
+                                                style={[styles.itemRow, idx > 0 && styles.itemRowBorder]}
+                                                onPress={() => { if (!isCompleted) setAccountPickerIdx(idx); }}
+                                                disabled={isCompleted}
+                                            >
                                                 <View style={{ flex: 1 }}>
                                                     <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
-                                                    <Text style={styles.itemQty}>
-                                                        {item.category_code} — {item.category_name}
-                                                        {item.confidence ? ` · ${Math.round(item.confidence * 100)}% confidence` : ''}
+                                                    <Text style={[styles.itemQty, !hasCategory(item) && styles.itemNeedsCategory]}>
+                                                        {hasCategory(item)
+                                                            ? `${item.category_code ?? ''} — ${item.category_name ?? ''} · ${methodLabel(item)}`
+                                                            : 'Needs a category — tap to choose'}
                                                     </Text>
                                                 </View>
-                                            </View>
+                                                {!isCompleted && <ChevronDown size={14} color={colors.textFaint} style={{ transform: [{ rotate: '-90deg' }] }} />}
+                                            </Pressable>
                                         ))}
                                     </View>
                                     {!isCompleted && (
@@ -267,6 +333,24 @@ export const RequisitionMessageCard: React.FC<{
                         </View>
                     </View>
                     <Text style={styles.timestamp}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+
+                    <AccountPickerModal
+                        visible={accountPickerIdx !== null}
+                        title="Select account"
+                        accounts={chartAccounts.map((a) => ({ id: a.id, name: `${a.code} — ${a.name}`, subtitle: a.type }))}
+                        selectedId={accountPickerIdx !== null ? (editableItems[accountPickerIdx]?.account_id ?? null) : null}
+                        emptyText="No accounts found."
+                        onSelect={(a) => {
+                            if (accountPickerIdx === null) return;
+                            const acc = chartAccounts.find((c) => c.id === a.id);
+                            if (!acc) return;
+                            setEditableItems((prev) => prev.map((it, i) => i === accountPickerIdx
+                                ? { ...it, account_id: acc.id, category_code: acc.code, category_name: acc.name, is_manual: true, confidence: 1 }
+                                : it));
+                            setAccountPickerIdx(null);
+                        }}
+                        onClose={() => setAccountPickerIdx(null)}
+                    />
                 </View>
             );
         }
@@ -313,7 +397,11 @@ export const RequisitionMessageCard: React.FC<{
                             </View>
 
                             {!isCompleted && (
-                                <Text style={styles.stageMuted}>Posting to QuickBooks needs a source account selected on the web app.</Text>
+                                <QuickBooksPostSheet
+                                    requisitionId={requisitionData.id}
+                                    paymentMethod={method}
+                                    onPosted={onDisbursed}
+                                />
                             )}
                         </View>
                     </View>
@@ -326,9 +414,67 @@ export const RequisitionMessageCard: React.FC<{
             const totalActual = requisitionData?.items?.reduce((sum: number, i: any) => sum + (parseFloat(i.actual_amount) || 0), 0) || requisitionData?.actual_total || 0;
             const totalDisbursed = requisitionData?.disbursements?.[0]?.total_prepared || requisitionData?.estimated_total || 0;
             const changeAmount = Math.max(0, totalDisbursed - totalActual);
+            const excessAmount = Math.max(0, totalActual - totalDisbursed);
             const hasChange = changeAmount > 0.01;
+            const hasExcess = excessAmount > 0.01;
             const isRequestor = user?.id === requisitionData?.requestor_id;
             const showChangeActions = hasChange && isRequestor && requisitionData?.status === 'EXPENSED';
+            const showExcessActions = hasExcess && isPrivileged && requisitionData?.status === 'EXPENSED';
+
+            const disbursement = requisitionData?.disbursements?.[0];
+            const confirmedChange = Number(disbursement?.confirmed_change_amount || 0);
+            const existingChangeRef = disbursement?.change_external_reference || null;
+            // Money already came back for this requisition — either confirmed, or a
+            // deposit reference was issued. Offering the pay buttons again here is
+            // how someone ends up paying the same change twice, so this state gets
+            // a finalize action instead of a second checkout.
+            const depositAlreadyMade = confirmedChange > 0.01 || !!existingChangeRef;
+
+            const finalizeWalletChange = () => {
+                Alert.alert(
+                    'Finalize change',
+                    `Confirm the ${formatKwacha(changeAmount)} already deposited and complete this requisition?`,
+                    [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                            text: 'Finalize', onPress: async () => {
+                                setIsSubmittingChange(true);
+                                try {
+                                    await requisitionService.submitChange(
+                                        requisitionData.id, [], changeAmount,
+                                        'MONEYWISE_WALLET', existingChangeRef ?? undefined,
+                                    );
+                                    onDisbursed();
+                                } catch (e: any) {
+                                    Alert.alert('Could not finalize change', e?.message ?? 'Please try again.');
+                                } finally {
+                                    setIsSubmittingChange(false);
+                                }
+                            },
+                        },
+                    ],
+                );
+            };
+
+            const openDepositFlow = async () => {
+                // A deposit may already have settled on an earlier attempt whose
+                // confirmation never made it back to the app. Reconcile that first —
+                // opening the checkout here is how the same change gets paid twice.
+                setIsSubmittingChange(true);
+                try {
+                    await requisitionService.submitChange(
+                        requisitionData.id, [], changeAmount,
+                        'MONEYWISE_WALLET', existingChangeRef ?? undefined,
+                    );
+                    onDisbursed();
+                    return;
+                } catch {
+                    // Nothing settled to reconcile — fall through to a fresh deposit.
+                } finally {
+                    setIsSubmittingChange(false);
+                }
+                setDepositSheetOpen(true);
+            };
 
             const returnCash = () => {
                 Alert.alert('Return Cash', `Submit ${formatKwacha(changeAmount)} cash return?`, [
@@ -358,13 +504,162 @@ export const RequisitionMessageCard: React.FC<{
                                 <Text style={styles.stageTitle}>Finance System</Text>
                             </View>
                             <Text style={styles.stageBody}>{message.content}</Text>
-                            {showChangeActions && (
-                                <Pressable style={styles.returnCashBtn} onPress={returnCash} disabled={isSubmittingChange}>
-                                    {isSubmittingChange
-                                        ? <ActivityIndicator color={colors.text} />
-                                        : <><Coins size={14} color="#B45309" /><Text style={styles.returnCashBtnText}>Return Cash ({formatKwacha(changeAmount)})</Text></>}
-                                </Pressable>
+                            {showChangeActions && (depositAlreadyMade ? (
+                                <View style={styles.depositDoneBox}>
+                                    <View style={styles.depositDoneRow}>
+                                        <Check size={13} color="#059669" />
+                                        <Text style={styles.depositDoneText}>
+                                            {confirmedChange > 0.01
+                                                ? `${formatKwacha(confirmedChange)} change deposited`
+                                                : 'Change deposit recorded — not yet finalized'}
+                                        </Text>
+                                    </View>
+                                    <Pressable style={styles.finalizeBtn} onPress={finalizeWalletChange} disabled={isSubmittingChange}>
+                                        {isSubmittingChange
+                                            ? <ActivityIndicator color="#FFFFFF" />
+                                            : <Text style={styles.finalizeBtnText}>Verify &amp; Finalize Requisition</Text>}
+                                    </Pressable>
+                                </View>
+                            ) : (
+                                <View style={styles.changeActionsRow}>
+                                    <Pressable style={[styles.returnCashBtn, { flex: 1 }]} onPress={returnCash} disabled={isSubmittingChange}>
+                                        {isSubmittingChange
+                                            ? <ActivityIndicator color={colors.text} />
+                                            : <><Coins size={14} color="#B45309" /><Text style={styles.returnCashBtnText}>Return Cash</Text></>}
+                                    </Pressable>
+                                    <Pressable style={[styles.depositWalletBtn, { flex: 1 }]} onPress={openDepositFlow} disabled={isSubmittingChange}>
+                                        {isSubmittingChange
+                                            ? <ActivityIndicator color="#FFFFFF" />
+                                            : <><Wallet size={14} color="#FFFFFF" /><Text style={styles.depositWalletBtnText}>Deposit to Wallet</Text></>}
+                                    </Pressable>
+                                </View>
+                            ))}
+                            {showExcessActions && (
+                                <View style={styles.excessBox}>
+                                    <Text style={styles.excessLabel}>DISBURSE EXCESS ({formatKwacha(excessAmount)})</Text>
+                                    <DisburseSheet
+                                        requisitionId={requisitionData.id}
+                                        amount={excessAmount}
+                                        onDone={onDisbursed}
+                                        mode="DISBURSE_EXCESS"
+                                    />
+                                </View>
                             )}
+                        </View>
+                    </View>
+                    <Text style={styles.timestamp}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
+
+                    <DepositChangeSheet
+                        visible={depositSheetOpen}
+                        requisitionId={requisitionData.id}
+                        organizationId={requisitionData.organization_id}
+                        walletId={mainWalletId}
+                        amount={changeAmount}
+                        onClose={() => setDepositSheetOpen(false)}
+                        onDone={() => { setDepositSheetOpen(false); onDisbursed(); }}
+                    />
+                </View>
+            );
+        }
+
+        if (isDisbursalSummary) {
+            const meta = message.metadata || {};
+            const disbursement = requisitionData?.disbursements?.[0];
+            const lines = content?.split('\n') || [];
+            const amountLine = lines.find((l: string) => l.includes('Disbursed:') || l.includes('Amount:'));
+            const methodLine = lines.find((l: string) => l.includes('Method:'));
+            const refLine = lines.find((l: string) => l.includes('Ref:'));
+            const statusLine = lines.find((l: string) => l.includes('Status:'));
+
+            const rawAmount = amountLine?.split(':')[1]?.trim();
+            const amountStr = rawAmount
+                ? (rawAmount.startsWith('K') ? rawAmount : `K${rawAmount}`)
+                : formatKwacha(meta.amount || disbursement?.total_prepared || requisitionData?.actual_total || requisitionData?.estimated_total || 0);
+
+            const methodStr = methodLine?.split(':')[1]?.trim() || meta.payment_method || disbursement?.payment_method || 'N/A';
+            const refStr = refLine?.split(':')[1]?.trim() || meta.external_reference || disbursement?.external_reference || 'N/A';
+            const parsedStatus = statusLine?.split(':')[1]?.trim();
+
+            const reqStatus = requisitionData?.status;
+            const isProcessingState = reqStatus === 'PROCESSING' || reqStatus === 'DISBURSING';
+            const isCompleted = reqStatus && !isProcessingState && reqStatus !== 'DRAFT' && reqStatus !== 'PENDING_APPROVAL';
+
+            const resolvedStatus = (parsedStatus === 'PROCESSING' && !isProcessingState)
+                ? 'SUCCESS'
+                : (parsedStatus || (isCompleted ? 'SUCCESS' : 'PROCESSING'));
+
+            const isProcessing = resolvedStatus === 'PROCESSING' && isProcessingState;
+
+            const recipientName = disbursement?.recipient_account_name || meta.recipient || requisitionData?.recipient_name;
+            const recipientAccount = disbursement?.recipient_account || requisitionData?.recipient_account;
+            const recipientBank = disbursement?.recipient_bank_code;
+
+            return (
+                <View style={styles.cardWrap}>
+                    <View style={styles.card}>
+                        <View style={styles.cardBody}>
+                            <View style={styles.disbursalHeaderRow}>
+                                <View style={styles.disbursalHeaderLeft}>
+                                    <View style={[styles.stageIcon, isProcessing ? styles.stageIconYellow : styles.stageIconGreen]}>
+                                        {isProcessing ? <ActivityIndicator size="small" color="#D97706" /> : <Check size={14} color="#059669" />}
+                                    </View>
+                                    <Text style={styles.disbursalHeaderTitle}>
+                                        {isProcessing ? 'Disbursement Processing' : 'Funds Disbursed'}
+                                    </Text>
+                                </View>
+                                <View style={[styles.badgePill, isProcessing ? styles.badgePillProcessing : styles.badgePillApproved]}>
+                                    <Text style={[styles.badgePillText, { color: isProcessing ? '#D97706' : '#059669' }]}>
+                                        {resolvedStatus}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.disbursalSummaryBox}>
+                                <View style={styles.disbursalAmountRow}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.disbursalAmountLabel}>DISBURSED AMOUNT</Text>
+                                        <Text style={styles.disbursalAmountValue}>{amountStr}</Text>
+                                    </View>
+                                    <Pressable
+                                        style={styles.detailsToggleBtn}
+                                        onPress={() => setExpanded((e) => !e)}
+                                    >
+                                        <Text style={styles.detailsToggleText}>{expanded ? 'Hide Details' : 'Show Details'}</Text>
+                                        <ChevronDown size={14} color={colors.textMuted} style={expanded ? styles.chevronUp : undefined} />
+                                    </Pressable>
+                                </View>
+
+                                {expanded && (
+                                    <View style={styles.disbursalDetailsContent}>
+                                        <View style={styles.disbursalDetailRow}>
+                                            <Text style={styles.disbursalDetailLabel}>PAYMENT METHOD</Text>
+                                            <Text style={styles.disbursalDetailValueBold}>{methodStr}</Text>
+                                        </View>
+                                        <View style={styles.disbursalDetailRow}>
+                                            <Text style={styles.disbursalDetailLabel}>REFERENCE</Text>
+                                            <Text style={styles.disbursalDetailValueMono}>{refStr}</Text>
+                                        </View>
+                                        {!!recipientName && (
+                                            <View style={styles.disbursalDetailRow}>
+                                                <Text style={styles.disbursalDetailLabel}>RECIPIENT NAME</Text>
+                                                <Text style={styles.disbursalDetailValueBold}>{recipientName}</Text>
+                                            </View>
+                                        )}
+                                        {!!recipientAccount && (
+                                            <View style={styles.disbursalDetailRow}>
+                                                <Text style={styles.disbursalDetailLabel}>ACCOUNT / PHONE</Text>
+                                                <Text style={styles.disbursalDetailValueMono}>{recipientAccount}</Text>
+                                            </View>
+                                        )}
+                                        {!!recipientBank && (
+                                            <View style={styles.disbursalDetailRow}>
+                                                <Text style={styles.disbursalDetailLabel}>BANK</Text>
+                                                <Text style={styles.disbursalDetailValueBold}>{recipientBank}</Text>
+                                            </View>
+                                        )}
+                                    </View>
+                                )}
+                            </View>
                         </View>
                     </View>
                     <Text style={styles.timestamp}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
@@ -414,6 +709,7 @@ const styles = StyleSheet.create({
     itemRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
     itemDesc: { fontFamily: fonts.body, fontSize: 12, color: colors.text },
     itemQty: { fontFamily: fonts.body, fontSize: 10, color: colors.textFaint, marginTop: 1 },
+    itemNeedsCategory: { fontFamily: fonts.bodyBold, color: '#B45309' },
     itemAmount: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.text },
     noItems: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, fontStyle: 'italic', textAlign: 'center', paddingVertical: 12 },
     loanNote: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: colors.tabActiveBg, borderRadius: radius.md, padding: 10 },
@@ -447,10 +743,40 @@ const styles = StyleSheet.create({
     ledgerCreditValue: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.blue },
     returnCashBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#FFFBEB', borderRadius: radius.pill, paddingVertical: 12 },
     returnCashBtnText: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#B45309' },
+    changeActionsRow: { flexDirection: 'row', gap: 8 },
+    depositDoneBox: { gap: 10 },
+    depositDoneRow: {
+        flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ECFDF5',
+        borderRadius: radius.md, borderWidth: 1, borderColor: '#D1FAE5', paddingHorizontal: 12, paddingVertical: 10,
+    },
+    depositDoneText: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 12, color: '#059669' },
+    finalizeBtn: { backgroundColor: '#059669', borderRadius: radius.pill, paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+    finalizeBtnText: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#FFFFFF' },
+    depositWalletBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: colors.blue, borderRadius: radius.pill, paddingVertical: 12 },
+    depositWalletBtnText: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#FFFFFF' },
+    excessBox: { marginTop: 6, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, gap: 10 },
+    excessLabel: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.textFaint, letterSpacing: 0.5 },
     timestamp: { fontFamily: fonts.bodyMedium, fontSize: 10, color: colors.textFaint, textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 6, marginLeft: 4 },
     pillWrap: { alignItems: 'center', marginVertical: 8 },
     pill: { backgroundColor: 'rgba(0,106,255,0.06)', borderWidth: 1, borderColor: 'rgba(0,106,255,0.12)', borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 6 },
     pillText: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.blue, textTransform: 'uppercase', letterSpacing: 1 },
+    badgePillProcessing: { borderColor: '#FDE68A', backgroundColor: '#FFFBEB' },
+    disbursalHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, paddingBottom: 10 },
+    disbursalHeaderLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    stageIconGreen: { backgroundColor: '#ECFDF5' },
+    stageIconYellow: { backgroundColor: '#FEF3C7' },
+    disbursalHeaderTitle: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text, letterSpacing: -0.2 },
+    disbursalSummaryBox: { backgroundColor: colors.canvasAlt, borderRadius: radius.lg, padding: 14, marginTop: 4, borderWidth: 1, borderColor: colors.border },
+    disbursalAmountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    disbursalAmountLabel: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.textFaint, letterSpacing: 0.5 },
+    disbursalAmountValue: { fontFamily: fonts.bodyBold, fontSize: 20, color: colors.text, marginTop: 2 },
+    detailsToggleBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 8, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border },
+    detailsToggleText: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.textMuted },
+    disbursalDetailsContent: { marginTop: 14, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, gap: 10 },
+    disbursalDetailRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    disbursalDetailLabel: { fontFamily: fonts.bodyBold, fontSize: 9, color: colors.textFaint, letterSpacing: 0.5 },
+    disbursalDetailValueBold: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.text, textTransform: 'uppercase' },
+    disbursalDetailValueMono: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textMuted },
     bubbleWrap: { marginBottom: 14, maxWidth: '78%' },
     bubbleWrapOwn: { alignSelf: 'flex-end', alignItems: 'flex-end' },
     bubbleWrapOther: { alignSelf: 'flex-start', alignItems: 'flex-start' },

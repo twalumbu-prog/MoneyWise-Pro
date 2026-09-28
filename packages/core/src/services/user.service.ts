@@ -64,9 +64,36 @@ export interface MyProfile extends UserProfile {
     payment_info?: PaymentInfo | null;
 }
 
+export interface MoneyWiseRecipient {
+    id: string;
+    user_id?: string | null;
+    name: string;
+    username?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    organization_id?: string | null;
+    organization_name: string;
+    logo_url?: string | null;
+    account_type: 'PERSONAL' | 'BUSINESS';
+    moneywise_id: string;
+    lenco_subaccount_id?: string | null;
+    verified: boolean;
+}
+
 export const userService = {
     getAll(): Promise<UserProfile[]> {
         return apiJson<UserProfile[]>('/users');
+    },
+
+    searchRecipients(query: string): Promise<MoneyWiseRecipient[]> {
+        return apiJson<MoneyWiseRecipient[]>(`/users/search-recipients?q=${encodeURIComponent(query)}`);
+    },
+
+    verifyRecipient(identifier: string): Promise<{ found: boolean; recipient?: MoneyWiseRecipient; error?: string }> {
+        return apiJson<{ found: boolean; recipient?: MoneyWiseRecipient; error?: string }>('/users/verify-recipient', {
+            method: 'POST',
+            body: JSON.stringify({ identifier }),
+        });
     },
 
     getMyProfile(): Promise<MyProfile> {

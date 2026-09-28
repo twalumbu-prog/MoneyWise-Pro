@@ -41,6 +41,7 @@ export type {
     MutationAck,
     PaymentInfo,
     MyProfile,
+    MoneyWiseRecipient,
 } from './services/user.service';
 
 export { accountService } from './services/account.service';

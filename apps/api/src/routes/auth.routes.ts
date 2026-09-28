@@ -8,7 +8,8 @@ import {
     searchOrganizations, 
     joinRequest,
     getMyOrganizations,
-    switchOrganization
+    switchOrganization,
+    ensurePersonalWorkspace
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -27,6 +28,7 @@ router.post('/join-request', joinRequest);
 router.post('/complete-invitation', requireAuth, completeInvitation);
 router.get('/my-organizations', requireAuth, getMyOrganizations);
 router.post('/switch-organization', requireAuth, switchOrganization);
+router.post('/ensure-personal-workspace', requireAuth, ensurePersonalWorkspace);
 
 export default router;
 

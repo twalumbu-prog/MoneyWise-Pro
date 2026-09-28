@@ -210,6 +210,7 @@ const STORAGE_KEY = 'moneywise_achievements_v1';
 
 export function loadAchievementsState(): OnboardingAchievement[] {
     try {
+        if (typeof localStorage === 'undefined') return INITIAL_ACHIEVEMENTS;
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return INITIAL_ACHIEVEMENTS;
         const saved: Record<string, { completed: boolean; completedAt?: string }> = JSON.parse(raw);
@@ -225,6 +226,7 @@ export function loadAchievementsState(): OnboardingAchievement[] {
 
 export function saveAchievementsState(achievements: OnboardingAchievement[]): void {
     try {
+        if (typeof localStorage === 'undefined') return;
         const payload: Record<string, { completed: boolean; completedAt?: string }> = {};
         achievements.forEach((a) => {
             if (a.completed) {

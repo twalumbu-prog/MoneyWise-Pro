@@ -139,6 +139,21 @@ export class DecisionRouter {
             return this.finalize(hint, accounts, item, hint.method);
         }
 
+        // Below the medium bar, still surface the best candidate rather than
+        // dropping it on the floor. Returning a null account told the reviewer
+        // nothing and could not be retried into a better answer — re-running
+        // produced the same discard every time. A weak suggestion they can
+        // accept or correct is strictly more information, and finalize() already
+        // marks anything under TERMINATION_HIGH as requires_review.
+        if (hint?.account_code) {
+            return this.finalize(
+                { ...hint, reasoning: `${hint.reasoning} — low confidence, please verify.` },
+                accounts,
+                item,
+                `${hint.method}_LOW_CONFIDENCE`,
+            );
+        }
+
         return this.finalize(bestResult, accounts, item, 'FAILED');
     }
 

@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react';
 import { Tabs, Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Navigation, TrendingUp, Menu } from 'lucide-react-native';
-import { isRequestorRole } from 'core';
+import { isRequestorRole, onboardingService } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { AstroidIcon } from '../../src/components/icons/AstroidIcon';
 import { WalletCardsIcon } from '../../src/components/icons/WalletCardsIcon';
@@ -14,12 +15,35 @@ import { colors } from '../../src/theme/tokens';
  * here — the one intentional divergence.
  */
 export default function TabsLayout() {
-    const { userRole, session, loading } = useAuth();
+    const { userRole, session, loading, organizationId } = useAuth();
     const insets = useSafeAreaInsets();
     const isRequestor = isRequestorRole(userRole);
+    const [needsOnboarding, setNeedsOnboarding] = useState(false);
+
+    useEffect(() => {
+        if (!session || userRole !== 'ADMIN' || !organizationId) {
+            setNeedsOnboarding(false);
+            return;
+        }
+        let cancelled = false;
+        onboardingService.getState()
+            .then((s) => {
+                if (cancelled) return;
+                if (s.progress?.status !== 'COMPLETED') {
+                    setNeedsOnboarding(true);
+                } else {
+                    setNeedsOnboarding(false);
+                }
+            })
+            .catch(() => {});
+        return () => { cancelled = true; };
+    }, [session, userRole, organizationId]);
 
     // Signing out anywhere in the app drops straight back to login.
     if (!loading && !session) return <Redirect href="/(auth)/login" />;
+
+    // Admin of an organization with incomplete onboarding must complete the wizard first.
+    if (needsOnboarding) return <Redirect href="/onboarding" />;
 
     return (
         <Tabs

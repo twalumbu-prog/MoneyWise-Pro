@@ -1,15 +1,15 @@
 import { useMemo, useRef, useState } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, FlatList, Pressable, TextInput,
-    ActivityIndicator, RefreshControl, NativeSyntheticEvent, NativeScrollEvent,
+    ActivityIndicator, RefreshControl, NativeSyntheticEvent, NativeScrollEvent, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import {
-    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet,
+    Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet, AlertCircle, Mail,
 } from 'lucide-react-native';
-import { cashbookService, groupByDate, isRequestorRole } from 'core';
+import { cashbookService, groupByDate, isRequestorRole, onboardingService } from 'core';
 import type { CashbookEntry } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import {
@@ -24,7 +24,7 @@ type Group = 'MONEYWISE' | 'EXTERNAL';
 export default function WalletScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { userRole, organizationName } = useAuth();
+    const { userRole, organizationName, organizationId } = useAuth();
     const isRequestor = isRequestorRole(userRole);
     const cardWidth = useCardWidth();
 
@@ -36,8 +36,15 @@ export default function WalletScreen() {
     const carousel = useRef<ScrollView>(null);
 
     const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
-        queryKey: ['cashbook-entries', 'overview'],
+        queryKey: ['cashbook-entries', 'overview', organizationId],
         queryFn: () => cashbookService.getOverview(),
+        enabled: !!organizationId,
+    });
+
+    const { data: walletStatus } = useQuery({
+        queryKey: ['wallet-status', organizationId],
+        queryFn: () => onboardingService.getWalletStatus(),
+        enabled: !!organizationId,
     });
 
     const wallets: any[] = data?.wallets ?? [];
@@ -90,6 +97,8 @@ export default function WalletScreen() {
         setSlide(i);
     };
 
+    const isInactiveWallet = group === 'MONEYWISE' && walletStatus && !walletStatus.activated;
+
     return (
         <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
             <FlatList
@@ -124,84 +133,84 @@ export default function WalletScreen() {
                         />
 
                         <AnimatedTabContent tabKey={group} index={group === 'EXTERNAL' ? 1 : 0}>
-                        {isLoading ? (
-                            <View style={[styles.cardSkeleton, { width: cardWidth }]}>
-                                <ActivityIndicator color={colors.blue} />
-                            </View>
-                        ) : (
-                            <ScrollView
-                                ref={carousel}
-                                horizontal
-                                showsHorizontalScrollIndicator={false}
-                                snapToInterval={cardWidth + CARD_GAP}
-                                decelerationRate="fast"
-                                onScroll={onCarouselScroll}
-                                scrollEventThrottle={16}
-                                contentContainerStyle={styles.carousel}
-                            >
-                                {cards.map((c) => (
-                                    <WalletCard
-                                        key={c.id}
-                                        name={c.name}
-                                        balance={c.balance}
-                                        organizationName={organizationName}
-                                        dots={slideCount > 1 ? { count: slideCount, active: slide, onSelect: goToSlide } : undefined}
-                                    />
-                                ))}
-                                {group === 'MONEYWISE' && !isRequestor && (
-                                    <AddWalletCard
-                                        label={wallets.length === 0 ? 'Add Wallet' : 'Add Subwallet'}
-                                        onPress={() => router.push('/wallet/new?kind=MONEYWISE')}
-                                    />
+                                {isLoading ? (
+                                    <View style={[styles.cardSkeleton, { width: cardWidth }]}>
+                                        <ActivityIndicator color={colors.blue} />
+                                    </View>
+                                ) : (
+                                    <ScrollView
+                                        ref={carousel}
+                                        horizontal
+                                        showsHorizontalScrollIndicator={false}
+                                        snapToInterval={cardWidth + CARD_GAP}
+                                        decelerationRate="fast"
+                                        onScroll={onCarouselScroll}
+                                        scrollEventThrottle={16}
+                                        contentContainerStyle={styles.carousel}
+                                    >
+                                        {cards.map((c) => (
+                                            <WalletCard
+                                                key={c.id}
+                                                name={c.name}
+                                                balance={c.balance}
+                                                organizationName={organizationName}
+                                                dots={slideCount > 1 ? { count: slideCount, active: slide, onSelect: goToSlide } : undefined}
+                                            />
+                                        ))}
+                                        {group === 'MONEYWISE' && !isRequestor && (
+                                            <AddWalletCard
+                                                label={wallets.length === 0 ? 'Add Wallet' : 'Add Subwallet'}
+                                                onPress={() => router.push('/wallet/new?kind=MONEYWISE')}
+                                            />
+                                        )}
+                                        {group === 'EXTERNAL' && !isRequestor && (
+                                            <AddWalletCard label="Add External Account" onPress={() => router.push('/wallet/new?kind=EXTERNAL')} />
+                                        )}
+                                    </ScrollView>
                                 )}
-                                {group === 'EXTERNAL' && !isRequestor && (
-                                    <AddWalletCard label="Add External Account" onPress={() => router.push('/wallet/new?kind=EXTERNAL')} />
+
+                                {!isRequestor && group === 'MONEYWISE' && (
+                                    <View style={styles.actionBar}>
+                                        <Action icon={ArrowDownToLine} label="Deposit" onPress={() => router.push('/wallet/deposit')} />
+                                        <View style={styles.actionDivider} />
+                                        <Action icon={ArrowLeftRight} label="Transfer" onPress={() => router.push('/wallet/transfer')} />
+                                        <View style={styles.actionDivider} />
+                                        <Action
+                                            icon={Link2}
+                                            label="Pay Link"
+                                            onPress={() => {
+                                                const card = cards[Math.min(slide, cards.length - 1)];
+                                                router.push({
+                                                    pathname: '/wallet/pay-link',
+                                                    params: { walletId: card?.id ?? '', walletName: card?.name ?? '' },
+                                                });
+                                            }}
+                                        />
+                                    </View>
                                 )}
-                            </ScrollView>
-                        )}
 
-                        {!isRequestor && group === 'MONEYWISE' && (
-                            <View style={styles.actionBar}>
-                                <Action icon={ArrowDownToLine} label="Deposit" onPress={() => router.push('/wallet/deposit')} />
-                                <View style={styles.actionDivider} />
-                                <Action icon={ArrowLeftRight} label="Transfer" onPress={() => router.push('/wallet/transfer')} />
-                                <View style={styles.actionDivider} />
-                                <Action
-                                    icon={Link2}
-                                    label="Pay Link"
-                                    onPress={() => {
-                                        const card = cards[Math.min(slide, cards.length - 1)];
-                                        router.push({
-                                            pathname: '/wallet/pay-link',
-                                            params: { walletId: card?.id ?? '', walletName: card?.name ?? '' },
-                                        });
-                                    }}
-                                />
-                            </View>
-                        )}
-
-                        {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && (
-                            <View style={styles.actionBar}>
-                                <Action
-                                    icon={ArrowLeftRight}
-                                    label="Transfer"
-                                    onPress={() => router.push('/wallet/lenco-transfer')}
-                                />
-                                <View style={styles.actionDivider} />
-                                <Action
-                                    icon={FileSpreadsheet}
-                                    label="Import statement"
-                                    onPress={() => {
-                                        const card = cards[Math.min(slide, cards.length - 1)];
-                                        router.push({
-                                            pathname: '/wallet/import',
-                                            params: { walletId: card.id, walletName: card.name },
-                                        });
-                                    }}
-                                />
-                            </View>
-                        )}
-                        </AnimatedTabContent>
+                                {!isRequestor && group === 'EXTERNAL' && cards.length > 0 && (
+                                    <View style={styles.actionBar}>
+                                        <Action
+                                            icon={ArrowLeftRight}
+                                            label="Transfer"
+                                            onPress={() => router.push('/wallet/lenco-transfer')}
+                                        />
+                                        <View style={styles.actionDivider} />
+                                        <Action
+                                            icon={FileSpreadsheet}
+                                            label="Import statement"
+                                            onPress={() => {
+                                                const card = cards[Math.min(slide, cards.length - 1)];
+                                                router.push({
+                                                    pathname: '/wallet/import',
+                                                    params: { walletId: card.id, walletName: card.name },
+                                                });
+                                            }}
+                                        />
+                                    </View>
+                                )}
+                            </AnimatedTabContent>
 
                         <View style={styles.txHeader}>
                             {searchOpen ? (
@@ -260,11 +269,43 @@ export default function WalletScreen() {
                 )}
                 ListEmptyComponent={
                     !isLoading && !isError ? (
-                        <View style={styles.empty}>
-                            <Text style={styles.emptyText}>
-                                {search ? 'No transactions match that search.' : 'No transactions yet.'}
-                            </Text>
-                        </View>
+                        isInactiveWallet ? (
+                            <View style={styles.inactiveCard}>
+                                <View style={styles.inactiveIconBox}>
+                                    <AlertCircle size={24} color="#D97706" />
+                                </View>
+                                <View style={styles.inactiveInfo}>
+                                    <Text style={styles.inactiveTitle}>Your Wallet is Inactive</Text>
+                                    <Text style={styles.inactiveSub}>
+                                        {walletStatus?.poolAvailable || walletStatus?.linked
+                                            ? 'You skipped wallet activation during setup. Activate your wallet now to complete account setup and start receiving payments.'
+                                            : 'An account has not been provisioned for your organization yet. Contact our team to have your wallet provisioned.'}
+                                    </Text>
+                                </View>
+                                {walletStatus?.poolAvailable || walletStatus?.linked ? (
+                                    <Pressable
+                                        style={({ pressed }) => [styles.activateBtn, { opacity: pressed ? 0.85 : 1 }]}
+                                        onPress={() => router.push('/onboarding')}
+                                    >
+                                        <Text style={styles.activateBtnText}>Activate Now →</Text>
+                                    </Pressable>
+                                ) : (
+                                    <Pressable
+                                        style={({ pressed }) => [styles.contactBtn, { opacity: pressed ? 0.85 : 1 }]}
+                                        onPress={() => Linking.openURL(`mailto:masterfees101@gmail.com?subject=Wallet%20Activation%20Request%20-%20${encodeURIComponent(organizationName || 'My Business')}`)}
+                                    >
+                                        <Mail size={14} color="#FFFFFF" />
+                                        <Text style={styles.contactBtnText}>Contact Team</Text>
+                                    </Pressable>
+                                )}
+                            </View>
+                        ) : (
+                            <View style={styles.empty}>
+                                <Text style={styles.emptyText}>
+                                    {search ? 'No transactions match that search.' : 'No transactions yet.'}
+                                </Text>
+                            </View>
+                        )
                     ) : undefined
                 }
             />
@@ -340,4 +381,65 @@ const styles = StyleSheet.create({
     },
     errorTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.danger },
     errorBody: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, marginTop: 6, lineHeight: 19 },
+    inactiveCard: {
+        marginHorizontal: 20,
+        marginBottom: 16,
+        padding: 16,
+        backgroundColor: '#FFFBEB',
+        borderRadius: radius.lg,
+        borderWidth: 1,
+        borderColor: '#FDE68A',
+        gap: 12,
+    },
+    inactiveIconBox: {
+        width: 40,
+        height: 40,
+        borderRadius: radius.md,
+        backgroundColor: '#FEF3C7',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    inactiveInfo: {
+        gap: 4,
+    },
+    inactiveTitle: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 15,
+        color: colors.navy,
+    },
+    inactiveSub: {
+        fontFamily: fonts.body,
+        fontSize: 13,
+        color: colors.textMuted,
+        lineHeight: 18,
+    },
+    activateBtn: {
+        backgroundColor: colors.blue,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: radius.pill,
+        alignItems: 'center',
+        justifyContent: 'center',
+        alignSelf: 'flex-start',
+    },
+    activateBtnText: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 13,
+        color: '#FFFFFF',
+    },
+    contactBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: colors.navy,
+        paddingVertical: 10,
+        paddingHorizontal: 16,
+        borderRadius: radius.pill,
+        alignSelf: 'flex-start',
+    },
+    contactBtnText: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 13,
+        color: '#FFFFFF',
+    },
 });

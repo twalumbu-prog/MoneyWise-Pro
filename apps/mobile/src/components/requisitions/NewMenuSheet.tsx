@@ -1,5 +1,5 @@
 import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
-import { X, ShoppingBag, FileText, History, Plus, TrendingUp } from 'lucide-react-native';
+import { X, ShoppingBag, FileText, History, Plus, TrendingUp, Send } from 'lucide-react-native';
 import { canDisburse, isRequestorRole } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -8,6 +8,7 @@ interface Props {
     onClose: () => void;
     mode: 'outflows' | 'inflows';
     userRole: string | null;
+    isPersonal?: boolean;
     onNewSale: () => void;
     onNewRequisition: () => void;
     onSalaryAdvance: () => void;
@@ -16,19 +17,17 @@ interface Props {
     onPayroll: () => void;
 }
 
-/**
- * Native port of the mobile "New" bottom sheet inline in
- * apps/web/src/pages/RequisitionList.tsx (~L1126-1260): Inflows mode offers
- * just New Sale (cash handlers only); Outflows mode offers the full request
- * menu. New Sale itself isn't ported yet (web's version is a 1,283-line POS
- * flow — cart, product browse, checkout — its own follow-up phase), so that
- * row explains that rather than opening a screen that doesn't exist.
- */
 export const NewMenuSheet: React.FC<Props> = ({
-    visible, onClose, mode, userRole, onNewSale, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
+    visible, onClose, mode, userRole, isPersonal, onNewSale, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
 }) => {
     const isCashHandler = canDisburse(userRole);
     const isRequestor = isRequestorRole(userRole);
+
+    const sheetTitle = mode === 'inflows'
+        ? 'New Sale'
+        : isPersonal
+            ? 'New Transaction'
+            : 'New Requisition';
 
     return (
         <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
@@ -36,7 +35,7 @@ export const NewMenuSheet: React.FC<Props> = ({
             <View style={styles.sheet}>
                 <View style={styles.handle} />
                 <View style={styles.header}>
-                    <Text style={styles.title}>{mode === 'inflows' ? 'New Sale' : 'New Requisition'}</Text>
+                    <Text style={styles.title}>{sheetTitle}</Text>
                     <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8}>
                         <X size={18} color={colors.textFaint} />
                     </Pressable>
@@ -49,6 +48,13 @@ export const NewMenuSheet: React.FC<Props> = ({
                         ) : (
                             <Text style={styles.noPermission}>You don't have permission to record sales.</Text>
                         )
+                    ) : isPersonal ? (
+                        <>
+                            <Row icon={Send} iconColor={colors.navy} title="Send Money" subtitle="Send funds or pay for personal expenses" onPress={onNewRequisition} />
+                            <Row icon={History} iconColor={colors.navy} title="New Salary Advance" subtitle="Quick funds from your upcoming income" onPress={onSalaryAdvance} />
+                            <Row icon={Plus} iconColor={colors.navy} title="New Loan" subtitle="Fixed loan with structured repayment" onPress={onStaffLoan} />
+                            <Row icon={TrendingUp} iconColor={colors.navy} title="Invest" subtitle="Grow your money with our partners" onPress={onInvest} />
+                        </>
                     ) : (
                         <>
                             <Row icon={FileText} iconColor={colors.navy} title="New Requisition" subtitle="Office items, services, or equipment" onPress={onNewRequisition} />

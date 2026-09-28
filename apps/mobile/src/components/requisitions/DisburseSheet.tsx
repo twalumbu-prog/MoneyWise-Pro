@@ -26,8 +26,12 @@ export const DisburseSheet: React.FC<{
     recipientName?: string;
     recipientAccount?: string;
     onDone: () => void;
-}> = ({ requisitionId, amount, recipientName, recipientAccount, onDone }) => {
+    /** DISBURSE_EXCESS hits /disburse-excess instead of /disburse — same payload
+     * shape, used to settle spend that came in over the original disbursal. */
+    mode?: 'DISBURSE' | 'DISBURSE_EXCESS';
+}> = ({ requisitionId, amount, recipientName, recipientAccount, onDone, mode = 'DISBURSE' }) => {
     const qc = useQueryClient();
+    const isExcess = mode === 'DISBURSE_EXCESS';
     const [method, setMethod] = useState<string>('CASH');
     const [account, setAccount] = useState(recipientAccount ?? '');
     const [accountName, setAccountName] = useState(recipientName ?? '');
@@ -36,14 +40,18 @@ export const DisburseSheet: React.FC<{
     const valid = amount > 0 && (!needsAccount || account.trim().length > 0);
 
     const pay = useMutation({
-        mutationFn: () =>
-            requisitionService.disburse(requisitionId, {
+        mutationFn: () => {
+            const payload = {
                 payment_method: method,
                 total_prepared: amount,
                 ...(needsAccount
                     ? { recipient_account: account.trim(), recipient_account_name: accountName.trim() || undefined }
                     : {}),
-            }),
+            };
+            return isExcess
+                ? requisitionService.disburseExcess(requisitionId, payload)
+                : requisitionService.disburse(requisitionId, payload);
+        },
         onSuccess: (res: any) => {
             qc.invalidateQueries({ queryKey: ['requisitions'] });
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
@@ -57,12 +65,12 @@ export const DisburseSheet: React.FC<{
             );
             onDone();
         },
-        onError: (e: Error) => Alert.alert('Disbursement failed', e.message),
+        onError: (e: Error) => Alert.alert(isExcess ? 'Excess disbursement failed' : 'Disbursement failed', e.message),
     });
 
     return (
         <View style={styles.root}>
-            <Text style={styles.sectionTitle}>Pay out {formatKwacha(amount)}</Text>
+            <Text style={styles.sectionTitle}>{isExcess ? 'Disburse excess' : 'Pay out'} {formatKwacha(amount)}</Text>
 
             <Text style={styles.label}>Method</Text>
             <View style={styles.chips}>

@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { requisitionService, getStatusConfig, groupByDate } from 'core';
 import { RequisitionRow, type RequisitionRowData } from './requisitions/RequisitionRow';
+import { useAuth } from '../context/AuthContext';
 import { colors, fonts, radius } from '../theme/tokens';
 
 /**
@@ -15,10 +16,12 @@ export const RequisitionQueue: React.FC<{
     emptyText: string;
 }> = ({ statuses, emptyText }) => {
     const router = useRouter();
+    const { organizationId } = useAuth();
 
     const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
-        queryKey: ['requisitions'],
+        queryKey: ['requisitions', organizationId],
         queryFn: () => requisitionService.getAll(),
+        enabled: !!organizationId,
     });
 
     const rows: RequisitionRowData[] = (Array.isArray(data) ? data : []).filter(

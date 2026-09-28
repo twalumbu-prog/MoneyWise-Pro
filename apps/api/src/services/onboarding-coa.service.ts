@@ -177,6 +177,22 @@ const INDUSTRY_TEMPLATES: Record<string, DraftAccount[]> = {
     ],
 };
 
+const PERSONAL_PL: DraftAccount[] = [
+    { name: 'Salary & Wages', subtype: 'Revenue', description: 'Personal employment salary and wages' },
+    { name: 'Side Business & Freelancing', subtype: 'Revenue', description: 'Freelancing and side income' },
+    { name: 'Investments & Dividends', subtype: 'Other Income', description: 'Returns from investments and dividends' },
+    { name: 'Rental Income', subtype: 'Other Income', description: 'Income from property rentals' },
+    { name: 'Gifts & Allowances', subtype: 'Other Income', description: 'Gifts, allowances, and transfers received' },
+    { name: 'Rent & Housing', subtype: 'Operating Expenses', description: 'Housing rent and accommodation expenses' },
+    { name: 'Groceries & Household', subtype: 'Operating Expenses', description: 'Food, groceries, and household supplies' },
+    { name: 'Utilities', subtype: 'Operating Expenses', description: 'Electricity, water, cooking gas, internet' },
+    { name: 'Transport & Fuel', subtype: 'Operating Expenses', description: 'Public transport, taxi, and vehicle fuel' },
+    { name: 'Dining & Entertainment', subtype: 'Operating Expenses', description: 'Restaurants, takeout, movies, recreation' },
+    { name: 'Healthcare & Medical', subtype: 'Operating Expenses', description: 'Medical bills, pharmacy, health insurance' },
+    { name: 'Education & Fees', subtype: 'Operating Expenses', description: 'Tuition, courses, books, educational fees' },
+    { name: 'Savings & Investments', subtype: 'Operating Expenses', description: 'Personal savings allocations and investments' },
+];
+
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /** Deterministic merge of the standard backbone + industry templates + business specifics. */
@@ -189,6 +205,17 @@ export function buildBaselineCoa(input: CoaGenerationInput): DraftAccount[] {
         seen.add(key);
         out.push(a);
     };
+
+    const orgLower = (input.organizationName || '').toLowerCase();
+    const isPersonalOrg = orgLower.includes('workspace') ||
+        orgLower.includes('personal') ||
+        orgLower.includes('individual') ||
+        orgLower.includes('private');
+
+    if (isPersonalOrg) {
+        for (const acc of PERSONAL_PL) push(acc);
+        return out;
+    }
 
     // Business-specific revenue lines from store categories, e.g. "Electronics Sales".
     for (const cat of input.storeCategories) {

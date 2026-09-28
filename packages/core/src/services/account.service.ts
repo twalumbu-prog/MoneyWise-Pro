@@ -28,8 +28,9 @@ function withDetails(err: unknown, fallback: string): Error {
 }
 
 export const accountService = {
-    getAll(): Promise<Account[]> {
-        return apiJson<Account[]>('/accounts');
+    getAll(includeInactive = false): Promise<Account[]> {
+        const query = includeInactive ? '?include_inactive=true' : '';
+        return apiJson<Account[]>(`/accounts${query}`);
     },
 
     async create(data: Partial<Account>): Promise<Account> {
@@ -51,6 +52,16 @@ export const accountService = {
             });
         } catch (err) {
             throw withDetails(err, 'Failed to update account');
+        }
+    },
+
+    async delete(id: string): Promise<void> {
+        try {
+            await apiFetch(`/accounts/${id}`, {
+                method: 'DELETE',
+            });
+        } catch (err) {
+            throw withDetails(err, 'Failed to delete account');
         }
     },
 

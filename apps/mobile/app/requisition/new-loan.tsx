@@ -10,6 +10,7 @@ import { ArrowLeft, X, AlertCircle, ChevronRight } from 'lucide-react-native';
 import { requisitionService, organizationService, formatKwacha } from 'core';
 import { EXTERNAL_LOAN_PROVIDERS, type LoanProvider } from '../../src/data/loanCatalog';
 import { LoanLogo } from '../../src/components/loans/LoanLogo';
+import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 type Stage = 1 | 2 | 3;
@@ -20,7 +21,15 @@ export default function NewStaffLoanScreen() {
     const router = useRouter();
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
+    const { organizationId, organizationName, userOrganizations } = useAuth();
     const { data: org } = useQuery({ queryKey: ['organization'], queryFn: () => organizationService.getOrganization() });
+
+    const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
+    const activeOrgName = currentOrg?.name || organizationName || '';
+    const isPersonal = activeOrgName.toLowerCase().includes('workspace') ||
+        activeOrgName.toLowerCase().includes('personal') ||
+        activeOrgName.toLowerCase().includes('individual') ||
+        activeOrgName.toLowerCase().includes('private');
 
     const [stage, setStage] = useState<Stage>(1);
     const [providerId, setProviderId] = useState<string | null>(null);
@@ -35,10 +44,10 @@ export default function NewStaffLoanScreen() {
 
     const providers: LoanProvider[] = [
         {
-            id: 'internal', name: 'Internal Organization',
-            description: `Direct staff loan from ${org?.name ?? 'your organisation'} with favourable rates.`,
+            id: 'internal', name: isPersonal ? 'Personal Loan' : 'Internal Organization',
+            description: `Direct loan from ${org?.name ?? 'your account'} with favourable rates.`,
             logo: null,
-            products: [{ id: 'standard', name: 'Standard Staff Loan', interest: 15, maxPeriod: 36 }],
+            products: [{ id: 'standard', name: isPersonal ? 'Standard Loan' : 'Standard Staff Loan', interest: 15, maxPeriod: 36 }],
         },
         ...EXTERNAL_LOAN_PROVIDERS,
     ];
@@ -50,7 +59,8 @@ export default function NewStaffLoanScreen() {
     const totalRepayment = numericAmount * (1 + interestRate / 100);
     const monthlyDeduction = repaymentPeriod > 0 ? totalRepayment / repaymentPeriod : 0;
 
-    const title = stage === 1 ? 'New Staff Loan' : stage === 2 ? (provider?.name ?? 'New Staff Loan') : `${provider?.name ?? ''} — ${product?.name ?? ''}`;
+    const fallbackTitle = isPersonal ? 'New Loan' : 'New Staff Loan';
+    const title = stage === 1 ? fallbackTitle : stage === 2 ? (provider?.name ?? fallbackTitle) : `${provider?.name ?? ''} — ${product?.name ?? ''}`;
 
     const goBack = () => {
         if (stage === 1) router.back();

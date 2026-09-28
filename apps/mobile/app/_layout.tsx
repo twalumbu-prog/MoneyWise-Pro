@@ -67,6 +67,8 @@ export default function RootLayout() {
         DMSans_400Regular,
         DMSans_500Medium,
         DMSans_700Bold,
+        'Advercase-Bold': require('../assets/fonts/Advercase-Bold.ttf'),
+        'Advercase-Regular': require('../assets/fonts/Advercase-Regular.ttf'),
     });
 
     useEffect(() => {
@@ -87,6 +89,7 @@ export default function RootLayout() {
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
                         <Stack.Screen name="index" />
                         <Stack.Screen name="(auth)" />
+                        <Stack.Screen name="onboarding" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="(tabs)" />
                         <Stack.Screen name="requisition/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="requisition/new" options={{ animation: 'slide_from_bottom' }} />

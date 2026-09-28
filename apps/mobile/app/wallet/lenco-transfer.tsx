@@ -51,15 +51,16 @@ export default function LencoTransferScreen() {
     const cancelledRef = useRef(false);
     const elapsedInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const { data: org } = useQuery({ queryKey: ['organization'], queryFn: () => organizationService.getOrganization() });
+    const { data: org } = useQuery({ queryKey: ['organization', organizationId], queryFn: () => organizationService.getOrganization(), enabled: !!organizationId });
     const { data: wallets = [] } = useQuery({
-        queryKey: ['wallets-lenco-transfer'],
+        queryKey: ['wallets-lenco-transfer', organizationId],
         queryFn: async () => {
             const data = await cashbookService.getWallets();
             return (data || []).map((w: any) => ({ id: w.id, name: w.name, balance: Number(w.balance) || 0 }));
         },
+        enabled: !!organizationId,
     });
-    const { data: overview } = useQuery({ queryKey: ['cashbook-entries', 'overview'], queryFn: () => cashbookService.getOverview() });
+    const { data: overview } = useQuery({ queryKey: ['cashbook-entries', 'overview', organizationId], queryFn: () => cashbookService.getOverview(), enabled: !!organizationId });
     const sourceBalance = overview?.externalBalances?.CASH ?? 0;
 
     useEffect(() => {

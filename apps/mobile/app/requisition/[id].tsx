@@ -40,17 +40,25 @@ export default function RequisitionDetailScreen() {
     const [tab, setTab] = useState<Tab>('chat');
     const [menuOpen, setMenuOpen] = useState(false);
 
-    const { data: req, isLoading, isError, error } = useQuery({
+    const { data: req, isLoading, isError, error, refetch: refetchReq } = useQuery({
         queryKey: ['requisitions', id],
         queryFn: () => requisitionService.getById(String(id)),
         enabled: !!id,
+        refetchInterval: (query) => {
+            const data = query.state.data;
+            const status = data?.status;
+            if (status === 'DISBURSING' || status === 'PROCESSING' || status === 'AUTHORISED' || status === 'PENDING_APPROVAL') {
+                return 2500;
+            }
+            return 5000;
+        },
     });
 
-    const { data: messagesData } = useQuery({
+    const { data: messagesData, refetch: refetchMessages } = useQuery({
         queryKey: ['requisitions', id, 'messages'],
         queryFn: () => requisitionService.getMessages(String(id)),
         enabled: !!id && tab === 'chat',
-        refetchInterval: 4000,
+        refetchInterval: 3000,
     });
     const messages: RequisitionMessage[] = messagesData ?? [];
 
@@ -64,6 +72,10 @@ export default function RequisitionDetailScreen() {
         qc.invalidateQueries({ queryKey: ['requisitions', id] });
         qc.invalidateQueries({ queryKey: ['requisitions', id, 'messages'] });
         qc.invalidateQueries({ queryKey: ['requisitions'] });
+        qc.invalidateQueries({ queryKey: ['wallet'] });
+        qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
+        refetchReq();
+        refetchMessages();
     };
 
     const send = useMutation({
@@ -239,7 +251,7 @@ export default function RequisitionDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.canvas },
+    root: { flex: 1, backgroundColor: colors.surface },
     header: {
         flexDirection: 'row', alignItems: 'center', gap: 12,
         paddingHorizontal: 16, paddingVertical: 12, backgroundColor: colors.surface,

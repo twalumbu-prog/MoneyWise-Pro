@@ -1,139 +1,195 @@
-import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator, Dimensions } from 'react-native';
+import { useMemo, useState, useCallback } from 'react';
+import {
+    View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
+    Modal, TextInput, RefreshControl,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, ChevronRight } from 'lucide-react-native';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+    ChevronDown, ChevronRight, Filter, ArrowUpDown, CalendarDays, X, Check,
+} from 'lucide-react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
     reportService, budgetService, accountService,
     buildReportGroups, computeReportTotals, formatKwacha,
 } from 'core';
-import type { ReportView, ExpenditureMode, ExpenditureAggregation } from 'core';
-import { ReportTrendChart, type ChartTimeframe, type TrendPoint } from '../../src/components/reporting/ReportTrendChart';
+import type { ReportView, ExpenditureMode, ExpenditureItem } from 'core';
+import { useAuth } from '../../src/context/AuthContext';
+import { extractEmojiAndName, getAccountEmoji } from '../../src/utils/emoji';
+import { FinancialHighlights } from '../../src/components/reporting/FinancialHighlights';
+import { BucketProgressBar } from '../../src/components/reporting/BucketProgressBar';
+import { ReportChartView, type ChartTimeframe, type TrendPoint } from '../../src/components/reporting/ReportChartView';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
-const CHART_WIDTH = Dimensions.get('window').width - 80;
-
-/** Same bucketing idea as web's Reporting.tsx buildChartPeriods, with 1D/1W
- * trimmed to trailing windows (see ReportTrendChart's doc comment). */
-function buildChartPeriods(tf: ChartTimeframe): { startDate: string; endDate: string; label: string }[] {
-    const periods: { startDate: string; endDate: string; label: string }[] = [];
+function buildChartPeriods(tf: ChartTimeframe): { startDate: string; endDate: string; label: string; shortLabel: string }[] {
+    const periods: { startDate: string; endDate: string; label: string; shortLabel: string }[] = [];
     const today = new Date();
     const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
     if (tf === '1D') {
         for (let i = 29; i >= 0; i--) {
             const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - i);
-            periods.push({ startDate: iso(d), endDate: iso(d), label: d.toLocaleDateString('en-US', { day: 'numeric' }) });
+            periods.push({
+                startDate: iso(d), endDate: iso(d),
+                label: d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+                shortLabel: d.toLocaleDateString('en-US', { day: 'numeric' }),
+            });
         }
     } else if (tf === '1W') {
         let end = new Date(today.getFullYear(), today.getMonth(), today.getDate());
         for (let i = 0; i < 12; i++) {
             const start = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 6);
-            periods.unshift({ startDate: iso(start), endDate: iso(end), label: end.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) });
+            periods.unshift({
+                startDate: iso(start), endDate: iso(end),
+                label: `${start.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })} – ${end.toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}`,
+                shortLabel: end.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }),
+            });
             end = new Date(end.getFullYear(), end.getMonth(), end.getDate() - 7);
         }
     } else if (tf === '3M') {
         for (let i = 7; i >= 0; i--) {
             const start = new Date(today.getFullYear(), today.getMonth() - i * 3, 1);
             const end = new Date(start.getFullYear(), start.getMonth() + 3, 0);
-            periods.push({ startDate: iso(start), endDate: iso(end), label: start.toLocaleDateString('en-US', { month: 'short' }) });
+            periods.push({
+                startDate: iso(start), endDate: iso(end),
+                label: start.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+                shortLabel: start.toLocaleDateString('en-US', { month: 'short' }),
+            });
         }
     } else if (tf === 'YTD') {
         for (let mo = 0; mo <= today.getMonth(); mo++) {
             const start = new Date(today.getFullYear(), mo, 1);
             const end = new Date(today.getFullYear(), mo + 1, 0);
-            periods.push({ startDate: iso(start), endDate: iso(end), label: start.toLocaleDateString('en-US', { month: 'short' }) });
+            periods.push({
+                startDate: iso(start), endDate: iso(end),
+                label: start.toLocaleDateString('en-US', { month: 'long' }),
+                shortLabel: start.toLocaleDateString('en-US', { month: 'short' }),
+            });
         }
     } else {
         for (let i = 11; i >= 0; i--) {
             const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
             const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-            periods.push({ startDate: iso(d), endDate: iso(end), label: d.toLocaleDateString('en-US', { month: 'short' }) });
+            periods.push({
+                startDate: iso(d), endDate: iso(end),
+                label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+                shortLabel: d.toLocaleDateString('en-US', { month: 'short' }),
+            });
         }
     }
     return periods;
 }
 
-/** Local-time ISO date — matches core/format's date handling, so period
- * boundaries don't shift a day for a Lusaka user (UTC+2). */
 const toLocalISODate = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-type Period = 'MONTH' | 'QUARTER' | 'YTD';
-
-function periodRange(period: Period): { start: string; end: string; prevStart: string; prevEnd: string } {
-    const now = new Date();
-    let start: Date, end: Date;
-    if (period === 'MONTH') {
-        start = new Date(now.getFullYear(), now.getMonth(), 1);
-        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    } else if (period === 'QUARTER') {
-        const q = Math.floor(now.getMonth() / 3);
-        start = new Date(now.getFullYear(), q * 3, 1);
-        end = new Date(now.getFullYear(), q * 3 + 3, 0);
-    } else {
-        start = new Date(now.getFullYear(), 0, 1);
-        end = now;
-    }
-    const prevStart = new Date(start); prevStart.setFullYear(prevStart.getFullYear() - 1);
-    const prevEnd = new Date(end); prevEnd.setFullYear(prevEnd.getFullYear() - 1);
-    return {
-        start: toLocalISODate(start), end: toLocalISODate(end),
-        prevStart: toLocalISODate(prevStart), prevEnd: toLocalISODate(prevEnd),
-    };
-}
-
-/**
- * Reporting — a focused subset of the web report. Ships the headline card
- * (tap to reveal the trend chart, matching web), period toggle and the
- * grouped category breakdown with budget variance and period-over-period
- * change; budget-editing UI stays on web for now.
- */
 export default function ReportingScreen() {
     const insets = useSafeAreaInsets();
+    const queryClient = useQueryClient();
+    const { organizationId } = useAuth();
     const [view, setView] = useState<ReportView>('PROFIT_LOSS');
-    const [period, setPeriod] = useState<Period>('MONTH');
-    const [expanded, setExpanded] = useState<Set<string>>(new Set());
+    const [refreshing, setRefreshing] = useState(false);
+    const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['INCOME', 'EXPENSE', 'ASSET', 'LIABILITY', 'EQUITY']));
+    const [expandedAccount, setExpandedAccount] = useState<string | null>(null);
+
+    // Toolbar filters & settings
+    const [excludeZeroSpend, setExcludeZeroSpend] = useState(true);
+    const [sortField, setSortField] = useState<'amount' | 'name'>('amount');
+    const [sortDesc, setSortDesc] = useState(true);
+    const [isSortModalOpen, setIsSortModalOpen] = useState(false);
+
+    // Custom Date Range Filter
+    const [customFilter, setCustomFilter] = useState<{ start: string; end: string } | null>(null);
+    const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
+    const [filterStartInput, setFilterStartInput] = useState('');
+    const [filterEndInput, setFilterEndInput] = useState('');
+
+    // Chart Full Sub-Screen Slide
     const [chartOpen, setChartOpen] = useState(false);
     const [chartTimeframe, setChartTimeframe] = useState<ChartTimeframe>('1M');
 
-    const range = useMemo(() => periodRange(period), [period]);
+    // Account items state (subaccount transactions)
+    const [accountItems, setAccountItems] = useState<Record<string, ExpenditureItem[]>>({});
+    const [accountItemsLoading, setAccountItemsLoading] = useState<Record<string, boolean>>({});
 
-    const { data, isLoading, isError } = useQuery({
-        queryKey: ['report', view, period],
+    const range = useMemo(() => {
+        if (customFilter) return { start: customFilter.start, end: customFilter.end, label: `${customFilter.start} – ${customFilter.end}` };
+        const now = new Date();
+        const start = new Date(now.getFullYear(), 0, 1);
+        return { start: toLocalISODate(start), end: toLocalISODate(now), label: `YTD ${now.getFullYear()}` };
+    }, [customFilter]);
+
+    const prevRange = useMemo(() => {
+        const s = new Date(range.start); s.setFullYear(s.getFullYear() - 1);
+        const e = new Date(range.end); e.setFullYear(e.getFullYear() - 1);
+        return { start: toLocalISODate(s), end: toLocalISODate(e) };
+    }, [range]);
+
+    const { data, isLoading, isError, refetch, isRefetching } = useQuery({
+        queryKey: ['report', organizationId, view, range.start, range.end],
         queryFn: async () => {
             const mode: ExpenditureMode = view === 'PROFIT_LOSS' ? 'EXPENSE' : 'CASH_OUTFLOW';
             const [expData, budData, accData, prevExpData] = await Promise.all([
                 reportService.getExpenditures(range.start, range.end, mode),
                 budgetService.getBudgets(range.start, range.end, 'MONTHLY'),
                 accountService.getAll(),
-                reportService.getExpenditures(range.prevStart, range.prevEnd, mode),
+                reportService.getExpenditures(prevRange.start, prevRange.end, mode),
             ]);
             return { expData, budData, accData, prevExpData };
         },
     });
 
+    const onRefresh = useCallback(async () => {
+        setRefreshing(true);
+        await refetch();
+        queryClient.invalidateQueries({ queryKey: ['report'] });
+        queryClient.invalidateQueries({ queryKey: ['accounts'] });
+        setRefreshing(false);
+    }, [refetch, queryClient]);
+
     const { groups } = useMemo(() => {
         if (!data) return { groups: {} as any };
-        return buildReportGroups(data.accData, data.expData, data.budData, data.prevExpData, view);
-    }, [data, view]);
+        return buildReportGroups(data.accData, data.expData, data.budData, data.prevExpData, view, {
+            excludeZeroSpend, sortField, sortDesc,
+        });
+    }, [data, view, excludeZeroSpend, sortField, sortDesc]);
 
     const totals = useMemo(() => computeReportTotals(groups), [groups]);
     const headline = view === 'PROFIT_LOSS' ? totals.totalProfit : totals.netWorth;
-    const headlineChange = view === 'PROFIT_LOSS' ? totals.profitChange : totals.netWorthChange;
 
-    const toggle = (key: string) => setExpanded((prev) => {
+    const toggleGroup = (key: string) => setExpandedGroups((prev) => {
         const next = new Set(prev);
         next.has(key) ? next.delete(key) : next.add(key);
         return next;
     });
 
+    const toggleAccountExpand = async (accountId: string) => {
+        if (expandedAccount === accountId) {
+            setExpandedAccount(null);
+            return;
+        }
+        setExpandedAccount(accountId);
+
+        if (!accountItems[accountId]) {
+            setAccountItemsLoading((prev) => ({ ...prev, [accountId]: true }));
+            try {
+                const mode: ExpenditureMode = view === 'PROFIT_LOSS' ? 'EXPENSE' : 'CASH_OUTFLOW';
+                const items = await reportService.getExpenditureItems(accountId, range.start, range.end, mode);
+                setAccountItems((prev) => ({ ...prev, [accountId]: items }));
+            } catch (err) {
+                console.error('Failed to load subaccount items', err);
+            } finally {
+                setAccountItemsLoading((prev) => ({ ...prev, [accountId]: false }));
+            }
+        }
+    };
+
     const chartPeriods = useMemo(() => buildChartPeriods(chartTimeframe), [chartTimeframe]);
 
     const { data: chartRaw, isLoading: chartLoading } = useQuery({
-        queryKey: ['report-chart', view, chartTimeframe],
-        queryFn: async (): Promise<ExpenditureAggregation[][]> =>
+        queryKey: ['report-chart', organizationId, view, chartTimeframe],
+        queryFn: async () =>
             Promise.all(chartPeriods.map((p) => reportService.getExpenditures(p.startDate, p.endDate, 'EXPENSE'))),
         enabled: chartOpen,
     });
@@ -152,21 +208,64 @@ export default function ReportingScreen() {
                 const liabilities = exps.filter((e) => e.type === 'LIABILITY').reduce((s, e) => s + e.total_amount, 0);
                 value = assets - liabilities;
             }
-            return { label: p.label, shortLabel: p.label, value };
+            return { label: p.label, shortLabel: p.shortLabel, value };
         });
     }, [chartRaw, chartPeriods, view]);
 
+    if (chartOpen) {
+        return (
+            <View style={[styles.root, { flex: 1, paddingTop: insets.top + 12, paddingHorizontal: 20, paddingBottom: 10, gap: 14 }]}>
+                <Text style={styles.title}>Reporting</Text>
+
+                {/* Segmented View Toggle: Profit/Loss vs Net Worth */}
+                <AnimatedSegmented
+                    value={view}
+                    onChange={(v) => setView(v as ReportView)}
+                    trackStyle={styles.segment}
+                    indicatorStyle={styles.segmentIndicator}
+                    itemStyle={styles.segmentBtn}
+                    items={(['NET_WORTH', 'PROFIT_LOSS'] as ReportView[]).map((v) => ({
+                        value: v,
+                        content: (
+                            <Text style={[styles.segmentText, view === v && styles.segmentTextActive]}>
+                                {v === 'PROFIT_LOSS' ? 'Profit/Loss' : 'Net Worth'}
+                            </Text>
+                        ),
+                    }))}
+                />
+
+                <View style={{ flex: 1 }}>
+                    <ReportChartView
+                        reportView={view}
+                        timeframe={chartTimeframe}
+                        onTimeframeChange={setChartTimeframe}
+                        points={chartPoints}
+                        loading={chartLoading}
+                        onClose={() => setChartOpen(false)}
+                    />
+                </View>
+            </View>
+        );
+    }
+
     return (
-        <ScrollView style={styles.root} contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}>
+        <ScrollView
+            style={styles.root}
+            contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 12 }]}
+            refreshControl={
+                <RefreshControl refreshing={refreshing || isRefetching} onRefresh={onRefresh} tintColor={colors.blue} />
+            }
+        >
             <Text style={styles.title}>Reporting</Text>
 
+            {/* Segmented View Toggle: Profit/Loss vs Net Worth */}
             <AnimatedSegmented
                 value={view}
                 onChange={(v) => setView(v as ReportView)}
                 trackStyle={styles.segment}
                 indicatorStyle={styles.segmentIndicator}
                 itemStyle={styles.segmentBtn}
-                items={(['PROFIT_LOSS', 'NET_WORTH'] as ReportView[]).map((v) => ({
+                items={(['NET_WORTH', 'PROFIT_LOSS'] as ReportView[]).map((v) => ({
                     value: v,
                     content: (
                         <Text style={[styles.segmentText, view === v && styles.segmentTextActive]}>
@@ -176,104 +275,277 @@ export default function ReportingScreen() {
                 }))}
             />
 
-            <AnimatedTabContent tabKey={view} index={view === 'NET_WORTH' ? 1 : 0} style={{ gap: 14 }}>
-            <View style={styles.hero}>
-                <Pressable onPress={() => setChartOpen((o) => !o)}>
-                    <View style={styles.heroTop}>
-                        <Text style={styles.heroLabel}>{view === 'PROFIT_LOSS' ? 'Total Profit' : 'Net Worth'}</Text>
-                        <ChevronDown size={16} color="rgba(255,255,255,0.5)" style={chartOpen ? styles.heroChevronOpen : undefined} />
-                    </View>
-                    {isLoading ? (
-                        <ActivityIndicator color="#FFFFFF" style={{ marginTop: 8, alignSelf: 'flex-start' }} />
-                    ) : (
-                        <>
-                            <Text style={styles.heroValue}>{formatKwacha(headline)}</Text>
-                            <View style={styles.heroChange}>
-                                {headlineChange.isIncrease
-                                    ? <ChevronRight size={13} color="#4ADE80" style={{ transform: [{ rotate: '-90deg' }] }} />
-                                    : <ChevronRight size={13} color="#F87171" style={{ transform: [{ rotate: '90deg' }] }} />}
-                                <Text style={[styles.heroChangeText, { color: headlineChange.isIncrease ? '#4ADE80' : '#F87171' }]}>
-                                    {headlineChange.value}% vs last year
-                                </Text>
+            <AnimatedTabContent tabKey={view} index={view === 'PROFIT_LOSS' ? 1 : 0} style={{ gap: 14 }}>
+                    <>
+                        {/* Dark Gradient Hero Card (NO percentage change on this card) */}
+                        <LinearGradient
+                            colors={['#0F172A', '#172554']}
+                            start={{ x: 1, y: 0 }}
+                            end={{ x: 0, y: 1 }}
+                            style={styles.hero}
+                        >
+                            <Pressable onPress={() => setChartOpen(true)}>
+                                <View style={styles.heroTop}>
+                                    <Text style={styles.heroLabel}>{view === 'PROFIT_LOSS' ? 'TOTAL PROFIT' : 'NET WORTH'}</Text>
+                                    <View style={styles.heroChevronWrap}>
+                                        <ChevronDown size={14} color="#FFFFFF" />
+                                    </View>
+                                </View>
+                                {isLoading ? (
+                                    <ActivityIndicator color="#FFFFFF" style={{ marginTop: 8, alignSelf: 'flex-start' }} />
+                                ) : (
+                                    <Text style={styles.heroValue}>{formatKwacha(headline)}</Text>
+                                )}
+                            </Pressable>
+                        </LinearGradient>
+
+                        {/* Financial Highlights Stack */}
+                        <FinancialHighlights />
+
+                        {/* Toolbar: Date Range Label + Sort & Filter Buttons */}
+                        <View style={styles.toolbar}>
+                            <Pressable
+                                style={styles.dateRangeBtn}
+                                onPress={() => {
+                                    setFilterStartInput(customFilter?.start ?? range.start);
+                                    setFilterEndInput(customFilter?.end ?? range.end);
+                                    setIsDateFilterOpen(true);
+                                }}
+                            >
+                                <Text style={styles.dateRangeText}>{range.label}</Text>
+                                <CalendarDays size={16} color={customFilter ? colors.blue : colors.textMuted} />
+                            </Pressable>
+                            {customFilter && (
+                                <Pressable onPress={() => setCustomFilter(null)} style={styles.clearFilterBtn} hitSlop={6}>
+                                    <X size={12} color={colors.textMuted} />
+                                </Pressable>
+                            )}
+
+                            <View style={styles.toolbarActions}>
+                                <Pressable
+                                    style={[styles.iconPillBtn, excludeZeroSpend && styles.iconPillBtnActive]}
+                                    onPress={() => setExcludeZeroSpend(!excludeZeroSpend)}
+                                    hitSlop={6}
+                                >
+                                    <Filter size={16} color={excludeZeroSpend ? colors.blue : colors.textMuted} />
+                                </Pressable>
+                                <Pressable
+                                    style={styles.iconPillBtn}
+                                    onPress={() => setIsSortModalOpen(true)}
+                                    hitSlop={6}
+                                >
+                                    <ArrowUpDown size={16} color={colors.textMuted} />
+                                </Pressable>
                             </View>
-                        </>
-                    )}
-                </Pressable>
+                        </View>
 
-                {chartOpen && (
-                    <View style={styles.heroChartWrap}>
-                        <ReportTrendChart
-                            points={chartPoints}
-                            loading={chartLoading}
-                            timeframe={chartTimeframe}
-                            onTimeframeChange={setChartTimeframe}
-                            width={CHART_WIDTH}
-                        />
-                    </View>
-                )}
-            </View>
-
-            <View style={styles.periodRow}>
-                {(['MONTH', 'QUARTER', 'YTD'] as Period[]).map((p) => (
-                    <Pressable
-                        key={p}
-                        onPress={() => setPeriod(p)}
-                        style={[styles.periodChip, period === p && styles.periodChipActive]}
-                    >
-                        <Text style={[styles.periodText, period === p && styles.periodTextActive]}>
-                            {p === 'MONTH' ? 'This month' : p === 'QUARTER' ? 'This quarter' : 'YTD'}
-                        </Text>
-                    </Pressable>
-                ))}
-            </View>
-
-            {isError && (
-                <View style={styles.errorCard}>
-                    <Text style={styles.errorTitle}>Couldn’t load the report</Text>
-                </View>
-            )}
-
-            {Object.entries(groups).map(([key, group]: [string, any]) => {
-                if (group.items.length === 0) return null;
-                const isOpen = expanded.has(key);
-                const progress = group.totals.budgeted_amount > 0
-                    ? Math.min((group.totals.total_amount / group.totals.budgeted_amount) * 100, 100)
-                    : 0;
-                return (
-                    <View key={key} style={styles.groupCard}>
-                        <Pressable style={styles.groupHeader} onPress={() => toggle(key)}>
-                            <View style={styles.groupHeaderMain}>
-                                <Text style={styles.groupName}>{group.groupName}</Text>
-                                <Text style={styles.groupTotal}>{formatKwacha(group.totals.total_amount)}</Text>
-                            </View>
-                            {isOpen
-                                ? <ChevronDown size={16} color={colors.textFaint} />
-                                : <ChevronRight size={16} color={colors.textFaint} />}
-                        </Pressable>
-
-                        {group.totals.budgeted_amount > 0 && (
-                            <View style={styles.progressTrack}>
-                                <View style={[styles.progressFill, { width: `${progress}%` },
-                                    progress > 100 && styles.progressOver]} />
+                        {isError && (
+                            <View style={styles.errorCard}>
+                                <Text style={styles.errorTitle}>Couldn’t load the report</Text>
                             </View>
                         )}
 
-                        {isOpen && group.items.map((item: any) => (
-                            <View key={item.account_id} style={styles.item}>
-                                <Text style={styles.itemName} numberOfLines={1}>{item.account_name}</Text>
-                                <Text style={styles.itemAmount}>{formatKwacha(item.total_amount)}</Text>
-                            </View>
-                        ))}
-                    </View>
-                );
-            })}
+                        {/* Category Accordion Cards */}
+                        {Object.entries(groups).map(([key, group]: [string, any]) => {
+                            const validItems = group.items.filter((item: any) => {
+                                const amt = Number(item.total_amount) || 0;
+                                return !excludeZeroSpend || amt !== 0;
+                            });
+                            if (validItems.length === 0) return null;
 
-            {!isLoading && !isError && Object.values(groups).every((g: any) => g.items.length === 0) && (
-                <View style={styles.empty}>
-                    <Text style={styles.emptyText}>No activity in this period.</Text>
-                </View>
-            )}
+                            const isOpen = expandedGroups.has(key);
+                            const progress = group.totals.budgeted_amount > 0
+                                ? Math.min((group.totals.total_amount / group.totals.budgeted_amount) * 100, 100)
+                                : 0;
+
+                            return (
+                                <View key={key} style={styles.groupCard}>
+                                    <Pressable style={styles.groupHeader} onPress={() => toggleGroup(key)}>
+                                        <View style={styles.groupHeaderMain}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <Text style={styles.groupName}>{group.groupName}</Text>
+                                                <View style={styles.countBadge}>
+                                                    <Text style={styles.countBadgeText}>{validItems.length}</Text>
+                                                </View>
+                                            </View>
+                                            <Text style={styles.groupTotal}>{formatKwacha(group.totals.total_amount)}</Text>
+                                        </View>
+                                        {isOpen
+                                            ? <ChevronDown size={18} color={colors.textMuted} />
+                                            : <ChevronRight size={18} color={colors.textMuted} />}
+                                    </Pressable>
+
+                                    {group.totals.budgeted_amount > 0 && (
+                                        <View style={styles.progressTrack}>
+                                            <View
+                                                style={[
+                                                    styles.progressFill,
+                                                    { width: `${progress}%` },
+                                                    progress > 100 && styles.progressOver,
+                                                ]}
+                                            />
+                                        </View>
+                                    )}
+
+                                    {/* Expanded Subaccounts */}
+                                    {isOpen && (
+                                        <View style={styles.subaccountsList}>
+                                             {validItems.map((item: any) => {
+                                                const isAccExpanded = expandedAccount === item.account_id;
+                                                const txns = accountItems[item.account_id] || [];
+                                                const isTxnsLoading = accountItemsLoading[item.account_id];
+                                                const { emoji, cleanName } = extractEmojiAndName(item.account_name);
+                                                const displayEmoji = emoji || getAccountEmoji(item.account_name, key);
+
+                                                return (
+                                                    <View key={item.account_id} style={styles.subaccountBox}>
+                                                        <Pressable
+                                                            style={styles.subaccountRow}
+                                                            onPress={() => toggleAccountExpand(item.account_id)}
+                                                        >
+                                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0, paddingRight: 8 }}>
+                                                                {isAccExpanded ? (
+                                                                    <ChevronDown size={14} color={colors.textMuted} />
+                                                                ) : (
+                                                                    <ChevronRight size={14} color={colors.textMuted} />
+                                                                )}
+                                                                <Text style={{ fontSize: 16 }}>{displayEmoji}</Text>
+                                                                <Text style={styles.subaccountName} numberOfLines={1} ellipsizeMode="tail">
+                                                                    {cleanName}
+                                                                </Text>
+                                                            </View>
+                                                            <Text style={styles.subaccountAmount}>
+                                                                {formatKwacha(item.total_amount)}
+                                                            </Text>
+                                                        </Pressable>
+
+                                                        {/* Color-coded time bucket progress bar on expansion */}
+                                                        {isAccExpanded && (
+                                                            <View style={styles.expandContent}>
+                                                                <BucketProgressBar
+                                                                    items={txns}
+                                                                    currTotal={item.total_amount}
+                                                                    groupId={key}
+                                                                />
+
+                                                                {/* Subaccount transactions history list */}
+                                                                <View style={styles.txnsContainer}>
+                                                                    <Text style={styles.txnsHeader}>TRANSACTION HISTORY</Text>
+                                                                    {isTxnsLoading ? (
+                                                                        <ActivityIndicator color={colors.blue} style={{ marginVertical: 8 }} />
+                                                                    ) : txns.length === 0 ? (
+                                                                        <Text style={styles.noTxnsText}>No transactions in this period.</Text>
+                                                                    ) : (
+                                                                        txns.map((t) => (
+                                                                            <View key={t.id} style={styles.txnRow}>
+                                                                                <View style={{ flex: 1, paddingRight: 8 }}>
+                                                                                    <Text style={styles.txnDesc} numberOfLines={1}>{t.description}</Text>
+                                                                                    <Text style={styles.txnDate}>{new Date(t.date).toLocaleDateString()}</Text>
+                                                                                </View>
+                                                                                <Text style={styles.txnAmount}>{formatKwacha(t.amount)}</Text>
+                                                                            </View>
+                                                                        ))
+                                                                    )}
+                                                                </View>
+                                                            </View>
+                                                        )}
+                                                    </View>
+                                                );
+                                            })}
+                                        </View>
+                                    )}
+                                </View>
+                            );
+                        })}
+
+                        {!isLoading && !isError && Object.values(groups).every((g: any) => g.items.length === 0) && (
+                            <View style={styles.empty}>
+                                <Text style={styles.emptyText}>No activity in this period.</Text>
+                            </View>
+                        )}
+                    </>
             </AnimatedTabContent>
+
+            {/* Sort Modal */}
+            {isSortModalOpen && (
+                <Modal visible={isSortModalOpen} transparent animationType="fade" onRequestClose={() => setIsSortModalOpen(false)}>
+                    <Pressable style={styles.modalOverlay} onPress={() => setIsSortModalOpen(false)}>
+                        <View style={styles.sortBox}>
+                            <Text style={styles.sortTitle}>Sort Accounts</Text>
+                            {[
+                                { label: 'Amount (High to Low)', field: 'amount', desc: true },
+                                { label: 'Amount (Low to High)', field: 'amount', desc: false },
+                                { label: 'Name (A to Z)', field: 'name', desc: false },
+                                { label: 'Name (Z to A)', field: 'name', desc: true },
+                            ].map((opt, idx) => {
+                                const selected = sortField === opt.field && sortDesc === opt.desc;
+                                return (
+                                    <Pressable
+                                        key={idx}
+                                        style={[styles.sortOption, selected && styles.sortOptionSelected]}
+                                        onPress={() => {
+                                            setSortField(opt.field as any);
+                                            setSortDesc(opt.desc);
+                                            setIsSortModalOpen(false);
+                                        }}
+                                    >
+                                        <Text style={[styles.sortOptionText, selected && styles.sortOptionTextSelected]}>
+                                            {opt.label}
+                                        </Text>
+                                        {selected && <Check size={16} color={colors.blue} />}
+                                    </Pressable>
+                                );
+                            })}
+                        </View>
+                    </Pressable>
+                </Modal>
+            )}
+
+            {/* Custom Date Range Filter Modal */}
+            {isDateFilterOpen && (
+                <Modal visible={isDateFilterOpen} transparent animationType="fade" onRequestClose={() => setIsDateFilterOpen(false)}>
+                    <Pressable style={styles.modalOverlay} onPress={() => setIsDateFilterOpen(false)}>
+                        <View style={styles.dateFilterBox}>
+                            <Text style={styles.dateFilterTitle}>Filter by Date Range</Text>
+                            <Text style={styles.label}>Start Date (YYYY-MM-DD)</Text>
+                            <TextInput
+                                style={styles.dateInput}
+                                value={filterStartInput}
+                                onChangeText={setFilterStartInput}
+                                placeholder="2026-01-01"
+                                placeholderTextColor={colors.textFaint}
+                            />
+                            <Text style={[styles.label, { marginTop: 10 }]}>End Date (YYYY-MM-DD)</Text>
+                            <TextInput
+                                style={styles.dateInput}
+                                value={filterEndInput}
+                                onChangeText={setFilterEndInput}
+                                placeholder="2026-12-31"
+                                placeholderTextColor={colors.textFaint}
+                            />
+                            <View style={styles.dateBtnRow}>
+                                <Pressable
+                                    style={styles.resetBtn}
+                                    onPress={() => { setCustomFilter(null); setIsDateFilterOpen(false); }}
+                                >
+                                    <Text style={styles.resetBtnText}>Reset to YTD</Text>
+                                </Pressable>
+                                <Pressable
+                                    style={styles.applyBtn}
+                                    onPress={() => {
+                                        if (filterStartInput && filterEndInput) {
+                                            setCustomFilter({ start: filterStartInput, end: filterEndInput });
+                                        }
+                                        setIsDateFilterOpen(false);
+                                    }}
+                                >
+                                    <Text style={styles.applyBtnText}>Apply</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    </Pressable>
+                </Modal>
+            )}
         </ScrollView>
     );
 }
@@ -288,52 +560,75 @@ const styles = StyleSheet.create({
     },
     segmentBtn: { flex: 1, paddingVertical: 9, borderRadius: radius.pill, alignItems: 'center' },
     segmentIndicator: {
-        borderRadius: radius.pill,
-        backgroundColor: colors.surface,
+        borderRadius: radius.pill, backgroundColor: colors.surface,
         shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1,
     },
     segmentText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
     segmentTextActive: { color: colors.text },
-    hero: {
-        backgroundColor: '#0F172A', borderRadius: 18, padding: 20, minHeight: 110,
+    hero: { borderRadius: 18, padding: 20, minHeight: 100, overflow: 'hidden' },
+    heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    heroLabel: { fontFamily: fonts.bodyBold, fontSize: 11, color: '#94A3B8', letterSpacing: 0.8 },
+    heroValue: { fontFamily: fonts.bodyBold, fontSize: 32, color: '#FFFFFF', marginTop: 6 },
+    heroChevronWrap: {
+        width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        alignItems: 'center', justifyContent: 'center',
     },
-    heroTop: { flexDirection: 'row', justifyContent: 'space-between' },
-    heroLabel: { fontFamily: fonts.body, fontSize: 12, color: '#94A3B8', letterSpacing: 0.5 },
-    heroValue: { fontFamily: fonts.bodyBold, fontSize: 32, color: '#FFFFFF', marginTop: 4 },
-    heroChange: { flexDirection: 'row', alignItems: 'center', gap: 3, marginTop: 8 },
-    heroChangeText: { fontFamily: fonts.bodyMedium, fontSize: 12 },
-    heroChevronOpen: { transform: [{ rotate: '180deg' }] },
-    heroChartWrap: { marginTop: 18, paddingTop: 16, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)' },
-    periodRow: { flexDirection: 'row', gap: 8 },
-    periodChip: {
-        paddingHorizontal: 14, paddingVertical: 8, borderRadius: radius.pill,
+    toolbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 },
+    dateRangeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    dateRangeText: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.navy },
+    clearFilterBtn: { padding: 4 },
+    toolbarActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    iconPillBtn: {
+        padding: 8, borderRadius: radius.pill, backgroundColor: colors.surface,
         borderWidth: 1, borderColor: colors.borderStrong,
     },
-    periodChipActive: { backgroundColor: colors.navy, borderColor: colors.navy },
-    periodText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
-    periodTextActive: { color: '#FFFFFF' },
+    iconPillBtnActive: { borderColor: colors.blue, backgroundColor: colors.tabActiveBg },
     groupCard: {
         backgroundColor: colors.surface, borderRadius: radius.lg, padding: 16,
         borderWidth: 1, borderColor: colors.border,
     },
     groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     groupHeaderMain: { flex: 1 },
-    groupName: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    groupName: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text },
+    countBadge: { backgroundColor: colors.canvasAlt, paddingHorizontal: 6, paddingVertical: 1, borderRadius: radius.pill },
+    countBadgeText: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.textMuted },
     groupTotal: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.navy, marginTop: 2 },
     progressTrack: { height: 4, borderRadius: 2, backgroundColor: colors.canvasAlt, marginTop: 10, overflow: 'hidden' },
     progressFill: { height: '100%', backgroundColor: colors.blue, borderRadius: 2 },
     progressOver: { backgroundColor: colors.danger },
-    item: {
-        flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8,
-        borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginTop: 8,
+    subaccountsList: { marginTop: 10, gap: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, paddingTop: 6 },
+    subaccountBox: { paddingVertical: 6 },
+    subaccountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+    subaccountName: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text, flex: 1 },
+    subaccountAmount: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
+    expandContent: { marginTop: 6, paddingLeft: 10, paddingRight: 4 },
+    txnsContainer: {
+        backgroundColor: colors.canvasAlt, borderRadius: radius.md, padding: 10, marginTop: 8, gap: 6,
     },
-    itemName: { flex: 1, fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, marginRight: 12 },
-    itemAmount: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.text },
+    txnsHeader: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.textFaint, letterSpacing: 0.8 },
+    txnRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
+    txnDesc: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.text },
+    txnDate: { fontFamily: fonts.body, fontSize: 10, color: colors.textFaint },
+    txnAmount: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.text },
+    noTxnsText: { fontFamily: fonts.body, fontSize: 11, color: colors.textFaint, fontStyle: 'italic' },
     empty: { paddingVertical: 48, alignItems: 'center' },
     emptyText: { fontFamily: fonts.body, fontSize: 14, color: colors.textFaint },
-    errorCard: {
-        backgroundColor: colors.surface, borderRadius: radius.md, padding: 16,
-        borderWidth: 1, borderColor: colors.danger,
-    },
+    errorCard: { backgroundColor: colors.surface, borderRadius: radius.md, padding: 16, borderWidth: 1, borderColor: colors.danger },
     errorTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.danger },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    sortBox: { width: '100%', maxWidth: 280, backgroundColor: colors.surface, borderRadius: radius.lg, padding: 16, gap: 4 },
+    sortTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.text, marginBottom: 8 },
+    sortOption: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: radius.md },
+    sortOptionSelected: { backgroundColor: colors.tabActiveBg },
+    sortOptionText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted },
+    sortOptionTextSelected: { fontFamily: fonts.bodyBold, color: colors.blue },
+    dateFilterBox: { width: '100%', maxWidth: 300, backgroundColor: colors.surface, borderRadius: radius.lg, padding: 18, gap: 4 },
+    dateFilterTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text, marginBottom: 8 },
+    label: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted, marginBottom: 4 },
+    dateInput: { fontFamily: fonts.body, fontSize: 14, color: colors.text, borderWidth: 1, borderColor: colors.borderStrong, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 8 },
+    dateBtnRow: { flexDirection: 'row', gap: 8, marginTop: 16 },
+    resetBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center' },
+    resetBtnText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
+    applyBtn: { flex: 1, paddingVertical: 10, borderRadius: radius.md, backgroundColor: colors.blue, alignItems: 'center' },
+    applyBtnText: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#FFFFFF' },
 });

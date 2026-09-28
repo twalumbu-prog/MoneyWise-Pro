@@ -2,12 +2,20 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AppState } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { clearCache } from '../platform/storage';
+import { clearCache, cacheStore } from '../platform/storage';
+import { queryClient } from '../lib/queryClient';
 import { registerForPushNotificationsAsync } from '../lib/pushNotifications';
 import { userService } from 'core';
 
 import type { UserRole } from 'core';
 export type { UserRole };
+
+export interface UserOrganization {
+    role: UserRole;
+    status: string;
+    employee_id: string | null;
+    organization: { id: string; name: string; slug?: string; logo_url?: string | null };
+}
 
 interface AuthContextValue {
     user: User | null;
@@ -18,7 +26,12 @@ interface AuthContextValue {
     userStatus: string | null;
     organizationId: string | null;
     organizationName: string | null;
-    signInWithPassword: (identifier: string, password: string) => Promise<void>;
+    userOrganizations: UserOrganization[];
+    refreshUserOrganizations: () => Promise<void>;
+    switchOrganization: (organizationId: string) => Promise<void>;
+    signInWithPassword: (identifier: string, password: string, preferredAccountType?: 'INDIVIDUAL' | 'BUSINESS') => Promise<void>;
+    signUp: (email: string, password: string, name: string, organizationName: string, username: string) => Promise<void>;
+    joinOrganization: (email: string, password: string, name: string, organizationId: string, username: string) => Promise<void>;
     signOut: () => Promise<void>;
 }
 
@@ -33,13 +46,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userStatus, setUserStatus] = useState<string | null>(null);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [organizationName, setOrganizationName] = useState<string | null>(null);
+    const [userOrganizations, setUserOrganizations] = useState<UserOrganization[]>([]);
 
     const mounted = useRef(true);
 
-    // Supabase's auto-refresh runs on a timer, which iOS and Android suspend in
-    // the background. Without this the token is stale on resume and the first
-    // request after unlocking eats a 401 round-trip — the web app never needs
-    // it because a tab is either alive or gone.
     useEffect(() => {
         const sub = AppState.addEventListener('change', (state) => {
             if (state === 'active') supabase.auth.startAutoRefresh();
@@ -53,8 +63,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         mounted.current = true;
 
         const loadProfile = async (userId: string) => {
-            // Same query the web AuthContext runs — one of only two places any
-            // client reads Supabase directly instead of going through the API.
             const { data, error } = await supabase
                 .from('users')
                 .select('role, status, name, organization_id, organizations(name)')
@@ -68,10 +76,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setUserName(row.name ?? null);
             setUserRole(row.role ?? null);
             setUserStatus(row.status ?? null);
-            setOrganizationId(row.organization_id ?? null);
-            setOrganizationName(row.organizations?.name ?? null);
+            const activeOrgId = row.organization_id ?? null;
+            setOrganizationId(activeOrgId);
+            if (activeOrgId) {
+                await cacheStore.set('last_active_organization_id', activeOrgId);
+            }
+            const orgObj: any = row.organizations;
+            const fetchedOrgName = Array.isArray(orgObj) ? orgObj[0]?.name : orgObj?.name;
+            setOrganizationName(fetchedOrgName ?? null);
+            await refreshUserOrganizations();
 
-            // Fire-and-forget: a push-registration failure must never block sign-in.
             registerForPushNotificationsAsync().then((result) => {
                 if (!result || !mounted.current) return;
                 userService.registerPushToken(result.token, result.platform)
@@ -99,6 +113,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUserStatus(null);
                 setOrganizationId(null);
                 setOrganizationName(null);
+                setUserOrganizations([]);
             }
             if (mounted.current) setLoading(false);
         });
@@ -109,11 +124,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         };
     }, []);
 
-    const signInWithPassword = async (identifier: string, password: string) => {
+    const isPersonalOrg = (name?: string) => {
+        if (!name) return false;
+        const n = name.toLowerCase();
+        return n.includes('workspace') || n.includes('personal') || n.includes('individual');
+    };
+
+    const signInWithPassword = async (identifier: string, password: string, preferredAccountType?: 'INDIVIDUAL' | 'BUSINESS') => {
         let email = identifier.trim();
 
-        // Staff sign in with a username as often as an email, so resolve it the
-        // same way the web app does before handing Supabase an address.
         if (!email.includes('@')) {
             const { getCore } = await import('core');
             const apiUrl = getCore().env.apiUrl;
@@ -127,32 +146,158 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             email = body.email;
         }
 
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
+
+        if (preferredAccountType && data.session) {
+            try {
+                const { getCore } = await import('core');
+                const apiUrl = getCore().env.apiUrl;
+                const res = await fetch(`${apiUrl}/auth/my-organizations`, {
+                    headers: { Authorization: `Bearer ${data.session.access_token}` },
+                });
+
+                let orgs: UserOrganization[] = [];
+                if (res.ok) {
+                    orgs = (await res.json()) || [];
+                    setUserOrganizations(orgs);
+                }
+
+                if (preferredAccountType === 'INDIVIDUAL') {
+                    const personalOrgs = orgs.filter((o) => isPersonalOrg(o.organization?.name));
+                    if (personalOrgs.length === 0) {
+                        await signOut();
+                        throw new Error(
+                            "You do not have a Personal Account associated with this email. Please switch to 'For Businesses' or create a Personal Account using 'Sign Up Now'."
+                        );
+                    }
+                    if (personalOrgs.length === 1) {
+                        await switchOrganization(personalOrgs[0].organization.id);
+                    }
+                } else if (preferredAccountType === 'BUSINESS') {
+                    const bizOrgs = orgs.filter((o) => !isPersonalOrg(o.organization?.name));
+                    if (bizOrgs.length === 0) {
+                        await signOut();
+                        throw new Error(
+                            "You do not have a Business Account associated with this email. Please switch to 'For Individuals' or create a Business Account using 'Sign Up Now'."
+                        );
+                    }
+                    if (bizOrgs.length === 1) {
+                        await switchOrganization(bizOrgs[0].organization.id);
+                    }
+                }
+            } catch (err: any) {
+                if (err.message?.includes('You do not have a')) {
+                    throw err;
+                }
+                console.warn('[AuthContext] Strict account verification error:', err);
+                throw err;
+            }
+        }
+    };
+
+    const signUp = async (email: string, password: string, name: string, organizationName: string, username: string) => {
+        const { getCore } = await import('core');
+        const apiUrl = getCore().env.apiUrl;
+        const res = await fetch(`${apiUrl}/auth/register`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, name, organizationName, username }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            if (data.suggestion) throw new Error(JSON.stringify(data));
+            throw new Error(data.error || 'Registration failed');
+        }
+    };
+
+    const joinOrganization = async (email: string, password: string, name: string, organizationId: string, username: string) => {
+        const { getCore } = await import('core');
+        const apiUrl = getCore().env.apiUrl;
+        const res = await fetch(`${apiUrl}/auth/join-request`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, name, organizationId, username }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Join request failed');
+    };
+
+    const refreshUserOrganizations = async () => {
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+            const { getCore } = await import('core');
+            const apiUrl = getCore().env.apiUrl;
+            const res = await fetch(`${apiUrl}/auth/my-organizations`, {
+                headers: { Authorization: `Bearer ${session.access_token}` },
+            });
+            if (res.ok) setUserOrganizations((await res.json()) || []);
+        } catch (err) {
+            console.error('Failed to fetch user organizations:', err);
+        }
+    };
+
+    const switchOrganization = async (orgId: string) => {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('No active session');
+        const { getCore } = await import('core');
+        const apiUrl = getCore().env.apiUrl;
+        const res = await fetch(`${apiUrl}/auth/switch-organization`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ organizationId: orgId }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to switch organization');
+
+        queryClient.clear();
+        clearCache();
+        if (orgId) {
+            await cacheStore.set('last_active_organization_id', orgId);
+        }
+        setUserRole(data.user.role);
+        setUserStatus(data.user.status);
+        setOrganizationId(data.user.organization_id);
+        const targetOrg = userOrganizations.find((uo) => uo.organization?.id === orgId);
+        setOrganizationName(targetOrg?.organization?.name || 'Selected Organization');
     };
 
     const signOut = async () => {
-        // Must run BEFORE supabase.auth.signOut() — the unregister call needs a
-        // still-valid session token, and a shared/reset device must stop
-        // receiving this user's pushes the moment they sign out, not linger
-        // registered to whoever signs in next.
+        Promise.race([
+            (async () => {
+                const result = await registerForPushNotificationsAsync();
+                if (result) await userService.unregisterPushToken(result.token);
+            })(),
+            new Promise((resolve) => setTimeout(resolve, 1000)),
+        ]).catch((err) => console.warn('[Push] Unregister on sign-out background warning:', err));
+
+        setSession(null);
+        setUser(null);
+        setUserName(null);
+        setUserRole(null);
+        setUserStatus(null);
+        setOrganizationId(null);
+        setOrganizationName(null);
+        setUserOrganizations([]);
+
         try {
-            const result = await registerForPushNotificationsAsync();
-            if (result) await userService.unregisterPushToken(result.token);
+            await supabase.auth.signOut();
         } catch (err) {
-            console.warn('[Push] Failed to unregister token on sign-out:', err);
+            console.warn('[Auth] Supabase signOut error:', err);
         }
 
-        await supabase.auth.signOut();
-        // Financial data must never outlive the session on a shared device.
+        queryClient.clear();
         clearCache();
+        await cacheStore.remove('last_active_organization_id');
     };
 
     return (
         <AuthContext.Provider
             value={{
                 user, session, loading, userName, userRole, userStatus,
-                organizationId, organizationName, signInWithPassword, signOut,
+                organizationId, organizationName, userOrganizations, refreshUserOrganizations, switchOrganization,
+                signInWithPassword, signUp, joinOrganization, signOut,
             }}
         >
             {children}

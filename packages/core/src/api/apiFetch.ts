@@ -30,6 +30,16 @@ let listenerInstalled = false;
 function ensureTokenCache(): void {
     if (listenerInstalled) return;
     listenerInstalled = true;
+    try {
+        getCore().supabase.auth.getSession().then(({ data }: any) => {
+            if (data?.session) {
+                cachedToken = data.session.access_token ?? null;
+                cachedTokenExpiresAt = data.session.expires_at ?? 0;
+            }
+        }).catch(() => {});
+    } catch {
+        // Non-fatal if platform not initialized yet
+    }
     getCore().supabase.auth.onAuthStateChange((event, session) => {
         if (event === 'SIGNED_OUT' || !session) {
             cachedToken = null;
@@ -71,7 +81,7 @@ function refreshAccessToken(): Promise<RefreshResult> {
         inFlightRefresh = (async (): Promise<RefreshResult> => {
             try {
                 const { data, error }: any = await withTimeout(
-                    getCore().supabase.auth.refreshSession(), 8000, 'Refresh timeout'
+                    getCore().supabase.auth.refreshSession(), 12000, 'Refresh timeout'
                 );
                 if (error) {
                     // auth-js tags network / 5xx failures as retryable. Anything else
@@ -81,6 +91,10 @@ function refreshAccessToken(): Promise<RefreshResult> {
                         : { status: 'invalid' };
                 }
                 const token = data?.session?.access_token;
+                if (token) {
+                    cachedToken = token;
+                    cachedTokenExpiresAt = data?.session?.expires_at ?? 0;
+                }
                 return token ? { status: 'refreshed', token } : { status: 'invalid' };
             } catch {
                 // Our own timeout, or a thrown network error → treat as transient.
@@ -96,9 +110,13 @@ function refreshAccessToken(): Promise<RefreshResult> {
 async function getAccessToken(): Promise<string | null> {
     if (cachedTokenIsFresh()) return cachedToken;
     try {
-        const result: any = await withTimeout(getCore().supabase.auth.getSession(), 5000, 'Session fetch timeout');
+        const result: any = await withTimeout(getCore().supabase.auth.getSession(), 12000, 'Session fetch timeout');
         const token = result?.data?.session?.access_token;
-        if (token) return token;
+        if (token) {
+            cachedToken = token;
+            cachedTokenExpiresAt = result?.data?.session?.expires_at ?? 0;
+            return token;
+        }
         return null;
     } catch (err) {
         // getSession hung on the auth lock. Rather than fire a token-less request

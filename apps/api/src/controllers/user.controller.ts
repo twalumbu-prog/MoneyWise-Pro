@@ -775,3 +775,402 @@ export const unregisterPushToken = async (req: AuthRequest, res: any): Promise<a
     }
 };
 
+/**
+ * Search MoneyWise recipients for P2P transfers (MoneyWise Pay).
+ * Supports search by email, username, phone, name, or MoneyWise ID / UUID.
+ */
+export const searchRecipients = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const query = ((req.query.q as string) || (req.query.query as string) || '').trim();
+        const currentUserId = (req as any).user?.id;
+        const currentOrgId = (req as any).user?.organization_id;
+
+        if (!query || query.length < 2) {
+            return res.json([]);
+        }
+
+        const cleanHandle = query.startsWith('@') ? query.slice(1).trim() : query;
+        const cleanPhone = query.replace(/[^0-9+]/g, '');
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(query);
+        // The four modes the UI advertises are email / "Lenco ID" (the MW-XXXXXXXX
+        // shown throughout this file) / phone / username — but only email and
+        // username were ever wired into this query. isMwId + shortHex, and the two
+        // phone forms below, close that gap using the same matching verifyRecipient
+        // already does correctly elsewhere in this file.
+        const isMwId = /^MW-[0-9A-F]{8}$/i.test(query);
+        const shortHex = isMwId ? query.slice(3).toLowerCase() : null;
+        // Local numbers get typed/stored as either 0XXXXXXXXX or 260XXXXXXXXX —
+        // generate both forms so a search matches regardless of which one a user's
+        // payment_info happens to have.
+        const phoneVariants = new Set<string>();
+        if (cleanPhone.length >= 5) {
+            const digitsOnly = cleanPhone.replace(/^\+/, '');
+            phoneVariants.add(digitsOnly);
+            if (digitsOnly.startsWith('0')) phoneVariants.add(`260${digitsOnly.slice(1)}`);
+            if (digitsOnly.startsWith('260')) phoneVariants.add(`0${digitsOnly.slice(3)}`);
+        }
+
+        // 1. Search Users
+        let userQuery = supabase
+            .from('users')
+            .select(`
+                id,
+                name,
+                email,
+                username,
+                organization_id,
+                payment_info,
+                status
+            `)
+            .neq('status', 'DISABLED')
+            .limit(15);
+
+        // Filter out sender's own current user profile
+        if (currentUserId) {
+            userQuery = userQuery.neq('id', currentUserId);
+        }
+
+        const userOrConditions: string[] = [
+            `email.ilike.%${query}%`,
+            `username.ilike.%${cleanHandle}%`,
+            `name.ilike.%${query}%`
+        ];
+        if (isUUID) {
+            userOrConditions.push(`id.eq.${query}`);
+        }
+        for (const variant of phoneVariants) {
+            userOrConditions.push(`payment_info->>mobile_money_number.ilike.%${variant}%`);
+            userOrConditions.push(`payment_info->>phone.ilike.%${variant}%`);
+        }
+
+        userQuery = userQuery.or(userOrConditions.join(','));
+        const { data: matchedUsers, error: userError } = await userQuery;
+        if (userError) {
+            console.error('[SearchRecipients] User search error:', userError);
+        }
+        let userResults = matchedUsers || [];
+
+        // MW-ID short-code search: the id-derived code isn't a stored/indexed
+        // column, so — same approach verifyRecipient already uses — pull a bounded
+        // candidate set and match the prefix in memory instead of in SQL.
+        if (shortHex && userResults.every((u: any) => !u.id.replace(/-/g, '').toLowerCase().startsWith(shortHex))) {
+            let candidateQuery = supabase
+                .from('users')
+                .select('id, name, email, username, organization_id, payment_info, status')
+                .neq('status', 'DISABLED')
+                .limit(200);
+            if (currentUserId) candidateQuery = candidateQuery.neq('id', currentUserId);
+            const { data: candidates } = await candidateQuery;
+            const prefixMatches = (candidates || []).filter((u: any) =>
+                u.id.replace(/-/g, '').toLowerCase().startsWith(shortHex));
+            const existingIds = new Set(userResults.map((u: any) => u.id));
+            userResults = [...userResults, ...prefixMatches.filter((u: any) => !existingIds.has(u.id))];
+        }
+
+        // 2. Search Organizations (Workspaces / Businesses)
+        let orgQuery = supabase
+            .from('organizations')
+            .select('id, name, logo_url, email, phone, public_username, slug, lenco_subaccount_id')
+            .limit(15);
+
+        // Only exclude current sender organization
+        if (currentOrgId) {
+            orgQuery = orgQuery.neq('id', currentOrgId);
+        }
+
+        const orgOrConditions: string[] = [
+            `name.ilike.%${query}%`,
+            `email.ilike.%${query}%`,
+            `slug.ilike.%${cleanHandle}%`
+        ];
+        if (cleanHandle.length >= 2) {
+            orgOrConditions.push(`public_username.ilike.%${cleanHandle}%`);
+        }
+        if (cleanPhone.length >= 5) {
+            orgOrConditions.push(`phone.ilike.%${cleanPhone}%`);
+        }
+        if (isUUID) {
+            orgOrConditions.push(`id.eq.${query}`);
+        }
+
+        orgQuery = orgQuery.or(orgOrConditions.join(','));
+        const { data: matchedOrgs, error: orgError } = await orgQuery;
+        if (orgError) {
+            console.error('[SearchRecipients] Org search error:', orgError);
+        }
+        let orgResults = matchedOrgs || [];
+
+        if (shortHex && orgResults.every((o: any) => !o.id.replace(/-/g, '').toLowerCase().startsWith(shortHex))) {
+            let candidateOrgQuery = supabase
+                .from('organizations')
+                .select('id, name, logo_url, email, phone, public_username, slug, lenco_subaccount_id')
+                .limit(200);
+            if (currentOrgId) candidateOrgQuery = candidateOrgQuery.neq('id', currentOrgId);
+            const { data: orgCandidates } = await candidateOrgQuery;
+            const orgPrefixMatches = (orgCandidates || []).filter((o: any) =>
+                o.id.replace(/-/g, '').toLowerCase().startsWith(shortHex));
+            const existingOrgIds = new Set(orgResults.map((o: any) => o.id));
+            orgResults = [...orgResults, ...orgPrefixMatches.filter((o: any) => !existingOrgIds.has(o.id))];
+        }
+
+        // 3. Look up user organizations for matched users
+        const orgIdsToFetch = new Set<string>();
+        userResults.forEach((u: any) => {
+            if (u.organization_id) {
+                orgIdsToFetch.add(u.organization_id);
+            }
+        });
+
+        let orgMap = new Map<string, any>();
+        if (orgIdsToFetch.size > 0) {
+            const { data: userOrgs } = await supabase
+                .from('organizations')
+                .select('id, name, logo_url, lenco_subaccount_id')
+                .in('id', Array.from(orgIdsToFetch));
+            (userOrgs || []).forEach((o: any) => orgMap.set(o.id, o));
+        }
+
+        const results: any[] = [];
+        const seenKeys = new Set<string>();
+
+        // Format user results
+        userResults.forEach((u: any) => {
+            const userOrg = u.organization_id ? orgMap.get(u.organization_id) : null;
+            const orgName = userOrg?.name || 'Personal Account';
+            const isPersonal = orgName.toLowerCase().includes('workspace') ||
+                orgName.toLowerCase().includes('personal') ||
+                orgName.toLowerCase().includes('individual');
+            const logoUrl = userOrg?.logo_url || null;
+            const phone = u.payment_info?.mobile_money_number || u.payment_info?.phone || null;
+            const mwId = `MW-${u.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+
+            const key = `user_${u.id}`;
+            if (!seenKeys.has(key)) {
+                seenKeys.add(key);
+                results.push({
+                    id: u.id,
+                    user_id: u.id,
+                    name: u.name,
+                    username: u.username || null,
+                    email: u.email || null,
+                    phone: phone,
+                    organization_id: u.organization_id || null,
+                    organization_name: orgName,
+                    logo_url: logoUrl,
+                    account_type: isPersonal ? 'PERSONAL' : 'BUSINESS',
+                    moneywise_id: mwId,
+                    lenco_subaccount_id: userOrg?.lenco_subaccount_id || null,
+                    verified: true
+                });
+            }
+        });
+
+        // Format org results
+        orgResults.forEach((o: any) => {
+            const isPersonal = o.name.toLowerCase().includes('workspace') ||
+                o.name.toLowerCase().includes('personal') ||
+                o.name.toLowerCase().includes('individual');
+            const mwId = `MW-${o.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+
+            const key = `org_${o.id}`;
+            if (!seenKeys.has(key)) {
+                seenKeys.add(key);
+                results.push({
+                    id: o.id,
+                    user_id: null,
+                    name: o.name,
+                    username: o.public_username || null,
+                    email: o.email || null,
+                    phone: o.phone || null,
+                    organization_id: o.id,
+                    organization_name: o.name,
+                    logo_url: o.logo_url || null,
+                    account_type: isPersonal ? 'PERSONAL' : 'BUSINESS',
+                    moneywise_id: mwId,
+                    lenco_subaccount_id: o.lenco_subaccount_id || null,
+                    verified: true
+                });
+            }
+        });
+
+        res.json(results);
+    } catch (error: any) {
+        console.error('[SearchRecipients] Error:', error);
+        res.status(500).json({ error: 'Failed to search recipients', details: error.message });
+    }
+};
+
+/**
+ * Verify a MoneyWise recipient by exact identifier (Email, Username, Phone, MoneyWise ID, or UUID).
+ */
+export const verifyRecipient = async (req: AuthRequest, res: any): Promise<any> => {
+    try {
+        const { identifier } = req.body;
+        if (!identifier || typeof identifier !== 'string') {
+            return res.status(400).json({ error: 'identifier is required' });
+        }
+
+        const trimmed = identifier.trim();
+        const cleanHandle = trimmed.startsWith('@') ? trimmed.slice(1).trim() : trimmed;
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmed);
+        const isMwId = /^MW-[0-9A-F]{8}$/i.test(trimmed);
+        const shortHex = isMwId ? trimmed.slice(3).toLowerCase() : null;
+
+        // 1. Try matching user
+        let userQuery = supabase
+            .from('users')
+            .select(`
+                id,
+                name,
+                email,
+                username,
+                organization_id,
+                payment_info,
+                status
+            `)
+            .neq('status', 'DISABLED');
+
+        if (isUUID) {
+            userQuery = userQuery.eq('id', trimmed);
+        } else if (trimmed.includes('@')) {
+            userQuery = userQuery.ilike('email', trimmed);
+        } else if (cleanHandle) {
+            userQuery = userQuery.ilike('username', cleanHandle);
+        }
+
+        const { data: userMatch } = await userQuery.maybeSingle();
+
+        if (userMatch) {
+            let userOrg: any = null;
+            if (userMatch.organization_id) {
+                const { data: orgData } = await supabase
+                    .from('organizations')
+                    .select('id, name, logo_url, lenco_subaccount_id')
+                    .eq('id', userMatch.organization_id)
+                    .maybeSingle();
+                userOrg = orgData;
+            }
+
+            const orgName = userOrg?.name || 'Personal Account';
+            const isPersonal = orgName.toLowerCase().includes('workspace') ||
+                orgName.toLowerCase().includes('personal') ||
+                orgName.toLowerCase().includes('individual');
+            const mwId = `MW-${userMatch.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+
+            return res.json({
+                found: true,
+                recipient: {
+                    id: userMatch.id,
+                    user_id: userMatch.id,
+                    name: userMatch.name,
+                    username: userMatch.username || null,
+                    email: userMatch.email || null,
+                    phone: userMatch.payment_info?.mobile_money_number || userMatch.payment_info?.phone || null,
+                    organization_id: userMatch.organization_id || null,
+                    organization_name: orgName,
+                    logo_url: userOrg?.logo_url || null,
+                    account_type: isPersonal ? 'PERSONAL' : 'BUSINESS',
+                    moneywise_id: mwId,
+                    lenco_subaccount_id: userOrg?.lenco_subaccount_id || null,
+                    verified: true
+                }
+            });
+        }
+
+        // 2. Try matching organization
+        let orgQuery = supabase
+            .from('organizations')
+            .select('id, name, logo_url, email, phone, public_username, lenco_subaccount_id');
+
+        if (isUUID) {
+            orgQuery = orgQuery.eq('id', trimmed);
+        } else if (trimmed.includes('@')) {
+            orgQuery = orgQuery.ilike('email', trimmed);
+        } else if (cleanHandle) {
+            orgQuery = orgQuery.or(`public_username.ilike.${cleanHandle},name.ilike.${trimmed}`);
+        }
+
+        const { data: orgMatch } = await orgQuery.maybeSingle();
+
+        if (orgMatch) {
+            const isPersonal = orgMatch.name.toLowerCase().includes('workspace') ||
+                orgMatch.name.toLowerCase().includes('personal') ||
+                orgMatch.name.toLowerCase().includes('individual');
+            const mwId = `MW-${orgMatch.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+
+            return res.json({
+                found: true,
+                recipient: {
+                    id: orgMatch.id,
+                    user_id: null,
+                    name: orgMatch.name,
+                    username: orgMatch.public_username || null,
+                    email: orgMatch.email || null,
+                    phone: orgMatch.phone || null,
+                    organization_id: orgMatch.id,
+                    organization_name: orgMatch.name,
+                    logo_url: orgMatch.logo_url || null,
+                    account_type: isPersonal ? 'PERSONAL' : 'BUSINESS',
+                    moneywise_id: mwId,
+                    lenco_subaccount_id: orgMatch.lenco_subaccount_id || null,
+                    verified: true
+                }
+            });
+        }
+
+        // 3. If short MW-ID prefix was supplied, search by ID prefix
+        if (shortHex) {
+            const { data: prefixUsers } = await supabase
+                .from('users')
+                .select('id, name, email, username, organization_id, payment_info')
+                .limit(50);
+
+            const matchedUser = (prefixUsers || []).find((u: any) =>
+                u.id.replace(/-/g, '').toLowerCase().startsWith(shortHex)
+            );
+
+            if (matchedUser) {
+                let userOrg: any = null;
+                if (matchedUser.organization_id) {
+                    const { data: orgData } = await supabase
+                        .from('organizations')
+                        .select('id, name, logo_url, lenco_subaccount_id')
+                        .eq('id', matchedUser.organization_id)
+                        .maybeSingle();
+                    userOrg = orgData;
+                }
+
+                const orgName = userOrg?.name || 'Personal Account';
+                const isPersonal = orgName.toLowerCase().includes('workspace') ||
+                    orgName.toLowerCase().includes('personal') ||
+                    orgName.toLowerCase().includes('individual');
+                const mwId = `MW-${matchedUser.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`;
+
+                return res.json({
+                    found: true,
+                    recipient: {
+                        id: matchedUser.id,
+                        user_id: matchedUser.id,
+                        name: matchedUser.name,
+                        username: matchedUser.username || null,
+                        email: matchedUser.email || null,
+                        phone: matchedUser.payment_info?.mobile_money_number || matchedUser.payment_info?.phone || null,
+                        organization_id: matchedUser.organization_id || null,
+                        organization_name: orgName,
+                        logo_url: userOrg?.logo_url || null,
+                        account_type: isPersonal ? 'PERSONAL' : 'BUSINESS',
+                        moneywise_id: mwId,
+                        lenco_subaccount_id: userOrg?.lenco_subaccount_id || null,
+                        verified: true
+                    }
+                });
+            }
+        }
+
+        return res.json({ found: false, error: 'Recipient not found on MoneyWise' });
+    } catch (error: any) {
+        console.error('[VerifyRecipient] Error:', error);
+        res.status(500).json({ error: 'Failed to verify recipient', details: error.message });
+    }
+};
+

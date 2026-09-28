@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { waitUntil } from '@vercel/functions';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { memoryService } from '../services/ai/memory.service';
@@ -106,13 +107,25 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             });
         }
 
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('name')
+            .eq('id', organization_id)
+            .single();
+
+        const orgName = (orgData?.name || '').toLowerCase();
+        const isPersonalOrg = orgName.includes('workspace') ||
+            orgName.includes('personal') ||
+            orgName.includes('individual') ||
+            orgName.includes('private');
+
         // 1. Insert Requisition
         const insertData: any = {
             requestor_id,
             organization_id,
             description,
             estimated_total,
-            status: 'DRAFT',
+            status: isPersonalOrg ? 'APPROVED' : 'DRAFT',
             interest_rate,
             monthly_deduction,
             type: type || 'EXPENSE',
@@ -758,69 +771,16 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             })
             .eq('id', id);
 
-        // 4. Trigger OCR analysis synchronously for Vercel compatibility 
-        // (Serverless functions terminate background tasks upon response)
-        const itemsWithNewReceipts = items.filter((item: any) => item.receipt_url);
-        if (itemsWithNewReceipts.length > 0) {
-            console.log(`[OCR] Processing ${itemsWithNewReceipts.length} receipts synchronously...`);
-            const startTime = Date.now();
-            
-            await Promise.all(itemsWithNewReceipts.map(async (item: any) => {
-                const itemStart = Date.now();
-                try {
-                    // Build public URL from path
-                    const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
-                    const publicUrl = urlData.publicUrl;
-
-                    // Skip PDFs for now
-                    if (item.receipt_url.match(/\.pdf$/i)) {
-                        await supabase.from('line_items').update({
-                            receipt_ocr_status: 'FAILED',
-                            receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
-                        }).eq('id', item.id);
-                        return;
-                    }
-
-                    const ocrData = await ocrService.analyzeReceipt(publicUrl);
-
-                    await supabase.from('line_items').update({
-                        receipt_ocr_data: ocrData,
-                        receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
-                    }).eq('id', item.id);
-
-                    const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
-                    console.log(`[OCR] Completed for item ${item.id} in ${duration}s: ${ocrData.vendor || 'Unknown vendor'}`);
-                } catch (ocrErr: any) {
-                    const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
-                    console.error(`[OCR] Failed for item ${item.id} after ${duration}s:`, ocrErr.message);
-                    await supabase.from('line_items').update({
-                        receipt_ocr_status: 'FAILED',
-                        receipt_ocr_data: { error: ocrErr.message }
-                    }).eq('id', item.id);
-                }
-            }));
-            
-            const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
-            console.log(`[OCR] All items processed in ${totalDuration}s`);
-        }
-
-        // Re-post the GL so the expense split reflects the submitted actual amounts.
-        ledgerService.repostForRequisition(id)
-            .catch(err => console.error(`[Ledger] repost after expense submission failed for req ${id}:`, err?.message));
-
-        // 5. Advance the workflow synchronously, BEFORE responding. On serverless
-        // (Vercel) any work after res.json is terminated — performing the AI-review
-        // trigger as a post-response background task is exactly what left "no
-        // change" requisitions stuck at the expense stage with no categorization.
+        // 4. Persist the EXPENSE_SUMMARY message synchronously — it's a plain DB
+        // write (no AI calls) and the client needs it to render immediately.
         const organizationId = (req as any).user.organization_id;
-        
-        // Calculate change for the summary message
+
         const change = (estimatedTotal || 0) - actualTotal;
         const isExcess = change < -0.01;
         const changeText = isExcess
             ? ` Excess expenditure to disburse: K${Math.abs(change).toLocaleString(undefined, { minimumFractionDigits: 2 })}.`
-            : change > 0 
-                ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.` 
+            : change > 0
+                ? ` Change to Submit: K${change.toLocaleString(undefined, { minimumFractionDigits: 2 })}.`
                 : ' No change to submit.';
 
         // Check if a repaired/duplicate EXPENSE_SUMMARY message exists and remove/update it
@@ -856,24 +816,83 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
             });
         }
 
-        if (change >= -0.01) {
-            if (change <= 0.01) {
-                // No change, no excess: advance straight to AI categorization.
-                // Awaited (not delayed/backgrounded) so it reliably completes within
-                // the request lifetime, including on serverless. triggerAIReview
-                // handles its own errors and leaves a retryable AI_REVIEW card, so a
-                // failure here never blocks the (already-persisted) expense save.
-                await triggerAIReview(id, organizationId, userId).catch(err =>
-                    console.error('[AI Review] Auto-trigger failed:', err)
-                );
-            } else {
-                console.log(`[updateRequisitionExpenses] Change is K${change}. Halting workflow at EXPENSED to allow user to submit change.`);
-            }
-        } else {
-            console.log(`[updateRequisitionExpenses] Excess is K${Math.abs(change)}. Halting workflow at EXPENSED to allow user to disburse excess.`);
-        }
+        // 5. Respond immediately. Everything below is AI work (per-receipt vision
+        // OCR, then categorization) that can legitimately take longer than
+        // Vercel's function budget once more than a couple of receipts are
+        // attached — that's what was timing out "Confirm Expenses" in production.
+        // It's handed to waitUntil() so it keeps running on the platform's own
+        // clock after the response is sent, instead of racing the client's
+        // request for a shared 45s budget. The UI already tracks this via
+        // receipt_ocr_status (PENDING -> DONE/FAILED) and the AI_REVIEW card
+        // appearing once triggerAIReview posts it, so no client change is needed
+        // — a refresh a few seconds later just shows the completed state.
+        res.json({ message: 'Expenses updated. Receipts are being analyzed...', actual_total: actualTotal });
 
-        res.json({ message: 'Expenses updated and analyzed successfully', actual_total: actualTotal });
+        waitUntil((async () => {
+            const itemsWithNewReceipts = items.filter((item: any) => item.receipt_url);
+            if (itemsWithNewReceipts.length > 0) {
+                console.log(`[OCR] Processing ${itemsWithNewReceipts.length} receipts in background...`);
+                const startTime = Date.now();
+
+                await Promise.all(itemsWithNewReceipts.map(async (item: any) => {
+                    const itemStart = Date.now();
+                    try {
+                        // Build public URL from path
+                        const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
+                        const publicUrl = urlData.publicUrl;
+
+                        // Skip PDFs for now
+                        if (item.receipt_url.match(/\.pdf$/i)) {
+                            await supabase.from('line_items').update({
+                                receipt_ocr_status: 'FAILED',
+                                receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
+                            }).eq('id', item.id);
+                            return;
+                        }
+
+                        const ocrData = await ocrService.analyzeReceipt(publicUrl);
+
+                        await supabase.from('line_items').update({
+                            receipt_ocr_data: ocrData,
+                            receipt_ocr_status: ocrData.error ? 'FAILED' : 'DONE'
+                        }).eq('id', item.id);
+
+                        const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
+                        console.log(`[OCR] Completed for item ${item.id} in ${duration}s: ${ocrData.vendor || 'Unknown vendor'}`);
+                    } catch (ocrErr: any) {
+                        const duration = ((Date.now() - itemStart) / 1000).toFixed(2);
+                        console.error(`[OCR] Failed for item ${item.id} after ${duration}s:`, ocrErr.message);
+                        await supabase.from('line_items').update({
+                            receipt_ocr_status: 'FAILED',
+                            receipt_ocr_data: { error: ocrErr.message }
+                        }).eq('id', item.id);
+                    }
+                }));
+
+                const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
+                console.log(`[OCR] All items processed in ${totalDuration}s`);
+            }
+
+            // Re-post the GL so the expense split reflects the submitted actual amounts.
+            await ledgerService.repostForRequisition(id)
+                .catch(err => console.error(`[Ledger] repost after expense submission failed for req ${id}:`, err?.message));
+
+            if (change >= -0.01) {
+                if (change <= 0.01) {
+                    // No change, no excess: advance straight to AI categorization.
+                    // triggerAIReview handles its own errors and leaves a retryable
+                    // AI_REVIEW card, so a failure here never affects the
+                    // already-persisted expense save.
+                    await triggerAIReview(id, organizationId, userId).catch(err =>
+                        console.error('[AI Review] Auto-trigger failed:', err)
+                    );
+                } else {
+                    console.log(`[updateRequisitionExpenses] Change is K${change}. Halting workflow at EXPENSED to allow user to submit change.`);
+                }
+            } else {
+                console.log(`[updateRequisitionExpenses] Excess is K${Math.abs(change)}. Halting workflow at EXPENSED to allow user to disburse excess.`);
+            }
+        })().catch(err => console.error(`[updateRequisitionExpenses] Background processing failed for req ${id}:`, err?.message)));
 
     } catch (error: any) {
         console.error('Error updating expenses:', error);
@@ -949,6 +968,45 @@ export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
     }
 };
 
+/**
+ * Rewrites the EXPENSE_SUMMARY card once change has actually been submitted.
+ * Its text is generated at expense-tracking time and was never revisited, so it
+ * kept reading "Change to Submit: K4" long after the money came back — which,
+ * to the person reading the thread, is indistinguishable from nothing happening.
+ */
+async function markChangeSubmittedOnSummary(requisitionId: string, changeAmount: number, method: string) {
+    try {
+        const { data: rows } = await supabase
+            .from('requisition_messages')
+            .select('id, content, metadata')
+            .eq('requisition_id', requisitionId)
+            .contains('metadata', { stage: 'EXPENSE_SUMMARY' })
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+        const summary = rows?.[0];
+        if (!summary) return;
+
+        const label = method === 'MONEYWISE_WALLET' ? 'deposited to the wallet' : 'returned in cash';
+        const base = String(summary.content || '')
+            .split(' Change to Submit:')[0]
+            .split(' Excess expenditure to disburse:')[0]
+            .split(' No change to submit.')[0];
+
+        await RequisitionMessageService.updateMessage(summary.id, {
+            content: `${base} Change of K${Number(changeAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${label}.`,
+            metadata: {
+                ...(summary.metadata || {}),
+                changeAmount: 0,
+                changeSubmitted: true,
+                changeSubmissionMethod: method,
+            },
+        });
+    } catch (err: any) {
+        console.error(`[SubmitChange] Failed to refresh EXPENSE_SUMMARY for ${requisitionId}:`, err?.message);
+    }
+}
+
 export const submitChange = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
@@ -1004,22 +1062,65 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 throw new Error("Required information for automated finalization is missing");
             }
 
-            // A. Verify External Reference
-            if (!change_external_reference && !disbursement.change_external_reference) {
+            // A. Resolve the deposit reference. Wallet change references embed the
+            // requisition id (CHG-<ts>-<requisitionId>), so a deposit that settled
+            // after the app was closed — or whose confirmation never made it back to
+            // the client — is still recoverable from the ledger, instead of stranding
+            // money that has already been paid back and inviting a second payment.
+            let activeRef: string | null =
+                change_external_reference || disbursement.change_external_reference || null;
+
+            if (!activeRef) {
+                const { data: settledDeposit } = await supabase
+                    .from('cashbook_entries')
+                    .select('external_reference')
+                    .eq('organization_id', organizationId)
+                    .like('external_reference', `CHG-%-${id}`)
+                    .neq('status', 'PENDING')
+                    .order('created_at', { ascending: false })
+                    .limit(1)
+                    .maybeSingle();
+
+                if (settledDeposit?.external_reference) {
+                    activeRef = settledDeposit.external_reference;
+                    console.log(`[SubmitChange] Recovered settled change deposit ${activeRef} for req ${id}`);
+                    await supabase
+                        .from('disbursements')
+                        .update({ change_external_reference: activeRef })
+                        .eq('id', disbursement.id);
+                }
+            }
+
+            if (!activeRef) {
                 return res.status(400).json({ error: 'Missing external reference for wallet submission' });
             }
 
-            const activeRef = change_external_reference || disbursement.change_external_reference;
-
-            // B. Ensure Entry exists in Cashbook (Process Lenco status if needed)
+            // B. Confirm the money actually arrived. A PENDING row is only the intent
+            // written before the charge is fired, so counting it as proof would
+            // finalize change that was never actually received.
             const isAlreadyConfirmed = Number(disbursement.confirmed_change_amount || 0) > 0;
-            
+
             if (!isAlreadyConfirmed) {
-                const { data: existingEntry } = await supabase
+                // The indexed reference column is the reliable match; the description
+                // fallback covers older entries written before it was populated.
+                const { data: byReference } = await supabase
                     .from('cashbook_entries')
                     .select('id')
-                    .like('description', `%${activeRef}`)
-                    .maybeSingle();
+                    .eq('external_reference', activeRef)
+                    .neq('status', 'PENDING')
+                    .limit(1);
+
+                let existingEntry = byReference?.[0] || null;
+
+                if (!existingEntry) {
+                    const { data: byDescription } = await supabase
+                        .from('cashbook_entries')
+                        .select('id')
+                        .like('description', `%${activeRef}`)
+                        .neq('status', 'PENDING')
+                        .limit(1);
+                    existingEntry = byDescription?.[0] || null;
+                }
 
                 if (!existingEntry) {
                     console.log(`[SubmitChange] Ref ${activeRef} not in ledger. Checking Lenco...`);
@@ -1138,18 +1239,35 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 submission_method
             );
 
-            // G. Trigger AI Review & Categorization
-            await triggerAIReview(id, organizationId, user_id);
+            // G. Move the requisition off EXPENSED before responding. triggerAIReview
+            // sets this again, but it now runs after the response — and leaving the
+            // status untouched until then is what kept the card showing "Change to
+            // Submit" with its submit buttons live, inviting a second payment for
+            // change that had already been deposited.
+            await supabase
+                .from('requisitions')
+                .update({ status: 'CATEGORIZING', updated_at: new Date().toISOString() })
+                .eq('id', id);
+
+            await markChangeSubmittedOnSummary(id, confirmedChange, 'MONEYWISE_WALLET');
 
             res.json({ message: 'Change submitted and logged via Wallet. Proceeding to AI Review.', voucher_id: voucher.id });
-            
-            // H. Trigger Notification
-            emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
-                console.error('[Notification Error] Failed to send AUTO_COMPLETED email:', err)
-            );
-            pushService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
-                console.error('[Notification Error] Failed to send AUTO_COMPLETED push:', err)
-            );
+
+            // H. Categorization is a multi-second model call per line item, so it
+            // runs after the response — awaiting it inline risked exceeding the
+            // serverless budget and leaving the submission half-applied.
+            waitUntil((async () => {
+                await triggerAIReview(id, organizationId, user_id);
+
+                await emailService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                    console.error('[Notification Error] Failed to send AUTO_COMPLETED email:', err)
+                );
+                await pushService.notifyRequisitionEvent(id, 'REQUISITION_COMPLETED').catch(err =>
+                    console.error('[Notification Error] Failed to send AUTO_COMPLETED push:', err)
+                );
+            })().catch(err =>
+                console.error(`[SubmitChange] Background finalization failed for req ${id}:`, err?.message)
+            ));
         } else {
             // Standard Cash Workflow: Just move to CHANGE_SUBMITTED
             const { error: statusError } = await supabase
@@ -1165,13 +1283,15 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 userId: user_id,
                 content: `Change of K${Number(change_amount).toLocaleString()} submitted via ${submission_method || 'CASH'}. Awaiting cashier confirmation.`,
                 type: 'SYSTEM',
-                metadata: { 
-                    stage: 'CHANGE_SUBMITTED', 
+                metadata: {
+                    stage: 'CHANGE_SUBMITTED',
                     changeAmount: change_amount,
                     submissionMethod: submission_method || 'CASH',
                     externalReference: change_external_reference
                 }
             });
+
+            await markChangeSubmittedOnSummary(id, Number(change_amount || 0), submission_method || 'CASH');
 
             res.json({ message: 'Change submitted successfully' });
 

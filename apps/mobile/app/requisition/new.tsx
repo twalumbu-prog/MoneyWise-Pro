@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, KeyboardAvoidingView, Platform, Modal, FlatList,
+    ActivityIndicator, KeyboardAvoidingView, Platform, Modal, FlatList, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
@@ -9,16 +9,21 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle,
     CheckCircle, Smartphone, Building2, Mail, Zap, ChevronDown, Search,
+    UserCheck, ShieldCheck,
 } from 'lucide-react-native';
 import {
     requisitionService, departmentService, lencoService, cashbookService, userService,
     formatKwacha,
 } from 'core';
-import type { PaymentInfo } from 'core';
+import type { PaymentInfo, MoneyWiseRecipient } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { BankAvatar } from '../../src/components/BankAvatar';
+import { cacheStoreSync } from '../../src/platform/storage';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+
+const PREF_USE_MY_ACCOUNT = 'reqwizard_use_my_account';
+const PREF_MAKE_EXPENSE_LIST = 'reqwizard_make_expense_list';
 
 interface LineItem {
     id: string;
@@ -45,16 +50,58 @@ const TABS: { value: WizardTab; label: string }[] = [
 type Stage = 1 | 2 | 3 | 4 | 5;
 
 /**
- * New Requisition — a native port of the web mobile wizard
- * (apps/web/src/components/requisitions/MobileRequisitionWizard.tsx):
- * same Send/Buy/Order tabs (Buy/Order are still "coming soon" on web too),
- * same staged flow, same destination-account + Lenco name-resolution step.
+ * Recipient Avatar helper showing organization logo or stylish initials
  */
+const RecipientAvatar: React.FC<{ name: string; logoUrl?: string | null; size?: number }> = ({ name, logoUrl, size = 40 }) => {
+    const [imgError, setImgError] = useState(false);
+    const initials = (name || 'M')
+        .split(' ')
+        .map((p) => p[0])
+        .filter(Boolean)
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+
+    if (logoUrl && !imgError) {
+        return (
+            <Image
+                source={{ uri: logoUrl }}
+                style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: colors.canvasAlt }}
+                onError={() => setImgError(true)}
+            />
+        );
+    }
+
+    return (
+        <View style={{
+            width: size,
+            height: size,
+            borderRadius: size / 2,
+            backgroundColor: '#EEF4FF',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1.5,
+            borderColor: 'rgba(0, 106, 255, 0.25)',
+        }}>
+            <Text style={{ fontFamily: fonts.bodyBold, fontSize: size * 0.38, color: colors.blue }}>
+                {initials}
+            </Text>
+        </View>
+    );
+};
+
 export default function NewRequisitionScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const qc = useQueryClient();
-    const { userName, userRole, organizationId } = useAuth();
+    const { userName, userRole, organizationId, organizationName, userOrganizations } = useAuth();
+
+    const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
+    const activeOrgName = currentOrg?.name || organizationName || '';
+    const isPersonal = activeOrgName.toLowerCase().includes('workspace') ||
+        activeOrgName.toLowerCase().includes('personal') ||
+        activeOrgName.toLowerCase().includes('individual') ||
+        activeOrgName.toLowerCase().includes('private');
 
     const [activeTab, setActiveTab] = useState<WizardTab>('basic');
     const [stage, setStage] = useState<Stage>(1);
@@ -63,8 +110,16 @@ export default function NewRequisitionScreen() {
     const [description, setDescription] = useState('');
     const [department, setDepartment] = useState('');
     const [deptPickerOpen, setDeptPickerOpen] = useState(false);
-    const [useMyAccount, setUseMyAccount] = useState(true);
-    const [makeExpenseList, setMakeExpenseList] = useState(true);
+    // Personal accounts have no separate "own profile" to send to — the account
+    // itself IS the person's own account — so this toggle only applies to
+    // business/organisation accounts, and only there is the last choice
+    // remembered across sessions.
+    const [useMyAccount, setUseMyAccount] = useState(() => {
+        if (isPersonal) return false;
+        return cacheStoreSync.getItem(PREF_USE_MY_ACCOUNT) !== 'false';
+    });
+    const [makeExpenseList, setMakeExpenseList] = useState(() =>
+        cacheStoreSync.getItem(PREF_MAKE_EXPENSE_LIST) !== 'false');
 
     // Stage 2
     const [lineItems, setLineItems] = useState<LineItem[]>([blankItem()]);
@@ -73,7 +128,7 @@ export default function NewRequisitionScreen() {
     const [manualAmount, setManualAmount] = useState('');
 
     // Stage 3
-    const [paymentMethod, setPaymentMethod] = useState<'mobile' | 'bank'>('mobile');
+    const [paymentMethod, setPaymentMethod] = useState<'moneywise' | 'mobile' | 'bank'>('moneywise');
     const [bankId, setBankId] = useState('');
     const [bankPickerOpen, setBankPickerOpen] = useState(false);
     const [accountNumber, setAccountNumber] = useState('');
@@ -81,10 +136,17 @@ export default function NewRequisitionScreen() {
     const [momoOperator, setMomoOperator] = useState('');
     const [resolvedName, setResolvedName] = useState('');
     const [confirmingName, setConfirmingName] = useState(false);
-    const [autoAuthorize, setAutoAuthorize] = useState(false);
+    const [autoAuthorize, setAutoAuthorize] = useState(true);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
     const [selectedWalletBalance, setSelectedWalletBalance] = useState<number | null>(null);
     const [walletPickerOpen, setWalletPickerOpen] = useState(false);
+
+    // MoneyWise Pay state
+    const [mwQuery, setMwQuery] = useState('');
+    const [mwSuggestions, setMwSuggestions] = useState<MoneyWiseRecipient[]>([]);
+    const [searchingMw, setSearchingMw] = useState(false);
+    const [selectedRecipient, setSelectedRecipient] = useState<MoneyWiseRecipient | null>(null);
+    const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -123,6 +185,52 @@ export default function NewRequisitionScreen() {
         return () => { cancelled = true; };
     }, [autoAuthorize, useMyAccount, selectedWalletId]);
 
+    // MoneyWise Pay autosuggest search
+    useEffect(() => {
+        if (paymentMethod !== 'moneywise') return;
+        if (selectedRecipient) return;
+
+        const q = mwQuery.trim();
+        if (q.length < 2) {
+            setMwSuggestions([]);
+            setSearchingMw(false);
+            return;
+        }
+
+        if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        setSearchingMw(true);
+
+        searchTimeoutRef.current = setTimeout(async () => {
+            try {
+                const results = await userService.searchRecipients(q);
+                setMwSuggestions(results || []);
+            } catch (err) {
+                console.error('Error searching MoneyWise recipients:', err);
+                setMwSuggestions([]);
+            } finally {
+                setSearchingMw(false);
+            }
+        }, 300);
+
+        return () => {
+            if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+        };
+    }, [mwQuery, paymentMethod, selectedRecipient]);
+
+    const handleSelectRecipient = (rec: MoneyWiseRecipient) => {
+        setSelectedRecipient(rec);
+        setResolvedName(rec.name);
+        setAccountNumber(rec.id);
+        setMwSuggestions([]);
+    };
+
+    const handleClearRecipient = () => {
+        setSelectedRecipient(null);
+        setResolvedName('');
+        setAccountNumber('');
+        setMwQuery('');
+    };
+
     const handleResolveName = async () => {
         if (paymentMethod === 'mobile') {
             if (phoneNumber.length < 10 || !momoOperator) return;
@@ -135,7 +243,7 @@ export default function NewRequisitionScreen() {
             } finally {
                 setConfirmingName(false);
             }
-        } else {
+        } else if (paymentMethod === 'bank') {
             if (accountNumber.length < 5 || !bankId) return;
             setConfirmingName(true);
             try {
@@ -160,11 +268,21 @@ export default function NewRequisitionScreen() {
     }, [accountNumber, bankId]);
 
     useEffect(() => {
-        setResolvedName('');
-        setConfirmingName(false);
+        if (paymentMethod !== 'moneywise') {
+            setResolvedName('');
+            setConfirmingName(false);
+        }
         if (paymentMethod === 'bank') setPhoneNumber('');
-        else { setAccountNumber(''); setBankId(''); }
-    }, [paymentMethod]);
+        else if (paymentMethod === 'mobile') { setAccountNumber(''); setBankId(''); }
+        else if (paymentMethod === 'moneywise') {
+            setPhoneNumber('');
+            setBankId('');
+            if (selectedRecipient) {
+                setResolvedName(selectedRecipient.name);
+                setAccountNumber(selectedRecipient.id);
+            }
+        }
+    }, [paymentMethod, selectedRecipient]);
 
     const onPhoneChange = (val: string) => {
         setPhoneNumber(val);
@@ -219,7 +337,11 @@ export default function NewRequisitionScreen() {
         } else if (stage === 5) {
             if (!manualAmount || Number(manualAmount) <= 0) { setError('Please enter an amount greater than zero.'); return; }
         } else if (stage === 3) {
-            if (!resolvedName || resolvedName === 'Name not confirmed') { setError('Please verify the recipient details.'); return; }
+            if (paymentMethod === 'moneywise') {
+                if (!selectedRecipient) { setError('Please search and select a verified MoneyWise recipient.'); return; }
+            } else {
+                if (!resolvedName || resolvedName === 'Name not confirmed') { setError('Please verify the recipient details.'); return; }
+            }
         }
         const seq = getStageSequence();
         const idx = seq.indexOf(stage);
@@ -243,6 +365,22 @@ export default function NewRequisitionScreen() {
         setError(null);
         setActiveRequisitionId(null);
         try {
+            const paymentMethodToUse = useMyAccount
+                ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_account_number ? 'BANK' : undefined))
+                : (paymentMethod === 'moneywise' ? 'MONEYWISE_PAY' : (paymentMethod === 'mobile' ? momoOperator : 'BANK'));
+
+            const recipientAccountToUse = useMyAccount
+                ? (paymentInfo?.mobile_money_number || paymentInfo?.bank_account_number)
+                : (paymentMethod === 'moneywise' ? (selectedRecipient?.id || mwQuery) : (paymentMethod === 'mobile' ? phoneNumber : accountNumber));
+
+            const recipientBankCodeToUse = useMyAccount
+                ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_name || undefined))
+                : (paymentMethod === 'moneywise' ? 'MONEYWISE' : (paymentMethod === 'bank' ? bankId : (paymentMethod === 'mobile' ? momoOperator : undefined)));
+
+            const recipientNameToUse = useMyAccount
+                ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
+                : (paymentMethod === 'moneywise' ? (selectedRecipient?.name || resolvedName) : resolvedName);
+
             const data: any = {
                 description,
                 department,
@@ -250,18 +388,11 @@ export default function NewRequisitionScreen() {
                 items: makeExpenseList ? lineItems.map(({ description, quantity, unit_price, estimated_amount }) => ({
                     description, quantity: Number(quantity), unit_price: Number(unit_price), estimated_amount: Number(estimated_amount),
                 })) : undefined,
-                payment_method: useMyAccount
-                    ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_account_number ? 'BANK' : undefined))
-                    : (paymentMethod === 'mobile' ? momoOperator : 'BANK'),
-                recipient_account: useMyAccount
-                    ? (paymentInfo?.mobile_money_number || paymentInfo?.bank_account_number)
-                    : (paymentMethod === 'mobile' ? phoneNumber : accountNumber),
-                recipient_bank_code: useMyAccount
-                    ? (paymentInfo?.mobile_money_number ? paymentInfo.mobile_money_provider : (paymentInfo?.bank_name || undefined))
-                    : (paymentMethod === 'bank' ? bankId : (paymentMethod === 'mobile' ? momoOperator : undefined)),
-                recipient_name: useMyAccount
-                    ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || userName)
-                    : resolvedName,
+                payment_method: paymentMethodToUse,
+                recipient_account: recipientAccountToUse,
+                recipient_bank_code: recipientBankCodeToUse,
+                recipient_name: recipientNameToUse,
+                recipient_organization_id: paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
             };
             const created = await requisitionService.create(data);
 
@@ -269,15 +400,20 @@ export default function NewRequisitionScreen() {
                 try {
                     const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
                     const normalizedPhone = cleanPhone.startsWith('260') ? '0' + cleanPhone.substring(3) : cleanPhone;
-                    const recipientAccount = paymentMethod === 'mobile' ? normalizedPhone : accountNumber;
-                    const recipientBankCode = (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
+                    const recipientAccount = paymentMethod === 'moneywise'
+                        ? (selectedRecipient?.id || mwQuery)
+                        : (paymentMethod === 'mobile' ? normalizedPhone : accountNumber);
+                    const recipientBankCode = paymentMethod === 'moneywise'
+                        ? 'moneywise'
+                        : (paymentMethod === 'mobile' ? momoOperator : bankId).toLowerCase();
 
                     const result = await requisitionService.autoDisburse(created.id, {
-                        payment_method: 'MONEYWISE_WALLET',
+                        payment_method: paymentMethod === 'moneywise' ? 'MONEYWISE_PAY' : 'MONEYWISE_WALLET',
                         total_prepared: getTotal(),
                         recipient_account: recipientAccount,
                         recipient_bank_code: recipientBankCode,
-                        recipient_account_name: resolvedName || undefined,
+                        recipient_account_name: recipientNameToUse || undefined,
+                        recipient_organization_id: paymentMethod === 'moneywise' ? (selectedRecipient?.organization_id || undefined) : undefined,
                         wallet_id: selectedWalletId || undefined,
                     });
 
@@ -316,7 +452,7 @@ export default function NewRequisitionScreen() {
             <Stack.Screen options={{ headerShown: false }} />
 
             <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-                <Text style={styles.headerTitle}>New Requisition</Text>
+                <Text style={styles.headerTitle}>{isPersonal ? 'New Transaction' : 'New Requisition'}</Text>
                 <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={8} accessibilityLabel="Close">
                     <X size={16} color={colors.navy} strokeWidth={3} />
                 </Pressable>
@@ -387,13 +523,19 @@ export default function NewRequisitionScreen() {
                                     </View>
                                 )}
 
+                                {!isPersonal && (
                                 <ToggleRow
                                     icon={<User size={20} color={useMyAccount ? colors.blue : colors.textFaint} />}
                                     title="Send to my account"
                                     subtitle="Use details from your profile"
                                     value={useMyAccount}
-                                    onToggle={() => setUseMyAccount((v) => !v)}
+                                    onToggle={() => setUseMyAccount((v) => {
+                                        const next = !v;
+                                        cacheStoreSync.setItem(PREF_USE_MY_ACCOUNT, String(next));
+                                        return next;
+                                    })}
                                 />
+                                )}
 
                                 {useMyAccount && (
                                     loadingProfile ? (
@@ -436,7 +578,11 @@ export default function NewRequisitionScreen() {
                                     title="Create item list"
                                     subtitle="Add specific items and prices"
                                     value={makeExpenseList}
-                                    onToggle={() => setMakeExpenseList((v) => !v)}
+                                    onToggle={() => setMakeExpenseList((v) => {
+                                        const next = !v;
+                                        cacheStoreSync.setItem(PREF_MAKE_EXPENSE_LIST, String(next));
+                                        return next;
+                                    })}
                                 />
                             </View>
                         )}
@@ -524,11 +670,15 @@ export default function NewRequisitionScreen() {
 
                                 <AnimatedSegmented
                                     value={paymentMethod}
-                                    onChange={(v) => setPaymentMethod(v as 'mobile' | 'bank')}
+                                    onChange={(v) => setPaymentMethod(v as 'moneywise' | 'mobile' | 'bank')}
                                     trackStyle={styles.methodTrack}
                                     indicatorStyle={styles.methodIndicator}
                                     itemStyle={styles.methodBtn}
                                     items={[
+                                        {
+                                            value: 'moneywise',
+                                            content: <Text style={[styles.methodBtnText, paymentMethod === 'moneywise' && styles.methodBtnTextActive]}>MoneyWise</Text>,
+                                        },
                                         {
                                             value: 'mobile',
                                             content: <Text style={[styles.methodBtnText, paymentMethod === 'mobile' && styles.methodBtnTextActive]}>Mobile Money</Text>,
@@ -540,8 +690,132 @@ export default function NewRequisitionScreen() {
                                     ]}
                                 />
 
-                                <AnimatedTabContent tabKey={paymentMethod} index={paymentMethod === 'bank' ? 1 : 0} style={{ gap: 18 }}>
-                                {paymentMethod === 'mobile' ? (
+                                <AnimatedTabContent
+                                    tabKey={paymentMethod}
+                                    index={paymentMethod === 'moneywise' ? 0 : paymentMethod === 'mobile' ? 1 : 2}
+                                    style={{ gap: 18 }}
+                                >
+                                {paymentMethod === 'moneywise' ? (
+                                    <View style={{ gap: 16 }}>
+                                        {selectedRecipient ? (
+                                            /* Verified Recipient Card */
+                                            <View style={styles.verifiedRecipientCard}>
+                                                <View style={styles.verifiedHeaderRow}>
+                                                    <View style={styles.verifiedBadge}>
+                                                        <ShieldCheck size={14} color="#059669" />
+                                                        <Text style={styles.verifiedBadgeText}>Verified MoneyWise Account</Text>
+                                                    </View>
+                                                    <Pressable style={styles.changeRecipientBtn} onPress={handleClearRecipient}>
+                                                        <Text style={styles.changeRecipientText}>Change</Text>
+                                                    </Pressable>
+                                                </View>
+
+                                                <View style={styles.recipientInfoRow}>
+                                                    <RecipientAvatar
+                                                        name={selectedRecipient.name}
+                                                        logoUrl={selectedRecipient.logo_url}
+                                                        size={48}
+                                                    />
+                                                    <View style={{ flex: 1, gap: 2 }}>
+                                                        <Text style={styles.recipientNameText}>{selectedRecipient.name}</Text>
+                                                        <Text style={styles.recipientHandleText}>
+                                                            {selectedRecipient.username ? `@${selectedRecipient.username}` : (selectedRecipient.email || selectedRecipient.phone)}
+                                                        </Text>
+                                                        <View style={styles.recipientMetaRow}>
+                                                            <View style={[
+                                                                styles.accountTypeBadge,
+                                                                selectedRecipient.account_type === 'PERSONAL' ? styles.typePersonal : styles.typeBusiness
+                                                            ]}>
+                                                                <Text style={[
+                                                                    styles.accountTypeText,
+                                                                    selectedRecipient.account_type === 'PERSONAL' ? { color: colors.blue } : { color: '#059669' }
+                                                                ]}>
+                                                                    {selectedRecipient.account_type === 'PERSONAL' ? 'Personal Workspace' : 'Business'}
+                                                                </Text>
+                                                            </View>
+                                                            <Text style={styles.recipientOrgText}>· {selectedRecipient.organization_name}</Text>
+                                                        </View>
+                                                    </View>
+                                                </View>
+
+                                                <View style={styles.instantP2PFooter}>
+                                                    <Text style={styles.instantP2PText}>Instant wallet-to-wallet transfer · Zero platform fee</Text>
+                                                </View>
+                                            </View>
+                                        ) : (
+                                            /* Recipient Search & Autosuggest */
+                                            <View style={{ gap: 12 }}>
+                                                <View style={styles.field}>
+                                                    <Text style={styles.label}>Search Recipient</Text>
+                                                    <View style={styles.searchRecipientWrap}>
+                                                        <Search size={18} color={colors.textFaint} style={{ marginLeft: 14 }} />
+                                                        <TextInput
+                                                            style={styles.searchRecipientInput}
+                                                            value={mwQuery}
+                                                            onChangeText={setMwQuery}
+                                                            placeholder="Email, @username, phone, or MW-ID"
+                                                            placeholderTextColor={colors.textFaint}
+                                                            autoCapitalize="none"
+                                                            autoCorrect={false}
+                                                        />
+                                                        {searchingMw ? (
+                                                            <ActivityIndicator size="small" color={colors.blue} style={{ marginRight: 14 }} />
+                                                        ) : mwQuery.length > 0 ? (
+                                                            <Pressable onPress={() => setMwQuery('')} hitSlop={8} style={{ marginRight: 14 }}>
+                                                                <X size={16} color={colors.textFaint} />
+                                                            </Pressable>
+                                                        ) : null}
+                                                    </View>
+                                                </View>
+
+                                                {/* Suggestions matches list */}
+                                                {mwSuggestions.length > 0 ? (
+                                                    <View style={styles.suggestionsContainer}>
+                                                        <Text style={styles.suggestionsHeader}>Matches on MoneyWise</Text>
+                                                        {mwSuggestions.map((item) => (
+                                                            <Pressable
+                                                                key={item.id}
+                                                                style={({ pressed }) => [styles.suggestionRow, pressed && { backgroundColor: colors.canvasAlt }]}
+                                                                onPress={() => handleSelectRecipient(item)}
+                                                            >
+                                                                <RecipientAvatar
+                                                                    name={item.name}
+                                                                    logoUrl={item.logo_url}
+                                                                    size={38}
+                                                                />
+                                                                <View style={{ flex: 1, gap: 2 }}>
+                                                                    <View style={styles.rowBetween}>
+                                                                        <Text style={styles.suggestionName}>{item.name}</Text>
+                                                                        <View style={[
+                                                                            styles.accountTypeBadge,
+                                                                            item.account_type === 'PERSONAL' ? styles.typePersonal : styles.typeBusiness
+                                                                        ]}>
+                                                                            <Text style={[
+                                                                                styles.accountTypeText,
+                                                                                item.account_type === 'PERSONAL' ? { color: colors.blue } : { color: '#059669' }
+                                                                            ]}>
+                                                                                {item.account_type === 'PERSONAL' ? 'Personal' : 'Business'}
+                                                                            </Text>
+                                                                        </View>
+                                                                    </View>
+                                                                    <Text style={styles.suggestionSub}>
+                                                                        {item.username ? `@${item.username}` : (item.email || item.phone)} · {item.organization_name}
+                                                                    </Text>
+                                                                </View>
+                                                                <ArrowRight size={16} color={colors.textFaint} />
+                                                            </Pressable>
+                                                        ))}
+                                                    </View>
+                                                ) : mwQuery.trim().length >= 2 && !searchingMw ? (
+                                                    <View style={styles.noMatchCard}>
+                                                        <AlertCircle size={16} color={colors.textFaint} />
+                                                        <Text style={styles.noMatchText}>No MoneyWise account found matching "{mwQuery}"</Text>
+                                                    </View>
+                                                ) : null}
+                                            </View>
+                                        )}
+                                    </View>
+                                ) : paymentMethod === 'mobile' ? (
                                     <View style={styles.field}>
                                         <Text style={styles.label}>Phone Number</Text>
                                         <View style={styles.phoneWrap}>
@@ -594,7 +868,7 @@ export default function NewRequisitionScreen() {
                                 )}
                                 </AnimatedTabContent>
 
-                                {(phoneNumber.length >= 10 || accountNumber.length >= 5) && (
+                                {paymentMethod !== 'moneywise' && (phoneNumber.length >= 10 || accountNumber.length >= 5) && (
                                     <View style={styles.holderCard}>
                                         {confirmingName
                                             ? <ActivityIndicator size="small" color={colors.blue} />
@@ -607,35 +881,17 @@ export default function NewRequisitionScreen() {
                                         </View>
                                     </View>
                                 )}
-
-                                {userRole === 'ADMIN' && (
-                                    <View>
-                                        <ToggleRow
-                                            icon={<Zap size={20} color={autoAuthorize ? colors.blue : colors.textFaint} />}
-                                            title="Auto-authorize & send"
-                                            subtitle="Approve and disburse instantly on submit"
-                                            value={autoAuthorize}
-                                            onToggle={() => setAutoAuthorize((v) => !v)}
-                                        />
-                                        {autoAuthorize && (
-                                            <View style={styles.autoAuthWarn}>
-                                                <AlertCircle size={13} color={colors.warn} />
-                                                <Text style={styles.autoAuthWarnText}>Funds will be sent immediately via Lenco when you tap Send. This cannot be undone.</Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                )}
                             </View>
                         )}
 
                         {stage === 4 && (
                             <View style={styles.stageGap}>
-                                <Text style={styles.reviewHeader}>Requisition Summary</Text>
+                                <Text style={styles.reviewHeader}>Transaction Summary</Text>
 
                                 <View style={styles.heroWrap}>
                                     <View style={styles.heroLabelRow}>
                                         <Mail size={16} color={colors.textMuted} />
-                                        <Text style={styles.heroLabel}>Requisition Total</Text>
+                                        <Text style={styles.heroLabel}>Total Amount</Text>
                                     </View>
                                     <Text style={styles.heroAmount}>{formatKwacha(total)}</Text>
                                 </View>
@@ -643,16 +899,44 @@ export default function NewRequisitionScreen() {
                                 <View style={styles.reviewCard}>
                                     <View style={styles.reviewRow}>
                                         <Text style={styles.reviewLabel}>Payment Method</Text>
-                                        <Text style={styles.reviewValue}>{paymentMethod === 'mobile' ? 'Mobile Money' : 'Bank Transfer'}</Text>
+                                        <Text style={styles.reviewValue}>
+                                            {paymentMethod === 'moneywise' ? 'MoneyWise Pay' : paymentMethod === 'mobile' ? 'Mobile Money' : 'Bank Transfer'}
+                                        </Text>
                                     </View>
-                                    <View style={styles.reviewRow}>
-                                        <Text style={styles.reviewLabel}>Account Number</Text>
-                                        <Text style={styles.reviewValue}>{paymentMethod === 'mobile' ? phoneNumber : accountNumber}</Text>
-                                    </View>
-                                    <View style={styles.reviewRow}>
-                                        <Text style={styles.reviewLabel}>Account Name</Text>
-                                        <Text style={styles.reviewValue}>{useMyAccount ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || 'My Account') : (resolvedName || '—')}</Text>
-                                    </View>
+
+                                    {paymentMethod === 'moneywise' && selectedRecipient ? (
+                                        <>
+                                            <View style={styles.reviewRow}>
+                                                <Text style={styles.reviewLabel}>Recipient</Text>
+                                                <Text style={styles.reviewValue}>{selectedRecipient.name}</Text>
+                                            </View>
+                                            <View style={styles.reviewRow}>
+                                                <Text style={styles.reviewLabel}>Account</Text>
+                                                <Text style={styles.reviewValue}>
+                                                    {selectedRecipient.username ? `@${selectedRecipient.username}` : (selectedRecipient.email || selectedRecipient.moneywise_id)}
+                                                </Text>
+                                            </View>
+                                            <View style={styles.reviewRow}>
+                                                <Text style={styles.reviewLabel}>Destination Workspace</Text>
+                                                <Text style={styles.reviewValue}>{selectedRecipient.organization_name}</Text>
+                                            </View>
+                                            <View style={styles.reviewRow}>
+                                                <Text style={styles.reviewLabel}>Transfer Fee</Text>
+                                                <Text style={[styles.reviewValue, { color: '#059669' }]}>K0.00 (Instant Free Transfer)</Text>
+                                            </View>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <View style={styles.reviewRow}>
+                                                <Text style={styles.reviewLabel}>Account Number</Text>
+                                                <Text style={styles.reviewValue}>{paymentMethod === 'mobile' ? phoneNumber : accountNumber}</Text>
+                                            </View>
+                                            <View style={styles.reviewRow}>
+                                                <Text style={styles.reviewLabel}>Account Name</Text>
+                                                <Text style={styles.reviewValue}>{useMyAccount ? (paymentInfo?.mobile_money_name || paymentInfo?.bank_account_name || 'My Account') : (resolvedName || '—')}</Text>
+                                            </View>
+                                        </>
+                                    )}
                                 </View>
 
                                 {autoAuthorize && !useMyAccount && wallets.length > 1 && (
@@ -961,4 +1245,189 @@ const styles = StyleSheet.create({
     pickerList: { paddingBottom: 32 },
     pickerRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 24, paddingVertical: 14 },
     pickerRowText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+    // MoneyWise Pay Styles
+    verifiedRecipientCard: {
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.borderStrong,
+        borderRadius: radius.xl,
+        padding: 18,
+        gap: 14,
+    },
+    verifiedHeaderRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingBottom: 10,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.border,
+    },
+    verifiedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: radius.pill,
+    },
+    verifiedBadgeText: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 11,
+        color: '#059669',
+    },
+    changeRecipientBtn: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: radius.pill,
+    },
+    changeRecipientText: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 12,
+        color: colors.blue,
+    },
+    recipientInfoRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 14,
+    },
+    recipientNameText: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 16,
+        color: colors.navy,
+    },
+    recipientHandleText: {
+        fontFamily: fonts.bodyMedium,
+        fontSize: 13,
+        color: colors.textFaint,
+    },
+    recipientMetaRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 2,
+    },
+    accountTypeBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    typePersonal: {
+        backgroundColor: '#EEF4FF',
+    },
+    typeBusiness: {
+        backgroundColor: '#ECFDF5',
+    },
+    accountTypeText: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 10,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    recipientOrgText: {
+        fontFamily: fonts.bodyMedium,
+        fontSize: 11,
+        color: colors.textMuted,
+        flexShrink: 1,
+    },
+    instantP2PFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        backgroundColor: colors.canvasAlt,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: radius.md,
+    },
+    instantP2PText: {
+        fontFamily: fonts.bodyMedium,
+        fontSize: 11,
+        color: colors.textMuted,
+        flex: 1,
+    },
+    searchRecipientWrap: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.canvasAlt,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: radius.lg,
+        height: 52,
+    },
+    searchRecipientInput: {
+        flex: 1,
+        fontFamily: fonts.body,
+        fontSize: 14,
+        color: colors.text,
+        paddingHorizontal: 10,
+        height: '100%',
+    },
+    suggestionsContainer: {
+        backgroundColor: colors.surface,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: radius.lg,
+        overflow: 'hidden',
+    },
+    suggestionsHeader: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 11,
+        color: colors.textFaint,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        paddingHorizontal: 16,
+        paddingTop: 12,
+        paddingBottom: 6,
+    },
+    suggestionRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: colors.border,
+    },
+    suggestionName: {
+        fontFamily: fonts.bodyBold,
+        fontSize: 14,
+        color: colors.navy,
+    },
+    suggestionSub: {
+        fontFamily: fonts.body,
+        fontSize: 12,
+        color: colors.textFaint,
+    },
+    noMatchCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: colors.canvasAlt,
+        borderWidth: 1,
+        borderColor: colors.border,
+        borderRadius: radius.lg,
+        padding: 14,
+    },
+    noMatchText: {
+        fontFamily: fonts.bodyMedium,
+        fontSize: 12,
+        color: colors.textFaint,
+        flex: 1,
+    },
+    searchHintCard: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 10,
+        backgroundColor: '#EEF4FF',
+        borderWidth: 1,
+        borderColor: 'rgba(0,106,255,0.1)',
+        borderRadius: radius.lg,
+        padding: 14,
+    },
+    searchHintText: {
+        fontFamily: fonts.bodyMedium,
+        fontSize: 12,
+        color: colors.blue,
+        lineHeight: 17,
+        flex: 1,
+    },
 });

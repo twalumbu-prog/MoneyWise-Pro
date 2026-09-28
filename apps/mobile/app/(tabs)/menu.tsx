@@ -3,7 +3,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
-    User, Settings as SettingsIcon, Users, LogOut, Plug,
+    User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree,
 } from 'lucide-react-native';
 import { useAuth } from '../../src/context/AuthContext';
 import { OtherServiceIcon } from '../../src/components/icons/OtherServiceIcon';
@@ -17,16 +17,26 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
 export default function MenuScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { user, userRole, userName, organizationName, signOut } = useAuth();
+    const { user, userRole, userName, organizationId, organizationName, userOrganizations, signOut } = useAuth();
 
-    const services = [
-        { icon: ShieldCheck, label: 'Audit', go: () => router.push('/audit') },
-        { icon: ShoppingBag, label: 'Products', go: () => router.push('/products') },
-        { icon: LayoutGrid, label: 'Apps', go: () => router.push('/apps') },
-        { icon: TrendingUp, label: 'Invest', go: () => router.push('/apps/invest') },
-        { icon: Landmark, label: 'Loans', go: () => soon('Business Loans') },
-        { icon: Store, label: 'Marketplace', go: () => soon('Marketplace') },
+    const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
+    const activeOrgName = currentOrg?.name || organizationName || '';
+
+    const isPersonal = activeOrgName.toLowerCase().includes('workspace') ||
+        activeOrgName.toLowerCase().includes('personal') ||
+        activeOrgName.toLowerCase().includes('individual') ||
+        activeOrgName.toLowerCase().includes('private');
+
+    const allServices = [
+        { icon: ShieldCheck, label: 'Audit', go: () => router.push('/audit'), proOnly: true },
+        { icon: ShoppingBag, label: 'Products', go: () => router.push('/products'), proOnly: true },
+        { icon: LayoutGrid, label: 'Apps', go: () => router.push('/apps'), proOnly: true },
+        { icon: TrendingUp, label: 'Invest', go: () => router.push('/apps/invest'), proOnly: false },
+        { icon: Landmark, label: 'Loans', go: () => soon('Loans'), proOnly: false },
+        { icon: Store, label: 'Marketplace', go: () => soon('Marketplace'), proOnly: false },
     ];
+
+    const services = isPersonal ? allServices.filter((s) => !s.proOnly) : allServices;
 
     function soon(name: string) {
         Alert.alert(name, 'This lands in a later phase of the app rollout. It’s available on the web app now.');
@@ -39,9 +49,26 @@ export default function MenuScreen() {
             <View style={styles.profileCard}>
                 <View style={styles.avatar}><User size={26} color={colors.textMuted} /></View>
                 <View style={styles.profileMain}>
-                    <Text style={styles.orgName} numberOfLines={1}>{organizationName || 'My Business'}</Text>
-                    <Text style={styles.role}>{userRole ?? ''}</Text>
-                    <Text style={styles.email} numberOfLines={1}>{userName || user?.email}</Text>
+                    {isPersonal ? (
+                        <>
+                            <Text style={styles.orgName} numberOfLines={1}>
+                                {userName || user?.email?.split('@')[0] || 'Personal User'}
+                            </Text>
+                            <Text style={styles.email} numberOfLines={1}>
+                                {user?.email || ''}
+                            </Text>
+                        </>
+                    ) : (
+                        <>
+                            <Text style={styles.orgName} numberOfLines={1}>
+                                {organizationName || 'My Business'}
+                            </Text>
+                            <Text style={styles.role}>{userRole ?? ''}</Text>
+                            <Text style={styles.email} numberOfLines={1}>
+                                {userName || user?.email}
+                            </Text>
+                        </>
+                    )}
                 </View>
             </View>
 
@@ -83,36 +110,60 @@ export default function MenuScreen() {
                     <SettingsIcon size={18} color={colors.blue} />
                     <View style={styles.rowMain}>
                         <Text style={styles.rowLabel}>General Settings</Text>
-                        <Text style={styles.rowSub}>Organisation & departments</Text>
+                        <Text style={styles.rowSub}>{isPersonal ? 'Account settings' : 'Organisation & departments'}</Text>
                     </View>
                 </Pressable>
                 <Pressable
-                    onPress={() => router.push('/settings/team')}
+                    onPress={() => router.push('/settings/chart-of-accounts')}
                     style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
                 >
-                    <Users size={18} color={colors.blue} />
+                    <FolderTree size={18} color={colors.blue} />
                     <View style={styles.rowMain}>
-                        <Text style={styles.rowLabel}>Team Members</Text>
-                        <Text style={styles.rowSub}>Manage staff access</Text>
+                        <Text style={styles.rowLabel}>Chart of Accounts</Text>
+                        <Text style={styles.rowSub}>Manage personal categories & emojis</Text>
                     </View>
                 </Pressable>
-                <Pressable
-                    onPress={() => router.push('/settings/integrations')}
-                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
-                >
-                    <Plug size={18} color={colors.blue} />
-                    <View style={styles.rowMain}>
-                        <Text style={styles.rowLabel}>Integrations</Text>
-                        <Text style={styles.rowSub}>QuickBooks connection</Text>
-                    </View>
-                </Pressable>
+                {!isPersonal && (
+                    <Pressable
+                        onPress={() => router.push('/settings/team')}
+                        style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                    >
+                        <Users size={18} color={colors.blue} />
+                        <View style={styles.rowMain}>
+                            <Text style={styles.rowLabel}>Team Members</Text>
+                            <Text style={styles.rowSub}>Manage staff access</Text>
+                        </View>
+                    </Pressable>
+                )}
+                {!isPersonal && (
+                    <Pressable
+                        onPress={() => router.push('/settings/integrations')}
+                        style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                    >
+                        <Plug size={18} color={colors.blue} />
+                        <View style={styles.rowMain}>
+                            <Text style={styles.rowLabel}>Integrations</Text>
+                            <Text style={styles.rowSub}>QuickBooks connection</Text>
+                        </View>
+                    </Pressable>
+                )}
             </View>
 
             <Pressable
                 onPress={() =>
                     Alert.alert('Sign out?', 'You’ll need to sign in again to use MoneyWise.', [
                         { text: 'Cancel', style: 'cancel' },
-                        { text: 'Sign out', style: 'destructive', onPress: () => { void signOut(); } },
+                        {
+                            text: 'Sign out',
+                            style: 'destructive',
+                            onPress: async () => {
+                                try {
+                                    await signOut();
+                                } finally {
+                                    router.replace('/(auth)/login');
+                                }
+                            },
+                        },
                     ])
                 }
                 style={({ pressed }) => [styles.signOut, pressed && { opacity: 0.6 }]}
