@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ChevronDown, LogOut } from 'lucide-react';
+import { useAchievements } from '../context/AchievementsContext';
+import { AchievementsDropdown } from './achievements/AchievementsDropdown';
+import { ChevronDown, LogOut, Trophy } from 'lucide-react';
 
 interface DesktopHeaderProps {
     title: string;
@@ -13,6 +15,7 @@ interface DesktopHeaderProps {
  */
 export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
     const { userName, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId } = useAuth();
+    const { isDesktopDropdownOpen, toggleDesktopDropdown, completedCount, totalCount } = useAchievements();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [isOrgMenuOpen, setIsOrgMenuOpen] = useState(false);
 
@@ -91,44 +94,69 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({ title }) => {
                 <span className="text-xs text-gray-500 truncate">{title}</span>
             </div>
 
-            {/* Right: profile */}
-            <div className="relative flex-shrink-0">
-                <button
-                    onClick={() => setIsMenuOpen(!isMenuOpen)}
-                    className="flex items-center gap-3 hover:bg-gray-50 p-1.5 rounded-2xl transition-all group"
-                >
-                    <div className="text-right hidden sm:block">
-                        <p className="text-[10px] font-bold text-[#111827] leading-none">{userName || 'User Name'}</p>
-                        <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest leading-none mt-1">
-                            {getPosition(userRole)}
-                        </p>
-                    </div>
-                    <div className="h-5 w-5 rounded-2xl bg-[#111827] flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-[8px] font-medium">{initial}</span>
-                    </div>
-                </button>
-
-                {isMenuOpen && (
-                    <>
-                        <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)}></div>
-                        <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl border border-[#E8EEF8] z-50 overflow-hidden py-2 transform origin-top-right animate-in fade-in slide-in-from-top-1">
-                            <div className="px-4 py-3 border-b border-[#E8EEF8] mb-1">
-                                <p className="text-sm font-bold text-brand-navy truncate">{userName}</p>
-                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">{getPosition(userRole)}</p>
-                            </div>
-                            <button
-                                onClick={() => {
-                                    setIsMenuOpen(false);
-                                    signOut();
-                                }}
-                                className="w-full flex items-center px-4 py-3 text-sm font-bold text-gray-500 hover:text-red-600 hover:bg-red-50/50 transition-all group"
-                            >
-                                <LogOut size={16} className="mr-3 group-hover:text-red-500 transition-colors" />
-                                Sign Out
-                            </button>
+            {/* Right: Actions (Achievements + Profile) */}
+            <div className="flex items-center gap-3">
+                {/* Achievements Button */}
+                <div className="relative flex-shrink-0">
+                    <button
+                        type="button"
+                        onClick={toggleDesktopDropdown}
+                        aria-label="Achievements & Missions"
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-white border border-[#E8EEF8] hover:border-blue-200 hover:bg-blue-50/50 transition-all text-[#111827] shadow-xs active:scale-95 group"
+                    >
+                        <div className="w-6 h-6 rounded-xl bg-[#006AFF]/10 text-[#006AFF] flex items-center justify-center group-hover:scale-105 transition-transform">
+                            <Trophy size={14} />
                         </div>
-                    </>
-                )}
+                        <span className="text-xs font-bold text-gray-700 group-hover:text-[#006AFF]">
+                            Missions ({completedCount}/{totalCount})
+                        </span>
+                        {completedCount < totalCount && (
+                            <span className="w-2 h-2 rounded-full bg-[#03D47C] animate-pulse" />
+                        )}
+                    </button>
+
+                    {isDesktopDropdownOpen && <AchievementsDropdown />}
+                </div>
+
+                {/* Profile */}
+                <div className="relative flex-shrink-0">
+                    <button
+                        onClick={() => setIsMenuOpen(!isMenuOpen)}
+                        className="flex items-center gap-3 hover:bg-gray-50 p-1.5 rounded-2xl transition-all group"
+                    >
+                        <div className="text-right hidden sm:block">
+                            <p className="text-[10px] font-bold text-[#111827] leading-none">{userName || 'User Name'}</p>
+                            <p className="text-[8px] font-bold text-gray-400 uppercase tracking-widest leading-none mt-1">
+                                {getPosition(userRole)}
+                            </p>
+                        </div>
+                        <div className="h-5 w-5 rounded-2xl bg-[#111827] flex items-center justify-center flex-shrink-0">
+                            <span className="text-white text-[8px] font-medium">{initial}</span>
+                        </div>
+                    </button>
+
+                    {isMenuOpen && (
+                        <>
+                            <div className="fixed inset-0 z-40" onClick={() => setIsMenuOpen(false)}></div>
+                            <div className="absolute right-0 mt-3 w-56 bg-white rounded-2xl shadow-xl border border-[#E8EEF8] z-50 overflow-hidden py-2 transform origin-top-right animate-in fade-in slide-in-from-top-1">
+                                <div className="px-4 py-3 border-b border-[#E8EEF8] mb-1">
+                                    <p className="text-sm font-bold text-brand-navy truncate">{userName}</p>
+                                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-0.5">{getPosition(userRole)}</p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setIsMenuOpen(false);
+                                        signOut();
+                                    }}
+                                    className="w-full flex items-center px-4 py-3 text-sm font-bold text-gray-500 hover:text-red-600 hover:bg-red-50/50 transition-all group"
+                                >
+                                    <LogOut size={16} className="mr-3 group-hover:text-red-500 transition-colors" />
+                                    Sign Out
+                                </button>
+                            </div>
+                        </>
+                    )}
+                </div>
             </div>
         </div>
     );

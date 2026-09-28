@@ -230,6 +230,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                 <div className="flex items-center justify-between gap-3">
                     <p className="text-sm text-gray-500">Manage users and their roles within your organization.</p>
                     <button
+                        data-tour-target="add-team-btn"
                         onClick={() => setIsAddModalOpen(true)}
                         className="flex-shrink-0 h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                     >
@@ -459,6 +460,7 @@ export const UserManagement: React.FC<UserManagementProps> = ({ onRequestAdd }) 
                     <div className="mt-5 sm:mt-6 sm:grid sm:grid-cols-2 sm:gap-3 sm:grid-flow-row-dense">
                         <button
                             type="submit"
+                            data-tour-target="modal-submit-add-user"
                             disabled={actionLoading}
                             className="w-full inline-flex justify-center rounded-xl border border-transparent shadow-sm px-4 py-2 bg-brand-green text-base font-medium text-white hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-brand-green sm:col-start-2 sm:text-sm disabled:opacity-50"
                         >

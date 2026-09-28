@@ -11,7 +11,7 @@ import {
     Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
-import type { ChartSpec, FileSpec, KpiSpec, TableSpec, Widget } from '../../../lib/agentClient';
+import type { ChartSpec, FileSpec, KpiSpec, TableSpec, Widget } from 'core';
 
 // A single ordered palette keeps every chart in the conversation consistent.
 const PALETTE = ['#006AFF', '#00C48C', '#FFB020', '#7C3AED', '#F0507E', '#14B8A6', '#F97316', '#6366F1'];

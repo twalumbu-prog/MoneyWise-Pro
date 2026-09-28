@@ -75,3 +75,9 @@ apps/api/inspect_*.js
 # Claude Code local (per-machine) settings
 **/.claude/settings.local.json
 .env*
+
+# Expo
+apps/mobile/.expo/
+apps/mobile/.expo-export-check/
+apps/mobile/ios/
+apps/mobile/android/

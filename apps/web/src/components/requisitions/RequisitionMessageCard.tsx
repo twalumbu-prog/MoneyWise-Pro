@@ -2251,11 +2251,18 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                             <tbody className="divide-y divide-gray-50">
                                                 {expenseItems.map((item, idx) => {
                                                     const receipt = requisitionData?.receipts?.find((r: any) => r.id === item.receipt_ocr_data?.source_receipt_id);
-                                                    const receiptTotal = receipt?.ocr_data?.total_amount;
+                                                    const receiptOcr = receipt?.ocr_data;
+                                                    const isForeignReceipt = receiptOcr?.currency && receiptOcr.currency.toUpperCase() !== 'ZMW';
+                                                    // For foreign-currency receipts use the ZMW equivalent and a wider tolerance.
+                                                    const receiptTotal = isForeignReceipt && receiptOcr?.zmw_equivalent != null
+                                                        ? receiptOcr.zmw_equivalent
+                                                        : receiptOcr?.total_amount;
+                                                    const discrepancyTolerance = isForeignReceipt ? 0.15 : 0.01; // 15% vs K0.01
                                                     const actualAmt = parseFloat(item.actual_amount) || 0;
-                                                    const hasDiscrepancy = item.ai_extracted_amount != null && 
-                                                        Math.abs(actualAmt - item.ai_extracted_amount) > 0.01 &&
-                                                        (!receiptTotal || Math.abs(actualAmt - receiptTotal) > 0.01);
+                                                    const hasDiscrepancy = item.ai_extracted_amount != null &&
+                                                        actualAmt > 0 &&
+                                                        Math.abs(actualAmt - item.ai_extracted_amount) / actualAmt > discrepancyTolerance &&
+                                                        (!receiptTotal || Math.abs(actualAmt - receiptTotal) / actualAmt > discrepancyTolerance);
                                                     
                                                     return (
                                                         <tr key={item.id || idx}>
@@ -2386,7 +2393,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 <h4 className="text-[13px] font-bold text-gray-900 truncate">{ocr?.vendor || 'Receipt Uploaded'}</h4>
                                                                 <div className="flex items-center gap-2 mt-1">
                                                                     {ocr?.total_amount ? (
-                                                                        <span className="text-[11px] font-black text-[#006AFF] bg-blue-50 px-2 py-0.5 rounded-full">K{ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                                                        <span className="text-[11px] font-black text-[#006AFF] bg-blue-50 px-2 py-0.5 rounded-full">
+                                                                            {ocr.currency && ocr.currency.toUpperCase() !== 'ZMW'
+                                                                                ? `${ocr.currency} ${ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}${ocr.zmw_equivalent != null ? ` (~K${ocr.zmw_equivalent.toLocaleString(undefined, { minimumFractionDigits: 2 })})` : ''}`
+                                                                                : `K${ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`}
+                                                                        </span>
                                                                     ) : (
                                                                         <span className="text-[11px] text-gray-400 italic">No total found</span>
                                                                     )}
@@ -2435,7 +2446,16 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                                 </div>
                                                                                 <div className="bg-white p-2.5 rounded-xl border border-gray-100 shadow-sm">
                                                                                     <span className="text-gray-400 block text-[9px] uppercase font-bold mb-0.5">Total Amount</span>
-                                                                                    <span className="font-black text-[#006AFF]">K{ocr?.total_amount != null ? ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</span>
+                                                                                    {ocr?.currency && ocr.currency.toUpperCase() !== 'ZMW' ? (
+                                                                                        <>
+                                                                                            <span className="font-black text-[#006AFF]">{ocr.currency} {ocr.total_amount?.toLocaleString(undefined, { minimumFractionDigits: 2 }) ?? '-'}</span>
+                                                                                            {ocr.zmw_equivalent != null && (
+                                                                                                <span className="block text-[10px] text-indigo-500 font-semibold">≈ K{ocr.zmw_equivalent.toLocaleString(undefined, { minimumFractionDigits: 2 })}{ocr.exchange_rate ? ` @ ${ocr.exchange_rate.toFixed(2)}` : ''}</span>
+                                                                                            )}
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <span className="font-black text-[#006AFF]">K{ocr?.total_amount != null ? ocr.total_amount.toLocaleString(undefined, { minimumFractionDigits: 2 }) : '-'}</span>
+                                                                                    )}
                                                                                 </div>
                                                                             </div>
                                                                             

@@ -13,7 +13,7 @@ import ReactMarkdown from 'react-markdown';
 // though render_table is the preferred path for real data.
 import remarkGfm from 'remark-gfm';
 import { Check, Copy } from 'lucide-react';
-import type { Widget } from '../../lib/agentClient';
+import type { Widget } from 'core';
 import { WidgetRenderer } from './widgets/WidgetRenderer';
 import { Step, ToolTimeline } from './ToolTimeline';
 import { ThinkingTrace } from './ThinkingTrace';

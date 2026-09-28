@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Search, RefreshCw, Plus, ArrowUpDown, ListFilter, LucideIcon } from 'lucide-react';
+import { TabPillGroup } from './AnimatedTabs';
 
 interface TabDef {
     label: string;
@@ -99,37 +100,41 @@ export const InboxCard: React.FC<InboxCardProps> = ({
         <div className="bg-white rounded-[20px] p-3.5 flex flex-col gap-3">
             {/* Row 1: Inflows/Outflows toggle (with counts) + New */}
             <div className="flex items-center justify-between">
-                <div className="h-8 px-1 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center">
-                    <button
-                        onClick={() => onModeChange('outflows')}
-                        className="flex items-center gap-2 px-3 h-full"
-                    >
-                        {mode === 'outflows' && <span className="w-1 h-1 rounded-full bg-[#0058DB]" />}
-                        <span className={`text-sm ${mode === 'outflows' ? 'font-bold text-[#111827]' : 'font-normal text-gray-400'}`}>
-                            Outflows
-                        </span>
-                        <span className="min-w-[18px] px-1 bg-[#F3F5FC] rounded text-center text-[10px] text-neutral-500">
-                            {outflowCount}
-                        </span>
-                    </button>
-                    <div className="w-[1px] h-4 bg-[#E8EEF8]" />
-                    <button
-                        onClick={() => onModeChange('inflows')}
-                        className="flex items-center gap-2 px-3 h-full"
-                    >
-                        {mode === 'inflows' && <span className="w-1 h-1 rounded-full bg-[#0058DB]" />}
-                        <span className={`text-sm ${mode === 'inflows' ? 'font-bold text-[#111827]' : 'font-normal text-gray-400'}`}>
-                            Inflows
-                        </span>
-                        <span className="min-w-[18px] px-1 bg-[#F3F5FC] rounded text-center text-[10px] text-neutral-500">
-                            {inflowCount}
-                        </span>
-                    </button>
-                </div>
+                <TabPillGroup
+                    value={mode}
+                    onChange={(v) => onModeChange(v as 'outflows' | 'inflows')}
+                    trackClassName="h-8 px-1 bg-white rounded-lg outline outline-[0.5px] outline-offset-[-0.5px] outline-[#E8EEF8] flex items-center"
+                    indicatorClassName="bg-[#F3F5FC] rounded-md"
+                    separator={<div className="w-[1px] h-4 bg-[#E8EEF8] shrink-0" />}
+                    tabs={[
+                        {
+                            value: 'outflows',
+                            buttonClassName: 'flex items-center gap-2 px-3 h-8',
+                            label: (
+                                <>
+                                    {mode === 'outflows' && <span className="w-1 h-1 rounded-full bg-[#0058DB]" />}
+                                    <span className={`text-sm ${mode === 'outflows' ? 'font-bold text-[#111827]' : 'font-normal text-gray-400'}`}>Outflows</span>
+                                    <span className="min-w-[18px] px-1 bg-[#F3F5FC] rounded text-center text-[10px] text-neutral-500">{outflowCount}</span>
+                                </>
+                            ),
+                        },
+                        {
+                            value: 'inflows',
+                            buttonClassName: 'flex items-center gap-2 px-3 h-8',
+                            label: (
+                                <div data-tour-target="inbox-mode-inflows" className="flex items-center gap-2">
+                                    {mode === 'inflows' && <span className="w-1 h-1 rounded-full bg-[#0058DB]" />}
+                                    <span className={`text-sm ${mode === 'inflows' ? 'font-bold text-[#111827]' : 'font-normal text-gray-400'}`}>Inflows</span>
+                                    <span className="min-w-[18px] px-1 bg-[#F3F5FC] rounded text-center text-[10px] text-neutral-500">{inflowCount}</span>
+                                </div>
+                            ),
+                        },
+                    ]}
+                />
 
                 {showNew && (
                     newMenuItems && newMenuItems.length > 0 ? (
-                        <div className="relative" ref={newMenuRef}>
+                        <div className="relative" ref={newMenuRef} data-tour-target="new-request-btn">
                             <button
                                 onClick={() => setIsNewMenuOpen(prev => !prev)}
                                 className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
@@ -166,6 +171,7 @@ export const InboxCard: React.FC<InboxCardProps> = ({
                         </div>
                     ) : (
                         <button
+                            data-tour-target="new-request-btn"
                             onClick={onNew}
                             className="h-8 pl-4 pr-3 bg-[#0058DB] rounded-lg flex items-center gap-2 hover:opacity-90 transition-opacity"
                         >

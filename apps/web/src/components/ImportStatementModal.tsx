@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { Upload, X, CheckCircle, AlertCircle, Loader2, FileSpreadsheet, AlertTriangle, ArrowRight } from 'lucide-react';
 import { cashbookService } from '../services/cashbook.service';
+import { parseStatementRows, type ParsedStatementRow } from 'core';
 
 interface ImportStatementModalProps {
     isOpen: boolean;
@@ -11,16 +12,8 @@ interface ImportStatementModalProps {
     walletName: string;
 }
 
-interface ParsedRow {
-    date: string;
-    details: string;
-    debit: number;
-    credit: number;
-    balance: number;
-}
-
 interface PreviewItem {
-    row: ParsedRow;
+    row: ParsedStatementRow;
     status: 'NEW' | 'MATCHED' | 'DUPLICATE';
     matchId?: string;
     matchDescription?: string;
@@ -89,62 +82,11 @@ const ImportStatementModal: React.FC<ImportStatementModalProps> = ({
                         throw new Error('File is empty or missing headers');
                     }
 
-                    const headers = jsonData[0].map((h: any) => String(h ?? '').toLowerCase().trim());
-                    
-                    // Column index mapping
-                    const dateIdx = headers.findIndex(h => h.includes('date'));
-                    const detailsIdx = headers.findIndex(h => h.includes('detail') || h.includes('description') || h.includes('narrative'));
-                    const debitIdx = headers.findIndex(h => h.includes('debit') || h.includes('withdrawal'));
-                    const creditIdx = headers.findIndex(h => h.includes('credit') || h.includes('deposit'));
-                    const balanceIdx = headers.findIndex(h => h.includes('balance'));
-
-                    if (dateIdx === -1 || detailsIdx === -1 || debitIdx === -1 || creditIdx === -1 || balanceIdx === -1) {
-                        throw new Error('Statement must contain: Date, Details/Description, Debit, Credit, and Balance columns.');
-                    }
-
-                    const parsedRows: ParsedRow[] = [];
-
-                    for (let i = 1; i < jsonData.length; i++) {
-                        const rawRow = jsonData[i];
-                        if (rawRow.every(c => c === null || c === undefined || c === '')) continue;
-
-                        const dateStr = rawRow[dateIdx];
-                        let formattedDate = '';
-                        if (dateStr) {
-                            // Handle excel serial dates or string dates
-                            if (typeof dateStr === 'number') {
-                                const excelDate = new Date((dateStr - 25569) * 86400 * 1000);
-                                formattedDate = excelDate.toISOString().split('T')[0];
-                            } else {
-                                const parsedD = new Date(dateStr);
-                                if (!isNaN(parsedD.getTime())) {
-                                    formattedDate = parsedD.toISOString().split('T')[0];
-                                }
-                            }
-                        }
-
-                        if (!formattedDate) {
-                            console.warn(`Skipping row ${i + 1}: Invalid date`);
-                            continue;
-                        }
-
-                        const details = String(rawRow[detailsIdx] || '').trim();
-                        const debit = parseFloat(String(rawRow[debitIdx] || '0').replace(/[^0-9.]/g, '')) || 0;
-                        const credit = parseFloat(String(rawRow[creditIdx] || '0').replace(/[^0-9.]/g, '')) || 0;
-                        const balance = parseFloat(String(rawRow[balanceIdx] || '0').replace(/[^0-9.]/g, '')) || 0;
-
-                        parsedRows.push({
-                            date: formattedDate,
-                            details,
-                            debit,
-                            credit,
-                            balance
-                        });
-                    }
-
-                    if (parsedRows.length === 0) {
-                        throw new Error('No valid transaction rows found.');
-                    }
+                    // Header detection and row mapping live in `core` so the web
+                    // app and the native app cannot disagree about how a statement
+                    // maps onto ledger rows. XLSX is still read here, because
+                    // SheetJS has no native equivalent; core takes the raw sheet.
+                    const parsedRows = parseStatementRows(jsonData);
 
                     // Call backend preview API
                     const previewResponse = await cashbookService.previewStatementImport(walletId, parsedRows);

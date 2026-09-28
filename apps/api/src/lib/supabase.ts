@@ -30,9 +30,12 @@ const fetchWithRetry = async (input: RequestInfo | URL, init?: RequestInit): Pro
         } catch (err: any) {
             lastError = err;
             const errStr = String(err.message || err);
+            // Fail fast on DNS resolution failure (ENOTFOUND / getaddrinfo) to prevent hanging
+            if (errStr.includes('ENOTFOUND') || errStr.includes('getaddrinfo')) {
+                throw err;
+            }
             if (
                 errStr.includes('fetch failed') || 
-                errStr.includes('ENOTFOUND') || 
                 errStr.includes('ETIMEDOUT') || 
                 errStr.includes('ECONNRESET') ||
                 errStr.includes('socket hang up')

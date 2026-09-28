@@ -492,7 +492,8 @@ export class LencoService {
      * @param amount The disbursement amount
      * @param type 'MOBILE_MONEY' or 'BANK'
      */
-    static calculatePayoutFee(amount: number, type: 'MOBILE_MONEY' | 'BANK' | string): number {
+    static calculatePayoutFee(amount: number, type: 'MOBILE_MONEY' | 'BANK' | 'MONEYWISE' | 'MONEYWISE_PAY' | string): number {
+        if (String(type || '').toUpperCase() === 'MONEYWISE' || String(type || '').toUpperCase() === 'MONEYWISE_PAY') return 0;
         // Updated tiered pricing based on Lenco V2 actuals for Zambia
         if (amount <= 150) return 8.50;
         if (amount <= 300) return 10.00;

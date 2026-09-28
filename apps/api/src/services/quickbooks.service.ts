@@ -236,6 +236,29 @@ export class QuickBooksService {
                 const data = await response.json();
                 if (!response.ok) {
                     console.error(`[QB Token] Refresh failed:`, data);
+
+                    // If Intuit says the refresh token is invalid, a concurrent Vercel
+                    // instance may have already consumed it and saved fresh tokens to DB.
+                    // Re-read the DB before surfacing the reconnect error.
+                    if (data.error === 'invalid_grant') {
+                        console.log('[QB Token] invalid_grant — re-reading DB in case another instance already refreshed');
+                        const { data: freshQb } = await supabase
+                            .from('integrations')
+                            .select('access_token, token_expires_at, realm_id')
+                            .eq('provider', 'QUICKBOOKS')
+                            .eq('organization_id', organizationId)
+                            .single();
+                        if (freshQb?.access_token && new Date() < new Date(freshQb.token_expires_at)) {
+                            try {
+                                const freshToken = decrypt(freshQb.access_token);
+                                console.log('[QB Token] Recovered valid token from DB after concurrent refresh');
+                                return { accessToken: freshToken, realmId: freshQb.realm_id ?? qb.realm_id };
+                            } catch (_) {
+                                // decryption failed — fall through to the reconnect error
+                            }
+                        }
+                    }
+
                     throw new Error(`QB Token Refresh Failed: ${data.error_description || data.error || 'Unknown error'}. You may need to reconnect QuickBooks.`);
                 }
 

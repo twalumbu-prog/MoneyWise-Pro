@@ -1,30 +1,27 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useId, useRef } from 'react';
+import { motion } from 'framer-motion';
 
 /**
- * Lightweight, dependency-free animated tabs used on the Reports mobile view.
+ * Animated tabs used across the app — all indicator animations driven by
+ * framer-motion's layoutId (spring physics, shared layout).
  *
- * - `SegmentedControl` renders a row of options with a highlight pill that
- *   smoothly slides (and resizes) to the active option.
- * - `AnimatedTabContent` cross-fades + directionally slides its children
- *   whenever `tabKey` changes, mimicking the animate-ui content transition
- *   without pulling in framer-motion.
+ * Exports:
+ *  - SegmentedControl   – pill/capsule/outline/flat track with a sliding indicator
+ *  - AnimatedTabContent – directional slide-in for tab content panels
+ *  - TabPillGroup       – inline tab toggle for custom button layouts
  */
 
-// Inject the content-swap keyframes once (module scope so they exist before
-// the first AnimatedTabContent renders).
-const STYLE_ID = 'animated-tabs-keyframes';
-if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
-    const el = document.createElement('style');
-    el.id = STYLE_ID;
-    el.textContent = `
-@keyframes atabs-in-right { from { opacity: 0; transform: translateX(48px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes atabs-in-left  { from { opacity: 0; transform: translateX(-48px); } to { opacity: 1; transform: translateX(0); } }
-@keyframes atabs-chart-enter { from { opacity: 0; transform: translateY(34px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-@keyframes atabs-chart-exit  { from { opacity: 1; transform: translateY(0) scale(1); } to { opacity: 0; transform: translateY(34px) scale(0.97); } }
-@keyframes atabs-fade-up { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
-`;
-    document.head.appendChild(el);
-}
+const SPRING = {
+    type: 'spring',
+    stiffness: 300,
+    damping: 32,
+    bounce: 0,
+    restDelta: 0.01,
+} as const;
+
+// ---------------------------------------------------------------------------
+// SegmentedControl
+// ---------------------------------------------------------------------------
 
 export interface SegOption {
     value: string;
@@ -35,20 +32,16 @@ interface SegmentedControlProps {
     options: SegOption[];
     value: string;
     onChange: (value: string) => void;
-    /** 'pill' = filled white chip on a gray track; 'outline' = blue-outlined chip on transparent track; 'capsule' = fully-rounded pill on a rounded-full track; 'flat' = gray chip, no shadow, ~6px radius, on a transparent gapped track. */
+    /**
+     * pill    = white chip on a gray track (default)
+     * outline = blue-outlined chip on transparent track
+     * capsule = fully-rounded pill on a rounded-full track
+     * flat    = gray chip, no shadow, on a gapped transparent track
+     */
     variant?: 'pill' | 'outline' | 'capsule' | 'flat';
     className?: string;
-    /** Override the track's background (defaults to the variant's own bg-*). */
     trackBgClassName?: string;
-    /** Override the inactive tab's text color (defaults to the variant's own text-*). */
     inactiveTextClassName?: string;
-}
-
-interface HighlightRect {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
 }
 
 export function SegmentedControl({
@@ -60,101 +53,73 @@ export function SegmentedControl({
     trackBgClassName,
     inactiveTextClassName,
 }: SegmentedControlProps) {
-    const btnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-    const [rect, setRect] = useState<HighlightRect>({ left: 0, top: 0, width: 0, height: 0 });
-    // Skip the transition on the very first measure so the pill appears in
-    // place instead of growing out from the left edge.
-    const [ready, setReady] = useState(false);
+    const layoutId = useId();
 
-    const measure = () => {
-        const btn = btnRefs.current[value];
-        if (btn) {
-            setRect({ left: btn.offsetLeft, top: btn.offsetTop, width: btn.offsetWidth, height: btn.offsetHeight });
-        }
-    };
-
-    useLayoutEffect(() => {
-        measure();
-        // Re-measure after the frame settles (font loading / layout shifts).
-        const raf = requestAnimationFrame(measure);
-        return () => cancelAnimationFrame(raf);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [value, options]);
-
-    useEffect(() => {
-        const onResize = () => measure();
-        window.addEventListener('resize', onResize);
-        const raf = requestAnimationFrame(() => setReady(true));
-        return () => {
-            window.removeEventListener('resize', onResize);
-            cancelAnimationFrame(raf);
-        };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const isPill = variant === 'pill';
+    const isPill    = variant === 'pill';
     const isCapsule = variant === 'capsule';
-    const isFlat = variant === 'flat';
+    const isFlat    = variant === 'flat';
 
+    /* ── Track wrapper ── */
     const trackClass = isPill
-        ? `relative flex ${trackBgClassName || 'bg-gray-100'} p-1 rounded-xl border border-gray-200`
+        ? `relative flex ${trackBgClassName ?? 'bg-gray-100'} p-1 rounded-xl border border-gray-200`
         : isCapsule
-        ? `relative flex ${trackBgClassName || 'bg-gray-50'} p-0.5 rounded-[80px]`
+        ? `relative flex ${trackBgClassName ?? 'bg-gray-50'} p-0.5 rounded-[80px]`
         : isFlat
-        ? `relative flex items-center gap-6 ${trackBgClassName || ''}`
+        ? `relative flex items-center gap-6 ${trackBgClassName ?? ''}`
         : 'relative flex items-center gap-1.5';
 
-    const highlightClass = isPill
-        ? 'bg-white shadow-sm rounded-lg'
+    /* ── Sliding indicator classes ── */
+    const indicatorClass = isPill
+        ? 'absolute inset-0 bg-white shadow-sm rounded-lg'
         : isCapsule
-        ? 'bg-white rounded-[80px] shadow-[0px_3px_1px_0px_rgba(0,0,0,0.04),0px_3px_8px_0px_rgba(0,0,0,0.12)] outline outline-[0.5px] outline-black/5'
+        ? 'absolute inset-0 bg-white rounded-[80px] shadow-[0px_3px_1px_0px_rgba(0,0,0,0.04),0px_3px_8px_0px_rgba(0,0,0,0.12)] outline outline-[0.5px] outline-black/5'
         : isFlat
-        ? 'bg-gray-100 rounded-md'
-        : 'bg-white rounded-xl border-[1.5px] border-[#006AFF]';
+        ? 'absolute inset-0 bg-gray-100 rounded-md'
+        : 'absolute inset-0 bg-white rounded-xl border-[1.5px] border-[#006AFF]';
 
     return (
-        <div className={`${trackClass} ${className}`}>
-            {/* Sliding highlight */}
-            <div
-                aria-hidden
-                className={`absolute z-0 pointer-events-none ${highlightClass}`}
-                style={{
-                    left: rect.left,
-                    top: rect.top,
-                    width: rect.width,
-                    height: rect.height,
-                    transition: ready
-                        ? 'left 300ms cubic-bezier(0.22, 1, 0.36, 1), width 300ms cubic-bezier(0.22, 1, 0.36, 1), top 300ms cubic-bezier(0.22, 1, 0.36, 1)'
-                        : 'none',
-                }}
-            />
+        <div className={`${trackClass} ${className}`} role="tablist">
             {options.map((opt) => {
                 const active = opt.value === value;
-                const baseClass = isPill
-                    ? `relative z-10 flex-1 py-2 rounded-lg text-xs text-center transition-colors duration-200 ${
+
+                /* ── Per-variant button classes ── */
+                const btnClass = isPill
+                    ? `relative flex-1 py-2 rounded-lg text-xs text-center ${
                           active ? 'text-brand-navy font-extrabold' : 'text-gray-500 font-bold hover:text-gray-900'
                       }`
                     : isCapsule
-                    ? `relative z-10 flex-1 py-2 px-2.5 text-xs text-center leading-4 transition-colors duration-200 ${
-                          active ? 'text-gray-900' : (inactiveTextClassName || 'text-gray-400')
+                    ? `relative flex-1 py-2 px-2.5 text-xs text-center leading-4 ${
+                          active ? 'text-gray-900' : (inactiveTextClassName ?? 'text-gray-400')
                       }`
                     : isFlat
-                    ? `relative z-10 flex-1 flex items-center justify-center px-1 text-center transition-colors duration-200 ${
-                          active ? 'text-black' : (inactiveTextClassName || 'text-neutral-400')
+                    ? `relative flex-1 flex items-center justify-center px-1 text-center ${
+                          active ? 'text-black' : (inactiveTextClassName ?? 'text-neutral-400')
                       }`
-                    : `relative z-10 px-3 py-1.5 rounded-xl text-sm transition-colors duration-200 ${
+                    : `relative px-3 py-1.5 rounded-xl text-sm ${
                           active ? 'text-[#006AFF] font-bold' : 'text-[#7C8FA2] font-normal'
                       }`;
+
                 return (
                     <button
                         key={opt.value}
-                        ref={(node) => {
-                            btnRefs.current[opt.value] = node;
-                        }}
+                        role="tab"
+                        aria-selected={active}
                         onClick={() => onChange(opt.value)}
-                        className={baseClass}
+                        className={btnClass}
                     >
-                        {opt.label}
+                        {/* Sliding indicator — lives inside the button so inset-0 matches
+                            its size, but uses layoutId so framer-motion can fly it between
+                            buttons as the active value changes. */}
+                        {active && (
+                            <motion.span
+                                layoutId={`seg-indicator-${layoutId}`}
+                                className={indicatorClass}
+                                transition={SPRING}
+                                aria-hidden
+                            />
+                        )}
+                        {/* Label must be stacked above the indicator */}
+                        <span className="relative">{opt.label}</span>
                     </button>
                 );
             })}
@@ -162,32 +127,126 @@ export function SegmentedControl({
     );
 }
 
+// ---------------------------------------------------------------------------
+// AnimatedTabContent
+// ---------------------------------------------------------------------------
+
 interface AnimatedTabContentProps {
-    /** When this changes, the content re-mounts and replays the entrance animation. */
+    /** Changing this remounts the content with a directional entrance. */
     tabKey: string;
-    /** Position of the active tab; used to pick slide direction (higher = slide in from right). */
+    /** Index of the active tab — higher = slide in from the right. */
     index: number;
     children: React.ReactNode;
     className?: string;
 }
 
 export function AnimatedTabContent({ tabKey, index, children, className = '' }: AnimatedTabContentProps) {
-    const prevIndex = useRef(index);
-    const direction = index >= prevIndex.current ? 'right' : 'left';
+    // Track direction synchronously during render (before framer-motion
+    // reads the `initial` prop) so the slide direction is always correct.
+    const prevIndexRef = useRef(index);
+    const dirRef       = useRef(0);          // 0 = no slide on first mount
+    const isFirstRef   = useRef(true);
 
-    useEffect(() => {
-        prevIndex.current = index;
-    }, [index]);
-
-    const animName = direction === 'right' ? 'atabs-in-right' : 'atabs-in-left';
+    if (isFirstRef.current) {
+        isFirstRef.current = false;          // first mount → no slide
+    } else if (prevIndexRef.current !== index) {
+        dirRef.current = index > prevIndexRef.current ? 1 : -1;
+        prevIndexRef.current = index;
+    }
 
     return (
-        <div
+        <motion.div
             key={tabKey}
             className={className}
-            style={{ animation: `${animName} 0.42s cubic-bezier(0.22, 1, 0.36, 1)` }}
+            initial={{ opacity: dirRef.current === 0 ? 1 : 0, x: dirRef.current * 32 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={SPRING}
         >
             {children}
+        </motion.div>
+    );
+}
+
+// ---------------------------------------------------------------------------
+// TabPillGroup — lightweight tab toggle for custom-layout bars.
+//
+// The track and buttons supply all the visual structure via className props;
+// this component contributes ONLY the animated indicator (motion.span with
+// layoutId) and the click handler.
+//
+// Usage example (Inbox Inflows/Outflows):
+//
+//   <TabPillGroup
+//     value={mode}
+//     onChange={setMode}
+//     trackClassName="h-8 px-1 bg-white rounded-lg outline ..."
+//     indicatorClassName="bg-[#F3F5FC] rounded-md"
+//     separator={<div className="w-[1px] h-4 bg-[#E8EEF8]" />}
+//     tabs={[
+//       { value: 'outflows', buttonClassName: '...', label: <…/> },
+//       { value: 'inflows',  buttonClassName: '...', label: <…/> },
+//     ]}
+//   />
+// ---------------------------------------------------------------------------
+
+interface TabPillGroupTab {
+    value: string;
+    label: React.ReactNode;
+    /** Applied to the button always. */
+    buttonClassName?: string;
+    /** Applied to the button ONLY when it is active (merged with buttonClassName). */
+    activeButtonClassName?: string;
+}
+
+interface TabPillGroupProps {
+    value: string;
+    onChange: (value: string) => void;
+    tabs: TabPillGroupTab[];
+    /** Outer wrapper element className. */
+    trackClassName?: string;
+    /** Classes for the sliding indicator motion.span (inset-0 is already applied). */
+    indicatorClassName?: string;
+    /** Optional element rendered between adjacent tabs (e.g. a divider). */
+    separator?: React.ReactNode;
+}
+
+export function TabPillGroup({
+    value,
+    onChange,
+    tabs,
+    trackClassName = '',
+    indicatorClassName = 'bg-white rounded-lg shadow-sm',
+    separator,
+}: TabPillGroupProps) {
+    const layoutId = useId();
+
+    return (
+        <div className={trackClassName} role="tablist">
+            {tabs.map((tab, i) => {
+                const active = tab.value === value;
+                return (
+                    <React.Fragment key={tab.value}>
+                        {i > 0 && separator}
+                        <button
+                            role="tab"
+                            aria-selected={active}
+                            onClick={() => onChange(tab.value)}
+                            className={`relative ${tab.buttonClassName ?? ''}${active && tab.activeButtonClassName ? ` ${tab.activeButtonClassName}` : ''}`}
+                        >
+                            {active && (
+                                <motion.span
+                                    layoutId={`pill-indicator-${layoutId}`}
+                                    className={`absolute inset-0 ${indicatorClassName}`}
+                                    transition={SPRING}
+                                    aria-hidden
+                                />
+                            )}
+                            {/* Stacked above the indicator */}
+                            <span className="relative flex items-center gap-2">{tab.label}</span>
+                        </button>
+                    </React.Fragment>
+                );
+            })}
         </div>
     );
 }

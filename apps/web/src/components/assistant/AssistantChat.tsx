@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ArrowLeft, History, PenSquare, Trash2 } from 'lucide-react';
 import {
     agentClient, AgentEvent, AssistantModel, Proposal, ThreadSummary, Widget,
-} from '../../lib/agentClient';
+} from 'core';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { ChatMessage, MessageBubble } from './MessageBubble';

@@ -81,7 +81,11 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
         // 2. Validate Disbursement Amount
         const estimatedTotal = Number(requisition.estimated_total);
         const totalPreparedNum = Number(total_prepared);
-        const fee = isDigital ? LencoService.calculatePayoutFee(totalPreparedNum, payment_method) : 0;
+        const isMoneyWisePay = String(recipient_bank_code || '').toUpperCase() === 'MONEYWISE' ||
+            String(recipient_bank_code || '').toUpperCase() === 'MONEYWISE_PAY' ||
+            payment_method === 'MONEYWISE_PAY' ||
+            payment_method === 'MONEYWISE';
+        const fee = isDigital ? (isMoneyWisePay ? 0 : LencoService.calculatePayoutFee(totalPreparedNum, payment_method)) : 0;
         const totalDeduction = totalPreparedNum + fee;
 
         if (totalPreparedNum < estimatedTotal) {
@@ -112,101 +116,152 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
 
         if (isDigital) {
             try {
-                const { data: org } = await supabase
-                    .from('organizations')
-                    .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
-                    .eq('id', targetOrgId)
-                    .single();
-
-                const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
-                if (!org?.lenco_subaccount_id || !secretKey) {
-                    // If test mode is on, we can skip the strict credential check if desired, 
-                    // but let's keep it robust.
-                    if (!org?.payment_test_mode) {
-                        throw new Error("Organization is not properly configured for MoneyWise Wallet");
-                    }
-                }
-
-                if (!recipient_account || !recipient_bank_code) {
-                    throw new Error('Recipient account and bank code are required for Wallet transfers');
-                }
-
-                // Carry the org key forward for deferred finalization
-                resolvedOrgKey = org?.lenco_secret_key;
-                (req as any).orgLencoKey = resolvedOrgKey;
-
-                if (org?.payment_test_mode) {
-                    console.log(`[Payment Test Mode] Bypassing Lenco for Requisition ${id}`);
-                    lencoReference = `SIM-PAY-${id.slice(0, 8)}`;
+                if (isMoneyWisePay) {
+                    lencoReference = `MWPAY-${id.slice(0, 8)}-${Date.now().toString(36).toUpperCase()}`;
                     (req as any).lencoStatus = 'successful';
                     (req as any).lencoFee = 0;
-                } else {
-                    // IDEMPOTENCY CHECK: Find a stable reference that hasn't failed yet
-                    console.log(`[Lenco] Resolving stable reference for: ${stableRef}`);
-                    let statusCheck;
-                    let payout;
-                    let resolvedRef = stableRef;
-                    
-                    for (let i = 0; i < 10; i++) {
-                        resolvedRef = i === 0 ? stableRef : `${stableRef}-R${i}`;
-                        statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
-                        
-                        if (!statusCheck) {
-                            // Not found on Lenco, we can safely use this reference for a new transfer
-                            break;
-                        }
-                        if (statusCheck.status !== 'failed') {
-                            // Found an existing transfer that is pending or successful. We must reuse it.
-                            break;
-                        }
-                        // If status is failed, we continue the loop to try the next retry suffix
-                    }
+                    (req as any).resolvedRef = lencoReference;
+                    (req as any).lencoTransactionAt = new Date().toISOString();
 
-                    if (statusCheck && statusCheck.status !== 'failed') {
-                        console.log(`[Lenco] Found existing transfer: ${statusCheck.status}. Using existing reference: ${resolvedRef}`);
-                        payout = statusCheck;
-                    } else {
-                        // No existing transfer found (or all previous attempts failed), create a new one
-                        console.log(`[Lenco] Creating new transfer with reference: ${resolvedRef}`);
-                        const mobileOps = ['mtn', 'airtel', 'zamtel'];
-                        const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
-                        if (isMobile) {
-                            payout = await LencoService.createMobileMoneyPayout({
-                                amount: total_prepared,
-                                reference: resolvedRef,
-                                phone: recipient_account,
-                                operator: recipient_bank_code,
-                                narration: `Disbursement for Requisition #${id.slice(0, 8)}`
-                            }, org.lenco_subaccount_id, org.lenco_secret_key);
+                    // Resolve Recipient Organization
+                    let recipientOrgId = req.body.recipient_organization_id || req.body.recipient_org_id;
+                    if (!recipientOrgId && recipient_account) {
+                        const trimmedAcc = String(recipient_account).trim();
+                        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(trimmedAcc);
+                        if (isUUID) {
+                            const { data: directOrg } = await supabase.from('organizations').select('id').eq('id', trimmedAcc).maybeSingle();
+                            if (directOrg) {
+                                recipientOrgId = directOrg.id;
+                            } else {
+                                const { data: userRow } = await supabase.from('users').select('organization_id').eq('id', trimmedAcc).maybeSingle();
+                                recipientOrgId = userRow?.organization_id;
+                            }
+                        } else if (trimmedAcc.includes('@')) {
+                            const { data: userRow } = await supabase.from('users').select('organization_id').eq('email', trimmedAcc.toLowerCase()).maybeSingle();
+                            recipientOrgId = userRow?.organization_id;
                         } else {
-                            const bankId = await LencoService.findBankId(recipient_bank_code || '', org.lenco_secret_key);
-                            payout = await LencoService.createBankPayout({
-                                amount: total_prepared,
-                                reference: resolvedRef,
-                                accountNumber: recipient_account,
-                                bankId,
-                                narration: `Disbursement for Requisition #${id.slice(0, 8)}`
-                            }, org.lenco_subaccount_id, org.lenco_secret_key);
+                            const cleanU = trimmedAcc.startsWith('@') ? trimmedAcc.slice(1) : trimmedAcc;
+                            const { data: userRow } = await supabase.from('users').select('organization_id').eq('username', cleanU).maybeSingle();
+                            recipientOrgId = userRow?.organization_id;
                         }
                     }
-                    
-                    lencoReference = payout.reference;
 
-                    // Handle immediate failure from Lenco (e.g. amount below minimum)
-                    if (payout.status === 'failed') {
-                        const reason = payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco';
-                        throw new Error(reason);
+                    // Credit recipient organization's wallet as an Inflow
+                    if (recipientOrgId && recipientOrgId !== targetOrgId) {
+                        try {
+                            const { data: senderOrg } = await supabase.from('organizations').select('name').eq('id', targetOrgId).maybeSingle();
+                            const senderName = senderOrg?.name || (req as any).user?.name || 'MoneyWise User';
+
+                            const { data: recWallet } = await supabase
+                                .from('organization_wallets')
+                                .select('id')
+                                .eq('organization_id', recipientOrgId)
+                                .eq('is_main', true)
+                                .maybeSingle();
+
+                            await cashbookService.createEntry(recipientOrgId, {
+                                entry_type: 'INFLOW',
+                                account_type: 'MONEYWISE_WALLET',
+                                wallet_id: recWallet?.id || null,
+                                debit: totalPreparedNum,
+                                credit: 0,
+                                description: `MoneyWise Pay from ${senderName}`,
+                                reference_number: lencoReference,
+                                sender_name: senderName,
+                                date: new Date().toISOString().split('T')[0],
+                                status: 'COMPLETED'
+                            });
+
+                            console.log(`[MoneyWise Pay] Inflow K${totalPreparedNum} credited to recipient org ${recipientOrgId}`);
+                        } catch (inflowErr: any) {
+                            console.error('[MoneyWise Pay] Failed to credit recipient inflow:', inflowErr);
+                        }
                     }
-                    
-                    // We no longer poll synchronously to avoid serverless function timeouts.
-                    // Instead, we carry forward the initial payout status and schedule background polling
-                    // or let Lenco's webhook handle finalization.
-                    (req as any).lencoStatus = payout.status || 'pending';
-                    (req as any).lencoFee = payout.fee ? parseFloat(payout.fee) : undefined;
-                    (req as any).resolvedRef = resolvedRef; // Carry forward for deferred finalization
-                    // Capture Lenco's own timestamp so the cashbook entry gets the real
-                    // transfer time as created_at rather than the API request time.
-                    (req as any).lencoTransactionAt = payout.createdAt || payout.date || undefined;
+                } else {
+                    const { data: org } = await supabase
+                        .from('organizations')
+                        .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
+                        .eq('id', targetOrgId)
+                        .single();
+
+                    const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+                    if (!org?.lenco_subaccount_id || !secretKey) {
+                        if (!org?.payment_test_mode) {
+                            throw new Error("Organization is not properly configured for MoneyWise Wallet");
+                        }
+                    }
+
+                    if (!recipient_account || !recipient_bank_code) {
+                        throw new Error('Recipient account and bank code are required for Wallet transfers');
+                    }
+
+                    // Carry the org key forward for deferred finalization
+                    resolvedOrgKey = org?.lenco_secret_key;
+                    (req as any).orgLencoKey = resolvedOrgKey;
+
+                    if (org?.payment_test_mode) {
+                        console.log(`[Payment Test Mode] Bypassing Lenco for Requisition ${id}`);
+                        lencoReference = `SIM-PAY-${id.slice(0, 8)}`;
+                        (req as any).lencoStatus = 'successful';
+                        (req as any).lencoFee = 0;
+                    } else {
+                        // IDEMPOTENCY CHECK: Find a stable reference that hasn't failed yet
+                        console.log(`[Lenco] Resolving stable reference for: ${stableRef}`);
+                        let statusCheck;
+                        let payout;
+                        let resolvedRef = stableRef;
+                        
+                        for (let i = 0; i < 10; i++) {
+                            resolvedRef = i === 0 ? stableRef : `${stableRef}-R${i}`;
+                            statusCheck = await LencoService.getTransferStatus(resolvedRef, org.lenco_secret_key);
+                            
+                            if (!statusCheck) {
+                                break;
+                            }
+                            if (statusCheck.status !== 'failed') {
+                                break;
+                            }
+                        }
+
+                        if (statusCheck && statusCheck.status !== 'failed') {
+                            console.log(`[Lenco] Found existing transfer: ${statusCheck.status}. Using existing reference: ${resolvedRef}`);
+                            payout = statusCheck;
+                        } else {
+                            console.log(`[Lenco] Creating new transfer with reference: ${resolvedRef}`);
+                            const mobileOps = ['mtn', 'airtel', 'zamtel'];
+                            const isMobile = mobileOps.includes(recipient_bank_code?.toLowerCase() || '');
+                            if (isMobile) {
+                                payout = await LencoService.createMobileMoneyPayout({
+                                    amount: total_prepared,
+                                    reference: resolvedRef,
+                                    phone: recipient_account,
+                                    operator: (recipient_bank_code || '').toLowerCase(),
+                                    narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                                }, org.lenco_subaccount_id, org.lenco_secret_key);
+                            } else {
+                                const bankId = await LencoService.findBankId(recipient_bank_code || '', org.lenco_secret_key);
+                                payout = await LencoService.createBankPayout({
+                                    amount: total_prepared,
+                                    reference: resolvedRef,
+                                    accountNumber: recipient_account,
+                                    bankId,
+                                    narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                                }, org.lenco_subaccount_id, org.lenco_secret_key);
+                            }
+                        }
+                        
+                        lencoReference = payout.reference;
+
+                        if (payout.status === 'failed') {
+                            const reason = payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco';
+                            throw new Error(reason);
+                        }
+                        
+                        (req as any).lencoStatus = payout.status || 'pending';
+                        (req as any).lencoFee = payout.fee ? parseFloat(payout.fee) : undefined;
+                        (req as any).resolvedRef = resolvedRef;
+                        (req as any).lencoTransactionAt = payout.createdAt || payout.date || undefined;
+                    }
                 }
 
             } catch (payoutError: any) {
@@ -1311,7 +1366,10 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
                                 amount: payoutAmount,
                                 reference: resolvedRef,
                                 phone: recipient_account,
-                                operator: recipient_bank_code,
+                                // Lenco's transfer API is case-sensitive on operator; the requisition
+                                // may have stored it uppercase (UI display convention on both web and
+                                // mobile), so normalize here rather than trust every caller to.
+                                operator: (recipient_bank_code || '').toLowerCase(),
                                 narration: `Excess Disbursement for Req #${id.slice(0, 8)}`
                             }, org.lenco_subaccount_id, org.lenco_secret_key);
                         } else {

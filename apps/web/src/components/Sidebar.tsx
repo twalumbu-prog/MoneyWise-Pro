@@ -25,10 +25,9 @@ interface NavItem {
     path: string;
     icon: React.ComponentType<any>;
     isActive: (pathname: string, search: string) => boolean;
-    /** No page built yet — rendered visible but inert, per the sidebar restructure plan. */
     disabled?: boolean;
-    /** Returns the badge count for this item given current notification counts. */
     getBadge?: (counts: NotificationCounts) => number;
+    tourTarget?: string;
 }
 
 const GENERAL_ITEMS: NavItem[] = [
@@ -37,11 +36,9 @@ const GENERAL_ITEMS: NavItem[] = [
         path: '/requisitions',
         icon: Inbox,
         isActive: (p) => p === '/requisitions' || p === '/',
-        // Sum all work-queue counts: new updates on own reqs + items awaiting
-        // action from the user's role (approvals, vouchers, disbursements).
         getBadge: (c) => c.requisitions + c.approvals + c.disbursements + c.vouchers,
     },
-    { label: 'Schedules', path: '/schedules', icon: CalendarDays, isActive: (p) => p === '/schedules' },
+    { label: 'Schedules', path: '/schedules', icon: CalendarDays, isActive: (p) => p === '/schedules', tourTarget: 'nav-schedules-tab' },
     {
         label: 'Wallets',
         path: '/cashbook',
@@ -50,7 +47,7 @@ const GENERAL_ITEMS: NavItem[] = [
         getBadge: (c) => c.wallets,
     },
     { label: 'Reporting', path: '/reporting', icon: TrendingUp, isActive: (p) => p === '/reporting' },
-    { label: 'Business Intelligence', path: '/intelligence', icon: AstroidIcon, isActive: (p) => p === '/intelligence' },
+    { label: 'Business Intelligence', path: '/intelligence', icon: AstroidIcon, isActive: (p) => p === '/intelligence', tourTarget: 'nav-bi-tab' },
     { label: 'Audit', path: '/audit', icon: ShieldCheck, isActive: (p) => p === '/audit' },
     { label: 'Products & Services', path: '/products', icon: ShoppingBag, isActive: (p) => p === '/products' },
 ];
@@ -65,6 +62,7 @@ const SUPPORT_ITEMS: NavItem[] = [
         icon: SettingsIcon,
         isActive: (p, s) => p === '/settings' && !s.includes('tab=integrations'),
         getBadge: (c) => c.settings,
+        tourTarget: 'nav-settings',
     },
 ];
 
@@ -125,7 +123,12 @@ const SidebarLink: React.FC<{ item: NavItem; active: boolean; collapsed: boolean
     }
 
     return (
-        <Link to={item.path} className={className} title={collapsed ? item.label : undefined}>
+        <Link
+            to={item.path}
+            className={className}
+            title={collapsed ? item.label : undefined}
+            {...(item.tourTarget ? { 'data-tour-target': item.tourTarget } : {})}
+        >
             {content}
         </Link>
     );

@@ -1,10 +1,14 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Settings, LogOut, Menu, TrendingUp, Navigation, User, CalendarDays } from 'lucide-react';
+import { useAchievements } from '../context/AchievementsContext';
+import { Settings, LogOut, Menu, TrendingUp, Navigation, User, CalendarDays, Trophy } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { DesktopHeader } from './DesktopHeader';
 import { WalletCardsIcon, AstroidIcon } from './icons/BrandIcons';
+import { AchievementsMobileModal } from './achievements/AchievementsMobileModal';
+import { AchievementTourOverlay } from './achievements/AchievementTourOverlay';
+import { AchievementUnlockedOverlay } from './achievements/AchievementUnlockedOverlay';
 
 interface LayoutProps {
     children: React.ReactNode;
@@ -18,6 +22,7 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-[#F5FAFF]', noPadding = false, title, mobileHeaderAction, mobileHeaderHidden = false }) => {
     const { user, userRole, signOut, userOrganizations, switchOrganization, organizationName, organizationId } = useAuth();
+    const { completedCount, totalCount, toggleMobileModal } = useAchievements();
     const [isProfileOpen, setIsProfileOpen] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
@@ -74,13 +79,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
             {/* Desktop Sidebar */}
             <Sidebar />
 
-            {/* Right column: desktop header + content, or the full mobile stack.
-                Desktop background is forced to #F3F5FC (the workspace canvas) with `!`
-                so per-page backgroundColor props only steer the mobile view. The
-                sidebar + header share this color so they sit seamlessly against it.
-                isFlexPage routes need a hard mobile viewport cap (h-screen, not
-                min-h-screen) so their internal flex-1/min-h-0 chain can pin a
-                sticky footer — otherwise the column just grows past the viewport. */}
+            {/* Right column: desktop header + content, or the full mobile stack. */}
             <div className={`flex-1 flex flex-col ${isFlexPage ? 'h-screen' : 'min-h-screen'} md:h-screen md:overflow-hidden ${backgroundColor} md:!bg-[#F3F5FC]`}>
             <DesktopHeader title={getPageTitle()} />
 
@@ -122,14 +121,28 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                     {!isBackButtonPage && (
                         <div className="flex items-center gap-2">
                             {isInboxPage && (
-                                <button
-                                    type="button"
-                                    onClick={() => navigate('/schedules')}
-                                    aria-label="Schedules"
-                                    className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm active:scale-95 transition-all"
-                                >
-                                    <CalendarDays size={20} />
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={toggleMobileModal}
+                                        aria-label="Achievements & Missions"
+                                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-[#006AFF] overflow-hidden shadow-sm active:scale-95 transition-all relative"
+                                    >
+                                        <Trophy size={18} />
+                                        {completedCount < totalCount && (
+                                            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#03D47C] animate-pulse" />
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate('/schedules')}
+                                        aria-label="Schedules"
+                                        data-tour-target="nav-schedules-tab"
+                                        className="h-10 w-10 rounded-full bg-white border border-gray-100 flex items-center justify-center text-gray-400 overflow-hidden shadow-sm active:scale-95 transition-all"
+                                    >
+                                        <CalendarDays size={20} />
+                                    </button>
+                                </>
                             )}
                             <button
                                 type="button"
@@ -228,11 +241,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                 )}
             </div>}
 
-            {/* Main Content Area
-                On the mobile Schedules page we flip to a flex-column/overflow-hidden
-                chain so children can use flex-1 min-h-0 all the way down and the
-                card truly fills the remaining viewport without a scroll container
-                breaking the height chain. */}
+            {/* Main Content Area */}
             <main className={`flex-1 overflow-x-hidden md:pb-0 md:min-h-0 md:overflow-y-auto
                 ${isFlexPage
                     ? 'flex flex-col overflow-hidden pb-0 min-h-0'
@@ -250,9 +259,9 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                 {[
                     { path: '/requisitions', icon: Navigation, label: 'Inbox', isActive: (p: string) => p === '/requisitions' || p === '/' },
                     { path: '/cashbook', icon: WalletCardsIcon, label: 'Wallet', isActive: (p: string) => p === '/cashbook', hide: isRequestor },
-                    { path: '/intelligence', icon: AstroidIcon, label: 'BI', isActive: (p: string) => p === '/intelligence', hide: isRequestor },
+                    { path: '/intelligence', icon: AstroidIcon, label: 'BI', isActive: (p: string) => p === '/intelligence', hide: isRequestor, tourTarget: 'nav-bi-tab' },
                     { path: '/reporting', icon: TrendingUp, label: 'Reporting', isActive: (p: string) => p === '/reporting' },
-                    { path: '/menu', icon: Menu, label: 'Menu', isActive: (p: string) => ['/menu', '/settings', '/audit', '/approvals', '/disbursements'].some(prefix => p.startsWith(prefix)) || p.startsWith('/vouchers') }
+                    { path: '/menu', icon: Menu, label: 'Menu', isActive: (p: string) => ['/menu', '/settings', '/audit', '/approvals', '/disbursements'].some(prefix => p.startsWith(prefix)) || p.startsWith('/vouchers'), tourTarget: 'nav-settings' }
                 ].filter(tab => !tab.hide).map((tab, idx) => {
                     const TabIcon = tab.icon;
                     const active = tab.isActive(location.pathname);
@@ -260,6 +269,7 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                         <Link
                             key={idx}
                             to={tab.path}
+                            {...(tab.tourTarget ? { 'data-tour-target': tab.tourTarget } : {})}
                             className={`w-12 h-12 rounded-full flex items-center justify-center transition-all duration-200 ${
                                 active
                                     ? 'bg-[#F0F7FF] text-[#006AFF]'
@@ -273,6 +283,11 @@ export const Layout: React.FC<LayoutProps> = ({ children, backgroundColor = 'bg-
                 })}
             </div>
             </div>
+
+            {/* Global Achievements Overlays */}
+            <AchievementsMobileModal />
+            <AchievementTourOverlay />
+            <AchievementUnlockedOverlay />
         </div>
     );
 };

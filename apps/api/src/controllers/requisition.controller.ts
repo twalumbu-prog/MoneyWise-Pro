@@ -107,13 +107,25 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             });
         }
 
+        const { data: orgData } = await supabase
+            .from('organizations')
+            .select('name')
+            .eq('id', organization_id)
+            .single();
+
+        const orgName = (orgData?.name || '').toLowerCase();
+        const isPersonalOrg = orgName.includes('workspace') ||
+            orgName.includes('personal') ||
+            orgName.includes('individual') ||
+            orgName.includes('private');
+
         // 1. Insert Requisition
         const insertData: any = {
             requestor_id,
             organization_id,
             description,
             estimated_total,
-            status: 'DRAFT',
+            status: isPersonalOrg ? 'APPROVED' : 'DRAFT',
             interest_rate,
             monthly_deduction,
             type: type || 'EXPENSE',
@@ -1285,8 +1297,8 @@ export const submitChange = async (req: any, res: any): Promise<any> => {
                 userId: user_id,
                 content: `Change of K${Number(change_amount).toLocaleString()} submitted via ${submission_method || 'CASH'}. Awaiting cashier confirmation.`,
                 type: 'SYSTEM',
-                metadata: { 
-                    stage: 'CHANGE_SUBMITTED', 
+                metadata: {
+                    stage: 'CHANGE_SUBMITTED',
                     changeAmount: change_amount,
                     submissionMethod: submission_method || 'CASH',
                     externalReference: change_external_reference

@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth';
-import { getUsers, getNotificationsSummary, createUser, updateUser, deleteUser, resendInvite, getMyProfile, updatePaymentInfo, registerPushToken, unregisterPushToken } from '../controllers/user.controller';
+import { 
+    getUsers, getNotificationsSummary, createUser, updateUser, deleteUser, 
+    resendInvite, getMyProfile, updatePaymentInfo, registerPushToken, 
+    unregisterPushToken, searchRecipients, verifyRecipient 
+} from '../controllers/user.controller';
 
 const router = Router();
 
@@ -11,6 +15,8 @@ router.get('/me', getMyProfile);
 router.put('/me/payment-info', updatePaymentInfo);
 router.post('/me/push-token', registerPushToken);
 router.delete('/me/push-token', unregisterPushToken);
+router.get('/search-recipients', searchRecipients);
+router.post('/verify-recipient', verifyRecipient);
 router.get('/', getUsers);
 router.post('/', createUser); // Admin only check inside controller
 router.put('/:id', updateUser); // Admin only check inside controller
