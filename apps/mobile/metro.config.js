@@ -31,4 +31,19 @@ config.resolver.extraNodeModules = {
 // Never walk up out of the app into another workspace member's node_modules.
 config.resolver.disableHierarchicalLookup = true;
 
+// Resolve ESM explicit extensions (.js, .mjs, etc.) in node_modules imports
+// to prevent Metro from looking for file.js.js or file.js.ts
+const standardResolve = config.resolver.resolveRequest;
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+    if ((moduleName.startsWith('./') || moduleName.startsWith('../')) && (moduleName.endsWith('.js') || moduleName.endsWith('.mjs'))) {
+        const trimmedName = moduleName.replace(/\.(m)?js$/, '');
+        try {
+            return context.resolveRequest(context, trimmedName, platform);
+        } catch (e) {
+            // ignore and fallback
+        }
+    }
+    return (standardResolve || context.resolveRequest)(context, moduleName, platform);
+};
+
 module.exports = config;
