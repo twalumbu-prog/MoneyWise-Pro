@@ -22,10 +22,11 @@ export const CRM: React.FC = () => {
     const [sortDir, setSortDir] = useState<SortDir>('desc');
     const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
 
-    const { data: customers = [], isLoading } = useQuery<Customer[]>({
+    const { data: customers = [], isLoading, isError } = useQuery<Customer[]>({
         queryKey: ['crm-customers', organizationId],
         queryFn: () => crmService.listCustomers(),
         enabled: !!organizationId,
+        retry: 1,
     });
 
     const filteredCustomers = customers
@@ -147,7 +148,7 @@ export const CRM: React.FC = () => {
                                         <button
                                             onClick={() => setSortDir(d => d === 'desc' ? 'asc' : 'desc')}
                                             title={sortDir === 'desc' ? 'Newest first' : 'Oldest first'}
-                                            className={`w-4 h-4 transition-colors ${sortDir === 'asc' ? 'text-emerald-600' : 'text-gray-500 hover:text-gray-700'}`}
+                                            className={`w-4 h-4 transition-colors ${sortDir === 'asc' ? 'text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
                                         >
                                             <ArrowDownUp size={16} />
                                         </button>
@@ -158,7 +159,7 @@ export const CRM: React.FC = () => {
 
                                     <button
                                         onClick={() => setIsAddCustomerOpen(true)}
-                                        className="h-8 px-3 py-1 bg-emerald-600 rounded-lg flex items-center gap-2 text-white text-xs font-bold font-['DM_Sans'] hover:bg-emerald-700 transition-colors shadow-sm"
+                                        className="h-8 px-3 py-1 bg-blue-600 rounded-lg flex items-center gap-2 text-white text-xs font-bold font-['DM_Sans'] hover:bg-blue-700 transition-colors shadow-sm"
                                     >
                                         New Customer
                                         <Plus size={13} />
@@ -170,8 +171,18 @@ export const CRM: React.FC = () => {
                         {/* Customer List (Matching Staff Table style) */}
                         <div className="flex-1 bg-white rounded-2xl border border-violet-100 flex flex-col overflow-hidden">
                             <div className="flex-1 overflow-y-auto px-3 py-4 flex flex-col gap-2.5">
-                                {isLoading ? (
+                                {isLoading && organizationId ? (
                                     <div className="flex items-center justify-center h-32 text-sm text-gray-400">Loading customers…</div>
+                                ) : isError ? (
+                                    <div className="flex flex-col items-center justify-center h-32 gap-2 text-center">
+                                        <p className="text-sm text-red-500 font-medium">Failed to load customers</p>
+                                        <button
+                                            onClick={() => queryClient.invalidateQueries({ queryKey: ['crm-customers', organizationId] })}
+                                            className="text-xs text-blue-600 font-semibold hover:underline"
+                                        >
+                                            Retry
+                                        </button>
+                                    </div>
                                 ) : filteredCustomers.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center h-32 gap-2">
                                         <p className="text-sm text-gray-400 font-medium">{search ? 'No matching customers found' : 'No customers recorded yet'}</p>
@@ -185,12 +196,12 @@ export const CRM: React.FC = () => {
                                         )}
                                     </div>
                                 ) : (
-                                    filteredCustomers.map(customer => {
+                                    filteredCustomers.map((customer, index) => {
                                         const isOwing = customer.owing_status === 'OWING';
                                         const initial = (customer.name?.[0] || '?').toUpperCase();
                                         return (
                                             <button
-                                                key={customer.id}
+                                                key={`${customer.id}_${index}`}
                                                 onClick={() => setSelectedCustomerId(customer.id)}
                                                 className="w-full flex items-center justify-between p-3.5 bg-white hover:bg-slate-50 rounded-xl border border-gray-100 transition-colors text-left"
                                             >

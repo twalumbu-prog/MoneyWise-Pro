@@ -124,7 +124,7 @@ export const AddCustomerModal: React.FC<Props> = ({ onClose, onSuccess }) => {
                         <button
                             type="submit"
                             disabled={saving}
-                            className="h-9 px-5 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-2 hover:bg-emerald-700 transition-colors disabled:opacity-50 shadow-sm"
+                            className="h-9 px-5 rounded-lg bg-blue-600 text-white text-xs font-bold flex items-center gap-2 hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
                         >
                             {saving ? <><Loader2 size={12} className="animate-spin" /> Saving…</> : 'Add Customer'}
                         </button>

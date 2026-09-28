@@ -441,10 +441,23 @@ app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');
 });
 
+// Global Error Handler
+app.use((err: any, req: any, res: any, next: any) => {
+    console.error('[API Global Error]:', err);
+    res.status(500).json({ error: err?.message || 'Internal Server Error' });
+});
+
 // For local development hot reloading
 if (process.env.NODE_ENV !== 'production') {
-    app.listen(port, () => {
+    const server = app.listen(Number(port), () => {
         console.log(`Server is running on port ${port}`);
+    });
+    server.on('error', (err: any) => {
+        if (err.code === 'EADDRINUSE') {
+            console.log(`[API] Port ${port} is already in use.`);
+        } else {
+            console.error('[API] Server error:', err);
+        }
     });
 }
 
