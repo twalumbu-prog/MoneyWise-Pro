@@ -118,12 +118,15 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
             try {
                 if (isMoneyWisePay) {
                     lencoReference = `MWPAY-${id.slice(0, 8)}-${Date.now().toString(36).toUpperCase()}`;
-                    (req as any).lencoStatus = 'successful';
-                    (req as any).lencoFee = 0;
-                    (req as any).resolvedRef = lencoReference;
-                    (req as any).lencoTransactionAt = new Date().toISOString();
 
-                    // Resolve Recipient Organization
+                    // Resolve Recipient Organization BEFORE marking anything successful —
+                    // this used to be resolved after the status was already set to
+                    // 'successful', so an unresolvable recipient (typo, deleted account)
+                    // silently skipped the credit below while the sender still got
+                    // debited: money left the ledger with nowhere to land. Any failure
+                    // to resolve or credit now throws, which the outer catch already
+                    // handles correctly — it reverts the requisition to AUTHORISED and
+                    // returns a clean error, exactly like a real Lenco failure.
                     let recipientOrgId = req.body.recipient_organization_id || req.body.recipient_org_id;
                     if (!recipientOrgId && recipient_account) {
                         const trimmedAcc = String(recipient_account).trim();
@@ -146,37 +149,45 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                         }
                     }
 
-                    // Credit recipient organization's wallet as an Inflow
-                    if (recipientOrgId && recipientOrgId !== targetOrgId) {
-                        try {
-                            const { data: senderOrg } = await supabase.from('organizations').select('name').eq('id', targetOrgId).maybeSingle();
-                            const senderName = senderOrg?.name || (req as any).user?.name || 'MoneyWise User';
-
-                            const { data: recWallet } = await supabase
-                                .from('organization_wallets')
-                                .select('id')
-                                .eq('organization_id', recipientOrgId)
-                                .eq('is_main', true)
-                                .maybeSingle();
-
-                            await cashbookService.createEntry(recipientOrgId, {
-                                entry_type: 'INFLOW',
-                                account_type: 'MONEYWISE_WALLET',
-                                wallet_id: recWallet?.id || null,
-                                debit: totalPreparedNum,
-                                credit: 0,
-                                description: `MoneyWise Pay from ${senderName}`,
-                                reference_number: lencoReference,
-                                sender_name: senderName,
-                                date: new Date().toISOString().split('T')[0],
-                                status: 'COMPLETED'
-                            });
-
-                            console.log(`[MoneyWise Pay] Inflow K${totalPreparedNum} credited to recipient org ${recipientOrgId}`);
-                        } catch (inflowErr: any) {
-                            console.error('[MoneyWise Pay] Failed to credit recipient inflow:', inflowErr);
-                        }
+                    if (!recipientOrgId) {
+                        throw new Error('Could not find a MoneyWise recipient matching the account, email, or username provided.');
                     }
+                    if (recipientOrgId === targetOrgId) {
+                        throw new Error('Cannot MoneyWise Pay to your own organization.');
+                    }
+
+                    // Credit recipient organization's wallet as an Inflow
+                    const { data: senderOrg } = await supabase.from('organizations').select('name').eq('id', targetOrgId).maybeSingle();
+                    const senderName = senderOrg?.name || (req as any).user?.name || 'MoneyWise User';
+
+                    const { data: recWallet } = await supabase
+                        .from('organization_wallets')
+                        .select('id')
+                        .eq('organization_id', recipientOrgId)
+                        .eq('is_main', true)
+                        .maybeSingle();
+
+                    await cashbookService.createEntry(recipientOrgId, {
+                        entry_type: 'INFLOW',
+                        account_type: 'MONEYWISE_WALLET',
+                        wallet_id: recWallet?.id || null,
+                        debit: totalPreparedNum,
+                        credit: 0,
+                        description: `MoneyWise Pay from ${senderName}`,
+                        reference_number: lencoReference,
+                        sender_name: senderName,
+                        date: new Date().toISOString().split('T')[0],
+                        status: 'COMPLETED'
+                    });
+
+                    console.log(`[MoneyWise Pay] Inflow K${totalPreparedNum} credited to recipient org ${recipientOrgId}`);
+
+                    // Only now — after the recipient is actually credited — is this
+                    // genuinely a successful transfer.
+                    (req as any).lencoStatus = 'successful';
+                    (req as any).lencoFee = 0;
+                    (req as any).resolvedRef = lencoReference;
+                    (req as any).lencoTransactionAt = new Date().toISOString();
                 } else {
                     const { data: org } = await supabase
                         .from('organizations')

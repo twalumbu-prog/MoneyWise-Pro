@@ -39,6 +39,8 @@ import crmRoutes from './routes/crm.routes';
 import scheduleRoutes from './routes/schedule.routes';
 import billingRoutes from './routes/billing.routes';
 import investRoutes from './routes/invest.routes';
+import developerRoutes from './routes/developer.routes';
+import publicApiRoutes from './routes/publicApi.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
@@ -53,7 +55,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 1;
+const MIGRATION_VERSION = 2;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -340,6 +342,29 @@ const runMigration = async () => {
             console.warn('[Migration] Failed to disable RLS on user_organizations (non-fatal):', rlsError.message);
         }
 
+        // Personal-vs-business was inferred at runtime from a substring match on
+        // the org's own display name ("workspace"/"personal"/"individual"/
+        // "private") — unsafe since the name is user-supplied and "Private" is a
+        // standard Zambian company suffix ("X (Private) Limited"), so an ordinary
+        // registered business could be misclassified. This gives it a real column
+        // instead. "private" is deliberately excluded from the backfill match for
+        // that same reason — only ensurePersonalWorkspace's own naming pattern
+        // ("<name>'s Personal Account") is trusted to identify existing ones.
+        console.log('[Migration] Adding organizations.is_personal...');
+        await migrationPool.query(`
+            ALTER TABLE organizations
+            ADD COLUMN IF NOT EXISTS is_personal BOOLEAN NOT NULL DEFAULT FALSE;
+
+            UPDATE organizations
+            SET is_personal = TRUE
+            WHERE is_personal = FALSE
+              AND (
+                  lower(name) LIKE '%workspace%'
+                  OR lower(name) LIKE '%personal account%'
+                  OR lower(name) LIKE '%individual%'
+              );
+        `);
+
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');
         await migrationPool.query("NOTIFY pgrst, 'reload config';");
@@ -415,6 +440,8 @@ app.use('/crm', crmRoutes);
 app.use('/schedules', scheduleRoutes);
 app.use('/billing', billingRoutes);
 app.use('/investments', investRoutes);
+app.use('/developer', developerRoutes);
+app.use('/v1', publicApiRoutes);
 
 // Dump the full route table only when explicitly debugging. On Vercel this
 // module reloads on every cold start, and printing all ~200 routes each time

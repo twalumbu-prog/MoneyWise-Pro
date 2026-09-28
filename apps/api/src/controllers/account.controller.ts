@@ -16,15 +16,11 @@ export const getAccounts = async (req: AuthRequest, res: any): Promise<any> => {
 
         const { data: orgRow } = await supabase
             .from('organizations')
-            .select('name')
+            .select('is_personal')
             .eq('id', organization_id)
             .single();
 
-        const orgName = (orgRow?.name || '').toLowerCase();
-        const isPersonalOrg = orgName.includes('workspace') ||
-            orgName.includes('personal') ||
-            orgName.includes('individual') ||
-            orgName.includes('private');
+        const isPersonalOrg = orgRow?.is_personal === true;
 
         let query = supabase
             .from('accounts')
@@ -45,10 +41,13 @@ export const getAccounts = async (req: AuthRequest, res: any): Promise<any> => {
         if (isPersonalOrg) {
             const hasPersonalIncome = data?.some(a => a.code === 'INC-101' || a.name.includes('Salary'));
             const hasPersonalExpense = data?.some(a => a.code === 'EXP-202' || a.name.includes('Groceries'));
-            const hasBusinessTemplate = data?.some(a => a.name === 'Cost of Goods Sold' || a.name === 'Inventory Shrinkage' || a.name === 'Sales Revenue');
 
-            if (!hasPersonalIncome || !hasPersonalExpense || hasBusinessTemplate) {
-                console.log(`[Accounts] Enforcing clean personal chart of accounts for Org ${organization_id.slice(0, 8)}...`);
+            // Insert-only auto-heal for a personal account missing its default
+            // categories (e.g. it predates seedPersonalAccounts). Deliberately
+            // does not delete anything here — see purgeBusinessTemplateAccounts,
+            // which only ever runs once at genuine account creation.
+            if (!hasPersonalIncome || !hasPersonalExpense) {
+                console.log(`[Accounts] Backfilling missing personal categories for Org ${organization_id.slice(0, 8)}...`);
                 await seedPersonalAccounts(organization_id);
                 let reQuery = supabase
                     .from('accounts')

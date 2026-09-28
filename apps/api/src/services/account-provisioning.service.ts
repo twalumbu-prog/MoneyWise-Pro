@@ -64,6 +64,13 @@ export const DEFAULT_PERSONAL_ACCOUNTS = [
     { code: 'EXP-208', name: 'Savings & Investments', type: 'EXPENSE', subtype: 'Operating Expenses', description: 'Personal savings allocations and investments' },
 ];
 
+/**
+ * Insert-only and idempotent — safe to call from a read path (getAccounts'
+ * auto-heal) as often as needed. Deleting accounts is a separate, deliberate
+ * step (purgeBusinessTemplateAccounts below): this function used to also
+ * delete on every call, which meant a personal account's chart of accounts
+ * could be silently mutated as a side effect of loading the Accounts screen.
+ */
 export async function seedPersonalAccounts(organizationId: string): Promise<void> {
     const rows = DEFAULT_PERSONAL_ACCOUNTS.map(a => ({
         ...a,
@@ -79,23 +86,32 @@ export async function seedPersonalAccounts(organizationId: string): Promise<void
     if (error) {
         console.error(`[Provisioning] Failed to seed personal accounts for org ${organizationId.slice(0, 8)}:`, error.message);
     }
+}
 
-    // Purge unwanted business template accounts for this personal organization
-    const BUSINESS_TEMPLATE_NAMES = [
-        'Inventory Shrinkage', 'Cost of Goods Sold', 'Packaging Expense',
-        'Sales Revenue', 'Licences & Levies', 'Professional Fees',
-        'Repairs & Maintenance', 'Office Supplies', 'Marketing & Advertising',
-        'Bank & Payment Charges', 'Sundry Income', 'Sundry Expenses', 'Interest Income',
-        "Owner's Equity", 'Retained Earnings'
-    ];
+const BUSINESS_TEMPLATE_ACCOUNT_NAMES = [
+    'Inventory Shrinkage', 'Cost of Goods Sold', 'Packaging Expense',
+    'Sales Revenue', 'Licences & Levies', 'Professional Fees',
+    'Repairs & Maintenance', 'Office Supplies', 'Marketing & Advertising',
+    'Bank & Payment Charges', 'Sundry Income', 'Sundry Expenses', 'Interest Income',
+    "Owner's Equity", 'Retained Earnings'
+];
 
-    const { error: purgeError } = await supabase
+/**
+ * Destructive — deletes the default business-template accounts that don't
+ * belong on a personal account's chart of accounts. Call this exactly once,
+ * right after creating a brand-new personal organization (ensurePersonalWorkspace),
+ * never from a read path: an org that already has real transactions posted
+ * against one of these accounts must not have it silently deleted on a later
+ * page load.
+ */
+export async function purgeBusinessTemplateAccounts(organizationId: string): Promise<void> {
+    const { error } = await supabase
         .from('accounts')
         .delete()
         .eq('organization_id', organizationId)
-        .in('name', BUSINESS_TEMPLATE_NAMES);
+        .in('name', BUSINESS_TEMPLATE_ACCOUNT_NAMES);
 
-    if (purgeError) {
-        console.warn(`[Provisioning] Warning purging business accounts for org ${organizationId.slice(0, 8)}:`, purgeError.message);
+    if (error) {
+        console.warn(`[Provisioning] Warning purging business accounts for org ${organizationId.slice(0, 8)}:`, error.message);
     }
 }

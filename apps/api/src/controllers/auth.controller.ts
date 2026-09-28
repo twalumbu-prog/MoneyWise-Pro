@@ -1,6 +1,6 @@
 import express from 'express';
 import { supabase } from '../lib/supabase';
-import { seedDefaultAccounts, seedPersonalAccounts } from '../services/account-provisioning.service';
+import { seedDefaultAccounts, seedPersonalAccounts, purgeBusinessTemplateAccounts } from '../services/account-provisioning.service';
 import { captureEvent } from '../utils/analytics';
 import { emailService } from '../services/email.service';
 
@@ -826,16 +826,12 @@ export const ensurePersonalWorkspace = async (req: any, res: any): Promise<any> 
                 role,
                 status,
                 organization:organizations (
-                    id, name, slug, logo_url
+                    id, name, slug, logo_url, is_personal
                 )
             `)
             .eq('user_id', userId);
 
-        let personalOrg = memberships?.find((m: any) =>
-            m.organization?.name?.toLowerCase().includes('workspace') ||
-            m.organization?.name?.toLowerCase().includes('personal') ||
-            m.organization?.name?.toLowerCase().includes('individual')
-        );
+        let personalOrg = memberships?.find((m: any) => m.organization?.is_personal === true);
 
         if (personalOrg && personalOrg.organization_id) {
             const orgObj: any = personalOrg.organization;
@@ -863,7 +859,8 @@ export const ensurePersonalWorkspace = async (req: any, res: any): Promise<any> 
             .insert({
                 name: orgName,
                 slug: slug,
-                email: userRow.email
+                email: userRow.email,
+                is_personal: true
             })
             .select()
             .single();
@@ -889,8 +886,10 @@ export const ensurePersonalWorkspace = async (req: any, res: any): Promise<any> 
             .update({ organization_id: newOrg.id, role: 'ADMIN' })
             .eq('id', userId);
 
-        // Seed personal chart of accounts and main wallet
+        // Seed personal chart of accounts and main wallet. The purge only ever
+        // runs here, once, on a brand-new org — never from a read path.
         await seedPersonalAccounts(newOrg.id);
+        await purgeBusinessTemplateAccounts(newOrg.id);
         await supabase
             .from('organization_wallets')
             .insert({ organization_id: newOrg.id, name: 'Main Wallet', is_main: true });

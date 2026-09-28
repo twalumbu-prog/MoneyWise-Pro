@@ -109,15 +109,15 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
 
         const { data: orgData } = await supabase
             .from('organizations')
-            .select('name')
+            .select('is_personal')
             .eq('id', organization_id)
             .single();
 
-        const orgName = (orgData?.name || '').toLowerCase();
-        const isPersonalOrg = orgName.includes('workspace') ||
-            orgName.includes('personal') ||
-            orgName.includes('individual') ||
-            orgName.includes('private');
+        // Personal accounts auto-approve their own requisitions since there is
+        // no one else to approve them. This used to be inferred from the org's
+        // display name, which any business could accidentally (or deliberately)
+        // match — is_personal is a real column, set only by ensurePersonalWorkspace.
+        const isPersonalOrg = orgData?.is_personal === true;
 
         // 1. Insert Requisition
         const insertData: any = {
