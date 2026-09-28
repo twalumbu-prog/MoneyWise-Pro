@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { Users, CheckCircle2, ArrowRight } from 'lucide-react';
+import { Users, CheckCircle2, ArrowRight, UserCheck } from 'lucide-react';
 
 interface AppCard {
     id: string;
@@ -22,6 +22,15 @@ const APPS: AppCard[] = [
         color: 'bg-blue-600',
         route: '/apps/payroll',
         activatedKey: 'mw_app_payroll_active',
+    },
+    {
+        id: 'crm',
+        name: 'CRM',
+        description: 'Customer relationship management: track customer contacts, store purchase history, open invoices, and owing statuses.',
+        icon: UserCheck,
+        color: 'bg-emerald-600',
+        route: '/apps/crm',
+        activatedKey: 'mw_app_crm_active',
     },
 ];
 

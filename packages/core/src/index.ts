@@ -125,6 +125,14 @@ export type {
     CreatePayrollRunPayload,
 } from './services/payroll.service';
 
+export { crmService } from './services/crm.service';
+export type {
+    Customer,
+    CustomerTransaction,
+    CreateCustomerInput,
+    UpdateCustomerInput,
+} from './services/crm.service';
+
 export {
     PRODUCT_TYPE_OPTIONS,
     isBookingProductType,

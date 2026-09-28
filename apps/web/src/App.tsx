@@ -26,6 +26,7 @@ const Audit = React.lazy(() => import('./pages/Audit').then(m => ({ default: m.A
 const Menu = React.lazy(() => import('./pages/Menu').then(m => ({ default: m.Menu })));
 const Apps = React.lazy(() => import('./pages/Apps').then(m => ({ default: m.Apps })));
 const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default: m.Payroll })));
+const CRM = React.lazy(() => import('./pages/CRM').then(m => ({ default: m.CRM })));
 const RunPayrollPage = React.lazy(() => import('./pages/RunPayrollPage').then(m => ({ default: m.RunPayrollPage })));
 const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
@@ -320,6 +321,14 @@ function App() {
                             element={
                                 <ProtectedRoute>
                                     <Payroll />
+                                </ProtectedRoute>
+                            }
+                        />
+                        <Route
+                            path="/apps/crm"
+                            element={
+                                <ProtectedRoute>
+                                    <CRM />
                                 </ProtectedRoute>
                             }
                         />

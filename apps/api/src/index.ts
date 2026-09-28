@@ -35,6 +35,7 @@ import adminRoutes from './routes/admin.routes';
 import onboardingRoutes from './routes/onboarding.routes';
 import webhooksRoutes from './routes/webhooks.routes';
 import payrollRoutes from './routes/payroll.routes';
+import crmRoutes from './routes/crm.routes';
 import scheduleRoutes from './routes/schedule.routes';
 import billingRoutes from './routes/billing.routes';
 import investRoutes from './routes/invest.routes';
@@ -92,6 +93,20 @@ const runMigration = async () => {
 
         // ... existing migrations ...
         await migrationPool.query('ALTER TABLE accounts ADD COLUMN IF NOT EXISTS category TEXT;');
+
+        await migrationPool.query(`
+            CREATE TABLE IF NOT EXISTS public.customers (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+                name TEXT NOT NULL,
+                email TEXT,
+                phone TEXT,
+                notes TEXT,
+                status TEXT NOT NULL DEFAULT 'ACTIVE',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        `);
 
         await migrationPool.query(`
             ALTER TABLE organizations
@@ -396,6 +411,7 @@ app.use('/budgets', budgetRoutes);
 app.use('/reports', reportRoutes);
 app.use('/lenco', lencoRoutes);
 app.use('/payroll', payrollRoutes);
+app.use('/crm', crmRoutes);
 app.use('/schedules', scheduleRoutes);
 app.use('/billing', billingRoutes);
 app.use('/investments', investRoutes);
