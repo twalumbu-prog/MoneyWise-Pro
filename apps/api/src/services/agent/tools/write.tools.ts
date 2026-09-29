@@ -17,6 +17,7 @@
 
 import { supabase } from '../../../lib/supabase';
 import { ledgerService } from '../../ledger.service';
+import { QuickBooksService } from '../../quickbooks.service';
 import { memoryService } from '../../ai/memory.service';
 import { AgentContext, ToolDefinition, ToolProposal } from '../types';
 
@@ -627,6 +628,238 @@ const categorizeRequisitionExpense: ToolDefinition = {
     },
 };
 
+// ─── Bulk ledger actions ─────────────────────────────────────────────────────
+//
+// One approval card for the whole set. Proposing N single-entry writes makes the
+// user click N times, so anything the model would repeat over a list is a batch
+// tool: one proposal, one approval, one commit.
+
+const BATCH_CLASSIFY_MAX = 100;
+const BATCH_QB_MAX = 25;
+/** Stay well inside the function's 45s ceiling; leftovers are reported, not lost. */
+const BATCH_TIME_BUDGET_MS = 30_000;
+
+async function loadEntries(ctx: AgentContext, ids: string[]) {
+    const { data } = await supabase
+        .from('cashbook_entries')
+        .select('id, date, description, debit, credit, account_id, entry_type, status, requisition_id, qb_sync_status, reference_number, accounts:account_id(code, name)')
+        .eq('organization_id', ctx.organizationId)
+        .in('id', ids);
+    return new Map((data ?? []).map((e: any) => [e.id, e]));
+}
+
+function dedupe<T>(xs: T[]): T[] {
+    return [...new Set(xs)];
+}
+
+const categorizeTransactions: ToolDefinition = {
+    name: 'categorize_transactions',
+    description:
+        'Classify MANY standalone cashbook entries at once, behind a single approval. Use this ' +
+        'instead of calling categorize_transaction repeatedly whenever more than one entry needs ' +
+        'classifying. Each item is {entryId, accountCode}; several entries may share an account. ' +
+        `Up to ${BATCH_CLASSIFY_MAX} per call. Entries linked to a requisition are refused — those ` +
+        'go through categorize_requisition_expense.',
+    effect: 'write',
+    allowedRoles: ['ADMIN', 'AUTHORISER', 'ACCOUNTANT'],
+    parameters: {
+        type: 'object',
+        properties: {
+            items: {
+                type: 'array',
+                items: {
+                    type: 'object',
+                    properties: {
+                        entryId: { type: 'string' },
+                        accountCode: { type: 'string' },
+                    },
+                    required: ['entryId', 'accountCode'],
+                },
+            },
+        },
+        required: ['items'],
+    },
+    handler: async (ctx, args) => {
+        const items: Array<{ entryId: string; accountCode: string }> = Array.isArray(args.items) ? args.items : [];
+        if (!items.length) invalid('items is empty.');
+        if (items.length > BATCH_CLASSIFY_MAX) invalid(`At most ${BATCH_CLASSIFY_MAX} entries per call — split into several calls.`);
+
+        const entries = await loadEntries(ctx, dedupe(items.map(i => i.entryId)));
+        const codes = dedupe(items.map(i => i.accountCode));
+        const { data: accts } = await supabase
+            .from('accounts')
+            .select('id, code, name')
+            .eq('organization_id', ctx.organizationId)
+            .in('code', codes);
+        const byCode = new Map((accts ?? []).map((a: any) => [a.code, a]));
+
+        const problems: string[] = [];
+        for (const it of items) {
+            const e: any = entries.get(it.entryId);
+            if (!e) problems.push(`${it.entryId}: no such entry in this organisation`);
+            else if (e.requisition_id) problems.push(`${e.reference_number ?? it.entryId}: linked to a requisition — use categorize_requisition_expense`);
+            if (!byCode.has(it.accountCode)) problems.push(`account "${it.accountCode}" not found`);
+        }
+        if (problems.length) invalid(`Fix these and resubmit the whole batch: ${dedupe(problems).join('; ')}.`);
+
+        let total = 0;
+        const preview = items.map(it => {
+            const e: any = entries.get(it.entryId);
+            const a: any = byCode.get(it.accountCode);
+            const amt = Math.max(Number(e.debit ?? 0), Number(e.credit ?? 0));
+            total += amt;
+            return {
+                label: `${e.date} · ${e.reference_number ?? e.id.slice(0, 8)} · ${kwacha(amt)}`,
+                value: `${a.name}`,
+            };
+        });
+        preview.unshift({ label: 'Entries', value: `${items.length} · total ${kwacha(total)}` });
+
+        return propose(`Classify ${items.length} transactions (${kwacha(total)})`, preview);
+    },
+    execute: async (ctx, args) => {
+        const items: Array<{ entryId: string; accountCode: string }> = args.items ?? [];
+        const entries = await loadEntries(ctx, dedupe(items.map(i => i.entryId)));
+        const { data: accts } = await supabase
+            .from('accounts')
+            .select('id, code, name')
+            .eq('organization_id', ctx.organizationId)
+            .in('code', dedupe(items.map(i => i.accountCode)));
+        const byCode = new Map((accts ?? []).map((a: any) => [a.code, a]));
+
+        const done: string[] = [];
+        const failed: Array<{ entryId: string; error: string }> = [];
+        for (const it of items) {
+            const e: any = entries.get(it.entryId);
+            const a: any = byCode.get(it.accountCode);
+            if (!e || !a) { failed.push({ entryId: it.entryId, error: 'entry or account no longer exists' }); continue; }
+            if (e.requisition_id) { failed.push({ entryId: it.entryId, error: 'now linked to a requisition' }); continue; }
+
+            // Never demote an entry that already reached QuickBooks (status ACCOUNTED).
+            const patch: Record<string, any> = { account_id: a.id };
+            if (e.status !== 'ACCOUNTED') patch.status = 'COMPLETED';
+            const { error } = await supabase
+                .from('cashbook_entries')
+                .update(patch)
+                .eq('id', it.entryId)
+                .eq('organization_id', ctx.organizationId);
+            if (error) { failed.push({ entryId: it.entryId, error: error.message }); continue; }
+            done.push(it.entryId);
+            ledgerService
+                .repostForCashbookEntry(it.entryId)
+                .catch(err => console.error(`[Agent] repost after batch categorization failed for ${it.entryId}:`, err?.message));
+        }
+        return { classified: done.length, failed, note: 'Classified only — nothing has been posted to QuickBooks.' };
+    },
+};
+
+const postToQuickBooks: ToolDefinition = {
+    name: 'post_to_quickbooks',
+    description:
+        'Post standalone cashbook entries to QuickBooks — exactly what the "Post to QuickBooks" ' +
+        'button in the Cashbook does (an INFLOW becomes a QuickBooks Deposit, an outflow a Purchase). ' +
+        'Classifying an entry (categorize_transaction / categorize_transactions) does NOT post it; ' +
+        'this is the separate step, and the only way anything reaches QuickBooks — never tell the ' +
+        'user something was posted unless this tool ran and returned it. Each entry must already ' +
+        'have an account whose chart-of-accounts row is mapped to QuickBooks, and must not be ' +
+        `already posted. Pass all entry ids together (up to ${BATCH_QB_MAX} per call; call again ` +
+        'for the remainder) — one approval covers the whole set. Requisition-linked entries are ' +
+        'posted from the requisition, not here. This records books, it does not move money.',
+    effect: 'write',
+    allowedRoles: ['ADMIN', 'ACCOUNTANT', 'CASHIER'],
+    parameters: {
+        type: 'object',
+        properties: {
+            entryIds: { type: 'array', items: { type: 'string' }, description: 'Cashbook entry UUIDs from search_transactions.' },
+        },
+        required: ['entryIds'],
+    },
+    handler: async (ctx, args) => {
+        const ids = dedupe<string>(Array.isArray(args.entryIds) ? args.entryIds : []);
+        if (!ids.length) invalid('entryIds is empty.');
+        if (ids.length > BATCH_QB_MAX) invalid(`At most ${BATCH_QB_MAX} entries per call — post the rest in a follow-up call.`);
+
+        const entries = await loadEntries(ctx, ids);
+        const problems: string[] = [];
+        let total = 0;
+        const preview: Array<{ label: string; value: string }> = [];
+
+        const acctIds = dedupe(ids.map(id => (entries.get(id) as any)?.account_id).filter(Boolean));
+        const { data: accts } = acctIds.length
+            ? await supabase.from('accounts').select('id, qb_account_id, name').in('id', acctIds)
+            : { data: [] as any[] };
+        const acctById = new Map((accts ?? []).map((a: any) => [a.id, a]));
+
+        for (const id of ids) {
+            const e: any = entries.get(id);
+            const ref = e?.reference_number ?? id.slice(0, 8);
+            if (!e) { problems.push(`${id}: no such entry`); continue; }
+            if (e.requisition_id) { problems.push(`${ref}: requisition-linked, post it from the requisition`); continue; }
+            if (e.status === 'PENDING') { problems.push(`${ref}: still PENDING`); continue; }
+            if (e.qb_sync_status === 'SUCCESS') { problems.push(`${ref}: already posted to QuickBooks`); continue; }
+            if (!e.account_id) { problems.push(`${ref}: no account yet — classify it first`); continue; }
+            const a: any = acctById.get(e.account_id);
+            if (!a?.qb_account_id) { problems.push(`${ref}: account "${a?.name ?? e.account_id}" is not mapped to QuickBooks (Settings → Chart of Accounts)`); continue; }
+
+            const amt = Math.max(Number(e.debit ?? 0), Number(e.credit ?? 0));
+            total += amt;
+            preview.push({
+                label: `${e.date} · ${ref} · ${kwacha(amt)}`,
+                value: `${e.entry_type === 'INFLOW' ? 'Deposit' : 'Purchase'} → ${a.name}`,
+            });
+        }
+        if (problems.length) {
+            invalid(`These cannot be posted: ${problems.join('; ')}. Drop or fix them and resubmit — do not retry unchanged.`);
+        }
+        preview.unshift({ label: 'Entries', value: `${ids.length} · total ${kwacha(total)}` });
+
+        return propose(
+            `Post ${ids.length} ${ids.length === 1 ? 'entry' : 'entries'} to QuickBooks (${kwacha(total)})`,
+            preview,
+            'Creates real transactions in QuickBooks. Posted entries cannot be un-posted from here.'
+        );
+    },
+    execute: async (ctx, args) => {
+        const ids = dedupe<string>(args.entryIds ?? []);
+        const started = Date.now();
+        const posted: Array<{ entryId: string; qbId: string }> = [];
+        const failed: Array<{ entryId: string; error: string }> = [];
+        const notAttempted: string[] = [];
+
+        for (const id of ids) {
+            if (Date.now() - started > BATCH_TIME_BUDGET_MS) { notAttempted.push(id); continue; }
+
+            // Re-read at commit: createDeposit is not idempotent, so a second
+            // post of an entry that landed in the meantime would double-book it.
+            const { data: e } = await supabase
+                .from('cashbook_entries')
+                .select('id, entry_type, account_id, requisition_id, qb_sync_status, accounts:account_id(qb_account_id)')
+                .eq('id', id)
+                .eq('organization_id', ctx.organizationId)
+                .maybeSingle();
+            const qbAccountId = (e as any)?.accounts?.qb_account_id;
+            if (!e) { failed.push({ entryId: id, error: 'entry no longer exists' }); continue; }
+            if (e.qb_sync_status === 'SUCCESS') { failed.push({ entryId: id, error: 'already posted' }); continue; }
+            if (e.requisition_id || !qbAccountId) { failed.push({ entryId: id, error: 'no longer postable from here' }); continue; }
+
+            const r: any = e.entry_type === 'INFLOW'
+                ? await QuickBooksService.createDeposit(ctx.organizationId, id, qbAccountId, ctx.userId)
+                : await QuickBooksService.createLedgerPurchase(ctx.organizationId, id, qbAccountId, ctx.userId);
+            if (r.success) posted.push({ entryId: id, qbId: String(r.qbId) });
+            else failed.push({ entryId: id, error: String(r.error?.Fault?.Error?.[0]?.Message ?? r.error?.Message ?? r.error ?? 'unknown').slice(0, 200) });
+        }
+
+        return {
+            posted: posted.length,
+            failed,
+            not_attempted: notAttempted,
+            note: notAttempted.length
+                ? 'Ran out of time — call post_to_quickbooks again with the not_attempted ids.'
+                : undefined,
+        };
+    },
+};
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 const ORG_FIELDS = ['name', 'email', 'phone', 'address', 'website', 'tax_id'] as const;
@@ -691,5 +924,7 @@ export const writeTools: ToolDefinition[] = [
     updateScheduledItem,
     categorizeTransaction,
     categorizeRequisitionExpense,
+    categorizeTransactions,
+    postToQuickBooks,
     updateOrgSettings,
 ];

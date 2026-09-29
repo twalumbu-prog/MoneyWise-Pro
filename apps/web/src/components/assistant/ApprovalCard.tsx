@@ -20,6 +20,8 @@ const ACTION_LABELS: Record<string, string> = {
     update_scheduled_item: 'Update scheduled expense',
     categorize_transaction: 'Classify transaction',
     categorize_requisition_expense: 'Classify expense line item',
+    categorize_transactions: 'Classify all',
+    post_to_quickbooks: 'Post to QuickBooks',
     update_org_settings: 'Change settings',
 };
 
@@ -104,7 +106,7 @@ export const ApprovalCard: React.FC<Props> = ({ toolName, proposal, status, onDe
                 {decided && <ChevronDown size={14} className="mt-1.5 flex-shrink-0 rotate-180 text-gray-300" />}
             </div>
 
-            <dl className="divide-y divide-black/[0.04] px-4">
+            <dl className="max-h-[360px] divide-y divide-black/[0.04] overflow-y-auto px-4">
                 {proposal.preview.map((row, i) => (
                     <div key={i} className="flex items-baseline justify-between gap-4 py-2.5">
                         <dt className="text-[12px] font-semibold text-gray-500">{row.label}</dt>

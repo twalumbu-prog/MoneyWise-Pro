@@ -326,7 +326,12 @@ const searchTransactions: ToolDefinition = {
         'unaccountedOnly to find the ones still genuinely needing classification. Check ' +
         'requisition_id before picking a write tool: null → categorize_transaction with the ' +
         'entry id; set → get_requisition_details with that id, then categorize_requisition_expense ' +
-        'on whichever line items come back with accounted: false.',
+        'on whichever line items come back with accounted: false. Results are complete, not just ' +
+        'the newest rows: unaccountedOnly/qbPosted scan the whole ledger, and if has_more is true ' +
+        'call again with offset = next_offset — never report a partial page as the total. ' +
+        'Each row has qb_posted (already pushed to QuickBooks) and has_account (carries an account ' +
+        'of its own, which posting to QuickBooks requires); use qbPosted: "not_posted" to find ' +
+        'entries still awaiting a QuickBooks post.',
     effect: 'read',
     parameters: {
         type: 'object',
@@ -345,7 +350,13 @@ const searchTransactions: ToolDefinition = {
             },
             minAmount: { type: 'number' },
             ...dateRangeProps,
-            limit: { type: 'number', description: 'Max rows, default 50, hard cap 200.' },
+            qbPosted: {
+                type: 'string',
+                enum: ['posted', 'not_posted'],
+                description: 'Filter by QuickBooks posting state. "not_posted" = classified or not, but never pushed to QuickBooks.',
+            },
+            limit: { type: 'number', description: 'Max rows per call, default 50, hard cap 200.' },
+            offset: { type: 'number', description: 'Rows to skip — pass next_offset from the previous call to page through a long result.' },
         },
     },
     handler: async (ctx, args) => {
@@ -360,67 +371,110 @@ const searchTransactions: ToolDefinition = {
             walletId = w?.id;
         }
 
-        let q = supabase
-            .from('cashbook_entries')
-            .select('id, date, description, debit, credit, balance_after, entry_type, reference_number, status, requisition_id')
-            .eq('organization_id', ctx.organizationId)
-            .order('date', { ascending: false })
-            .limit(Math.min(args.limit ?? 50, MAX_ROWS));
+        const want = Math.min(Math.max(Number(args.limit ?? 50), 1), MAX_ROWS);
+        const startOffset = Math.max(0, Number(args.offset ?? 0));
 
-        // An explicit status is a deliberate filter; otherwise PENDING (not yet
-        // finalized) is hidden as noise the user didn't ask about.
-        if (args.status) q = q.eq('status', args.status);
-        else q = q.neq('status', 'PENDING');
+        // unaccountedOnly, qbPosted and minAmount are resolved *after* the rows
+        // are fetched (accounted-ness comes from the journal, not a column), so
+        // a single `.limit(want)` fetch would apply the filter to only the
+        // newest `want` rows and silently drop every match older than that —
+        // 14 "unaccounted" of what was really 40+. Scan in pages until `want`
+        // matches are collected or the ledger is exhausted instead.
+        const postFiltered = !!args.unaccountedOnly || !!args.qbPosted || args.minAmount != null;
+        const PAGE = postFiltered ? 500 : want;
+        const SCAN_CAP = 5000;
 
-        if (walletId) q = q.eq('wallet_id', walletId);
-        if (args.query) q = q.ilike('description', `%${args.query}%`);
-        if (args.startDate) q = q.gte('date', args.startDate);
-        if (args.endDate) q = q.lte('date', args.endDate);
-        if (args.direction === 'in') q = q.gt('debit', 0);
-        if (args.direction === 'out') q = q.gt('credit', 0);
+        const buildQuery = () => {
+            let q = supabase
+                .from('cashbook_entries')
+                .select('id, date, description, debit, credit, balance_after, entry_type, reference_number, status, requisition_id, account_id, qb_sync_status')
+                .eq('organization_id', ctx.organizationId)
+                .order('date', { ascending: false })
+                .order('id', { ascending: true });
 
-        const { data, error } = await q;
-        if (error) throw new Error(error.message);
+            // An explicit status is a deliberate filter; otherwise PENDING (not yet
+            // finalized) is hidden as noise the user didn't ask about.
+            if (args.status) q = q.eq('status', args.status);
+            else q = q.neq('status', 'PENDING');
 
-        let candidates = (data ?? []).filter(r =>
-            args.minAmount == null || Math.max(money(r.debit), money(r.credit)) >= args.minAmount
-        );
+            if (walletId) q = q.eq('wallet_id', walletId);
+            if (args.query) q = q.ilike('description', `%${args.query}%`);
+            if (args.startDate) q = q.gte('date', args.startDate);
+            if (args.endDate) q = q.lte('date', args.endDate);
+            if (args.direction === 'in') q = q.gt('debit', 0);
+            if (args.direction === 'out') q = q.gt('credit', 0);
+            return q;
+        };
 
-        // Resolved from the posted journal, not from cashbook_entries.account_id
-        // directly — see accounting.util.ts for why that column alone is wrong
-        // for any entry with a requisition attached.
-        const accounting = await resolveEntryAccounting(ctx.organizationId, candidates.map(r => r.id));
+        const rows: any[] = [];
+        let consumed = 0; // rows examined, counted up to the last one kept
+        let exhausted = false;
 
-        if (args.unaccountedOnly) {
-            candidates = candidates.filter(r => !(accounting.get(r.id)?.accounted ?? false));
+        while (rows.length < want && consumed < SCAN_CAP) {
+            const from = startOffset + consumed;
+            const { data, error } = await buildQuery().range(from, from + PAGE - 1);
+            if (error) throw new Error(error.message);
+            const page = data ?? [];
+            if (!page.length) { exhausted = true; break; }
+
+            // Resolved from the posted journal, not from cashbook_entries.account_id
+            // directly — see accounting.util.ts for why that column alone is wrong
+            // for any entry with a requisition attached.
+            const accounting = await resolveEntryAccounting(ctx.organizationId, page.map((r: any) => r.id));
+
+            let stoppedEarly = false;
+            for (const r of page) {
+                consumed++;
+                if (args.minAmount != null && Math.max(money(r.debit), money(r.credit)) < args.minAmount) continue;
+                const acct = accounting.get(r.id);
+                if (args.unaccountedOnly && (acct?.accounted ?? false)) continue;
+                const qbPosted = r.qb_sync_status === 'SUCCESS';
+                if (args.qbPosted === 'posted' && !qbPosted) continue;
+                if (args.qbPosted === 'not_posted' && qbPosted) continue;
+
+                rows.push({
+                    id: r.id,
+                    date: r.date,
+                    description: r.description,
+                    debit: r.debit,
+                    credit: r.credit,
+                    balance_after: r.balance_after,
+                    entry_type: r.entry_type,
+                    reference_number: r.reference_number,
+                    status: r.status,
+                    account: acct?.dominantAccountName ?? null,
+                    accounted: acct?.accounted ?? false,
+                    // Whether the entry carries an account_id of its own (what the
+                    // UI's "Post to QuickBooks" button needs), as distinct from
+                    // `accounted`, which is derived from the posted journal.
+                    has_account: !!r.account_id,
+                    // SUCCESS = already posted to QuickBooks. Anything else
+                    // (null, FAILED) has not been.
+                    qb_posted: qbPosted,
+                    // When set, categorize_transaction will refuse this entry — use
+                    // get_requisition_details + categorize_requisition_expense
+                    // instead. Checking this avoids a wasted round trip finding out.
+                    requisition_id: r.requisition_id ?? null,
+                });
+                if (rows.length >= want) { stoppedEarly = true; break; }
+            }
+            if (stoppedEarly) break;
+            if (page.length < PAGE) { exhausted = true; break; }
         }
 
-        const rows = candidates.map((r: any) => {
-            const status = accounting.get(r.id);
-            return {
-                id: r.id,
-                date: r.date,
-                description: r.description,
-                debit: r.debit,
-                credit: r.credit,
-                balance_after: r.balance_after,
-                entry_type: r.entry_type,
-                reference_number: r.reference_number,
-                status: r.status,
-                account: status?.dominantAccountName ?? null,
-                accounted: status?.accounted ?? false,
-                // When set, categorize_transaction will refuse this entry — use
-                // get_requisition_details + categorize_requisition_expense
-                // instead. Checking this avoids a wasted round trip finding out.
-                requisition_id: r.requisition_id ?? null,
-            };
-        });
-
+        const hasMore = !exhausted;
         return {
             count: rows.length,
             total_in: rows.reduce((s, r) => s + money(r.debit), 0),
             total_out: rows.reduce((s, r) => s + money(r.credit), 0),
             results: rows,
+            // Never present a capped list as complete. If has_more is true, call
+            // again with offset = next_offset before reporting a total.
+            has_more: hasMore,
+            next_offset: hasMore ? startOffset + consumed : null,
+            note: hasMore
+                ? `More matching rows exist beyond these ${rows.length}. Call again with offset: ${startOffset + consumed} to continue — do not report ${rows.length} as the total.`
+                : undefined,
         };
     },
 };
