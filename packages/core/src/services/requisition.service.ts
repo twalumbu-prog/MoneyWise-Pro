@@ -529,13 +529,42 @@ export const requisitionService = {
         return response.json();
     },
 
-    async disbursePayroll(id: string) {
+    /**
+     * Pay the employees of a payroll batch that have no payout yet. `continuation`
+     * must be true only when this call follows an `IN_PROGRESS` response from the
+     * previous pass of the same run — it tells the server that pass has finished, so
+     * the "another run is mid-batch" guard does not apply.
+     *
+     * A 409 from that guard is returned (not thrown) as `IN_PROGRESS` with
+     * `retryAfterMs`, so callers wait and try again instead of reporting an error.
+     */
+    async disbursePayroll(id: string, opts: { continuation?: boolean } = {}) {
         const response = await apiFetch(`/requisitions/${id}/disburse-payroll`, {
             method: 'POST',
+            body: JSON.stringify({ continuation: opts.continuation === true }),
+        });
+        const data = await response.json();
+        if (response.status === 409 && data?.status === 'IN_PROGRESS') {
+            return { successfulCount: 0, failedCount: 0, pendingCount: 0, ...data };
+        }
+        if (!response.ok) {
+            throw new Error(data.error || data.message || 'Payroll disbursement failed');
+        }
+        return data;
+    },
+
+    /**
+     * Ask Lenco what actually happened to every employee's payout, and reconcile:
+     * payouts Lenco reports failed are reversed here so they can be re-run.
+     */
+    async verifyPayroll(id: string) {
+        const response = await apiFetch(`/requisitions/${id}/verify-payroll`, {
+            method: 'POST',
+            body: JSON.stringify({}),
         });
         const data = await response.json();
         if (!response.ok) {
-            throw new Error(data.error || data.message || 'Payroll disbursement failed');
+            throw new Error(data.error || data.details || 'Failed to verify payroll payouts');
         }
         return data;
     },

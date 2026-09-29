@@ -167,6 +167,8 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
     // "Paid 18 of 33 employees — continuing…" while a batch payroll runs across
     // several API calls, so a long run never looks like a stall or a failure.
     const [payrollProgress, setPayrollProgress] = useState<string | null>(null);
+    const [payrollVerify, setPayrollVerify] = useState<any>(null);
+    const [isVerifyingPayroll, setIsVerifyingPayroll] = useState(false);
     const [disburseStatusMsg, setDisburseStatusMsg] = useState<string | null>(null);
 
     // Wallets & Subwallets State
@@ -1455,14 +1457,22 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                         let paid = 0;
                         let result: any = null;
 
-                        for (let pass = 0; pass < 20; pass++) {
-                            result = await requisitionService.disbursePayroll(requisitionData.id);
+                        let continuation = false;
+                        for (let pass = 0; pass < 40; pass++) {
+                            result = await requisitionService.disbursePayroll(requisitionData.id, { continuation });
                             paid += Number(result.successfulCount || 0);
 
                             if (result.status !== 'IN_PROGRESS') break;
 
-                            setPayrollProgress(`Paid ${paid} of ${paid + Number(result.pendingCount || 0)} employees — continuing…`);
-                            await new Promise(r => setTimeout(r, 1500));
+                            // Only a pass that actually ran (rather than being held off by the
+                            // server's race guard) has finished and licenses an immediate follow-up.
+                            continuation = result.retryAfterMs === undefined;
+                            setPayrollProgress(
+                                result.retryAfterMs !== undefined
+                                    ? 'Another payout run is still finishing — waiting to continue…'
+                                    : `Paid ${paid} of ${paid + Number(result.pendingCount || 0)} employees — continuing…`
+                            );
+                            await new Promise(r => setTimeout(r, Math.max(1500, Number(result.retryAfterMs || 0) + 500)));
                         }
 
                         if (result?.failedCount > 0) {
@@ -1492,6 +1502,46 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     }
                 };
 
+                // What Lenco last told us about each payout. A disbursement row alone only
+                // means "we asked Lenco to pay" — never treat it as proof of payment.
+                const verifyByItem: Record<string, any> = {};
+                (payrollVerify?.items || []).forEach((v: any) => { verifyByItem[v.lineItemId] = v; });
+                const payoutState = (item: any): { key: string; label: string; detail?: string } => {
+                    const v = verifyByItem[item.id];
+                    if (v) {
+                        if (v.action === 'released') return { key: 'failed', label: 'Failed — re-run', detail: v.reason };
+                        if (v.lencoStatus === 'successful') return { key: 'paid', label: 'Paid' };
+                        if (v.lencoStatus === 'pending') return { key: 'pending', label: 'Pending at Lenco' };
+                        if (v.lencoStatus === 'failed') return { key: 'failed', label: 'Failed', detail: v.reason };
+                        if (v.lencoStatus === 'not_sent') return { key: 'unsent', label: 'Not sent' };
+                        return { key: 'unknown', label: 'Could not check', detail: v.reason };
+                    }
+                    const d = disbursements.find((x: any) => x.line_item_id === item.id);
+                    if (!d) return { key: 'unsent', label: 'Not sent' };
+                    if (d.lenco_status === 'successful') return { key: 'paid', label: 'Paid' };
+                    if (d.lenco_status === 'pending') return { key: 'pending', label: 'Pending at Lenco' };
+                    if (d.lenco_status === 'failed') return { key: 'failed', label: 'Failed', detail: d.failure_reason };
+                    return { key: 'unverified', label: 'Sent — unverified' };
+                };
+                const unverifiedCount = items.filter((i: any) => !i.description.toLowerCase().includes('withdrawal fee') && ['unverified', 'pending'].includes(payoutState(i).key)).length;
+
+                const handleVerifyPayroll = async () => {
+                    setIsVerifyingPayroll(true);
+                    setDisburseError(null);
+                    try {
+                        const result = await requisitionService.verifyPayroll(requisitionData.id);
+                        setPayrollVerify(result);
+                        if (onAction) onAction('REFRESH');
+                    } catch (err: any) {
+                        setDisburseError(err.message || 'Could not verify payouts with Lenco');
+                    } finally {
+                        setIsVerifyingPayroll(false);
+                    }
+                };
+
+                const canResumePayroll = canAction && ['AUTHORISED', 'RECEIVED'].includes(currentStatus) && isPrivileged;
+                const canVerifyPayroll = canAction && ['AUTHORISED', 'RECEIVED'].includes(currentStatus) && isPrivileged && disbursedItems.length > 0;
+
                 return (
                     <div className="flex flex-col mb-8 w-full max-w-2xl animate-in fade-in slide-in-from-left-4 duration-500">
                         <div className="bg-white border border-gray-100 rounded-[20px] rounded-tl-none shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] overflow-hidden transition-all duration-300">
@@ -1519,7 +1569,7 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         <p className="text-[11px] text-gray-500 font-medium tracking-tight mt-1">
                                             {isFullyDisbursed 
                                                 ? `All ${items.length - (totalFees > 0 ? 1 : 0)} employees paid.` 
-                                                : `${disbursedItems.length} paid, ${pendingItems.length} pending.`
+                                                : `${disbursedItems.length} sent, ${pendingItems.length} not yet sent.`
                                             }
                                         </p>
                                     </div>
@@ -1596,7 +1646,15 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                         <tbody className="divide-y divide-gray-50">
                                             {items.map((item: any, idx: number) => {
                                                 if (item.description.toLowerCase().includes('withdrawal fee')) return null;
-                                                const isPaid = disbursements.some((d: any) => d.line_item_id === item.id);
+                                                const state = payoutState(item);
+                                                const badgeStyle: Record<string, string> = {
+                                                    paid: 'bg-emerald-50 text-emerald-600 border-emerald-100',
+                                                    pending: 'bg-amber-50 text-amber-600 border-amber-100',
+                                                    unverified: 'bg-blue-50 text-blue-600 border-blue-100',
+                                                    unsent: 'bg-gray-50 text-gray-500 border-gray-200',
+                                                    failed: 'bg-red-50 text-red-600 border-red-100',
+                                                    unknown: 'bg-gray-50 text-gray-500 border-gray-200',
+                                                };
 
                                                 return (
                                                     <tr key={item.id || idx} className="hover:bg-gray-50/20 transition-colors">
@@ -1607,14 +1665,12 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                             </div>
                                                         </td>
                                                         <td className="px-3 py-3 text-[11px]">
-                                                            {isPaid ? (
-                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
-                                                                    <Check size={8} className="mr-1" /> Paid
-                                                                </span>
-                                                            ) : (
-                                                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-600 border border-amber-100">
-                                                                    <Clock size={8} className="mr-1" /> Pending
-                                                                </span>
+                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold border ${badgeStyle[state.key]}`}>
+                                                                {state.key === 'paid' ? <Check size={8} className="mr-1" /> : state.key === 'failed' ? <X size={8} className="mr-1" /> : <Clock size={8} className="mr-1" />}
+                                                                {state.label}
+                                                            </span>
+                                                            {state.detail && (
+                                                                <span className="block text-[9px] text-red-500 mt-1 whitespace-normal leading-tight">{state.detail}</span>
                                                             )}
                                                         </td>
                                                         <td className="px-3 py-3 text-[11px] font-bold text-gray-900 text-right">
@@ -1627,22 +1683,62 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                     </table>
                                 </div>
 
-                                {!isFullyDisbursed && canAction && currentStatus === 'AUTHORISED' && isPrivileged && (
-                                    <div className="flex space-x-3">
-                                        <button 
-                                            onClick={handleDisbursePayroll}
-                                            disabled={isProcessing}
-                                            className="w-full flex items-center justify-center px-6 py-3 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-12 font-black transition-all shadow-md shadow-blue-100"
-                                        >
-                                            {isProcessing ? (
-                                                <>
-                                                    <Loader2 size={16} className="animate-spin text-white mr-2" />
-                                                    Disbursing Payroll Batch...
-                                                </>
-                                            ) : (
-                                                disbursedItems.length > 0 ? 'Resume Payroll Disbursal' : 'Disburse Payroll'
-                                            )}
-                                        </button>
+                                {payrollVerify && (
+                                    <div className={`mb-4 p-4 rounded-2xl border text-xs font-medium leading-relaxed ${payrollVerify.allConfirmed ? 'bg-emerald-50 border-emerald-100 text-emerald-800' : 'bg-blue-50 border-blue-100 text-blue-900'}`}>
+                                        <p className="font-bold mb-1">Checked with Lenco just now</p>
+                                        <p>
+                                            {payrollVerify.summary.successful} confirmed paid
+                                            {payrollVerify.summary.pending > 0 && <>, {payrollVerify.summary.pending} still pending at Lenco</>}
+                                            {payrollVerify.summary.failed > 0 && <>, {payrollVerify.summary.failed} failed</>}
+                                            {payrollVerify.summary.notSent > 0 && <>, {payrollVerify.summary.notSent} never sent</>}
+                                            {payrollVerify.summary.unknown > 0 && <>, {payrollVerify.summary.unknown} could not be checked</>}.
+                                        </p>
+                                        {payrollVerify.summary.released > 0 && (
+                                            <p className="mt-1">{payrollVerify.summary.released} failed payout{payrollVerify.summary.released === 1 ? ' was' : 's were'} reversed — the money never left the wallet.</p>
+                                        )}
+                                        {payrollVerify.summary.recorded > 0 && (
+                                            <p className="mt-1">{payrollVerify.summary.recorded} payout{payrollVerify.summary.recorded === 1 ? ' was' : 's were'} found on Lenco but missing here, and {payrollVerify.summary.recorded === 1 ? 'has' : 'have'} now been recorded.</p>
+                                        )}
+                                        {payrollVerify.summary.needsReview > 0 && (
+                                            <p className="mt-1 text-red-700">{payrollVerify.summary.needsReview} payout{payrollVerify.summary.needsReview === 1 ? '' : 's'} need manual review (see the reason on the row).</p>
+                                        )}
+                                        {payrollVerify.statusColumnsMissing && (
+                                            <p className="mt-1 text-amber-700">Statuses were checked but could not be saved — the database update for payout status has not been applied yet.</p>
+                                        )}
+                                    </div>
+                                )}
+
+                                {(canVerifyPayroll || (!isFullyDisbursed && canResumePayroll)) && (
+                                    <div className="flex flex-col sm:flex-row gap-3">
+                                        {canVerifyPayroll && (
+                                            <button
+                                                onClick={handleVerifyPayroll}
+                                                disabled={isVerifyingPayroll || isProcessing}
+                                                className={`w-full flex items-center justify-center px-6 py-3 text-[13px] font-bold rounded-full h-12 transition-all disabled:opacity-50 ${!isFullyDisbursed || unverifiedCount === 0 ? 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50' : 'bg-white border border-[#006AFF] text-[#006AFF] hover:bg-blue-50'}`}
+                                            >
+                                                {isVerifyingPayroll ? (
+                                                    <><Loader2 size={16} className="animate-spin mr-2" />Checking with Lenco...</>
+                                                ) : (
+                                                    <><RefreshCw size={14} className="mr-2" />{unverifiedCount > 0 ? `Verify ${unverifiedCount} payout${unverifiedCount === 1 ? '' : 's'} with Lenco` : 'Verify with Lenco'}</>
+                                                )}
+                                            </button>
+                                        )}
+                                        {!isFullyDisbursed && canResumePayroll && (
+                                            <button
+                                                onClick={handleDisbursePayroll}
+                                                disabled={isProcessing || isVerifyingPayroll}
+                                                className="w-full flex items-center justify-center px-6 py-3 bg-[#006AFF] text-white text-[13px] font-bold rounded-full hover:bg-[#0052cc] disabled:opacity-50 h-12 font-black transition-all shadow-md shadow-blue-100"
+                                            >
+                                                {isProcessing ? (
+                                                    <>
+                                                        <Loader2 size={16} className="animate-spin text-white mr-2" />
+                                                        Disbursing Payroll Batch...
+                                                    </>
+                                                ) : (
+                                                    disbursedItems.length > 0 ? `Send remaining ${pendingItems.length} payout${pendingItems.length === 1 ? '' : 's'}` : 'Disburse Payroll'
+                                                )}
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>

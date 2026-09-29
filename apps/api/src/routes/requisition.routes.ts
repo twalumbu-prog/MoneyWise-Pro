@@ -39,10 +39,11 @@ import {
     verifyDisbursementStatus,
     disburseExcessRequisition,
     disbursePayrollRequisition,
+    verifyPayrollDisbursements,
     pollProcessingDisbursements
 } from '../controllers/disbursement.controller';
 import { postVoucher } from '../controllers/accounting.controller';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 
 const router = Router();
 
@@ -66,6 +67,7 @@ router.get('/disbursements/history', getDisbursementHistory);
 router.post('/:id/disburse', disburseRequisition);
 router.post('/:id/auto-disburse', autoAuthorizeAndDisburse);
 router.post('/:id/disburse-payroll', disbursePayrollRequisition);
+router.post('/:id/verify-payroll', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER', 'MANAGER']), verifyPayrollDisbursements);
 router.post('/:id/disburse-excess', disburseExcessRequisition);
 router.post('/:id/acknowledge', acknowledgeReceipt);
 router.patch('/disbursements/:id', updateDisbursement);

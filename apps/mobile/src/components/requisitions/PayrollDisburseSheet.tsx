@@ -29,12 +29,20 @@ export const PayrollDisburseSheet: React.FC<{
         try {
             let paid = 0;
             let result: any = null;
-            for (let pass = 0; pass < 20; pass++) {
-                result = await requisitionService.disbursePayroll(requisitionId);
+            let continuation = false;
+            for (let pass = 0; pass < 40; pass++) {
+                result = await requisitionService.disbursePayroll(requisitionId, { continuation });
                 paid += Number(result.successfulCount || 0);
                 if (result.status !== 'IN_PROGRESS') break;
-                setProgress(`Paid ${paid} of ${paid + Number(result.pendingCount || 0)} employees — continuing…`);
-                await new Promise((r) => setTimeout(r, 1500));
+                // A pass held off by the server's race guard has not run, so it does not
+                // license an immediate follow-up; one that ran and yielded does.
+                continuation = result.retryAfterMs === undefined;
+                setProgress(
+                    result.retryAfterMs !== undefined
+                        ? 'Another payout run is still finishing — waiting to continue…'
+                        : `Paid ${paid} of ${paid + Number(result.pendingCount || 0)} employees — continuing…`
+                );
+                await new Promise((r) => setTimeout(r, Math.max(1500, Number(result.retryAfterMs || 0) + 500)));
             }
             if (result?.failedCount > 0) {
                 const names = (result.failedItems ?? []).map((f: any) => f.name).join(', ');

@@ -1572,6 +1572,33 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
 // the fee line item and the response.
 const PAYOUT_BUDGET_MS = 18_000;
 
+// A payout logged more recently than this means another invocation may be mid-batch.
+const PAYROLL_RACE_GUARD_MS = 45_000;
+
+/**
+ * Record one payroll payout, with the status Lenco reported for it.
+ *
+ * The status columns come from a migration; if it has not been applied yet, retry
+ * without them rather than fail — losing the record of a payout whose money has
+ * already left is far worse than losing its status.
+ */
+async function recordPayrollDisbursement(row: Record<string, any>, lencoStatus?: string | null): Promise<void> {
+    const withStatus = lencoStatus
+        ? { ...row, lenco_status: lencoStatus, lenco_status_checked_at: new Date().toISOString() }
+        : row;
+
+    const { error } = await supabase.from('disbursements').insert(withStatus);
+    if (!error) return;
+
+    if (lencoStatus && /lenco_status|failure_reason|schema cache|column/i.test(error.message || '')) {
+        console.warn('[Payroll Disbursal] lenco_status columns unavailable — recording payout without status:', error.message);
+        const retry = await supabase.from('disbursements').insert(row);
+        if (!retry.error) return;
+        throw new Error(`Failed to record payout: ${retry.error.message}`);
+    }
+    throw new Error(`Failed to record payout: ${error.message}`);
+}
+
 /** Employee line items on a payroll requisition that still have no payout recorded. */
 async function countOutstandingPayrollItems(requisitionId: string): Promise<number> {
     const [{ data: items }, { data: disbs }] = await Promise.all([
@@ -1783,10 +1810,18 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                 .limit(1)
                 .maybeSingle();
 
-            if (recent?.issued_at && Date.now() - new Date(recent.issued_at).getTime() < 45_000) {
+            // A caller that was just told IN_PROGRESS by the previous pass knows that pass
+            // has finished (it got the response), so its continuation is not a race and
+            // must not be held back — the guard tripped on exactly this on 2026-09-29 and
+            // stranded 16 of 34 employees. Other callers (a second tab, a double-click)
+            // never send the flag and stay guarded.
+            const isContinuation = req.body?.continuation === true;
+            const sinceLastPayoutMs = recent?.issued_at ? Date.now() - new Date(recent.issued_at).getTime() : Infinity;
+            if (!isContinuation && sinceLastPayoutMs < PAYROLL_RACE_GUARD_MS) {
                 return res.status(409).json({
                     error: 'This payroll batch is still being processed. Please wait a few seconds before continuing.',
-                    status: 'IN_PROGRESS'
+                    status: 'IN_PROGRESS',
+                    retryAfterMs: PAYROLL_RACE_GUARD_MS - sinceLastPayoutMs
                 });
             }
 
@@ -1905,6 +1940,7 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
 
             try {
                 let lencoReference = '';
+                let lencoStatus: string | null = null;
                 if (testMode) {
                     lencoReference = `SIM-${stableRef}`;
                     console.log(`[Payroll Test Mode] Simulating payout for employee ${item.employee_name} of K${amount}`);
@@ -1923,6 +1959,7 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
 
                     if (statusCheck && statusCheck.status !== 'failed') {
                         lencoReference = resolvedRef;
+                        lencoStatus = statusCheck.status || null;
                         console.log(`[Payroll Disbursal] Found existing transfer on Lenco for ${resolvedRef}, reusing.`);
                     } else {
                         // Initiate new payout using resolvedRef
@@ -1955,11 +1992,14 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                         if (payout.status === 'failed') {
                             throw new Error(payout.reasonForFailure || payout.message || 'Transfer rejected by Lenco');
                         }
+                        lencoStatus = payout.status || null;
                     }
                 }
 
-                // Record individual disbursement for sub-item details
-                await supabase.from('disbursements').insert({
+                // Record individual disbursement for sub-item details, with the status
+                // Lenco reported — 'pending' here is NOT the same as paid, and the
+                // payroll Verify action re-checks it later.
+                await recordPayrollDisbursement({
                     requisition_id: id,
                     line_item_id: item.id,
                     cashier_id,
@@ -1971,7 +2011,7 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
                     recipient_account_name: item.verified_name || item.employee_name,
                     external_reference: lencoReference,
                     issued_at: new Date().toISOString()
-                });
+                }, testMode ? null : lencoStatus);
 
                 // Update line item actual amount
                 await supabase
@@ -1998,24 +2038,31 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
 
                 if (confirmed && confirmed.status !== 'failed') {
                     console.warn(`[Payroll Disbursal] ${item.employee_name}: local error "${err.message}" but Lenco reports ${confirmed.status} for ${stableRef} — recording as paid.`);
-                    await supabase.from('disbursements').insert({
-                        requisition_id: id,
-                        line_item_id: item.id,
-                        cashier_id,
-                        organization_id: organizationId,
-                        payment_method: item.payment_method,
-                        total_prepared: amount,
-                        recipient_account: item.recipient_account,
-                        recipient_bank_code: item.recipient_bank_code,
-                        recipient_account_name: item.verified_name || item.employee_name,
-                        external_reference: confirmed.reference || stableRef,
-                        issued_at: new Date().toISOString()
-                    });
-                    await supabase
-                        .from('line_items')
-                        .update({ actual_amount: amount, updated_at: new Date().toISOString() })
-                        .eq('id', item.id);
-                    successfulDisbursements.push({ item, amount, fee, reference: confirmed.reference || stableRef });
+                    try {
+                        await recordPayrollDisbursement({
+                            requisition_id: id,
+                            line_item_id: item.id,
+                            cashier_id,
+                            organization_id: organizationId,
+                            payment_method: item.payment_method,
+                            total_prepared: amount,
+                            recipient_account: item.recipient_account,
+                            recipient_bank_code: item.recipient_bank_code,
+                            recipient_account_name: item.verified_name || item.employee_name,
+                            external_reference: confirmed.reference || stableRef,
+                            issued_at: new Date().toISOString()
+                        }, confirmed.status || null);
+                        await supabase
+                            .from('line_items')
+                            .update({ actual_amount: amount, updated_at: new Date().toISOString() })
+                            .eq('id', item.id);
+                        successfulDisbursements.push({ item, amount, fee, reference: confirmed.reference || stableRef });
+                    } catch (recordErr: any) {
+                        // Money left but we could not write it down. Surface it — the
+                        // resume/verify path re-adopts it by its deterministic reference.
+                        console.error(`[Payroll Disbursal] ${item.employee_name}: paid on Lenco (${stableRef}) but recording failed:`, recordErr.message);
+                        failedDisbursements.push({ item, error: `Sent to Lenco but not recorded (${stableRef}) — use Verify with Lenco to record it.` });
+                    }
                 } else {
                     console.error(`[Payroll Disbursal Failed] Employee: ${item.employee_name}, Error:`, err);
                     failedDisbursements.push({ item, error: err.message || 'Payout failed' });
@@ -2169,12 +2216,338 @@ export const disbursePayrollRequisition = async (req: any, res: any): Promise<an
 };
 
 /**
+ * POST /requisitions/:id/verify-payroll
+ *
+ * Ask Lenco — not our own records — what happened to every employee's payout, and
+ * make MoneyWise agree with the answer.
+ *
+ * A `disbursements` row only ever meant "we asked Lenco to pay". This resolves each
+ * employee to exactly one of:
+ *   successful  Lenco settled the transfer.
+ *   pending     Lenco accepted it but has not settled it. Money is committed; wait.
+ *   failed      Lenco rejected it (or has no record of a payout we booked). The money
+ *               never left, so the booking is REVERSED and the employee becomes
+ *               outstanding again — "Resume payroll" then pays them under a fresh
+ *               client reference (Lenco will not reuse a failed one).
+ *   not_sent    Never attempted, and Lenco has no transfer for the reference.
+ *   unknown     Lenco could not be reached / answered oddly. Nothing is changed.
+ *
+ * Safety rules, all deliberate:
+ *   - Only an explicit Lenco `failed` / "Transfer was not found" reverses anything;
+ *     an API error, timeout or 403 never does.
+ *   - A ledger row the Lenco sync has already adopted (external_reference set) is tied
+ *     to a real bank debit, so it is never deleted — it is flagged for review.
+ *   - A transfer found on Lenco with no disbursement row (sent, then our write was
+ *     lost) is re-recorded rather than left invisible or paid a second time.
+ *   - Reversal only happens while the requisition is still RECEIVED/AUTHORISED; once
+ *     it has moved on into accounting we report, but do not rewrite the ledger.
+ */
+export const verifyPayrollDisbursements = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id } = req.params;
+        const organizationId = req.user.organization_id;
+        const cashierId = req.user.id;
+        if (!organizationId) throw new Error('Missing organization context');
+
+        const { data: requisition } = await supabase
+            .from('requisitions')
+            .select('id, status, wallet_id')
+            .eq('id', id)
+            .eq('type', 'PAYROLL')
+            .eq('organization_id', organizationId)
+            .maybeSingle();
+
+        if (!requisition) {
+            return res.status(404).json({ error: 'Payroll requisition not found.' });
+        }
+
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('lenco_secret_key, payment_test_mode')
+            .eq('id', organizationId)
+            .single();
+
+        if (org?.payment_test_mode) {
+            return res.json({ simulated: true, message: 'Payment simulation is on — payouts are not sent to Lenco, so there is nothing to verify.', items: [], summary: {} });
+        }
+
+        const secretKey = org?.lenco_secret_key || process.env.LENCO_SECRET_KEY || undefined;
+
+        const [{ data: lineItems }, { data: disbursements }] = await Promise.all([
+            supabase.from('line_items').select('*').eq('requisition_id', id).eq('is_valid', true),
+            supabase.from('disbursements').select('*').eq('requisition_id', id),
+        ]);
+
+        const employeeItems = (lineItems || []).filter((i: any) => {
+            const d = (i.description || '').toLowerCase();
+            return !d.includes('withdrawal fee') && !d.includes('transaction charges');
+        });
+        const disbByLineItem = new Map<string, any>((disbursements || []).filter((d: any) => d.line_item_id).map((d: any) => [d.line_item_id, d]));
+        const canRelease = ['RECEIVED', 'AUTHORISED'].includes(requisition.status);
+
+        type Lookup = { ok: true; transfer: any | null } | { ok: false; message: string };
+        const lookup = async (ref: string): Promise<Lookup> => {
+            try {
+                return { ok: true, transfer: await LencoService.getTransferStatus(ref, secretKey) };
+            } catch (e: any) {
+                return { ok: false, message: e.message || 'Lenco lookup failed' };
+            }
+        };
+
+        const verifyOne = async (item: any) => {
+            const stableRef = `P-${id.slice(0, 8)}-${item.id.slice(0, 8)}`;
+            const disb = disbByLineItem.get(item.id);
+            const base = {
+                lineItemId: item.id,
+                name: item.employee_name || item.description,
+                amount: Number(item.estimated_amount),
+                reference: disb?.external_reference || stableRef,
+                lencoStatus: 'unknown' as string,
+                action: 'none' as string,
+                reason: null as string | null,
+            };
+
+            if (disb) {
+                const ref = disb.external_reference || stableRef;
+                const r = await lookup(ref);
+                if (!r.ok) return { ...base, reference: ref, reason: r.message };
+                if (!r.transfer) {
+                    return { ...base, reference: ref, lencoStatus: 'failed', reason: 'Lenco has no record of this transfer.' };
+                }
+                const st = r.transfer.status;
+                if (st === 'successful') return { ...base, reference: ref, lencoStatus: 'successful' };
+                if (st === 'failed') {
+                    return { ...base, reference: ref, lencoStatus: 'failed', reason: r.transfer.reasonForFailure || r.transfer.message || 'Rejected by Lenco.' };
+                }
+                return { ...base, reference: ref, lencoStatus: 'pending' };
+            }
+
+            // No booking on our side. Lenco may still hold a transfer for it (sent, then
+            // our write was lost) — walk the retry chain the disbursal loop would.
+            let lastFailure: string | null = null;
+            for (let i = 0; i < 6; i++) {
+                const ref = i === 0 ? stableRef : `${stableRef}-R${i}`;
+                const r = await lookup(ref);
+                if (!r.ok) return { ...base, reference: ref, reason: r.message };
+                if (!r.transfer) break;
+                if (r.transfer.status !== 'failed') {
+                    return { ...base, reference: ref, lencoStatus: r.transfer.status === 'successful' ? 'successful' : 'pending', action: 'adopt', transfer: r.transfer };
+                }
+                lastFailure = r.transfer.reasonForFailure || r.transfer.message || 'Rejected by Lenco.';
+            }
+            return { ...base, lencoStatus: 'not_sent', reason: lastFailure };
+        };
+
+        // Small worker pool: 30s function ceiling, ~0.4s per Lenco lookup.
+        const results: any[] = new Array(employeeItems.length);
+        let cursor = 0;
+        await Promise.all(Array.from({ length: 6 }, async () => {
+            while (cursor < employeeItems.length) {
+                const idx = cursor++;
+                results[idx] = await verifyOne(employeeItems[idx]);
+            }
+        }));
+
+        let statusColumnsMissing = false;
+        const touchedWallets = new Set<string>();
+
+        for (const r of results) {
+            const item = employeeItems.find((i: any) => i.id === r.lineItemId);
+            const disb = disbByLineItem.get(r.lineItemId);
+
+            // Sent on Lenco but never booked here: book it.
+            if (r.action === 'adopt') {
+                try {
+                    await recordPayrollDisbursement({
+                        requisition_id: id,
+                        line_item_id: item.id,
+                        cashier_id: cashierId,
+                        organization_id: organizationId,
+                        payment_method: item.payment_method,
+                        total_prepared: r.amount,
+                        recipient_account: item.recipient_account,
+                        recipient_bank_code: item.recipient_bank_code,
+                        recipient_account_name: item.verified_name || item.employee_name,
+                        external_reference: r.reference,
+                        issued_at: new Date().toISOString()
+                    }, r.lencoStatus);
+                    await supabase.from('line_items').update({ actual_amount: r.amount, updated_at: new Date().toISOString() }).eq('id', item.id);
+                    r.action = 'recorded';
+                } catch (e: any) {
+                    r.action = 'none';
+                    r.reason = `Found on Lenco but could not be recorded: ${e.message}`;
+                }
+                delete r.transfer;
+                continue;
+            }
+            delete r.transfer;
+
+            if (!disb || !['successful', 'pending', 'failed'].includes(r.lencoStatus)) continue;
+
+            // Persist what Lenco said.
+            const { error: stampErr } = await supabase.from('disbursements').update({
+                lenco_status: r.lencoStatus,
+                lenco_status_checked_at: new Date().toISOString(),
+                failure_reason: r.lencoStatus === 'failed' ? r.reason : null,
+            }).eq('id', disb.id);
+            if (stampErr) statusColumnsMissing = true;
+
+            if (r.lencoStatus !== 'failed') continue;
+
+            // Failed on Lenco: the money never left. Reverse our booking.
+            if (!canRelease) {
+                r.action = 'needs_review';
+                r.reason = `${r.reason} The requisition has moved past disbursal, so the ledger was not changed automatically.`;
+                continue;
+            }
+
+            const { data: ledgerRow } = await supabase
+                .from('cashbook_entries')
+                .select('id, date, created_at, account_type, wallet_id, external_reference')
+                .eq('requisition_id', id)
+                .eq('entry_type', 'DISBURSEMENT')
+                .eq('reference_number', r.reference)
+                .maybeSingle();
+
+            if (ledgerRow?.external_reference) {
+                r.action = 'needs_review';
+                r.reason = `${r.reason} Its ledger row is already matched to a bank debit, so it was left untouched — review it manually.`;
+                continue;
+            }
+
+            if (ledgerRow) {
+                await supabase.from('cashbook_entries').delete().eq('id', ledgerRow.id);
+                await cashbookService.recalculateBalancesFrom(
+                    organizationId, ledgerRow.date, ledgerRow.created_at,
+                    ledgerRow.account_type || 'MONEYWISE_WALLET', ledgerRow.wallet_id || undefined
+                );
+                touchedWallets.add(ledgerRow.wallet_id || '');
+            }
+            await supabase.from('disbursements').delete().eq('id', disb.id);
+            await supabase.from('line_items').update({ actual_amount: null, updated_at: new Date().toISOString() }).eq('id', item.id);
+            r.action = 'released';
+        }
+
+        // Idempotent: books a ledger row for any confirmed/pending payout that lacks one.
+        await writeMissingPayrollLedgerRows(id, organizationId, cashierId);
+
+        const count = (pred: (r: any) => boolean) => results.filter(pred).length;
+        const summary = {
+            total: results.length,
+            successful: count(r => r.lencoStatus === 'successful'),
+            pending: count(r => r.lencoStatus === 'pending'),
+            failed: count(r => r.lencoStatus === 'failed'),
+            notSent: count(r => r.lencoStatus === 'not_sent'),
+            unknown: count(r => r.lencoStatus === 'unknown'),
+            released: count(r => r.action === 'released'),
+            recorded: count(r => r.action === 'recorded'),
+            needsReview: count(r => r.action === 'needs_review'),
+        };
+        // Everyone who still needs (re)sending: never sent, or failed and released.
+        const retryable = count(r => r.lencoStatus === 'not_sent' || r.action === 'released');
+
+        return res.json({
+            requisitionId: id,
+            checkedAt: new Date().toISOString(),
+            summary,
+            retryable,
+            allConfirmed: summary.successful === summary.total,
+            statusColumnsMissing,
+            items: results,
+        });
+    } catch (error: any) {
+        console.error('Error in verifyPayrollDisbursements:', error);
+        return res.status(500).json({ error: 'Failed to verify payroll payouts', details: error.message });
+    }
+};
+
+/**
+ * Re-check payroll payouts Lenco last reported as `pending`, so a transfer that
+ * settles (or is rejected) after the disbursal call is reflected without anyone
+ * clicking Verify.
+ *
+ * Deliberately STATUS-ONLY. It never reverses a ledger row or releases a payout for a
+ * re-run — that changes money bookkeeping, so it stays a human decision made from the
+ * "Verify with Lenco" button, which shows the reason. A payout found failed here is
+ * stamped `failed` and shows red in the UI until someone acts.
+ *
+ * Bounded: oldest-checked first, capped per run, so a backlog can't blow the 30s
+ * function ceiling. Fails soft if the lenco_status columns are not migrated yet.
+ */
+async function refreshPendingPayrollPayouts(): Promise<{ checked: number; successful: number; failed: number; stillPending: number; errors: number }> {
+    const summary = { checked: 0, successful: 0, failed: 0, stillPending: 0, errors: 0 };
+
+    const { data: rows, error } = await supabase
+        .from('disbursements')
+        .select('id, organization_id, external_reference')
+        .eq('lenco_status', 'pending')
+        .not('external_reference', 'is', null)
+        .order('lenco_status_checked_at', { ascending: true, nullsFirst: true })
+        .limit(60);
+
+    if (error) {
+        console.warn('[Poll-Processing] Payroll payout sweep skipped:', error.message);
+        return summary;
+    }
+    if (!rows || rows.length === 0) return summary;
+
+    const keyByOrg = new Map<string, string | undefined>();
+    const keyFor = async (orgId: string) => {
+        if (!keyByOrg.has(orgId)) {
+            const { data: org } = await supabase.from('organizations').select('lenco_secret_key').eq('id', orgId).single();
+            keyByOrg.set(orgId, org?.lenco_secret_key || process.env.LENCO_SECRET_KEY || undefined);
+        }
+        return keyByOrg.get(orgId);
+    };
+
+    const work = rows.filter((r: any) => !String(r.external_reference).startsWith('SIM-'));
+    let cursor = 0;
+    await Promise.all(Array.from({ length: 5 }, async () => {
+        while (cursor < work.length) {
+            const row: any = work[cursor++];
+            summary.checked++;
+            try {
+                const transfer = await LencoService.getTransferStatus(row.external_reference, await keyFor(row.organization_id));
+                const checkedAt = new Date().toISOString();
+                if (!transfer) {
+                    // Lenco has no such transfer. Leave the booking for a human to reverse via Verify.
+                    await supabase.from('disbursements').update({ lenco_status_checked_at: checkedAt }).eq('id', row.id);
+                    summary.errors++;
+                } else if (transfer.status === 'successful') {
+                    await supabase.from('disbursements').update({ lenco_status: 'successful', lenco_status_checked_at: checkedAt, failure_reason: null }).eq('id', row.id);
+                    summary.successful++;
+                } else if (transfer.status === 'failed') {
+                    await supabase.from('disbursements').update({
+                        lenco_status: 'failed',
+                        lenco_status_checked_at: checkedAt,
+                        failure_reason: transfer.reasonForFailure || transfer.message || 'Rejected by Lenco.'
+                    }).eq('id', row.id);
+                    summary.failed++;
+                    console.warn(`[Poll-Processing] Payroll payout ${row.external_reference} FAILED at Lenco — awaiting manual Verify to release it.`);
+                } else {
+                    await supabase.from('disbursements').update({ lenco_status_checked_at: checkedAt }).eq('id', row.id);
+                    summary.stillPending++;
+                }
+            } catch (err: any) {
+                summary.errors++;
+                console.error(`[Poll-Processing] Payroll payout ${row.external_reference} check failed:`, err.message);
+            }
+        }
+    }));
+
+    return summary;
+}
+
+/**
  * POST /requisitions/poll-processing  (internal, LENCO_SYNC_SECRET protected)
  *
  * Called by pg_cron every 5 minutes.  Finds every requisition that is stuck
  * in PROCESSING status and checks its Lenco transfer state so it can be
  * finalized (→ RECEIVED) or reverted (→ AUTHORISED) without relying on the
  * setTimeout-based deferred poller that dies when a serverless function ends.
+ *
+ * Also refreshes payroll payouts still `pending` at Lenco (status only — see
+ * refreshPendingPayrollPayouts).
  */
 export const pollProcessingDisbursements = async (req: any, res: any): Promise<any> => {
     const authHeader = req.headers['authorization'] || '';
@@ -2184,6 +2557,12 @@ export const pollProcessingDisbursements = async (req: any, res: any): Promise<a
     }
 
     try {
+        // Independent of the PROCESSING sweep below, so it must run before its early return.
+        const payroll = await refreshPendingPayrollPayouts().catch((e: any) => {
+            console.error('[Poll-Processing] Payroll payout sweep failed:', e.message);
+            return null;
+        });
+
         // Find all requisitions stuck in PROCESSING that have a disbursement record
         const { data: pending, error: fetchErr } = await supabase
             .from('disbursements')
@@ -2193,7 +2572,7 @@ export const pollProcessingDisbursements = async (req: any, res: any): Promise<a
 
         if (fetchErr) throw fetchErr;
         if (!pending || pending.length === 0) {
-            return res.json({ message: 'No PROCESSING requisitions found.', processed: 0 });
+            return res.json({ message: 'No PROCESSING requisitions found.', processed: 0, payroll });
         }
 
         console.log(`[Poll-Processing] Found ${pending.length} PROCESSING requisition(s). Checking Lenco...`);
@@ -2257,6 +2636,7 @@ export const pollProcessingDisbursements = async (req: any, res: any): Promise<a
             message: `Processed ${pending.length} PROCESSING requisition(s).`,
             processed: pending.length,
             results,
+            payroll,
         });
 
     } catch (error: any) {
