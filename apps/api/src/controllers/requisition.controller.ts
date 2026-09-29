@@ -2248,7 +2248,7 @@ export const autoCompleteRequisition = async (req: any, res: any): Promise<any> 
                         }
 
                         const now = new Date().toISOString();
-                        await supabase.from('requisitions').update({ status: 'ACCOUNTED', accounted_at: now } as any).eq('id', id);
+                        await supabase.from('requisitions').update({ status: 'ACCOUNTED', accounted_at: now, updated_at: now } as any).eq('id', id);
 
                         AuditService.calculateAuditScore(id).catch(err =>
                             console.error('[AutoComplete] Audit score failed:', err)
@@ -2534,6 +2534,27 @@ export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise
 
         if (!items || items.length === 0) throw new Error("No items to post");
 
+        // Already in QuickBooks? Don't post again — just make sure MoneyWise shows it as posted
+        // (self-heals a requisition whose ACCOUNTED state was lost, instead of duplicating it).
+        const { data: existing } = await supabase
+            .from('requisitions')
+            .select('status, qb_expense_id, qb_sync_status')
+            .eq('id', id)
+            .eq('organization_id', organization_id)
+            .maybeSingle();
+
+        if (existing?.qb_expense_id && existing.qb_sync_status === 'SUCCESS') {
+            if (existing.status !== 'ACCOUNTED') {
+                const healedAt = new Date().toISOString();
+                await supabase.from('requisitions').update({
+                    status: 'ACCOUNTED',
+                    accounted_at: healedAt,
+                    updated_at: healedAt
+                } as any).eq('id', id);
+            }
+            return res.json({ message: 'Already posted to QuickBooks', qb_expense_id: existing.qb_expense_id, alreadyPosted: true });
+        }
+
         const qbResult = await QuickBooksService.createExpense(
             id, user_id, organization_id, payment_account_id, payment_account_name
         );
@@ -2549,7 +2570,8 @@ export const postToQuickBooks = async (req: AuthRequest, res: Response): Promise
         const now = new Date().toISOString();
         await supabase.from('requisitions').update({ 
             status: 'ACCOUNTED',
-            accounted_at: now
+            accounted_at: now,
+            updated_at: now
         } as any).eq('id', id);
 
         // Calculate and save Audit Score

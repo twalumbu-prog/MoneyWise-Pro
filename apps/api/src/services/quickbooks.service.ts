@@ -457,6 +457,22 @@ export class QuickBooksService {
                 throw new Error('Requisition has no line items to post as an expense');
             }
 
+            // NEVER create a second QuickBooks transaction for a requisition that already has
+            // one. Every caller (manual Post button, auto-complete, sync, postVoucher) funnels
+            // through here, so this is the single choke point. Without it, any lapse in our own
+            // status bookkeeping — e.g. the 2026-09-17 posts whose ACCOUNTED state was lost in
+            // the Supabase move — leaves a live Post button that duplicates real expenses.
+            if (requisition.qb_expense_id && requisition.qb_sync_status === 'SUCCESS') {
+                console.warn(`[QB Purchase] Refusing duplicate post for ${requisitionId}: already in QuickBooks as ${requisition.qb_expense_id}`);
+                return {
+                    success: false,
+                    alreadyPosted: true,
+                    error: 'ALREADY_POSTED',
+                    friendlyError: `This requisition is already in QuickBooks (ID ${requisition.qb_expense_id}); it was not posted again.`,
+                    qbId: requisition.qb_expense_id as string
+                };
+            }
+
             console.log(`[QB Purchase] Step 2: Getting valid QB token for org ${organizationId}`);
             const { accessToken, realmId } = await this.getValidToken(organizationId);
 
@@ -728,7 +744,8 @@ export class QuickBooksService {
                 qb_expense_id: result.Purchase.Id,
                 qb_sync_status: 'SUCCESS',
                 qb_sync_error: null,
-                qb_sync_at: new Date().toISOString()
+                qb_sync_at: new Date().toISOString(),
+                updated_at: new Date().toISOString() // keep updated_at-based copies/syncs aware of the post
             }).eq('id', requisitionId);
 
             return { success: true, qbId: result.Purchase.Id, friendlyError: undefined };
@@ -864,7 +881,8 @@ export class QuickBooksService {
             qb_expense_id: jeId,
             qb_sync_status: 'SUCCESS',
             qb_sync_error: null,
-            qb_sync_at: new Date().toISOString()
+            qb_sync_at: new Date().toISOString(),
+            updated_at: new Date().toISOString() // keep updated_at-based copies/syncs aware of the post
         }).eq('id', requisitionId);
 
         return { success: true, qbId: jeId, friendlyError: undefined };

@@ -97,7 +97,7 @@ export const postVoucher = async (req: AuthRequest, res: any): Promise<any> => {
             console.error('[AI Learning] postVoucher learn failed:', err)
         );
 
-        await supabase.from('requisitions').update({ status: 'ACCOUNTED' }).eq('id', id);
+        await supabase.from('requisitions').update({ status: 'ACCOUNTED', updated_at: new Date().toISOString() }).eq('id', id);
 
         res.json({ message: 'Success', qb_expense_id: qbResult.qbId });
 
