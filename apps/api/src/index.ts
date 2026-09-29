@@ -39,8 +39,6 @@ import crmRoutes from './routes/crm.routes';
 import scheduleRoutes from './routes/schedule.routes';
 import billingRoutes from './routes/billing.routes';
 import investRoutes from './routes/invest.routes';
-import developerRoutes from './routes/developer.routes';
-import publicApiRoutes from './routes/publicApi.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
 
 dotenv.config();
@@ -397,7 +395,7 @@ app.use(cors({
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-custom-header', 'x-organization-id']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key', 'x-custom-header', 'x-organization-id']
 }));
 
 // Mounted BEFORE express.json() so the exact bytes Vercel signed are what we
@@ -440,8 +438,9 @@ app.use('/crm', crmRoutes);
 app.use('/schedules', scheduleRoutes);
 app.use('/billing', billingRoutes);
 app.use('/investments', investRoutes);
-app.use('/developer', developerRoutes);
-app.use('/v1', publicApiRoutes);
+// NOTE: /developer and /v1 (API-key feature) are unhooked until developer.routes.ts,
+// publicApi.routes.ts and the api_keys migration are committed — index.ts imported files
+// that only existed locally, which broke every API deploy from 125c6dd on.
 
 // Dump the full route table only when explicitly debugging. On Vercel this
 // module reloads on every cold start, and printing all ~200 routes each time
