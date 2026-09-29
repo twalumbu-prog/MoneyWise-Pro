@@ -1453,6 +1453,9 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                     setIsProcessing(true);
                     setDisburseError(null);
                     setPayrollProgress(null);
+                    // The last Verify result describes the state BEFORE this send; leaving it up
+                    // afterwards contradicted the outcome ("16 never sent" after they were sent).
+                    setPayrollVerify(null);
                     try {
                         let paid = 0;
                         let result: any = null;
