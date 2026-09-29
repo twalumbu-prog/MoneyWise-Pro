@@ -1754,7 +1754,10 @@ export async function triggerAIReview(
                     userId: userId,
                     content: 'Ready to post to QuickBooks',
                     type: 'SYSTEM',
-                    metadata: { stage: 'POST_QUICKBOOKS' }
+                    // Must be QUICKBOOKS_POSTING — the web/mobile cards only render that stage. This was
+                    // 'POST_QUICKBOOKS' from 2026-05-25, so no auto-approved payroll ever showed its
+                    // Post-to-QuickBooks button.
+                    metadata: { stage: 'QUICKBOOKS_POSTING' }
                 });
             }
 

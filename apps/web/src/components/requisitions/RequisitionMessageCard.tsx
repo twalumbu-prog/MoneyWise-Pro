@@ -1511,7 +1511,10 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                 (payrollVerify?.items || []).forEach((v: any) => { verifyByItem[v.lineItemId] = v; });
                 const payoutState = (item: any): { key: string; label: string; detail?: string } => {
                     const v = verifyByItem[item.id];
-                    if (v) {
+                    const hasPayout = disbursements.some((x: any) => x.line_item_id === item.id);
+                    // A "not sent" verdict is stale the moment a payout record exists for the employee
+                    // (e.g. after Send remaining) — the live record must win, not the old snapshot.
+                    if (v && !(v.lencoStatus === 'not_sent' && hasPayout)) {
                         if (v.action === 'released') return { key: 'failed', label: 'Failed — re-run', detail: v.reason };
                         if (v.lencoStatus === 'successful') return { key: 'paid', label: 'Paid' };
                         if (v.lencoStatus === 'pending') return { key: 'pending', label: 'Pending at Lenco' };
