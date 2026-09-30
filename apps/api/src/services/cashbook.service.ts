@@ -243,13 +243,23 @@ export const cashbookService = {
         const accountType = entries[0].account_type || 'CASH';
         const walletId = (entries[0] as any).wallet_id || null;
 
+        // Give every row its OWN created_at, strictly increasing in array order.
+        //
+        // A multi-row INSERT stamps them all with the same now(), and the balance
+        // recalculation orders by (date, created_at) — with ties the running balance was
+        // chained through the rows in an arbitrary order, so a 34-employee payroll
+        // (K99,162.49 out) showed balances jumping 100,074 → 98,201 → 70,457 → … and
+        // closed at K90,009 instead of K4,272 (Twalumbu, 2026-09-29). Distinct
+        // timestamps make the order well-defined, and match payout order.
+        const baseMs = Date.now();
         const { data, error } = await supabase
             .from('cashbook_entries')
-            .insert(entries.map(e => ({
+            .insert(entries.map((e, i) => ({
                 ...e,
                 organization_id: organizationId,
                 account_type: e.account_type || accountType,
                 wallet_id: (e as any).wallet_id ?? walletId,
+                created_at: new Date(baseMs + i).toISOString(),
                 balance_after: 0
             })))
             .select();
