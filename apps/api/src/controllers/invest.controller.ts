@@ -12,7 +12,7 @@ export const listInvestmentTargets = async (req: any, res: any): Promise<any> =>
     try {
         const { data, error } = await supabase
             .from('investment_targets')
-            .select('id, organization_id, wallet_id, display_name, category, description, logo_url, priority')
+            .select('id, organization_id, wallet_id, display_name, category, description, logo_url, priority, organizations(logo_url)')
             .eq('is_active', true)
             .order('priority', { ascending: true });
 
@@ -25,7 +25,8 @@ export const listInvestmentTargets = async (req: any, res: any): Promise<any> =>
             displayName: t.display_name,
             category: t.category,
             description: t.description,
-            logoUrl: t.logo_url,
+            // Falls back to the organization's own uploaded logo when the target has none.
+            logoUrl: t.logo_url || (t as any).organizations?.logo_url || null,
         })));
     } catch (error: any) {
         console.error('Error listing investment targets:', error);
