@@ -1340,9 +1340,9 @@ export const emailService = {
             // 2. Fetch the disbursement for amount + recipient details.
             const { data: disb } = await supabase
                 .from('disbursements')
-                .select('total_prepared, payment_method, recipient_account, recipient_account_name, lenco_transaction_id, created_at, requisition_id, requisitions(organization_id)')
+                .select('total_prepared, payment_method, recipient_account, recipient_account_name, lenco_transaction_id, issued_at, requisition_id, requisitions(organization_id)')
                 .eq('requisition_id', requisitionId)
-                .order('created_at', { ascending: false })
+                .order('issued_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
 
@@ -1369,7 +1369,7 @@ export const emailService = {
                 recipientAccount: (disb as any).recipient_account || null,
                 paymentMethod: (disb as any).payment_method || null,
                 txRef: lencoTxRef || (disb as any).lenco_transaction_id || null,
-                transactedAt: disb.created_at ? new Date(disb.created_at) : new Date(),
+                transactedAt: (disb as any).issued_at ? new Date((disb as any).issued_at) : new Date(),
             });
         } catch (err) {
             console.error('[EmailService] maybeFireScheduledPoP failed:', err);

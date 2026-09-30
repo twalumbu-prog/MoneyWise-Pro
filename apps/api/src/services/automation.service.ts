@@ -412,14 +412,17 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
         return true;
     }
 
-    const [{ data: requisition }, { data: disbursement }] = await Promise.all([
+    const [{ data: requisition }, { data: disbursement, error: disbError }] = await Promise.all([
         supabase.from('requisitions').select('status').eq('id', run.requisition_id).maybeSingle(),
         supabase
             .from('disbursements')
-            .select('id, total_prepared, payment_method, recipient_account, recipient_account_name, external_reference, created_at')
+            .select('id, total_prepared, payment_method, recipient_account, recipient_account_name, external_reference, issued_at')
             .eq('requisition_id', run.requisition_id)
             .maybeSingle(),
     ]);
+
+    // A failed lookup says nothing about the transfer — never read it as "rolled back".
+    if (disbError) return false;
 
     // Lenco rejected the transfer and the disbursement was rolled back.
     if (!disbursement) {
@@ -452,7 +455,7 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
                     recipientAccount: disbursement.recipient_account || null,
                     paymentMethod: disbursement.payment_method || null,
                     txRef: disbursement.external_reference || null,
-                    transactedAt: disbursement.created_at ? new Date(disbursement.created_at) : new Date(),
+                    transactedAt: disbursement.issued_at ? new Date(disbursement.issued_at) : new Date(),
                 });
                 run.pop_sent_at = now();
                 run.steps = [...run.steps, step('send_pop_email', 'ok', `Proof of Payment emailed to ${pop.to}.`)];
