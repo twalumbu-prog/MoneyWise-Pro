@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { QuickBooksIntegration } from '../components/settings/integrations/QuickBooksIntegration';
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
+import { DeveloperAPI } from '../components/settings/DeveloperAPI';
 import {
     Settings as SettingsIcon,
     Users,
@@ -10,7 +11,8 @@ import {
     Share2,
     User,
     GraduationCap,
-    CreditCard
+    CreditCard,
+    Code2
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -79,7 +81,8 @@ export const Settings: React.FC = () => {
                                         { id: 'users', label: 'Team Members', icon: <Users className="w-2.5 h-2.5" /> },
                                         { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
-                                        { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> }
+                                        { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> },
+                                        { id: 'api', label: 'MoneyWise API', icon: <Code2 className="w-2.5 h-2.5" /> }
                                     ].map(tab => (
                                         <button
                                             key={tab.id}
@@ -184,6 +187,8 @@ export const Settings: React.FC = () => {
                                     {/* Subscription & Billing Tab */}
                                     {activeTab === 'billing' && <SubscriptionBilling />}
 
+                                    {/* MoneyWise API Tab */}
+                                    {activeTab === 'api' && <DeveloperAPI />}
 
                                 </div>
                             </div>
