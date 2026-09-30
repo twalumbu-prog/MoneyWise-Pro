@@ -151,6 +151,7 @@ const config: ExpoConfig = {
         supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
         supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
         webOrigin: WEB_ORIGIN,
+        eas: { projectId: 'd844c494-6997-4b34-aad1-194ddb3e6362' },
     },
 };
 
