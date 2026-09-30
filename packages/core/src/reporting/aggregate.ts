@@ -18,6 +18,8 @@ export type ReportView = 'PROFIT_LOSS' | 'NET_WORTH';
 export interface ReportLineItem {
     account_id: string;
     account_name: string;
+    /** Logo shown instead of an icon (e.g. an investment in a company). */
+    logo_url?: string | null;
     type: string;
     total_amount: number;
     transaction_count: number;
@@ -74,6 +76,7 @@ export function buildReportGroups(
         map.set(acc.id, {
             account_id: acc.id,
             account_name: acc.name,
+            logo_url: (acc as any).logo_url ?? null,
             type: acc.type,
             total_amount: 0,
             transaction_count: 0,
@@ -90,10 +93,12 @@ export function buildReportGroups(
             existing.total_amount = exp.total_amount;
             existing.transaction_count = exp.transaction_count;
             if (exp.account_name !== 'Uncategorized Expense') existing.account_name = exp.account_name;
+            if (exp.logo_url) existing.logo_url = exp.logo_url;
         } else if (activeTypes.includes(exp.type)) {
             map.set(exp.account_id, {
                 account_id: exp.account_id,
                 account_name: exp.account_name,
+                logo_url: exp.logo_url ?? null,
                 type: exp.type,
                 total_amount: exp.total_amount,
                 transaction_count: exp.transaction_count,
