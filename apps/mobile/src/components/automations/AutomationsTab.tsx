@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import {
-    Zap, Plus, Play, X, Wallet, Send, Mail, MoreVertical, Check, Clock, ChevronDown, ChevronUp, RotateCcw, Sparkles,
+    Zap, Play, X, Wallet, Send, Mail, MoreVertical, Check, Clock, ChevronDown, ChevronUp, RotateCcw,
 } from 'lucide-react-native';
 import { automationService, formatKwacha } from 'core';
 import type { Automation, AutomationRun, AutomationRunStatus } from 'core';
@@ -302,7 +302,6 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
                     </Text>
                     {isAdmin && (
                         <Pressable style={styles.primaryBtnInline} onPress={onCreate}>
-                            <Sparkles size={13} color="#fff" />
                             <Text style={styles.primaryBtnText}>Create with Assistant</Text>
                         </Pressable>
                     )}
@@ -347,12 +346,6 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
                 </ScrollView>
             )}
 
-            {isAdmin && automations.length > 0 && (
-                <Pressable style={[styles.fab, { bottom: insets.bottom + 24 }]} onPress={onCreate} accessibilityLabel="New automation">
-                    <Plus size={26} color="#fff" />
-                </Pressable>
-            )}
-
             <Modal visible={!!detail} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailId(null)}>
                 {detail && (
                     <DetailSheet
@@ -375,11 +368,6 @@ const styles = StyleSheet.create({
     rowTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     rowMeta: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted, marginTop: 2 },
     rowPills: { flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' },
-
-    fab: {
-        position: 'absolute', right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.blue,
-        alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, elevation: 4,
-    },
 
     empty: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36, gap: 8 },
     emptyIcon: { width: 56, height: 56, borderRadius: 18, backgroundColor: '#FAF5FF', alignItems: 'center', justifyContent: 'center', marginBottom: 4 },

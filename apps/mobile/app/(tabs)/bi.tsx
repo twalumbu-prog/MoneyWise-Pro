@@ -4,7 +4,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from 'expo-router';
-import { BarChart3, PenSquare, ChevronLeft } from 'lucide-react-native';
+import { BarChart3, PenSquare, ChevronLeft, Plus } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { agentClient, requireCapability } from 'core';
 import type { AgentEvent, Widget } from 'core';
@@ -46,7 +46,7 @@ interface PendingApproval {
 export default function BiScreen() {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation();
-    const { organizationId } = useAuth();
+    const { organizationId, userRole } = useAuth();
     const [tab, setTab] = useState<TabId>('assistant');
 
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -172,6 +172,11 @@ export default function BiScreen() {
         send(seed);
     }, [seed, tab, selectedModel, busy, send]);
 
+    const startNewAutomation = useCallback(() => {
+        setTab('assistant');
+        setSeed(NEW_AUTOMATION_PROMPT);
+    }, []);
+
     const pickAttachment = useCallback(async () => {
         if (!organizationId) return;
         try {
@@ -253,6 +258,15 @@ export default function BiScreen() {
                 <>
                     <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                         <Text style={styles.title}>Intelligence</Text>
+                        {userRole === 'ADMIN' && (
+                            <Pressable
+                                style={styles.addBtn}
+                                onPress={startNewAutomation}
+                                accessibilityLabel="New automation"
+                            >
+                                <Plus size={20} color="#FFFFFF" />
+                            </Pressable>
+                        )}
                     </View>
                     <View style={styles.tabRow}>
                         {TABS.map((t) => (
@@ -322,10 +336,7 @@ export default function BiScreen() {
 
             {tab === 'automations' && (
                 <AutomationsTab
-                    onCreate={() => {
-                        setTab('assistant');
-                        setSeed(NEW_AUTOMATION_PROMPT);
-                    }}
+                    onCreate={startNewAutomation}
                 />
             )}
         </KeyboardAvoidingView>
@@ -342,7 +353,8 @@ const Placeholder: React.FC<{ icon: React.ReactNode; tint: string; title: string
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.surface },
-    header: { paddingHorizontal: 20, paddingBottom: 12 },
+    header: { paddingHorizontal: 20, paddingBottom: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center' },
     title: { fontFamily: fonts.display, fontSize: 26, color: '#000000' },
     tabRow: {
         flexDirection: 'row', marginHorizontal: 16, marginBottom: 6, padding: 4,
