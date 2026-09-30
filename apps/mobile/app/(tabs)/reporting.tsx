@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
-    Modal, TextInput, RefreshControl, Image,
+    Modal, TextInput, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -18,7 +18,8 @@ import type { ReportView, ExpenditureMode, ExpenditureItem } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { cacheStoreSync } from '../../src/platform/storage';
 import { budgetsActivatedKey } from '../budgets';
-import { extractEmojiAndName, getAccountEmoji } from '../../src/utils/emoji';
+import { extractEmojiAndName } from '../../src/utils/emoji';
+import { AccountGlyph } from '../../src/components/AccountGlyph';
 import { FinancialHighlights } from '../../src/components/reporting/FinancialHighlights';
 import { BucketProgressBar } from '../../src/components/reporting/BucketProgressBar';
 import { ReportChartView, type ChartTimeframe, type TrendPoint } from '../../src/components/reporting/ReportChartView';
@@ -451,8 +452,7 @@ export default function ReportingScreen() {
                                                 const isAccExpanded = expandedAccount === item.account_id;
                                                 const txns = accountItems[item.account_id] || [];
                                                 const isTxnsLoading = accountItemsLoading[item.account_id];
-                                                const { emoji, cleanName } = extractEmojiAndName(item.account_name);
-                                                const displayEmoji = emoji || getAccountEmoji(item.account_name, key);
+                                                const { cleanName } = extractEmojiAndName(item.account_name);
 
                                                 return (
                                                     <View key={item.account_id} style={styles.subaccountBox}>
@@ -466,11 +466,7 @@ export default function ReportingScreen() {
                                                                 ) : (
                                                                     <ChevronRight size={14} color={colors.textMuted} />
                                                                 )}
-                                                                {item.logo_url ? (
-                                                                    <Image source={{ uri: item.logo_url }} style={{ width: 20, height: 20, borderRadius: 6 }} resizeMode="contain" />
-                                                                ) : (
-                                                                    <Text style={{ fontSize: 16 }}>{displayEmoji}</Text>
-                                                                )}
+                                                                <AccountGlyph name={item.account_name} type={key} logoUrl={item.logo_url} />
                                                                 <Text style={styles.subaccountName} numberOfLines={1} ellipsizeMode="tail">
                                                                     {cleanName}
                                                                 </Text>

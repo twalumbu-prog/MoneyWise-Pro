@@ -12,6 +12,7 @@ import type { Account } from 'core';
 import { AnimatedSegmented } from '../../src/components/AnimatedTabs';
 import { useAuth } from '../../src/context/AuthContext';
 import { PRESET_EMOJIS, extractEmojiAndName, getAccountEmoji } from '../../src/utils/emoji';
+import { AccountGlyph } from '../../src/components/AccountGlyph';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 type ManagementTab = 'NET_WORTH' | 'PROFIT_LOSS';
@@ -219,13 +220,11 @@ export default function ChartOfAccountsScreen() {
                     </View>
                 ) : (
                     displayedAccounts.map((acc) => {
-                        const { emoji, cleanName } = extractEmojiAndName(acc.name);
-                        const displayEmoji = emoji || getAccountEmoji(acc.name, acc.type);
-
+                        const { cleanName } = extractEmojiAndName(acc.name);
                         return (
                             <View key={acc.id} style={[styles.accCard, !acc.is_active && styles.accCardInactive]}>
                                 <View style={styles.accLeft}>
-                                    <Text style={{ fontSize: 20 }}>{displayEmoji}</Text>
+                                    <AccountGlyph name={acc.name} type={acc.type} logoUrl={(acc as any).logo_url} size={20} />
                                     <View style={{ flex: 1 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                                             <Text style={styles.accName} numberOfLines={1}>{cleanName}</Text>

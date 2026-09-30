@@ -10,7 +10,8 @@ import type { Account } from 'core';
 import { ScreenHeader } from '../src/components/ScreenHeader';
 import { useAuth } from '../src/context/AuthContext';
 import { cacheStoreSync } from '../src/platform/storage';
-import { extractEmojiAndName, getAccountEmoji } from '../src/utils/emoji';
+import { extractEmojiAndName } from '../src/utils/emoji';
+import { AccountGlyph } from '../src/components/AccountGlyph';
 import { colors, fonts, radius } from '../src/theme/tokens';
 
 const toLocalISODate = (d: Date) =>
@@ -143,12 +144,11 @@ export default function BudgetsScreen() {
                                     <Text style={styles.sectionLabel}>{label.toUpperCase()}</Text>
                                     <View style={styles.list}>
                                         {items.map((acc: Account, idx: number) => {
-                                            const { emoji, cleanName } = extractEmojiAndName(acc.name);
-                                            const displayEmoji = emoji || getAccountEmoji(acc.name, acc.type);
+                                            const { cleanName } = extractEmojiAndName(acc.name);
                                             return (
                                                 <View key={acc.id} style={[styles.row, idx > 0 && styles.rowBorder]}>
                                                     <View style={styles.rowLeft}>
-                                                        <Text style={{ fontSize: 16 }}>{displayEmoji}</Text>
+                                                        <AccountGlyph name={acc.name} type={acc.type} logoUrl={(acc as any).logo_url} />
                                                         <Text style={styles.rowName} numberOfLines={1}>{cleanName}</Text>
                                                     </View>
                                                     <View style={styles.amountWrap}>
