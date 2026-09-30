@@ -376,6 +376,32 @@ const CashLedger: React.FC = () => {
         placeholderData: keepPreviousData,
     });
 
+    // "Cycle": run the Lenco sync for this organization immediately instead of waiting for the
+    // 5-minute cron, then refetch the ledger so any missing transactions appear straight away.
+    const [isCycling, setIsCycling] = useState(false);
+    const [cycleMessage, setCycleMessage] = useState<string | null>(null);
+    const handleCycle = async () => {
+        if (isCycling) return;
+        setIsCycling(true);
+        setCycleMessage(null);
+        try {
+            const res = await lencoService.syncNow();
+            const r = res?.results?.[0];
+            if (r && r.success === false) {
+                setCycleMessage(`Sync failed: ${r.error || 'Lenco unavailable'}`);
+            } else {
+                const added = Number(r?.syncedCount || 0) + Number(r?.finalizedCount || 0);
+                setCycleMessage(res?.throttled ? 'Just synced' : added > 0 ? `${added} new transaction${added === 1 ? '' : 's'}` : 'Up to date');
+            }
+            await queryClient.invalidateQueries({ queryKey: ['cashbook-overview'] });
+        } catch (err: any) {
+            setCycleMessage(err?.message ? `Sync failed: ${err.message}` : 'Sync failed');
+        } finally {
+            setIsCycling(false);
+            setTimeout(() => setCycleMessage(null), 6000);
+        }
+    };
+
     const entries: CashbookEntry[] = overview?.entries ?? [];
     const balance = overview?.balance ?? 0;
     const externalBalances: Record<string, number> = overview?.externalBalances ?? { CASH: 0, AIRTEL_MONEY: 0, BANK: 0 };
@@ -1815,6 +1841,21 @@ Status: VERIFIED`;
                         >
                             <Download size={14} />
                         </button>
+                        {selectedAccountType === 'MONEYWISE_WALLET' && (
+                            <>
+                                <button
+                                    onClick={handleCycle}
+                                    disabled={isCycling}
+                                    className="p-2 rounded-lg border border-[#E8EEF8] text-gray-400 hover:text-[#0058DB] hover:bg-[#F3F5FC] transition-all disabled:opacity-60"
+                                    title="Cycle — sync with Lenco now"
+                                >
+                                    <RefreshCw size={14} className={isCycling ? 'animate-spin text-[#0058DB]' : ''} />
+                                </button>
+                                {cycleMessage && (
+                                    <span className="text-[10px] font-semibold text-gray-500 whitespace-nowrap">{cycleMessage}</span>
+                                )}
+                            </>
+                        )}
                         {selectedAccountType !== 'MONEYWISE_WALLET' && (
                             <button
                                 onClick={() => setIsCloseModalOpen(true)}

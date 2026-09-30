@@ -1,6 +1,11 @@
 import { apiJson } from '../api/apiFetch';
 
 export const lencoService = {
+    /** Pull this organization's Lenco transactions into the ledger right now (the "Cycle" button). */
+    syncNow(): Promise<any> {
+        return apiJson('/lenco/sync-now', { method: 'POST', body: JSON.stringify({}) });
+    },
+
     getAccounts(): Promise<any> {
         return apiJson('/lenco/accounts');
     },

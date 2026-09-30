@@ -2121,13 +2121,21 @@ async function completeSalesForReference(orgId: string, reference: string): Prom
     await markPaymentLinkPaid(orgId, reference);
 }
 
-export const syncAllLencoTransactions = async (req: Request, res: Response) => {
-    console.log('[Lenco Sync] Background synchronization triggered');
+/**
+ * The Lenco → ledger sync. Two entry points share it:
+ *   - syncAllLencoTransactions: the 5-minute cron, secret-protected, every organization.
+ *   - syncMyOrganizationLencoTransactions: the ledger's "Cycle" button, normal login auth,
+ *     ONLY the caller's organization (scopeOrgId set).
+ */
+const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) => {
+    console.log(`[Lenco Sync] ${scopeOrgId ? `On-demand synchronization for org ${scopeOrgId.slice(0, 8)}` : 'Background synchronization triggered'}`);
 
     const authHeader = req.headers['authorization'];
     const syncSecret = process.env.LENCO_SYNC_SECRET;
 
-    if (syncSecret && authHeader !== `Bearer ${syncSecret}`) {
+    // The shared secret only guards the cron path; the scoped path is already authenticated
+    // (requireAuth + role check on its route) and can only ever touch the caller's own org.
+    if (!scopeOrgId && syncSecret && authHeader !== `Bearer ${syncSecret}`) {
         console.warn('[Lenco Sync] Unauthorized attempt to trigger sync');
         return res.status(401).json({ error: 'Unauthorized: Invalid sync secret' });
     }
@@ -2156,11 +2164,13 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
 
     try {
         // 1. Fetch all organizations with a linked Lenco subaccount, oldest-synced first
-        const { data: orgs, error: orgsError } = await supabase
+        let orgsQuery = supabase
             .from('organizations')
             .select('id, name, lenco_subaccount_id, lenco_secret_key, lenco_sync_cutoff_date, last_lenco_synced_at')
             .not('lenco_subaccount_id', 'is', null)
             .order('last_lenco_synced_at', { ascending: true, nullsFirst: true });
+        if (scopeOrgId) orgsQuery = orgsQuery.eq('id', scopeOrgId);
+        const { data: orgs, error: orgsError } = await orgsQuery;
 
         if (orgsError) {
             console.error('[Lenco Sync] Error fetching organizations:', orgsError);
@@ -2170,6 +2180,15 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
         if (!orgs || orgs.length === 0) {
             console.log('[Lenco Sync] No organizations with linked Lenco subaccounts found.');
             return res.json({ success: true, processed: 0, message: 'No organizations to sync' });
+        }
+
+        // A button can be mashed: a run that started moments ago (cron or another click) has
+        // already pulled everything Lenco has, so don't hammer Lenco again.
+        if (scopeOrgId) {
+            const last = (orgs[0] as any).last_lenco_synced_at;
+            if (last && Date.now() - new Date(last).getTime() < 5_000) {
+                return res.json({ success: true, throttled: true, results: [{ orgId: scopeOrgId, success: true, syncedCount: 0, finalizedCount: 0 }] });
+            }
         }
 
         console.log(`[Lenco Sync] Found ${orgs.length} organizations to process.`);
@@ -3013,6 +3032,14 @@ export const syncAllLencoTransactions = async (req: Request, res: Response) => {
         console.error('[Lenco Sync] Critical sync error:', error);
         return res.status(500).json({ error: 'Internal server error during synchronization', details: error.message });
     }
+};
+
+export const syncAllLencoTransactions = (req: Request, res: Response) => runLencoSync(req, res);
+
+export const syncMyOrganizationLencoTransactions = (req: Request, res: Response) => {
+    const orgId = (req as any).user?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'Missing organization context' });
+    return runLencoSync(req, res, orgId);
 };
 
 /**

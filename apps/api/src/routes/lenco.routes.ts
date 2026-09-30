@@ -24,6 +24,7 @@ import {
     getPublicSalesByPhone,
     getPublicSaleReceiptDetails,
     syncAllLencoTransactions,
+    syncMyOrganizationLencoTransactions,
     testInitiateCollection,
     testCollectionStatus,
     reportDiagnosticLogs,
@@ -31,7 +32,7 @@ import {
     getQuickLinkPurposes,
     initiateQuickLinkIntent
 } from '../controllers/lenco.controller';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requireRole } from '../middleware/auth';
 
 const router = Router();
 
@@ -73,6 +74,8 @@ router.get('/test-collection/status/:reference', testCollectionStatus);
 
 // Protected routes
 router.use(requireAuth);
+// "Cycle" button: pull this organization's Lenco transactions right now instead of waiting for the cron.
+router.post('/sync-now', requireRole(['ADMIN', 'ACCOUNTANT', 'CASHIER', 'MANAGER']), syncMyOrganizationLencoTransactions);
 router.get('/accounts', listLencoAccounts);
 router.get('/available-accounts', listAvailableAccounts);
 router.post('/organizations/:id/provision', provisionOrganizationLencoAccount);
