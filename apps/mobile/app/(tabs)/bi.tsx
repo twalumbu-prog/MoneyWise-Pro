@@ -4,18 +4,21 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from 'expo-router';
-import { BarChart3, Zap, PenSquare, ChevronLeft } from 'lucide-react-native';
+import { BarChart3, PenSquare, ChevronLeft } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
 import { agentClient, requireCapability } from 'core';
 import type { AgentEvent, Widget } from 'core';
 import { MessageBubble, type ChatMessage } from '../../src/components/assistant/MessageBubble';
 import { ApprovalCard } from '../../src/components/assistant/ApprovalCard';
 import { Composer, type ComposerAttachment } from '../../src/components/assistant/Composer';
+import { AutomationsTab } from '../../src/components/automations/AutomationsTab';
 import { uploadToBucket } from '../../src/lib/uploads';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts } from '../../src/theme/tokens';
 
 const uid = () => Math.random().toString(36).slice(2);
+const NEW_AUTOMATION_PROMPT =
+    'I want to set up a new automation. Ask me what should trigger it and what it should do, one question at a time.';
 const ATTACHMENT_EXTENSIONS = /\.(csv|xlsx|xls)$/i;
 const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024; // matches the bank-statements bucket's own limit
 
@@ -36,8 +39,8 @@ interface PendingApproval {
 
 /**
  * Business Intelligence — mirrors apps/web/src/pages/Intelligence.tsx: the
- * page title, the three-tab pill row, and Data Insights / Automations as the
- * same placeholders web shows (the assistant can build a chart on request
+ * page title, the three-tab pill row, the Automations list, and Data Insights as the
+ * same placeholder web shows (the assistant can build a chart on request
  * instead — same line web uses).
  */
 export default function BiScreen() {
@@ -128,13 +131,13 @@ export default function BiScreen() {
         listRef.current?.scrollToEnd({ animated: true });
     }, [threadId]);
 
-    const send = useCallback(() => {
-        const trimmed = input.trim();
+    const send = useCallback((override?: string) => {
+        const trimmed = (override ?? input).trim();
         if ((!trimmed && !attachment) || busy) return;
 
         const outgoing = attachment;
         const assistantId = uid();
-        setInput('');
+        if (override === undefined) setInput('');
         setAttachment(null);
         setBusy(true);
         const displayContent = outgoing
@@ -159,6 +162,15 @@ export default function BiScreen() {
             controller.signal,
         );
     }, [input, attachment, busy, threadId, selectedModel, applyEvent]);
+
+    // "New automation" hands off to the Assistant with an opening message. Waits for
+    // the model list so the message goes out with a real model selected.
+    const [seed, setSeed] = useState<string | null>(null);
+    useEffect(() => {
+        if (!seed || tab !== 'assistant' || !selectedModel || busy) return;
+        setSeed(null);
+        send(seed);
+    }, [seed, tab, selectedModel, busy, send]);
 
     const pickAttachment = useCallback(async () => {
         if (!organizationId) return;
@@ -290,7 +302,7 @@ export default function BiScreen() {
                     )}
 
                     <Composer
-                        value={input} onChange={setInput} onSend={send} onStop={stop} busy={busy}
+                        value={input} onChange={setInput} onSend={() => send()} onStop={stop} busy={busy}
                         models={models} selectedModel={selectedModel} onSelectModel={setSelectedModel}
                         attachment={attachment} attaching={attaching}
                         onAttach={pickAttachment} onRemoveAttachment={() => setAttachment(null)}
@@ -309,11 +321,11 @@ export default function BiScreen() {
             )}
 
             {tab === 'automations' && (
-                <Placeholder
-                    icon={<Zap size={30} color="#A855F7" />}
-                    tint="#FAF5FF"
-                    title="Process Automations"
-                    body="Smart workflows for requisition approvals and budget tracking are coming soon."
+                <AutomationsTab
+                    onCreate={() => {
+                        setTab('assistant');
+                        setSeed(NEW_AUTOMATION_PROMPT);
+                    }}
                 />
             )}
         </KeyboardAvoidingView>

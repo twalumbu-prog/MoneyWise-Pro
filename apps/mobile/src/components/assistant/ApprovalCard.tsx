@@ -9,6 +9,8 @@ const ACTION_LABELS: Record<string, string> = {
     update_requisition: 'Update requisition',
     create_scheduled_item: 'Add scheduled expense',
     update_scheduled_item: 'Update scheduled expense',
+    create_automation: 'Create automation',
+    update_automation: 'Update automation',
     categorize_transaction: 'Classify transaction',
     categorize_requisition_expense: 'Classify expense line item',
     update_org_settings: 'Change settings',
