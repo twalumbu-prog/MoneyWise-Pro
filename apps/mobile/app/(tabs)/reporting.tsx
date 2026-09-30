@@ -1,7 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
-    Modal, TextInput, RefreshControl,
+    Modal, TextInput, RefreshControl, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -466,7 +466,11 @@ export default function ReportingScreen() {
                                                                 ) : (
                                                                     <ChevronRight size={14} color={colors.textMuted} />
                                                                 )}
-                                                                <Text style={{ fontSize: 16 }}>{displayEmoji}</Text>
+                                                                {item.logo_url ? (
+                                                                    <Image source={{ uri: item.logo_url }} style={{ width: 20, height: 20, borderRadius: 6 }} resizeMode="contain" />
+                                                                ) : (
+                                                                    <Text style={{ fontSize: 16 }}>{displayEmoji}</Text>
+                                                                )}
                                                                 <Text style={styles.subaccountName} numberOfLines={1} ellipsizeMode="tail">
                                                                     {cleanName}
                                                                 </Text>

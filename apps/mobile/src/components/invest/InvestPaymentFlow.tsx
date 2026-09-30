@@ -182,6 +182,11 @@ export const InvestPaymentFlow: React.FC<{
         cancelledRef.current = false;
 
         try {
+            // Register who is paying first, so the deposit is booked to this organization
+            // (asset + owner contribution) automatically once it lands.
+            if (provider.investmentTargetId) {
+                await investmentService.recordIntent(ref, provider.investmentTargetId, amount);
+            }
             await lencoService.logPublicWalletDepositIntent(ref, `Investment deposit into ${provider.name}`, amount, provider.walletId);
             const initRes = await lencoService.initiateMobileMoneyCollection({
                 reference: ref, amount, phone, operator: (operator || '').toLowerCase(), walletId: provider.walletId,
@@ -206,6 +211,8 @@ export const InvestPaymentFlow: React.FC<{
                         if (elapsedInterval.current) clearInterval(elapsedInterval.current);
                         setPhase('success');
                         lencoService.finalizeCollection(ref, provider.organizationId).catch(() => {});
+                        // Book it now; if the deposit hasn't reconciled yet the server sweep does it within a minute.
+                        investmentService.confirm(ref).catch(() => {});
                         return;
                     }
                 } catch {

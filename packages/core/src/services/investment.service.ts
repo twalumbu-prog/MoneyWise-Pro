@@ -29,4 +29,19 @@ export const investmentService = {
         });
         return response.json();
     },
+
+    /** Registers a mobile-money investment before payment so the books can follow it automatically. */
+    async recordIntent(reference: string, investmentTargetId: string, amount: number) {
+        const response = await apiFetch('/investments/intents', {
+            method: 'POST',
+            body: JSON.stringify({ reference, investmentTargetId, amount }),
+        });
+        return response.json();
+    },
+
+    /** Asks the server to book a paid investment now instead of waiting for its next sweep. */
+    async confirm(reference: string) {
+        const response = await apiFetch(`/investments/confirm/${encodeURIComponent(reference)}`, { method: 'POST' });
+        return response.json();
+    },
 };

@@ -5,6 +5,8 @@ export type ExpenditureMode = 'EXPENSE' | 'CASH_OUTFLOW';
 export interface ExpenditureAggregation {
     account_id: string;
     account_name: string;
+    /** Set for accounts that carry a logo (e.g. an investment in a company). */
+    logo_url?: string | null;
     total_amount: number;
     transaction_count: number;
     type: string;

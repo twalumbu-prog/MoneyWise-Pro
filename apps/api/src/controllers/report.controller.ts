@@ -89,6 +89,15 @@ async function buildFinancialsFromGL(organizationId: string, startDate: string, 
         };
     });
 
+    // Accounts that carry a logo (e.g. an investment in a company) show it instead of an icon.
+    const { data: logoRows } = await supabase
+        .from('accounts')
+        .select('id, logo_url')
+        .eq('organization_id', organizationId)
+        .not('logo_url', 'is', null);
+    const logos = new Map((logoRows || []).map((a: any) => [a.id, a.logo_url]));
+    for (const f of financials as any[]) f.logo_url = logos.get(f.account_id) ?? null;
+
     // If the org has no Retained Earnings account, surface the figure as a synthetic row
     // so the balance sheet still balances.
     if (!retainedSeen && Math.abs(retainedEarnings) > 0.005) {
@@ -294,7 +303,8 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
                 account_name: acc.name,
                 total_amount: totalAmount,
                 transaction_count: txCount,
-                type: acc.type
+                type: acc.type,
+                logo_url: acc.logo_url ?? null
             });
         }
 

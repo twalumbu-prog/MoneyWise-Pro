@@ -28,6 +28,7 @@ import { emailService } from './email.service';
 import { LencoService } from './lenco.service';
 import { disburseRequisition } from '../controllers/disbursement.controller';
 import { processDueScheduledItems, syncScheduledRunStatuses } from './schedule.service';
+import { investmentService, INVEST_PASSTHROUGH_PREFIX } from './investment.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,9 @@ async function findNewDeposits(automation: Automation, limit = 25) {
         .gt('created_at', automation.watch_from)
         .order('created_at', { ascending: true })
         .limit(200);
+
+    // Investment pass-through rows are bookkeeping, not money arriving.
+    query = query.or(`external_reference.is.null,external_reference.not.like.${INVEST_PASSTHROUGH_PREFIX}%`);
 
     if (cfg.min_amount && cfg.min_amount > 0) query = query.gte('debit', cfg.min_amount);
 
@@ -673,7 +677,9 @@ export const automationService = {
         const schedules = await processDueScheduledItems(Math.max(3_000, deadline - Date.now()));
         const scheduleRunsSynced = await syncScheduledRunStatuses().catch(() => 0);
 
-        return { automations: total, schedules, scheduleRunsSynced };
+        const investments = await investmentService.confirmPending().catch((e: any) => ({ error: e.message }));
+
+        return { automations: total, schedules, scheduleRunsSynced, investments };
     },
 
     /**

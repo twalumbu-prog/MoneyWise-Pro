@@ -1154,6 +1154,7 @@ export const Reporting: React.FC = () => {
                                                                                         <div className="w-full flex justify-between items-center">
                                                                                             <div className="flex justify-start items-center gap-2 min-w-0">
                                                                                                 {isRowExpanded ? <ChevronDown size={14} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={14} className="text-gray-400 flex-shrink-0" />}
+                                                                                                {row.logo_url && <img src={row.logo_url} alt="" className="w-5 h-5 rounded-md object-contain flex-shrink-0" />}
                                                                                                 <span className="text-gray-900 text-sm font-medium font-['DM_Sans'] truncate">{row.account_name}</span>
                                                                                                 {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-blue-600 flex-shrink-0" />}
                                                                                             </div>
@@ -1889,6 +1890,7 @@ export const Reporting: React.FC = () => {
                                                                 <div className="flex justify-between items-center gap-3">
                                                                     <h4 className="text-base font-medium text-black flex items-center gap-1.5 min-w-0">
                                                                         {isRowExpanded ? <ChevronDown size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronRight size={15} className="text-gray-400 flex-shrink-0" />}
+                                                                        {row.logo_url && <img src={row.logo_url} alt="" className="w-5 h-5 rounded-md object-contain flex-shrink-0" />}
                                                                         <span className="truncate">{row.account_name}</span>
                                                                         {hasNew && <span className="w-1.5 h-1.5 rounded-full bg-[#006AFF] flex-shrink-0" />}
                                                                     </h4>

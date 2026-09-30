@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
+import { investmentService } from '../services/investment.service';
 
 /**
  * Real (non-demo) investment targets shown at the top of the Invest feature.
@@ -89,6 +90,12 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
         const transferDesc = description || `Investment: ${sourceWallet.name} ➜ ${target.display_name}`;
         const today = new Date().toISOString().split('T')[0];
 
+        // Book it as an asset on the investor's side: Dr Investment / Cr Wallet.
+        const fullTarget = await investmentService.loadTarget(targetId);
+        const investmentAccountId = fullTarget
+            ? await investmentService.ensureInvestmentAccount(organizationId, fullTarget)
+            : null;
+
         const outflowEntry = await cashbookService.createEntry(organizationId, {
             entry_type: 'ADJUSTMENT',
             description: `${transferDesc} (Outflow)`,
@@ -99,6 +106,7 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
             account_type: 'MONEYWISE_WALLET',
             wallet_id: sourceWalletId,
             status: 'COMPLETED',
+            ...(investmentAccountId ? { account_id: investmentAccountId } : {}),
         } as any);
 
         const inflowEntry = await cashbookService.createEntry(target.organization_id, {
@@ -113,6 +121,13 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
             status: 'COMPLETED',
         } as any);
 
+        if (fullTarget && investmentAccountId) {
+            await investmentService.recordWalletInvestment({
+                investorOrgId: organizationId, userId, target: fullTarget, amount,
+                reference: `WT-${outflowEntry.id}`, accountId: investmentAccountId,
+            }).catch(err => console.error('[Investments] could not record wallet investment:', err.message));
+        }
+
         res.json({
             message: 'Investment transfer completed successfully',
             outflowEntryId: outflowEntry.id,
@@ -121,5 +136,41 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
     } catch (error: any) {
         console.error('Error transferring investment funds:', error);
         res.status(500).json({ error: 'Failed to transfer funds', details: error.message });
+    }
+};
+
+/**
+ * Registers a mobile-money investment BEFORE the investor pays. The public
+ * collection endpoints don't know who is paying, so this is what lets the
+ * deposit — once it lands in the target's wallet — be booked to the right
+ * investor automatically.
+ */
+export const recordInvestmentIntent = async (req: any, res: any): Promise<any> => {
+    try {
+        const { reference, investmentTargetId, amount } = req.body;
+        const { organization_id: investorOrgId, id: userId } = (req as any).user;
+        if (!reference || !investmentTargetId || typeof amount !== 'number') {
+            return res.status(400).json({ error: 'reference, investmentTargetId and amount are required' });
+        }
+        const result = await investmentService.recordIntent({ investorOrgId, userId, targetId: investmentTargetId, reference, amount });
+        res.status(201).json(result);
+    } catch (error: any) {
+        res.status(400).json({ error: error.message });
+    }
+};
+
+/** Optional fast path: the app calls this on success so the books update immediately. */
+export const confirmInvestment = async (req: any, res: any): Promise<any> => {
+    try {
+        const { data: inv } = await supabase
+            .from('investments')
+            .select('*')
+            .eq('reference', req.params.reference)
+            .eq('investor_organization_id', (req as any).user.organization_id)
+            .maybeSingle();
+        if (!inv) return res.status(404).json({ error: 'Investment not found' });
+        res.json({ result: await investmentService.confirm(inv) });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message });
     }
 };
