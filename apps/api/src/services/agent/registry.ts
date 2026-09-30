@@ -14,8 +14,9 @@ import { vizTools } from './tools/viz.tools';
 import { guideTools } from './tools/guide.tools';
 import { reconcileTools } from './tools/reconcile.tools';
 import { exportTools } from './tools/export.tools';
+import { automationTools } from './tools/automation.tools';
 
-const ALL_TOOLS: ToolDefinition[] = [...readTools, ...vizTools, ...guideTools, ...reconcileTools, ...exportTools, ...writeTools];
+const ALL_TOOLS: ToolDefinition[] = [...readTools, ...vizTools, ...guideTools, ...reconcileTools, ...exportTools, ...automationTools, ...writeTools];
 
 const BY_NAME = new Map(ALL_TOOLS.map(t => [t.name, t]));
 

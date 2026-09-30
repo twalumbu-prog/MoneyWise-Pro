@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
 import { Layout } from '../components/Layout';
-import { BarChart3, Zap } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 import { AssistantChat } from '../components/assistant/AssistantChat';
+import { AutomationsTab } from '../components/automations/AutomationsTab';
+
+const NEW_AUTOMATION_PROMPT =
+    "I want to set up a new automation. Ask me what should trigger it and what it should do, one question at a time.";
 
 type TabType = 'assistant' | 'insights' | 'automations';
 
@@ -16,6 +20,8 @@ export const Intelligence: React.FC = () => {
     // While a conversation is open, AssistantChat renders its own top bar
     // (back button + title) in place of this shared tab row.
     const [assistantInChat, setAssistantInChat] = useState(false);
+    // "New automation" hands off to the Assistant with this opening message.
+    const [seedPrompt, setSeedPrompt] = useState<string | null>(null);
     const showTabs = !(activeTab === 'assistant' && assistantInChat);
 
     return (
@@ -47,7 +53,11 @@ export const Intelligence: React.FC = () => {
                     </div>
                 )}
 
-                {activeTab === 'assistant' && <AssistantChat onChatStateChange={setAssistantInChat} />}
+                {activeTab === 'assistant' && <AssistantChat
+                    onChatStateChange={setAssistantInChat}
+                    seedPrompt={seedPrompt}
+                    onSeedConsumed={() => setSeedPrompt(null)}
+                />}
 
                 {activeTab === 'insights' && (
                     <Placeholder
@@ -59,11 +69,11 @@ export const Intelligence: React.FC = () => {
                 )}
 
                 {activeTab === 'automations' && (
-                    <Placeholder
-                        icon={<Zap size={30} className="text-purple-500" />}
-                        tint="bg-purple-50"
-                        title="Process Automations"
-                        body="Smart workflows for requisition approvals and budget tracking are coming soon."
+                    <AutomationsTab
+                        onCreate={() => {
+                            setSeedPrompt(NEW_AUTOMATION_PROMPT);
+                            setActiveTab('assistant');
+                        }}
                     />
                 )}
             </div>

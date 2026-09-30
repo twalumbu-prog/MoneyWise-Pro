@@ -1,22 +1,6 @@
 import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
-import { addDays, addWeeks, addMonths, addQuarters, format, parseISO } from 'date-fns';
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-function advanceDueDate(currentDate: string, cadence: string): string {
-    const d = parseISO(currentDate);
-    let next: Date;
-    switch (cadence) {
-        case 'DAILY':     next = addDays(d, 1);    break;
-        case 'WEEKLY':    next = addWeeks(d, 1);   break;
-        case 'BIWEEKLY':  next = addWeeks(d, 2);   break;
-        case 'QUARTERLY': next = addQuarters(d, 1); break;
-        case 'MONTHLY':
-        default:          next = addMonths(d, 1);  break;
-    }
-    return format(next, 'yyyy-MM-dd');
-}
+import { triggerScheduledItem } from '../services/schedule.service';
 
 // ── Controllers ────────────────────────────────────────────────────────────────
 
@@ -184,7 +168,6 @@ export async function runScheduledItemNow(req: Request, res: Response) {
         const { organization_id, id: triggered_by } = (req as any).user;
         const { id } = req.params;
 
-        // Fetch the scheduled item
         const { data: item, error: fetchErr } = await supabase
             .from('scheduled_items')
             .select('*')
@@ -193,87 +176,12 @@ export async function runScheduledItemNow(req: Request, res: Response) {
             .single();
         if (fetchErr || !item) return res.status(404).json({ error: 'Scheduled item not found' });
 
-        // Find (or create) the UPCOMING run for the current due date
-        let { data: run } = await supabase
-            .from('scheduled_item_runs')
-            .select('*')
-            .eq('scheduled_item_id', id)
-            .eq('due_date', item.next_due_date)
-            .maybeSingle();
-
-        if (!run) {
-            const { data: newRun, error: runErr } = await supabase
-                .from('scheduled_item_runs')
-                .insert({
-                    scheduled_item_id: id,
-                    organization_id,
-                    due_date: item.next_due_date,
-                    status: 'UPCOMING',
-                })
-                .select()
-                .single();
-            if (runErr) throw runErr;
-            run = newRun;
+        const result = await triggerScheduledItem(item, triggered_by);
+        if (!result) {
+            return res.status(409).json({ error: 'This occurrence has already been triggered.' });
         }
 
-        const description = `Scheduled payment: ${item.title}`;
-
-        // Build requisition insert payload with correct column names
-        const reqInsertData: Record<string, any> = {
-            organization_id,
-            requestor_id: triggered_by,
-            estimated_total: item.amount,
-            status: 'PENDING_APPROVAL',
-            description,
-        };
-
-        // Conditionally include payment fields (safe schema check, same pattern as createRequisition)
-        if (item.payment_method) {
-            const { error: schemaError } = await supabase
-                .from('requisitions')
-                .select('payment_method')
-                .limit(1);
-            if (!schemaError) {
-                reqInsertData.payment_method = item.payment_method;
-                reqInsertData.recipient_account = item.recipient_account ?? null;
-                reqInsertData.recipient_bank_code = item.recipient_bank_code ?? null;
-                reqInsertData.recipient_name = item.recipient_name ?? null;
-            }
-        }
-
-        // Create requisition
-        const { data: requisition, error: reqErr } = await supabase
-            .from('requisitions')
-            .insert(reqInsertData)
-            .select()
-            .single();
-        if (reqErr) throw reqErr;
-
-        // Mark the run as PROCESSING and link it to the requisition
-        await supabase
-            .from('scheduled_item_runs')
-            .update({
-                status: 'PROCESSING',
-                requisition_id: requisition.id,
-                triggered_at: new Date().toISOString(),
-            })
-            .eq('id', run.id);
-
-        // Advance next_due_date and seed the next UPCOMING run
-        const nextDueDate = advanceDueDate(item.next_due_date, item.cadence);
-        await supabase
-            .from('scheduled_items')
-            .update({ next_due_date: nextDueDate, updated_at: new Date().toISOString() })
-            .eq('id', id);
-
-        await supabase.from('scheduled_item_runs').upsert({
-            scheduled_item_id: id,
-            organization_id,
-            due_date: nextDueDate,
-            status: 'UPCOMING',
-        }, { onConflict: 'scheduled_item_id,due_date', ignoreDuplicates: true });
-
-        res.json({ requisition, next_due_date: nextDueDate });
+        res.json({ requisition: result.requisition, next_due_date: result.nextDueDate });
     } catch (err: any) {
         res.status(500).json({ error: err.message });
     }

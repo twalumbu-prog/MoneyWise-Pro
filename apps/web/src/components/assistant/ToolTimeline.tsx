@@ -35,6 +35,9 @@ const STEP_LABELS: Record<string, string> = {
     update_requisition: 'Preparing requisition changes',
     create_scheduled_item: 'Preparing a scheduled expense',
     update_scheduled_item: 'Preparing schedule changes',
+    list_automations: 'Reading your automations',
+    create_automation: 'Verifying the bank account and preparing the automation',
+    update_automation: 'Preparing automation changes',
     update_org_settings: 'Preparing settings changes',
 };
 

@@ -55,9 +55,12 @@ interface Props {
      * this component's own top bar while a conversation is showing.
      */
     onChatStateChange?: (inChat: boolean) => void;
+    /** A message to send on the user's behalf as soon as the chat is ready (e.g. "New automation"). */
+    seedPrompt?: string | null;
+    onSeedConsumed?: () => void;
 }
 
-export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
+export const AssistantChat: React.FC<Props> = ({ onChatStateChange, seedPrompt, onSeedConsumed }) => {
     const { organizationId } = useAuth();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -240,6 +243,14 @@ export const AssistantChat: React.FC<Props> = ({ onChatStateChange }) => {
         abortRef.current = null;
         refreshThreads();
     }, [busy, threadId, model, attachment, applyEvent, refreshThreads]);
+
+    // Hand-offs from other tabs. Waits for the model list so the message goes
+    // out with a real model selected, and for any in-flight turn to finish.
+    useEffect(() => {
+        if (!seedPrompt || !model || busy) return;
+        onSeedConsumed?.();
+        send(seedPrompt);
+    }, [seedPrompt, model, busy, send, onSeedConsumed]);
 
     // ── Attachments ──────────────────────────────────────────────────────────
 

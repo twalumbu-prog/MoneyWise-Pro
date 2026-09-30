@@ -81,6 +81,16 @@ export type {
     CreateScheduledItemPayload,
 } from './services/schedule.service';
 
+export { automationService } from './services/automation.service';
+export type {
+    Automation,
+    AutomationAction,
+    AutomationRun,
+    AutomationRunStatus,
+    AutomationStatus,
+    RunNowResult,
+} from './services/automation.service';
+
 export { voucherService } from './services/voucher.service';
 export type { Voucher, VoucherLine } from './services/voucher.service';
 
