@@ -116,6 +116,10 @@ export interface RunSummary {
 }
 
 const MAX_ATTEMPTS = 3;
+/** Proof-of-payment email: retry every 10 min, up to 6 tries; a send claim holds for 90s. */
+const MAX_POP_ATTEMPTS = 6;
+const POP_RETRY_AFTER_MS = 10 * 60_000;
+const POP_CLAIM_MS = 90_000;
 /** A failed run is retried no sooner than this after it failed. */
 const RETRY_AFTER_MS = 2 * 60_000;
 /** A RUNNING row older than this belongs to an invocation that died. */
@@ -433,17 +437,32 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
     if (!requisition || UNCONFIRMED_REQ_STATUSES.includes(requisition.status)) return false;
 
     const pop = automation.actions.find((a): a is SendPopEmailAction => a.type === 'SEND_POP_EMAIL');
-    if (pop?.to && !run.pop_sent_at) {
-        // Claim first, send second: two overlapping ticks can't both email.
-        const { data: claimed } = await supabase
-            .from('automation_runs')
-            .update({ pop_sent_at: now() })
-            .eq('id', run.id)
-            .is('pop_sent_at', null)
-            .select('id')
-            .maybeSingle();
+    let popNote: string | null = null;
 
-        if (claimed) {
+    // The steps log is the record of whether the email really went out; pop_sent_at
+    // is only a short-lived claim while a send is in flight (released on failure).
+    const popSent = run.steps.some(st => st.step === 'send_pop_email' && st.status === 'ok');
+    if (pop?.to && !popSent) {
+        const fails = run.steps.filter(st => st.step === 'send_pop_email' && st.status === 'failed');
+        const lastFail = fails.length ? new Date(fails[fails.length - 1].at).getTime() : 0;
+
+        if (fails.length >= MAX_POP_ATTEMPTS) {
+            popNote = `The Proof of Payment email to ${pop.to} could not be sent after ${fails.length} attempts.`;
+        } else if (Date.now() - lastFail < POP_RETRY_AFTER_MS) {
+            return false;
+        } else {
+            // Claim first, send second — but a claim only holds for POP_CLAIM_MS, so
+            // a worker that died mid-send can't block the email forever.
+            const staleBefore = new Date(Date.now() - POP_CLAIM_MS).toISOString();
+            const { data: claimed } = await supabase
+                .from('automation_runs')
+                .update({ pop_sent_at: now() })
+                .eq('id', run.id)
+                .or(`pop_sent_at.is.null,pop_sent_at.lt.${staleBefore}`)
+                .select('id')
+                .maybeSingle();
+            if (!claimed) return false;
+
             try {
                 const { data: org } = await supabase.from('organizations').select('name').eq('id', automation.organization_id).maybeSingle();
                 await emailService.sendScheduledProofOfPayment({
@@ -457,14 +476,15 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
                     txRef: disbursement.external_reference || null,
                     transactedAt: disbursement.issued_at ? new Date(disbursement.issued_at) : new Date(),
                 });
-                run.pop_sent_at = now();
-                run.steps = [...run.steps, step('send_pop_email', 'ok', `Proof of Payment emailed to ${pop.to}.`)];
-            } catch (err: any) {
-                // Release the claim so the next tick retries the email.
-                await supabase.from('automation_runs').update({ pop_sent_at: null }).eq('id', run.id);
-                run.pop_sent_at = null;
                 await saveRun(run, {
-                    steps: [...run.steps, step('send_pop_email', 'failed', `Email to ${pop.to} failed: ${err.message}. Will retry.`)],
+                    pop_sent_at: now(),
+                    steps: [...run.steps, step('send_pop_email', 'ok', `Proof of Payment emailed to ${pop.to}.`)],
+                });
+            } catch (err: any) {
+                await supabase.from('automation_runs').update({ pop_sent_at: null }).eq('id', run.id);
+                await saveRun(run, {
+                    pop_sent_at: null,
+                    steps: [...run.steps, step('send_pop_email', 'failed', `Email to ${pop.to} failed: ${err.message}`)],
                 });
                 return false;
             }
@@ -474,8 +494,8 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
     await saveRun(run, {
         status: 'COMPLETED',
         finished_at: now(),
-        error: null,
-        steps: [...run.steps, step('run', 'ok', 'Transfer confirmed. Run complete.')],
+        error: popNote,
+        steps: [...run.steps, step('run', popNote ? 'info' : 'ok', popNote ? `Transfer confirmed. ${popNote}` : 'Transfer confirmed. Run complete.')],
     });
     return true;
 }
