@@ -694,13 +694,21 @@ const CashLedger: React.FC = () => {
                 if (consumed.has(e.requisition_id!)) continue; // children folded into the parent
                 consumed.add(e.requisition_id!);
                 const total = Math.round(kids.reduce((s, k) => s + Number(k.credit || 0), 0) * 100) / 100;
+                // The batch's balance is the balance AFTER its chronologically latest payout.
+                // Don't rely on list order: it is newest-first, so "the last child" was the
+                // EARLIEST payout and the line showed K100,074.98 instead of K4,272.99.
+                const latest = kids.reduce((a, b) => {
+                    const ka = `${a.date}|${(a as any).created_at || ''}|${a.id}`;
+                    const kb = `${b.date}|${(b as any).created_at || ''}|${b.id}`;
+                    return kb > ka ? b : a;
+                });
                 out.push({
                     ...(e as any),
                     id: `batch-${e.requisition_id}`,
                     description: e.requisitions?.description || `Batch payout (${kids.length} payments)`,
                     credit: total,
                     debit: 0,
-                    balance_after: kids[kids.length - 1].balance_after,
+                    balance_after: latest.balance_after,
                 } as any);
             } else {
                 out.push(e);
