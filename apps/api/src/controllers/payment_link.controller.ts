@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { emailService } from '../services/email.service';
 import { getFrontendUrl } from '../utils/frontendUrl';
 import { cashbookService } from '../services/cashbook.service';
+import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from '../utils/zambiaPhone';
 
 /**
  * One-time, single-use payment links. An admin generates a link pre-filled with a
@@ -31,6 +32,7 @@ export const createPaymentLink = async (req: any, res: Response): Promise<any> =
         if (!product_id) return res.status(400).json({ error: 'product_id is required' });
         if (!customer_name || !customer_name.trim()) return res.status(400).json({ error: 'Customer name is required' });
         if (!customer_phone || !customer_phone.trim()) return res.status(400).json({ error: 'Customer phone is required' });
+        if (!isValidZambiaMobile(customer_phone)) return res.status(400).json({ error: INVALID_PHONE_MESSAGE });
 
         const amountNum = Number(amount);
         if (isNaN(amountNum) || amountNum <= 0) {
@@ -72,7 +74,7 @@ export const createPaymentLink = async (req: any, res: Response): Promise<any> =
                 product_id,
                 token,
                 customer_name: customer_name.trim(),
-                customer_phone: customer_phone.trim(),
+                customer_phone: normalizeZambiaPhone(customer_phone),
                 amount: amountNum,
                 wallet_id: walletId,
                 status: 'ACTIVE',
@@ -116,6 +118,7 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
         }
         if (!customer_name || !customer_name.trim()) return res.status(400).json({ error: 'Customer name is required' });
         if (!customer_phone || !customer_phone.trim()) return res.status(400).json({ error: 'Customer phone is required' });
+        if (!isValidZambiaMobile(customer_phone)) return res.status(400).json({ error: INVALID_PHONE_MESSAGE });
         if (send_email && (!customer_email || !customer_email.trim())) {
             return res.status(400).json({ error: 'Customer email is required to send the invoice by email' });
         }
@@ -190,7 +193,7 @@ export const createInvoiceLink = async (req: any, res: Response): Promise<any> =
                 product_id: null,
                 token,
                 customer_name: customer_name.trim(),
-                customer_phone: customer_phone.trim(),
+                customer_phone: normalizeZambiaPhone(customer_phone),
                 customer_email: customer_email ? customer_email.trim() : null,
                 amount,
                 items: snapshot,
@@ -412,6 +415,7 @@ export const updatePaymentLink = async (req: any, res: Response): Promise<any> =
         const { customer_name, customer_phone, customer_email } = req.body;
         if (!customer_name?.trim()) return res.status(400).json({ error: 'Customer name is required' });
         if (!customer_phone?.trim()) return res.status(400).json({ error: 'Customer phone is required' });
+        if (!isValidZambiaMobile(customer_phone)) return res.status(400).json({ error: INVALID_PHONE_MESSAGE });
 
         const { data: link, error: findError } = await supabase
             .from('payment_links')
@@ -428,7 +432,7 @@ export const updatePaymentLink = async (req: any, res: Response): Promise<any> =
             .from('payment_links')
             .update({
                 customer_name: customer_name.trim(),
-                customer_phone: customer_phone.trim(),
+                customer_phone: normalizeZambiaPhone(customer_phone),
                 customer_email: customer_email ? customer_email.trim() : null,
             })
             .eq('id', id)

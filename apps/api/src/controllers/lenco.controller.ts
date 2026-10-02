@@ -1352,6 +1352,15 @@ export const resolvePublicMobileMoneyName = async (req: Request, res: Response) 
         return res.json({ success: true, accountName: account.accountName });
     } catch (error: any) {
         console.error('[Lenco Public Collection] Resolve name error:', error.message);
+        const upstream = Number(error.upstreamStatus);
+        if (upstream >= 400 && upstream < 500) {
+            return res.status(400).json({
+                error: /invalid phone/i.test(error.message || '')
+                    ? 'This mobile money number looks incomplete or invalid. Check it and try again.'
+                    : (error.message || 'Could not verify this number'),
+                code: 'INVALID_PHONE',
+            });
+        }
         return res.status(500).json({ error: error.message || 'Could not verify this number' });
     }
 };

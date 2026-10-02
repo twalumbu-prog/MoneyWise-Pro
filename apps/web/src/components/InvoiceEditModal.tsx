@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, User, Phone, Mail, Loader2 } from 'lucide-react';
+import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from '../lib/zambiaPhone';
 import type { PaymentLink, UpdateInvoiceLinkPayload } from '../services/product.service';
 import { invoiceNumber } from './InvoiceInbox';
 
@@ -63,12 +64,13 @@ export const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
         e.preventDefault();
         if (!name.trim()) { setError('Customer name is required'); return; }
         if (!phone.trim()) { setError('Customer phone is required'); return; }
+        if (!isValidZambiaMobile(phone)) { setError(INVALID_PHONE_MESSAGE); return; }
         setError(null);
         setSaving(true);
         try {
             await onSave(invoice.id, {
                 customer_name: name.trim(),
-                customer_phone: phone.trim(),
+                customer_phone: normalizeZambiaPhone(phone),
                 customer_email: email.trim() || null,
             });
             onClose();
@@ -126,12 +128,13 @@ export const InvoiceEditModal: React.FC<InvoiceEditModalProps> = ({
                         />
                     </Field>
 
-                    <Field label="Phone" icon={<Phone size={11} />} required>
+                    <Field label="Customer's phone" icon={<Phone size={11} />} required>
                         <input
                             className={inputClass}
                             value={phone}
                             onChange={e => setPhone(e.target.value)}
-                            placeholder="+260 9X XXX XXXX"
+                            placeholder="Customer's mobile money number, e.g. 0971234567"
+                            type="tel"
                             required
                         />
                     </Field>

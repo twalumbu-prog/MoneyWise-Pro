@@ -41,6 +41,7 @@ import { lencoService } from '../services/lenco.service';
 import { useDebounce } from 'use-debounce';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { supabase } from '../lib/supabase';
+import { isValidZambiaMobile, normalizeZambiaPhone, INVALID_PHONE_MESSAGE } from '../lib/zambiaPhone';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
 
@@ -349,8 +350,8 @@ export const NewSale: React.FC = () => {
     // ── Generate invoice link (link mode) ────────────────────────────────────
     const handleGenerateLink = async () => {
         setError(null);
-        if (customerPhone.replace(/\D/g, '').length < 9) {
-            setError("Enter the customer's phone number (used to pre-fill their payment).");
+        if (!isValidZambiaMobile(customerPhone)) {
+            setError(INVALID_PHONE_MESSAGE);
             return;
         }
         if (sendEmail && !/^\S+@\S+\.\S+$/.test(customerEmail.trim())) {
@@ -369,7 +370,7 @@ export const NewSale: React.FC = () => {
                         : {}),
                 })),
                 customer_name: customerName.trim(),
-                customer_phone: customerPhone.trim(),
+                customer_phone: normalizeZambiaPhone(customerPhone),
                 customer_email: customerEmail.trim() || undefined,
                 wallet_id: linkWalletId || mainWalletId,
                 send_email: sendEmail,
@@ -963,8 +964,13 @@ export const NewSale: React.FC = () => {
                                     </div>
                                     <div className="relative">
                                         <Smartphone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                        <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Phone number" className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400" />
+                                        <input type="tel" inputMode="tel" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} placeholder="Customer's mobile money number (e.g. 0971234567)" className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400" />
                                     </div>
+                                    <p className={`text-[11px] font-medium px-1 leading-relaxed -mt-1 ${customerPhone && !isValidZambiaMobile(customerPhone) ? 'text-amber-600' : 'text-slate-400'}`}>
+                                        {customerPhone && !isValidZambiaMobile(customerPhone)
+                                            ? 'Number looks incomplete — it needs 10 digits, e.g. 0971234567.'
+                                            : "Use the customer's own number (not yours) — it's pre-filled on their payment page and charged when they pay."}
+                                    </p>
                                     <div className="relative">
                                         <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                         <input type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} placeholder={sendEmail ? 'Email address' : 'Email address (optional)'} className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400" />

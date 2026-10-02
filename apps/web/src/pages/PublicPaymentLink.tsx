@@ -22,6 +22,7 @@ import jsPDF from 'jspdf';
 import { calculatePlatformFee } from 'shared';
 import { CheckoutErrorInfo, diagnoseCheckoutError } from '../utils/checkoutError';
 import { PaymentWaitingScreen, PaymentPhase } from '../components/PaymentWaitingScreen';
+import { isValidZambiaMobile, normalizeZambiaPhone } from '../lib/zambiaPhone';
 import { savePendingPayment, loadPendingPayment, clearPendingPayment } from '../lib/paymentRecovery';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
@@ -168,7 +169,9 @@ export const PublicPaymentLink: React.FC = () => {
             console.log(`[Diagnostic] Successfully fetched payment link context in ${duration}ms`);
             posthog.capture('payment_link_loaded', { link_token: token, link_type: 'payment_link', duration_ms: duration });
             setCtx(res.data);
-            setPhone(res.data.customer_phone || '');
+            // Pre-fill only a complete number — a truncated one saved on the invoice
+            // would just fail verification; let the payer type their own instead.
+            setPhone(isValidZambiaMobile(res.data.customer_phone) ? normalizeZambiaPhone(res.data.customer_phone) : '');
 
             if (res.data.status !== 'ACTIVE') {
                 setStep('INACTIVE');
@@ -271,7 +274,7 @@ export const PublicPaymentLink: React.FC = () => {
     useEffect(() => {
         if (step !== 'CHECKOUT' || checkoutMethod !== 'mobile-money' || !ctx) return;
         const operator = detectOperator(phone);
-        if (!operator) {
+        if (!operator || !isValidZambiaMobile(phone)) {
             setResolvedAccountName('');
             setResolveFailed(false);
             return;
@@ -981,7 +984,8 @@ export const PublicPaymentLink: React.FC = () => {
 
     // ── CHECKOUT: QuickPay-style phone-entry layout ────────────────────────────
     if (step === 'CHECKOUT' && ctx) {
-        const canPay = !submitting && operator !== null && !resolvingAccountName;
+        const phoneComplete = isValidZambiaMobile(phone);
+        const canPay = !submitting && operator !== null && phoneComplete && !resolvingAccountName;
         return (
             <div className="h-[100dvh] bg-white flex flex-col overflow-hidden
                             sm:h-auto sm:min-h-screen sm:bg-neutral-50 sm:items-center sm:justify-center sm:px-4 sm:py-10">
@@ -1060,7 +1064,17 @@ export const PublicPaymentLink: React.FC = () => {
                             </div>
 
                             {/* Account holder verification */}
-                            {phone.length >= 9 && (
+                            {!phone && ctx.customer_phone && !isValidZambiaMobile(ctx.customer_phone) && (
+                                <p className="mt-3 px-1 text-xs font-semibold text-amber-600">
+                                    The number saved on this invoice looks incomplete — please enter your mobile money number.
+                                </p>
+                            )}
+                            {phone.length > 0 && !phoneComplete && (
+                                <p className="mt-3 px-1 text-xs font-semibold text-amber-600">
+                                    Enter your full 10-digit number, e.g. 0971234567.
+                                </p>
+                            )}
+                            {phoneComplete && (
                                 <div className="mt-3 px-4 py-3 rounded-2xl bg-white border border-slate-200 flex items-center gap-3">
                                     {resolvingAccountName ? (
                                         <Loader2 size={16} className="text-blue-600 animate-spin flex-shrink-0" />

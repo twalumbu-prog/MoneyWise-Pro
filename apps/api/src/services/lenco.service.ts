@@ -102,7 +102,10 @@ export class LencoService {
             };
         } catch (error: any) {
             console.error('Lenco mobile money resolution failed:', error.response?.data || error.message);
-            throw new Error(error.response?.data?.message || 'Failed to resolve mobile money account');
+            const resolveError: any = new Error(error.response?.data?.message || 'Failed to resolve mobile money account');
+            // 4xx from Lenco = the number itself was rejected (not an outage); callers can map it to a 400.
+            resolveError.upstreamStatus = error.response?.status;
+            throw resolveError;
         }
     }
 
