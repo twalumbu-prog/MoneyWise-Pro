@@ -1,0 +1,10 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["9VM62949TC.cloud.blueopus.moneywise"],
+        "components": [{ "/": "/*" }]
+      }
+    ]
+  }
+}
