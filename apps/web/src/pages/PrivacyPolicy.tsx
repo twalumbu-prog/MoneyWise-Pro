@@ -111,7 +111,7 @@ export const PrivacyPolicy = () => {
                             <li>All stored OAuth tokens are permanently deleted immediately.</li>
                         </ul>
                         <p className="mt-4 text-sm">
-                            To request full account deletion, contact: <a href="mailto:smkapambwe9@gmail.com" className="text-brand-green hover:underline">smkapambwe9@gmail.com</a>
+                            You can delete your account at any time in the MoneyWise mobile app under Menu &rarr; Delete my account. Doing so removes your login and personal details; financial records your organisation keeps for its books are retained without your name. You can also request deletion by contacting: <a href="mailto:smkapambwe9@gmail.com" className="text-brand-green hover:underline">smkapambwe9@gmail.com</a>
                         </p>
                     </section>
 

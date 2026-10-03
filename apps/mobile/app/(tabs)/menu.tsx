@@ -1,10 +1,11 @@
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
-    User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree,
+    User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX,
 } from 'lucide-react-native';
+import { userService } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import { OtherServiceIcon } from '../../src/components/icons/OtherServiceIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -26,6 +27,36 @@ export default function MenuScreen() {
         activeOrgName.toLowerCase().includes('personal') ||
         activeOrgName.toLowerCase().includes('individual') ||
         activeOrgName.toLowerCase().includes('private');
+
+    const confirmDeleteAccount = () =>
+        Alert.alert(
+            'Delete your account?',
+            'This permanently removes your login and personal details. Financial records kept by your organisation for its books are retained without your name. This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Continue',
+                    style: 'destructive',
+                    onPress: () =>
+                        Alert.alert('Are you absolutely sure?', 'Your account will be deleted immediately.', [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                                text: 'Delete my account',
+                                style: 'destructive',
+                                onPress: async () => {
+                                    try {
+                                        await userService.deleteMyAccount();
+                                    } catch (e: any) {
+                                        Alert.alert('Could not delete account', e?.message || 'Please try again.');
+                                        return;
+                                    }
+                                    try { await signOut(); } finally { router.replace('/(auth)/login'); }
+                                },
+                            },
+                        ]),
+                },
+            ],
+        );
 
     const allServices = [
         { icon: ShieldCheck, label: 'Audit', go: () => router.push('/audit'), proOnly: true },
@@ -147,6 +178,38 @@ export default function MenuScreen() {
                         </View>
                     </Pressable>
                 )}
+            </View>
+
+            <View style={styles.card}>
+                <Text style={styles.cardTitle}>Legal & account</Text>
+                <Pressable
+                    onPress={() => Linking.openURL('https://moneywise.blueopus.cloud/privacy')}
+                    style={({ pressed }) => [styles.row, pressed && { opacity: 0.6 }]}
+                >
+                    <Lock size={18} color={colors.blue} />
+                    <View style={styles.rowMain}>
+                        <Text style={styles.rowLabel}>Privacy Policy</Text>
+                    </View>
+                </Pressable>
+                <Pressable
+                    onPress={() => Linking.openURL('https://moneywise.blueopus.cloud/terms')}
+                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                >
+                    <FileText size={18} color={colors.blue} />
+                    <View style={styles.rowMain}>
+                        <Text style={styles.rowLabel}>Terms of Service</Text>
+                    </View>
+                </Pressable>
+                <Pressable
+                    onPress={confirmDeleteAccount}
+                    style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                >
+                    <UserX size={18} color={colors.danger} />
+                    <View style={styles.rowMain}>
+                        <Text style={[styles.rowLabel, { color: colors.danger }]}>Delete my account</Text>
+                        <Text style={styles.rowSub}>Permanently remove your login and personal data</Text>
+                    </View>
+                </Pressable>
             </View>
 
             <Pressable

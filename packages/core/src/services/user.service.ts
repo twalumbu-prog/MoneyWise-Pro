@@ -96,6 +96,14 @@ export const userService = {
         });
     },
 
+    /** Permanently closes the signed-in user's account (App Store 5.1.1(v)). */
+    deleteMyAccount(): Promise<{ message?: string }> {
+        return apiJson('/auth/account', {
+            method: 'DELETE',
+            body: JSON.stringify({ confirm: 'DELETE' }),
+        });
+    },
+
     getMyProfile(): Promise<MyProfile> {
         return apiJson<MyProfile>('/users/me');
     },

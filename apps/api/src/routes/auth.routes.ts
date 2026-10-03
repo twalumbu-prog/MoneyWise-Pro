@@ -9,7 +9,8 @@ import {
     joinRequest,
     getMyOrganizations,
     switchOrganization,
-    ensurePersonalWorkspace
+    ensurePersonalWorkspace,
+    deleteMyAccount
 } from '../controllers/auth.controller';
 import { requireAuth } from '../middleware/auth';
 
@@ -29,6 +30,7 @@ router.post('/complete-invitation', requireAuth, completeInvitation);
 router.get('/my-organizations', requireAuth, getMyOrganizations);
 router.post('/switch-organization', requireAuth, switchOrganization);
 router.post('/ensure-personal-workspace', requireAuth, ensurePersonalWorkspace);
+router.delete('/account', requireAuth, deleteMyAccount);
 
 export default router;
 

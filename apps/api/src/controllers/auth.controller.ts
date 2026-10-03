@@ -906,3 +906,86 @@ export const ensurePersonalWorkspace = async (req: any, res: any): Promise<any> 
 };
 
 
+
+/**
+ * DELETE /auth/account — in-app account deletion (App Store guideline 5.1.1(v)).
+ *
+ * Financial records are retained for the organisation's books, so the user is
+ * anonymised rather than hard-deleted: the public.users row loses all personal
+ * data, memberships are removed and the login is deleted (or, if the auth row
+ * is still referenced, scrambled and permanently banned).
+ *
+ * Refused while the user is the only ADMIN of an organisation that still has
+ * other active members — they must hand over admin rights first, otherwise the
+ * organisation would be left with nobody able to manage it.
+ */
+export const deleteMyAccount = async (req: any, res: express.Response) => {
+    try {
+        const userId = req.user.id;
+        if (req.body?.confirm !== 'DELETE') {
+            return res.status(400).json({ error: 'Confirmation required. Send { "confirm": "DELETE" }.' });
+        }
+
+        const { data: memberships, error: memErr } = await supabase
+            .from('user_organizations')
+            .select('organization_id, role, status, organization:organizations(name)')
+            .eq('user_id', userId);
+        if (memErr) {
+            return res.status(500).json({ error: 'Could not check your organisations: ' + memErr.message });
+        }
+
+        for (const m of (memberships || []) as any[]) {
+            if (m.role !== 'ADMIN' || m.status !== 'ACTIVE') continue;
+            const { data: others, error: othErr } = await supabase
+                .from('user_organizations')
+                .select('user_id, role')
+                .eq('organization_id', m.organization_id)
+                .eq('status', 'ACTIVE')
+                .neq('user_id', userId);
+            if (othErr) {
+                return res.status(500).json({ error: 'Could not check organisation members: ' + othErr.message });
+            }
+            const hasOtherAdmin = (others || []).some((o: any) => o.role === 'ADMIN');
+            if ((others || []).length > 0 && !hasOtherAdmin) {
+                const orgName = Array.isArray(m.organization) ? m.organization[0]?.name : m.organization?.name;
+                return res.status(409).json({
+                    error: `You are the only admin of ${orgName || 'an organisation'} that still has other members. Make another member an admin (or remove them) before deleting your account.`,
+                });
+            }
+        }
+
+        const tombstone = `deleted+${userId}@deleted.invalid`;
+
+        const { error: anonErr } = await supabase
+            .from('users')
+            .update({ name: 'Deleted user', email: tombstone, username: null, status: 'DISABLED' })
+            .eq('id', userId);
+        if (anonErr) {
+            return res.status(500).json({ error: 'Failed to remove your profile: ' + anonErr.message });
+        }
+
+        await supabase.from('user_organizations').delete().eq('user_id', userId);
+
+        const adminApi = (supabase.auth as any).admin;
+        const { error: delErr } = await adminApi.deleteUser(userId);
+        if (delErr) {
+            // Still referenced by retained records — neutralise the login instead.
+            console.warn('deleteMyAccount: auth delete failed, banning instead:', delErr.message);
+            const { error: banErr } = await adminApi.updateUserById(userId, {
+                email: tombstone,
+                phone: null,
+                password: `${userId}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                ban_duration: '876000h',
+                user_metadata: {},
+            });
+            if (banErr) {
+                return res.status(500).json({ error: 'Failed to close your login: ' + banErr.message });
+            }
+        }
+
+        return res.json({ message: 'Your account has been deleted.' });
+    } catch (err: any) {
+        console.error('Error deleting account:', err);
+        return res.status(500).json({ error: 'Internal server error: ' + err.message });
+    }
+};
