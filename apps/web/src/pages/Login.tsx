@@ -630,7 +630,7 @@ export const Login: React.FC = () => {
                     <span className="text-gray-300">|</span>
                     <a href="/terms" className="hover:text-brand-navy transition-colors">Terms of Service</a>
                     <span className="text-gray-300">|</span>
-                    <a href="mailto:smkapambwe9@gmail.com" className="hover:text-brand-navy transition-colors">Contact Support</a>
+                    <a href="mailto:stephe@blueopus.cloud" className="hover:text-brand-navy transition-colors">Contact Support</a>
                 </div>
             </div>
         </div>

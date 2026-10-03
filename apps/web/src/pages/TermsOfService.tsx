@@ -112,7 +112,7 @@ export const TermsOfService = () => {
                     <section>
                         <h2 className="text-xl font-bold text-brand-navy mb-3">9. Contact</h2>
                         <p>
-                            For questions regarding these Terms: <a href="mailto:smkapambwe9@gmail.com" className="text-brand-green hover:underline">smkapambwe9@gmail.com</a>
+                            For questions regarding these Terms: <a href="mailto:stephe@blueopus.cloud" className="text-brand-green hover:underline">stephe@blueopus.cloud</a>
                         </p>
                     </section>
                 </div>
