@@ -94,7 +94,7 @@ export default function NewRequisitionScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const qc = useQueryClient();
-    const { userName, userRole, organizationId, organizationName, userOrganizations } = useAuth();
+    const { user, userName, userRole, organizationId, organizationName, userOrganizations } = useAuth();
 
     const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
     const activeOrgName = currentOrg?.name || organizationName || '';
@@ -151,6 +151,17 @@ export default function NewRequisitionScreen() {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [activeRequisitionId, setActiveRequisitionId] = useState<string | null>(null);
+
+    // Accountability Safeguard: an outstanding expense cycle doesn't stop a new
+    // draft, but the API refuses to disburse it until that cycle is reconciled.
+    const { data: myRequisitions } = useQuery({
+        queryKey: ['requisitions', organizationId],
+        queryFn: () => requisitionService.getAll(),
+        enabled: !!organizationId,
+    });
+    const outstandingRequisition = (Array.isArray(myRequisitions) ? myRequisitions : []).find(
+        (r: any) => ['DISBURSED', 'EXPENSED'].includes(r.status) && String(r.requestor_id) === String(user?.id),
+    );
 
     const { data: deptConfig } = useQuery({ queryKey: ['departments'], queryFn: () => departmentService.list() });
     const useDepartments = deptConfig?.use_departments ?? false;
@@ -480,6 +491,27 @@ export default function NewRequisitionScreen() {
                     </View>
                 ) : (
                     <>
+                        {outstandingRequisition && (
+                            <View style={styles.safeguardCard}>
+                                <View style={styles.safeguardHead}>
+                                    <AlertCircle size={16} color={colors.warn} />
+                                    <Text style={styles.safeguardTitle}>Accountability Safeguard Active</Text>
+                                </View>
+                                <Text style={styles.safeguardText}>
+                                    You have an outstanding requisition that still needs reconciliation. You can still create this requisition as a draft, but no funds can be disbursed for it until your active cycle is completed.
+                                </Text>
+                                <Pressable
+                                    style={styles.safeguardCta}
+                                    onPress={() => router.push(`/requisition/${outstandingRequisition.id}`)}
+                                >
+                                    <Text style={styles.safeguardCtaText}>
+                                        Reconcile {outstandingRequisition.reference_number || `#${String(outstandingRequisition.id).slice(0, 8)}`}
+                                    </Text>
+                                    <ArrowRight size={14} color="#FFFFFF" />
+                                </Pressable>
+                            </View>
+                        )}
+
                         {error && (
                             <View style={styles.errorCard}>
                                 <AlertCircle size={16} color={colors.danger} />
@@ -1130,6 +1162,12 @@ const styles = StyleSheet.create({
     comingSoonIcon: { width: 64, height: 64, borderRadius: 20, backgroundColor: colors.canvasAlt, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
     comingSoonTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textFaint, marginBottom: 4 },
     comingSoonSub: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.borderStrong, textAlign: 'center' },
+    safeguardCard: { backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A', borderRadius: radius.lg, padding: 14, gap: 10, marginBottom: 20 },
+    safeguardHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    safeguardTitle: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#78350F', textTransform: 'uppercase', letterSpacing: 1 },
+    safeguardText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: '#92400E', lineHeight: 18 },
+    safeguardCta: { backgroundColor: '#D97706', borderRadius: radius.md, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    safeguardCtaText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
     errorCard: { backgroundColor: '#FEF2F2', borderRadius: radius.lg, padding: 14, gap: 10, marginBottom: 20 },
     errorText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.danger, lineHeight: 18 },
     errorCta: { backgroundColor: colors.danger, borderRadius: radius.md, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
