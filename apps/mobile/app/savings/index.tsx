@@ -69,10 +69,12 @@ export default function SavingsScreen() {
             />
 
             <ScrollView
-                contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+                // flexGrow lets the white list card stretch down to just above the bottom edge on every tab,
+                // and still scroll when there are more items than fit.
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: Math.max(insets.bottom, 12) + 4 }}
                 refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.blue} />}
             >
-                <AnimatedTabContent tabKey={tab} index={TABS.findIndex((t) => t.id === tab)}>
+                <AnimatedTabContent tabKey={tab} index={TABS.findIndex((t) => t.id === tab)} style={{ flexGrow: 1 }}>
                     <View style={{ paddingHorizontal: 16, marginTop: 14 }}>
                         <SavingsBalanceCard label={current.card} amount={total} />
                     </View>
@@ -195,7 +197,7 @@ const styles = StyleSheet.create({
     joinLink: { marginBottom: 8 },
     joinLinkText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
     listCard: {
-        marginHorizontal: 20, padding: 20, minHeight: 320, backgroundColor: colors.surface, borderRadius: 20,
+        marginHorizontal: 20, padding: 20, minHeight: 320, flexGrow: 1, backgroundColor: colors.surface, borderRadius: 20,
         borderWidth: 1, borderColor: colors.borderStrong,
         shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, shadowOffset: { width: 0, height: 4 }, elevation: 2,
     },
