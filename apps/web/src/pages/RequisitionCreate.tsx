@@ -334,16 +334,8 @@ export const RequisitionCreate: React.FC = () => {
 
     const checkActiveRequisition = async () => {
         try {
-            const requisitions = await requisitionService.getAll();
-            const blockingStatuses = ['DISBURSED', 'EXPENSED'];
-            const blockingReqs = requisitions.filter((r: any) => {
-                return blockingStatuses.includes(r.status) && String(r.requestor_id) === String(user?.id);
-            });
-            if (blockingReqs.length > 0) {
-                setActiveRequisitions(blockingReqs);
-            } else {
-                setActiveRequisitions([]);
-            }
+            const { outstanding } = await requisitionService.getAccountability();
+            setActiveRequisitions(outstanding);
         } catch (err) {
             console.error('Failed to check active requisitions:', err);
         }

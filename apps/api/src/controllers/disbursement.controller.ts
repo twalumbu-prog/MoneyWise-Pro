@@ -8,40 +8,7 @@ import { ocrService } from '../services/ai/ocr.service';
 import { LencoService } from '../services/lenco.service';
 import { RequisitionMessageService } from '../services/requisition_message.service';
 import { triggerAIReview } from './requisition.controller';
-
-/**
- * Accountability Safeguard: a requestor with an outstanding (DISBURSED/EXPENSED)
- * expense requisition can still raise new requisitions as drafts and have them
- * approved, but no further money may be sent to them until that earlier cycle is
- * reconciled. Returns a user-facing message when the disbursal must be refused.
- */
-async function getAccountabilityBlock(requisitionId: string, organizationId: string): Promise<string | null> {
-    const { data: target } = await supabase
-        .from('requisitions')
-        .select('requestor_id, type')
-        .eq('id', requisitionId)
-        .eq('organization_id', organizationId)
-        .maybeSingle();
-
-    if (!target?.requestor_id || (target.type && target.type !== 'EXPENSE')) return null;
-
-    const { data: outstanding } = await supabase
-        .from('requisitions')
-        .select('id, status, reference_number')
-        .eq('requestor_id', target.requestor_id)
-        .eq('organization_id', organizationId)
-        .in('status', ['DISBURSED', 'EXPENSED'])
-        .neq('id', requisitionId)
-        // limit(1) rather than maybeSingle() alone: with two outstanding
-        // requisitions maybeSingle() errors, which would silently skip the block.
-        .limit(1)
-        .maybeSingle();
-
-    if (!outstanding) return null;
-
-    const ref = outstanding.reference_number || `#${outstanding.id.slice(0, 8)}`;
-    return `Accountability Safeguard: the requestor has an outstanding requisition (${ref}, status ${outstanding.status}) that must be reconciled before more funds can be disbursed to them.`;
-}
+import { getAccountabilityBlock } from '../services/accountability.service';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {

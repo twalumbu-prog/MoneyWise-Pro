@@ -94,7 +94,7 @@ export default function NewRequisitionScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
     const qc = useQueryClient();
-    const { user, userName, userRole, organizationId, organizationName, userOrganizations } = useAuth();
+    const { userName, userRole, organizationId, organizationName, userOrganizations } = useAuth();
 
     const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
     const activeOrgName = currentOrg?.name || organizationName || '';
@@ -154,14 +154,12 @@ export default function NewRequisitionScreen() {
 
     // Accountability Safeguard: an outstanding expense cycle doesn't stop a new
     // draft, but the API refuses to disburse it until that cycle is reconciled.
-    const { data: myRequisitions } = useQuery({
-        queryKey: ['requisitions', organizationId],
-        queryFn: () => requisitionService.getAll(),
+    const { data: accountability } = useQuery({
+        queryKey: ['requisitions', 'accountability', organizationId],
+        queryFn: () => requisitionService.getAccountability(),
         enabled: !!organizationId,
     });
-    const outstandingRequisition = (Array.isArray(myRequisitions) ? myRequisitions : []).find(
-        (r: any) => ['DISBURSED', 'EXPENSED'].includes(r.status) && String(r.requestor_id) === String(user?.id),
-    );
+    const outstandingRequisition = accountability?.outstanding?.[0];
 
     const { data: deptConfig } = useQuery({ queryKey: ['departments'], queryFn: () => departmentService.list() });
     const useDepartments = deptConfig?.use_departments ?? false;
@@ -505,7 +503,7 @@ export default function NewRequisitionScreen() {
                                     onPress={() => router.push(`/requisition/${outstandingRequisition.id}`)}
                                 >
                                     <Text style={styles.safeguardCtaText}>
-                                        Reconcile {outstandingRequisition.reference_number || `#${String(outstandingRequisition.id).slice(0, 8)}`}
+                                        Reconcile {outstandingRequisition.reference_number || `#${outstandingRequisition.id.slice(0, 8)}`}
                                     </Text>
                                     <ArrowRight size={14} color="#FFFFFF" />
                                 </Pressable>

@@ -2,6 +2,7 @@ import { Response } from 'express';
 import { waitUntil } from '@vercel/functions';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
+import { getOutstandingRequisitions } from '../services/accountability.service';
 import { memoryService } from '../services/ai/memory.service';
 import { cashbookService } from '../services/cashbook.service';
 import { ledgerService } from '../services/ledger.service';
@@ -52,6 +53,18 @@ export const markRequisitionRead = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         console.error('Error marking requisition as read:', error);
         res.status(500).json({ error: 'Failed to mark requisition as read', details: error.message });
+    }
+};
+
+/** The current user's unreconciled requisitions — drives the safeguard notice. */
+export const getMyAccountability = async (req: any, res: any): Promise<any> => {
+    try {
+        const { id, organization_id } = req.user;
+        if (!organization_id) return res.json({ outstanding: [] });
+        res.json({ outstanding: await getOutstandingRequisitions(id, organization_id) });
+    } catch (error: any) {
+        console.error('[Accountability] Status lookup failed:', error);
+        res.status(500).json({ error: 'Failed to load accountability status' });
     }
 };
 

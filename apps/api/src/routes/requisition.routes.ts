@@ -28,6 +28,7 @@ import {
     autoCompleteRequisition,
     sendAutoCategorizationReminder,
     resolveRecipientName,
+    getMyAccountability,
 } from '../controllers/requisition.controller';
 import {
     disburseRequisition,
@@ -57,6 +58,7 @@ router.use(requireAuth);
 
 // Admin/Accountant routes
 router.get('/admin/all', getAllRequisitionsAdmin);
+router.get('/accountability', getMyAccountability);
 router.patch('/:id/status', updateRequisitionStatus);
 router.post('/:id/revert-to-draft', revertToDraft);
 router.get('/reports/audit', getAuditReport);

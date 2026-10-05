@@ -211,6 +211,17 @@ export const requisitionService = {
         return response.json();
     },
 
+    /** The current user's unreconciled requisitions (Accountability Safeguard). */
+    async getAccountability(): Promise<{ outstanding: Array<{ id: string; status: string; reference_number: string | null; description: string | null }> }> {
+        const response = await apiFetch('/requisitions/accountability');
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch accountability status');
+        }
+
+        return response.json();
+    },
+
     async getById(id: string) {
         const response = await apiFetch(`/requisitions/${id}`);
 
