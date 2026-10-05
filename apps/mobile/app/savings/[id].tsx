@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { View, Text, Pressable, ScrollView, StyleSheet, Image, RefreshControl, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, StyleSheet, Image, RefreshControl, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, CreditCard, UserPlus, Gift, ArrowDownLeft, ArrowUpRight } from 'lucide-react-native';
+import { ChevronLeft, Plus, CreditCard, UserPlus, Gift, ArrowDownLeft, ArrowUpRight, CalendarDays, Repeat, ExternalLink } from 'lucide-react-native';
 import { savingsService, formatKwacha } from 'core';
 import { SavingsBalanceCard, SavingsProgress } from '../../src/components/savings/SavingsUI';
 import { AddMoneySheet, TransferOutSheet } from '../../src/components/savings/SavingsSheets';
@@ -14,6 +14,21 @@ import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+const fmtLongDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+const FREQ_LABEL = { DAILY: 'Daily', WEEKLY: 'Weekly', MONTHLY: 'Monthly' } as const;
+const FREQ_PER = { DAILY: 'a day', WEEKLY: 'a week', MONTHLY: 'a month' } as const;
+
+/** "Save K250 a month to reach K3,000 by 31 December 2026" — from what's left, the date and how often. */
+function savingPlan(item: { targetAmount: number | null; balance: number; targetDate?: string | null; frequency?: 'DAILY' | 'WEEKLY' | 'MONTHLY' | null }): string | null {
+    if (!item.targetAmount || !item.targetDate || !item.frequency) return null;
+    const left = item.targetAmount - item.balance;
+    if (left <= 0) return null;
+    const days = Math.ceil((new Date(`${item.targetDate}T00:00:00`).getTime() - Date.now()) / 86_400_000);
+    if (days <= 0) return 'The goal date has passed.';
+    const periods = item.frequency === 'DAILY' ? days : item.frequency === 'WEEKLY' ? Math.max(1, Math.ceil(days / 7)) : Math.max(1, Math.round(days / 30.44));
+    const per = Math.ceil((left / periods) * 100) / 100;
+    return `Save ${formatKwacha(per)} ${FREQ_PER[item.frequency]} to reach ${formatKwacha(item.targetAmount)} by ${fmtLongDate(item.targetDate)}.`;
+}
 
 /** One savings item: balance, progress, money in/out, members (groups) and its history. */
 export default function SavingsDetailScreen() {
@@ -70,7 +85,7 @@ export default function SavingsDetailScreen() {
             {isPending ? <ActivityIndicator color={colors.blue} style={{ marginTop: 60 }} />
                 : error || !item ? <Text style={styles.muted}>{(error as Error)?.message || 'Not found'}</Text> : (
                 <ScrollView
-                    contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 40, gap: 16 }}
+                    contentContainerStyle={{ flexGrow: 1, padding: 16, paddingBottom: Math.max(insets.bottom, 12) + 8, gap: 16 }}
                     refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.blue} />}
                 >
                     {item.kind === 'WISHLIST' && (
@@ -92,8 +107,27 @@ export default function SavingsDetailScreen() {
                         </View>
                     </View>
 
-                    {isGroup ? (
+                    {(!!item.description || !!item.targetDate || !!item.frequency || !!item.productUrl) && (
                         <View style={styles.card}>
+                            <Text style={styles.cardTitle}>Details</Text>
+                            {!!item.description && <Text style={styles.desc}>{item.description}</Text>}
+                            {!!item.targetDate && (
+                                <View style={styles.detailRow}><CalendarDays size={16} color={colors.textMuted} /><Text style={styles.detailText}>Goal date · {fmtLongDate(item.targetDate)}</Text></View>
+                            )}
+                            {!!item.frequency && (
+                                <View style={styles.detailRow}><Repeat size={16} color={colors.textMuted} /><Text style={styles.detailText}>Saving {FREQ_LABEL[item.frequency].toLowerCase()}</Text></View>
+                            )}
+                            {!!savingPlan(item) && <Text style={styles.plan}>{savingPlan(item)}</Text>}
+                            {!!item.productUrl && (
+                                <Pressable onPress={() => Linking.openURL(item.productUrl!)} style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.7 }]}>
+                                    <ExternalLink size={15} color={colors.blue} /><Text style={styles.linkText}>View the product</Text>
+                                </Pressable>
+                            )}
+                        </View>
+                    )}
+
+                    {isGroup ? (
+                        <View style={[styles.card, styles.fillCard]}>
                             <AnimatedSegmented
                                 value={peopleTab}
                                 onChange={(v) => setPeopleTab(v as 'CONTRIBUTIONS' | 'MEMBERS')}
@@ -136,7 +170,7 @@ export default function SavingsDetailScreen() {
                             )}
                         </View>
                     ) : (
-                        <View style={styles.card}>
+                        <View style={[styles.card, styles.fillCard]}>
                             <Text style={styles.cardTitle}>History</Text>
                             {activity.length === 0 && <Text style={styles.emptyText}>Nothing yet. Tap Add money to start saving.</Text>}
                             {activity.map((a, i) => (
@@ -202,6 +236,13 @@ const styles = StyleSheet.create({
     peopleIndicator: { borderRadius: radius.pill, backgroundColor: colors.surface, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
     peopleTabText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted },
     peopleTabTextOn: { fontFamily: fonts.bodyBold, color: colors.text },
+    fillCard: { flexGrow: 1 },
+    desc: { fontFamily: fonts.body, fontSize: 14, color: colors.text, lineHeight: 20 },
+    detailRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    detailText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted },
+    plan: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.navy, backgroundColor: colors.tabActiveBg, padding: 12, borderRadius: radius.md, lineHeight: 19, overflow: 'hidden' },
+    linkBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 2 },
+    linkText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
     hair: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.borderStrong },
     codeBox: { marginTop: 4, padding: 14, borderRadius: radius.md, backgroundColor: colors.tabActiveBg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
     codeLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.navy },

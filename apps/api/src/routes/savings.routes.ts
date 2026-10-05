@@ -38,6 +38,7 @@ router.get('/', handle((req) => savingsService.list(req.user.organization_id, re
 router.post('/', handle((req) => savingsService.create({
     orgId: req.user.organization_id, userId: req.user.id,
     kind: req.body?.kind, name: req.body?.name, targetAmount: req.body?.targetAmount, imageUrl: req.body?.imageUrl,
+    description: req.body?.description, targetDate: req.body?.targetDate, frequency: req.body?.frequency, productUrl: req.body?.productUrl,
 }), 201));
 router.post('/join', handle((req) => savingsService.join(req.body?.code, req.user.organization_id, req.user.id)));
 router.get('/:id', handle((req) => savingsService.detail(req.params.id, req.user.organization_id, req.user.id)));

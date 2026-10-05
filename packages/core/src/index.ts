@@ -119,7 +119,7 @@ export { lencoService } from './services/lenco.service';
 export { investmentService } from './services/investment.service';
 export { savingsService } from './services/savings.service';
 export type {
-    SavingsKind, SavingsItem, SavingsOverview, SavingsDetail, SavingsMember, SavingsContribution, SavingsMemberSummary,
+    SavingsKind, SavingsFrequency, SavingsItem, SavingsOverview, SavingsDetail, SavingsMember, SavingsContribution, SavingsMemberSummary,
     SavingsInvitePreview, SavingsPerson,
 } from './services/savings.service';
 export type {

@@ -1,6 +1,7 @@
 import { apiJson } from '../api/apiFetch';
 
 export type SavingsKind = 'WISHLIST' | 'GOAL' | 'GROUP';
+export type SavingsFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 
 export interface SavingsMember { name: string; userId: string; avatarUrl?: string | null; role?: string }
 
@@ -10,6 +11,11 @@ export interface SavingsItem {
     name: string;
     targetAmount: number | null;
     imageUrl: string | null;
+    description?: string | null;
+    /** YYYY-MM-DD */
+    targetDate?: string | null;
+    frequency?: SavingsFrequency | null;
+    productUrl?: string | null;
     balance: number;
     /** 0..1, or null when there's no target. */
     progress: number | null;
@@ -85,7 +91,10 @@ export const savingsService = {
     get(id: string): Promise<SavingsDetail> {
         return apiJson(`/savings/${id}`);
     },
-    create(body: { kind: SavingsKind; name: string; targetAmount?: number; imageUrl?: string }): Promise<SavingsItem> {
+    create(body: {
+        kind: SavingsKind; name: string; targetAmount?: number; imageUrl?: string;
+        description?: string; targetDate?: string; frequency?: SavingsFrequency; productUrl?: string;
+    }): Promise<SavingsItem> {
         return apiJson('/savings', { method: 'POST', body: JSON.stringify(body) });
     },
     deposit(id: string, amount: number, sourceWalletId: string): Promise<{ balance: number }> {

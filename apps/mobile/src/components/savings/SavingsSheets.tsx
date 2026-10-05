@@ -8,10 +8,10 @@ import { X, ImagePlus, CheckCircle2, AlertCircle, Smartphone, Wallet as WalletIc
 import {
     savingsService, cashbookService, lencoService, detectMobileNetwork, formatKwacha, requireCapability, getCore,
 } from 'core';
-import type { SavingsItem, SavingsKind } from 'core';
+import type { SavingsItem, SavingsKind, SavingsFrequency } from 'core';
 import { uploadToBucket } from '../../lib/uploads';
 import { useAuth } from '../../context/AuthContext';
-import { SelectField, type SelectOption } from '../invest/application/formFields';
+import { SelectField, DateField, type SelectOption } from '../invest/application/formFields';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 /* ── Shared bottom sheet ─────────────────────────────────────────────────── */
@@ -96,12 +96,18 @@ export const CreateSavingsSheet: React.FC<{ visible: boolean; kind: SavingsKind;
     const copy = KIND_COPY[kind];
     const [name, setName] = useState('');
     const [target, setTarget] = useState('');
+    const [description, setDescription] = useState('');
+    const [goalDate, setGoalDate] = useState('');
+    const [frequency, setFrequency] = useState<SavingsFrequency | null>(null);
+    const [link, setLink] = useState('');
     const [image, setImage] = useState<{ uri: string; url: string } | null>(null);
     const [uploading, setUploading] = useState(false);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    useEffect(() => { if (visible) { setName(''); setTarget(''); setImage(null); setError(null); } }, [visible]);
+    useEffect(() => {
+        if (visible) { setName(''); setTarget(''); setDescription(''); setGoalDate(''); setFrequency(null); setLink(''); setImage(null); setError(null); }
+    }, [visible]);
 
     const pickImage = async () => {
         try {
@@ -124,9 +130,18 @@ export const CreateSavingsSheet: React.FC<{ visible: boolean; kind: SavingsKind;
         if (name.trim().length < 2) { setError('Give it a name.'); return; }
         const t = Number(target);
         if (!copy.targetOptional && (!target || !(t > 0))) { setError(`Enter the ${copy.targetLabel.toLowerCase()}.`); return; }
+        if (goalDate && goalDate <= new Date().toISOString().split('T')[0]) { setError('The goal date must be in the future.'); return; }
         setSaving(true); setError(null);
         try {
-            const item = await savingsService.create({ kind, name: name.trim(), targetAmount: target ? t : undefined, imageUrl: image?.url });
+            const item = await savingsService.create({
+                kind, name: name.trim(), targetAmount: target ? t : undefined, imageUrl: image?.url,
+                ...(kind !== 'GROUP' ? {
+                    description: description.trim() || undefined,
+                    targetDate: goalDate || undefined,
+                    frequency: frequency ?? undefined,
+                    productUrl: kind === 'WISHLIST' && link.trim() ? link.trim() : undefined,
+                } : {}),
+            });
             qc.invalidateQueries({ queryKey: ['savings'] });
             onCreated(item);
         } catch (e: any) {
@@ -136,23 +151,67 @@ export const CreateSavingsSheet: React.FC<{ visible: boolean; kind: SavingsKind;
         }
     };
 
+    const showDetails = kind !== 'GROUP';
+
     return (
         <Sheet visible={visible} onClose={onClose} title={copy.title}>
             <Banner text={error} />
+
             {kind === 'WISHLIST' && (
-                <Pressable onPress={pickImage} style={styles.imagePick} accessibilityLabel="Add a picture">
-                    {uploading ? <ActivityIndicator color={colors.blue} />
-                        : image ? <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="contain" />
-                        : (<><ImagePlus size={24} color={colors.blue} /><Text style={styles.imagePickText}>Add a picture of it</Text></>)}
-                </Pressable>
+                // Same photo box as Products & services on the web: a dashed square you tap, with the hint beside it.
+                <View style={styles.photoRow}>
+                    <Pressable onPress={pickImage} disabled={uploading} style={({ pressed }) => [styles.photoBox, pressed && { opacity: 0.8 }]} accessibilityLabel="Upload item photo">
+                        {uploading ? <ActivityIndicator size="small" color={colors.blue} />
+                            : image ? <Image source={{ uri: image.uri }} style={styles.photoImg} />
+                            : <ImagePlus size={22} color="#D1D5DB" />}
+                    </Pressable>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.photoTitle}>Item photo</Text>
+                        <Text style={styles.photoHint}>Tap the box to upload. Optional but recommended.</Text>
+                        {!!image && <Pressable onPress={() => setImage(null)} hitSlop={6}><Text style={styles.photoRemove}>Remove photo</Text></Pressable>}
+                    </View>
+                </View>
             )}
+
             <Text style={styles.label}>Name</Text>
             <TextInput value={name} onChangeText={setName} placeholder={copy.namePh} placeholderTextColor={colors.textFaint} style={[styles.input, { marginBottom: 16 }]} autoCapitalize="sentences" />
             <Text style={styles.label}>{copy.targetLabel}{copy.targetOptional ? ' (optional)' : ''}</Text>
-            <View style={[styles.amountBox, { marginBottom: 20 }]}>
+            <View style={[styles.amountBox, { marginBottom: 16 }]}>
                 <Text style={styles.currency}>K</Text>
                 <TextInput value={target} onChangeText={(t) => setTarget(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))} placeholder="0.00" placeholderTextColor={colors.textFaint} keyboardType="decimal-pad" style={styles.amountInput} />
             </View>
+
+            {showDetails && (
+                <>
+                    <Text style={styles.label}>Description (optional)</Text>
+                    <TextInput
+                        value={description} onChangeText={setDescription} placeholder={kind === 'WISHLIST' ? 'Why you want it, colour, model…' : 'What this money is for'}
+                        placeholderTextColor={colors.textFaint} multiline style={[styles.input, styles.multiline, { marginBottom: 16 }]}
+                    />
+
+                    <DateField label="Goal date (optional)" value={goalDate} onChange={setGoalDate} />
+
+                    <Text style={styles.label}>How often will you save? (optional)</Text>
+                    <View style={styles.freqRow}>
+                        {([['DAILY', 'Daily'], ['WEEKLY', 'Weekly'], ['MONTHLY', 'Monthly']] as [SavingsFrequency, string][]).map(([f, label]) => (
+                            <Pressable key={f} onPress={() => setFrequency((cur) => (cur === f ? null : f))} style={[styles.freqChip, frequency === f && styles.freqChipOn]}>
+                                <Text style={[styles.freqText, frequency === f && styles.freqTextOn]}>{label}</Text>
+                            </Pressable>
+                        ))}
+                    </View>
+
+                    {kind === 'WISHLIST' && (
+                        <>
+                            <Text style={styles.label}>Link to the product (optional)</Text>
+                            <TextInput
+                                value={link} onChangeText={setLink} placeholder="https://…" placeholderTextColor={colors.textFaint}
+                                autoCapitalize="none" autoCorrect={false} keyboardType="url" style={[styles.input, { marginBottom: 16 }]}
+                            />
+                        </>
+                    )}
+                </>
+            )}
+
             {kind === 'GROUP' && <Text style={styles.hint}>You'll get an invite code to share. People who join can contribute by mobile money.</Text>}
             <PrimaryBtn label="Create" onPress={save} loading={saving} disabled={uploading} dark={kind === 'GROUP'} />
         </Sheet>
@@ -402,6 +461,18 @@ const styles = StyleSheet.create({
     bannerInfo: { backgroundColor: colors.tabActiveBg, borderColor: 'rgba(0,106,255,0.15)' },
     bannerText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, color: '#991B1B' },
     hint: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 19, marginBottom: 14 },
+    photoRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 20 },
+    photoBox: { width: 80, height: 80, borderRadius: 16, backgroundColor: '#F9FAFB', borderWidth: 2, borderStyle: 'dashed', borderColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+    photoImg: { width: '100%', height: '100%' },
+    photoTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#1F2937' },
+    photoHint: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint, marginTop: 2, lineHeight: 17 },
+    photoRemove: { fontFamily: fonts.bodyBold, fontSize: 12, color: '#EF4444', marginTop: 4 },
+    multiline: { minHeight: 84, textAlignVertical: 'top', paddingTop: 12 },
+    freqRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+    freqChip: { flex: 1, height: 40, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, alignItems: 'center', justifyContent: 'center' },
+    freqChipOn: { borderColor: colors.blue, backgroundColor: colors.tabActiveBg },
+    freqText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted },
+    freqTextOn: { fontFamily: fonts.bodyBold, color: colors.blue },
     imagePick: { height: 140, borderRadius: radius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.borderStrong, backgroundColor: colors.tabActiveBg, alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 18, overflow: 'hidden' },
     imagePreview: { width: '100%', height: '100%' },
     imagePickText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.blue },

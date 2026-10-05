@@ -85,6 +85,10 @@ function toSummary(goal: any, balance: number, role: 'OWNER' | 'MEMBER', members
         name: goal.name,
         targetAmount: target,
         imageUrl: goal.image_url,
+        description: goal.description ?? null,
+        targetDate: goal.target_date ?? null,
+        frequency: (goal.frequency ?? null) as 'DAILY' | 'WEEKLY' | 'MONTHLY' | null,
+        productUrl: goal.product_url ?? null,
         balance,
         progress: target ? Math.min(1, balance / target) : null,
         walletId: goal.wallet_id,
@@ -125,7 +129,10 @@ async function membersOf(goalIds: string[]) {
 }
 
 export const savingsService = {
-    async create(params: { orgId: string; userId: string; kind: string; name: string; targetAmount?: unknown; imageUrl?: unknown }) {
+    async create(params: {
+        orgId: string; userId: string; kind: string; name: string; targetAmount?: unknown; imageUrl?: unknown;
+        description?: unknown; targetDate?: unknown; frequency?: unknown; productUrl?: unknown;
+    }) {
         const kind = params.kind as SavingsKind;
         if (!['WISHLIST', 'GOAL', 'GROUP'].includes(kind)) throw new SavingsError('BAD_KIND', 'Unknown savings type');
         const name = clean(params.name, 60);
@@ -139,6 +146,28 @@ export const savingsService = {
         if ((kind === 'WISHLIST' || kind === 'GROUP') && !target) throw new SavingsError('VALIDATION', 'Enter how much you need');
 
         const imageUrl = typeof params.imageUrl === 'string' && /^https:\/\//.test(params.imageUrl) ? params.imageUrl.slice(0, 500) : null;
+
+        // Optional details. Only sent to the database when given, so creating without them keeps working
+        // even before the details migration (20261007120000) has been applied.
+        const details: Record<string, any> = {};
+        const description = clean(params.description, 500);
+        if (description) details.description = description;
+        if (typeof params.targetDate === 'string' && params.targetDate) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(params.targetDate) || Number.isNaN(Date.parse(params.targetDate))) throw new SavingsError('VALIDATION', 'Enter a valid goal date');
+            if (params.targetDate <= today()) throw new SavingsError('VALIDATION', 'The goal date must be in the future');
+            details.target_date = params.targetDate;
+        }
+        if (params.frequency) {
+            if (!['DAILY', 'WEEKLY', 'MONTHLY'].includes(String(params.frequency))) throw new SavingsError('VALIDATION', 'Choose daily, weekly or monthly');
+            details.frequency = params.frequency;
+        }
+        if (kind === 'WISHLIST' && typeof params.productUrl === 'string' && params.productUrl.trim()) {
+            let url = params.productUrl.trim();
+            if (!/^https?:\/\//i.test(url)) url = `https://${url}`;
+            try { const u = new URL(url); if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.')) throw new Error('bad'); }
+            catch { throw new SavingsError('VALIDATION', 'Enter a valid product link'); }
+            details.product_url = url.slice(0, 500);
+        }
 
         // The wallet name doubles as the ledger account name, so it must be unique in the org.
         let walletName = `${name} (Savings)`;
@@ -187,6 +216,7 @@ export const savingsService = {
                 image_url: imageUrl,
                 invite_code: kind === 'GROUP' ? inviteCode() : null,
                 created_by: params.userId,
+                ...(kind === 'GROUP' ? {} : details),
             })
             .select('*')
             .single();
