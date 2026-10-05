@@ -110,17 +110,14 @@ export function buildApplicationPdf(input: ApplicationPdfInput): Promise<Buffer>
         row('ID type', a.id_type);
         row('ID number', a.id_number);
 
-        section('Employment & source of funds');
-        row('Employer', a.employer);
-        row('Employee number', a.employee_number);
-        row('Source of income', a.source_of_income);
+        section('Occupation & source of funds');
         row('Occupation', a.occupation);
+        row('Source of income', a.source_of_income);
 
         section('Banking details');
         row('Bank name', a.bank_name);
-        row('Branch name', a.branch_name);
         row('Account number', a.bank_account_number);
-        row('Account name', a.bank_account_name);
+        row('Account name (verified with the bank)', a.bank_account_name);
 
         section('Sales & next of kin');
         row('Sales person', a.sales_person);

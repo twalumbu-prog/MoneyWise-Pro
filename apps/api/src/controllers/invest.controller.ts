@@ -226,6 +226,24 @@ export const connectInvestorAccount = async (req: any, res: any): Promise<any> =
     } catch (error: any) { sendAccountError(res, error, 'Failed to connect the account'); }
 };
 
+/** Reads an uploaded ID with AI so the application form can be pre-filled. */
+const extractionCalls = new Map<string, number[]>();
+export const extractInvestorId = async (req: any, res: any): Promise<any> => {
+    try {
+        const { path, idType } = req.body ?? {};
+        if (typeof path !== 'string') return res.status(400).json({ error: 'path is required' });
+
+        // Each call is a paid vision request: cap it per user so it can't be used as a free OCR endpoint.
+        const now = Date.now();
+        const recent = (extractionCalls.get(req.user.id) ?? []).filter(t => now - t < 60 * 60 * 1000);
+        if (recent.length >= 12) return res.status(429).json({ error: 'Too many ID reads. Please enter your details manually or try again later.' });
+        recent.push(now);
+        extractionCalls.set(req.user.id, recent);
+
+        res.json(await investorAccountService.extractIdDetails(req.user.id, path, typeof idType === 'string' ? idType : ''));
+    } catch (error: any) { sendAccountError(res, error, 'Failed to read the ID'); }
+};
+
 export const applyForInvestorAccount = async (req: any, res: any): Promise<any> => {
     try {
         const { targetId, applicant, documents, declaration } = req.body ?? {};

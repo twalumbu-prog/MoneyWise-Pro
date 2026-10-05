@@ -1,4 +1,5 @@
 import { apiFetch, apiJson } from '../api/apiFetch';
+import type { IdExtraction } from '../reference/investorOnboarding';
 
 export interface InvestmentTarget {
     id: string;
@@ -116,6 +117,11 @@ export const investmentService = {
     /** Submits the onboarding application (the API builds the PDF and emails the company). */
     applyForAccount(payload: { targetId: string; applicant: Record<string, string>; documents: Record<string, string>; declaration: boolean }): Promise<MyInvestorAccount> {
         return apiJson('/investments/accounts/apply', { method: 'POST', body: JSON.stringify(payload) });
+    },
+
+    /** Has the server's AI read an uploaded ID (already in storage) and return what it could extract. */
+    extractIdDetails(path: string, idType: string): Promise<IdExtraction> {
+        return apiJson('/investments/accounts/extract-id', { method: 'POST', body: JSON.stringify({ path, idType }) });
     },
 
     // Company side (CRM → Investors)

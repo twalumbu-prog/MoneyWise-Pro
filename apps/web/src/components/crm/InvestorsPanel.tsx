@@ -147,8 +147,8 @@ const SECTIONS: { title: string; rows: [string, string][] }[] = [
     { title: 'Personal details', rows: [['First name', 'first_name'], ['Middle name', 'middle_name'], ['Last name', 'last_name'], ['Date of birth', 'date_of_birth'], ['Gender', 'gender'], ['Nationality', 'nationality']] },
     { title: 'Contact', rows: [['Email', 'email'], ['Phone', 'phone'], ['Address', 'physical_address']] },
     { title: 'Identification', rows: [['ID type', 'id_type'], ['ID number', 'id_number']] },
-    { title: 'Employment & funds', rows: [['Employer', 'employer'], ['Employee no.', 'employee_number'], ['Source of income', 'source_of_income'], ['Occupation', 'occupation']] },
-    { title: 'Banking', rows: [['Bank', 'bank_name'], ['Branch', 'branch_name'], ['Account number', 'bank_account_number'], ['Account name', 'bank_account_name']] },
+    { title: 'Occupation & funds', rows: [['Occupation', 'occupation'], ['Source of income', 'source_of_income']] },
+    { title: 'Banking (account name verified with the bank)', rows: [['Bank', 'bank_name'], ['Account number', 'bank_account_number'], ['Account name', 'bank_account_name']] },
     { title: 'Sales & next of kin', rows: [['Sales person', 'sales_person'], ['Full name', 'nok_full_name'], ['ID / NRC / passport', 'nok_id_number'], ['Date of birth', 'nok_date_of_birth'], ['Contact', 'nok_phone'], ['Relationship', 'nok_relationship']] },
 ];
 

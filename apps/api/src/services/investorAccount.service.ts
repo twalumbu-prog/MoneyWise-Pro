@@ -20,6 +20,8 @@ import { supabase } from '../lib/supabase';
 import { emailService } from './email.service';
 import { LencoService } from './lenco.service';
 import { buildApplicationPdf } from './investorApplicationPdf';
+import { pushService } from './push.service';
+import { callAllOcrProviders } from './ai/ai.provider';
 
 export const KYC_BUCKET = 'investor-kyc';
 const FRONTEND_URL = process.env.FRONTEND_URL
@@ -63,7 +65,6 @@ const REQUIRED_TEXT: Array<[string, string]> = [
     ['source_of_income', 'Source of income'],
     ['occupation', 'Occupation'],
     ['bank_name', 'Bank name'],
-    ['branch_name', 'Branch name'],
     ['bank_account_number', 'Bank account number'],
     ['bank_account_name', 'Bank account name'],
     ['nok_full_name', 'Next of kin full name'],
@@ -71,7 +72,7 @@ const REQUIRED_TEXT: Array<[string, string]> = [
     ['nok_phone', 'Next of kin contact number'],
     ['nok_relationship', 'Relationship to next of kin'],
 ];
-const OPTIONAL_TEXT = ['middle_name', 'employer', 'employee_number', 'sales_person'];
+const OPTIONAL_TEXT = ['middle_name', 'sales_person'];
 
 export function validateApplicant(raw: any): { applicant: Record<string, string>; errors: string[] } {
     const errors: string[] = [];
@@ -104,61 +105,58 @@ export function validateApplicant(raw: any): { applicant: Record<string, string>
     return { applicant: a, errors };
 }
 
+const ID_TYPES = ['NRC', 'Passport', "Driver's Licence"];
+const idNeedsBack = (t: string) => t === 'NRC' || t === "Driver's Licence";
+
 const DOC_LABELS: Record<string, string> = {
-    nrc_front: 'NRC – front',
-    nrc_back: 'NRC – back',
-    nrc_combined: 'NRC – front and back',
+    id_front: 'ID – front',
+    id_back: 'ID – back',
     photo: 'Passport-size photo',
     proof_of_residence: 'Proof of residence',
-    reference_letter: 'Reference letter',
-    proof_of_income: 'Proof of income',
 };
+
+/** "NRC – front", "Passport – photo page"… */
+function docLabel(key: string, idType?: string): string {
+    if (key === 'id_front') return idType === 'Passport' ? 'Passport – photo page' : `${idType || 'ID'} – front`;
+    if (key === 'id_back') return `${idType || 'ID'} – back`;
+    return DOC_LABELS[key] ?? key;
+}
 
 async function objectExists(path: string): Promise<boolean> {
     const { error } = await supabase.storage.from(KYC_BUCKET).createSignedUrl(path, 30);
     return !error;
 }
 
-export async function validateDocuments(raw: any, userId: string): Promise<{ documents: Record<string, string>; errors: string[] }> {
+export async function validateDocuments(raw: any, userId: string): Promise<{ documents: Record<string, string>; idType: string; errors: string[] }> {
     const errors: string[] = [];
     const src = raw && typeof raw === 'object' ? raw : {};
     const documents: Record<string, string> = {};
 
-    const method = src.nrc_method === 'COMBINED' ? 'COMBINED' : 'SEPARATE';
-    const wanted = [
-        ...(method === 'COMBINED' ? ['nrc_combined'] : ['nrc_front', 'nrc_back']),
-        'photo', 'proof_of_residence', 'reference_letter', 'proof_of_income',
-    ];
+    const idType = typeof src.id_type === 'string' ? src.id_type.trim() : '';
+    if (!ID_TYPES.includes(idType)) errors.push('Choose the kind of ID you uploaded');
 
-    for (const key of wanted) {
+    for (const key of ['id_front', 'id_back', 'photo', 'proof_of_residence']) {
         const p = typeof src[key] === 'string' ? src[key].trim() : '';
         if (!p) continue;
         // Uploads go to the investor's own folder; refusing anything else stops one user
         // pointing an application at another user's files.
         if (p.length > 300 || !p.startsWith(`${userId}/`) || p.includes('..')) {
-            errors.push(`${DOC_LABELS[key]}: invalid file reference`);
+            errors.push(`${docLabel(key, idType)}: invalid file reference`);
             continue;
         }
         if (!(await objectExists(p))) {
-            errors.push(`${DOC_LABELS[key]}: the upload could not be found, please upload it again`);
+            errors.push(`${docLabel(key, idType)}: the upload could not be found, please upload it again`);
             continue;
         }
         documents[key] = p;
     }
 
-    if (method === 'COMBINED') {
-        if (!documents.nrc_combined) errors.push('NRC (front and back) is required');
-    } else {
-        if (!documents.nrc_front) errors.push('NRC front is required');
-        if (!documents.nrc_back) errors.push('NRC back is required');
-    }
+    if (!documents.id_front) errors.push(idType === 'Passport' ? 'Your passport photo page is required' : 'The front of your ID is required');
+    if (idNeedsBack(idType) && !documents.id_back) errors.push('The back of your ID is required');
     if (!documents.photo) errors.push('Passport-size photo is required');
-    if (!documents.proof_of_residence && !documents.reference_letter) {
-        errors.push('Upload a proof of residence or a reference letter (one is enough)');
-    }
-    if (!documents.proof_of_income) errors.push('Proof of income is required');
+    if (!documents.proof_of_residence) errors.push('Proof of residence is required');
 
-    return { documents, errors };
+    return { documents, idType, errors };
 }
 
 // ── Targets ──────────────────────────────────────────────────────────────────
@@ -192,6 +190,113 @@ async function targetForOrg(orgId: string) {
         .eq('is_active', true)
         .maybeSingle();
     return data as { id: string; display_name: string; wallet_id: string } | null;
+}
+
+
+// ── ID reading (AI) ──────────────────────────────────────────────────────────
+
+export interface IdExtraction {
+    first_name?: string;
+    middle_name?: string;
+    last_name?: string;
+    date_of_birth?: string;
+    gender?: 'MALE' | 'FEMALE' | 'OTHER';
+    nationality?: string;
+    id_number?: string;
+    confidence?: number;
+    looks_like_id?: boolean;
+}
+
+const ID_PROMPT = (idType: string) => `You read identity documents for a financial-services onboarding form in Zambia.
+The user says this image is their ${idType}. Extract only what is clearly legible. NEVER guess or invent a value: use null when a field is missing, cut off, blurry or you are not sure.
+
+Return a JSON object exactly like:
+{
+  "looks_like_id": true,
+  "first_name": "given name (first only)",
+  "middle_name": "other given names, or null",
+  "last_name": "surname",
+  "date_of_birth": "YYYY-MM-DD",
+  "gender": "MALE" | "FEMALE" | "OTHER",
+  "nationality": "e.g. Zambian",
+  "id_number": "the document number",
+  "confidence": 0.0
+}
+
+Notes:
+- A Zambian NRC number looks like 123456/10/1 (six digits / two digits / one digit). Keep the slashes.
+- Passports: use the number from the data page, not the machine-readable lines unless nothing else is legible.
+- Convert any date format to YYYY-MM-DD.
+- Set "looks_like_id" to false (and everything else null) if the image is not an identity document at all.
+- Capitalise names normally (not ALL CAPS).`;
+
+const titleCase = (v: unknown): string | undefined => {
+    if (typeof v !== 'string') return undefined;
+    const t = v.replace(/\s+/g, ' ').trim();
+    if (!t) return undefined;
+    return t === t.toUpperCase() ? t.toLowerCase().replace(/(^|[\s'-])([a-z])/g, (_m, a, b) => a + b.toUpperCase()) : t;
+};
+
+function normalizeDob(v: unknown): string | undefined {
+    if (typeof v !== 'string') return undefined;
+    const t = v.trim();
+    let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(t);
+    if (!m) {
+        const d = /^(\d{1,2})[\/.\- ](\d{1,2})[\/.\- ](\d{4})$/.exec(t);
+        if (d) m = [t, d[3], d[2].padStart(2, '0'), d[1].padStart(2, '0')] as any;
+    }
+    if (!m) return undefined;
+    const iso = `${m[1]}-${m[2]}-${m[3]}`;
+    return isIsoDate(iso) && ageOn(iso) >= 0 && ageOn(iso) < 121 ? iso : undefined;
+}
+
+/**
+ * Reads the uploaded ID with the vision model so the investor doesn't retype it. Anything it
+ * cannot read is simply left out — the form falls back to manual entry. Never throws for an
+ * AI failure; only for a bad file reference.
+ */
+async function extractIdDetails(userId: string, path: string, idType: string): Promise<IdExtraction> {
+    if (typeof path !== 'string' || path.length > 300 || !path.startsWith(`${userId}/`) || path.includes('..')) {
+        throw new InvestorAccountError('BAD_FILE', 'Invalid file reference');
+    }
+    const kind = ID_TYPES.includes(idType) ? idType : 'ID';
+    const buf = await download(path);
+    if (!buf) throw new InvestorAccountError('NOT_FOUND', 'That upload could not be found', 404);
+
+    const ext = (path.split('.').pop() || '').toLowerCase();
+    const mime = ext === 'pdf' ? 'application/pdf' : ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+
+    let parsed: any = null;
+    try {
+        const results = await callAllOcrProviders(ID_PROMPT(kind), buf.toString('base64'), mime);
+        for (const r of results) {
+            try {
+                const txt = r.text.replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
+                parsed = JSON.parse(txt);
+                if (parsed && typeof parsed === 'object') break;
+            } catch { parsed = null; }
+        }
+    } catch (e: any) {
+        console.error('[InvestorAccounts] ID extraction failed:', e.message);
+    }
+    if (!parsed) return {};
+
+    if (parsed.looks_like_id === false) return { looks_like_id: false };
+
+    const gender = typeof parsed.gender === 'string' ? parsed.gender.trim().toUpperCase() : '';
+    const idNumber = typeof parsed.id_number === 'string' ? parsed.id_number.replace(/\s+/g, '').slice(0, 40) : '';
+    const conf = Number(parsed.confidence);
+    return {
+        looks_like_id: true,
+        first_name: titleCase(parsed.first_name),
+        middle_name: titleCase(parsed.middle_name),
+        last_name: titleCase(parsed.last_name),
+        date_of_birth: normalizeDob(parsed.date_of_birth),
+        gender: gender === 'MALE' || gender === 'M' ? 'MALE' : gender === 'FEMALE' || gender === 'F' ? 'FEMALE' : undefined,
+        nationality: titleCase(parsed.nationality),
+        id_number: idNumber || undefined,
+        confidence: Number.isFinite(conf) ? Math.max(0, Math.min(1, conf)) : undefined,
+    };
 }
 
 // ── Investor side ────────────────────────────────────────────────────────────
@@ -285,8 +390,9 @@ async function apply(params: { investorOrgId: string; userId: string; targetId: 
     if (target.organization_id === params.investorOrgId) throw new InvestorAccountError('OWN_ORG', 'You cannot invest in your own organization');
     if (params.declaration !== true) throw new InvestorAccountError('DECLARATION', 'Please accept the declaration to submit your application.');
 
-    const { applicant, errors: applicantErrors } = validateApplicant(params.applicant);
-    const { documents, errors: docErrors } = await validateDocuments(params.documents, params.userId);
+    // The ID type comes from the document the investor uploaded, never from a typed field.
+    const { documents, idType, errors: docErrors } = await validateDocuments(params.documents, params.userId);
+    const { applicant, errors: applicantErrors } = validateApplicant({ ...(params.applicant ?? {}), id_type: idType });
     const errors = [...applicantErrors, ...docErrors];
     if (errors.length) throw new InvestorAccountError('VALIDATION', errors[0], 422, { errors });
 
@@ -360,7 +466,7 @@ async function deliverApplication(
         applicationId: id,
         submittedAt,
         applicant,
-        uploadedDocuments: Object.keys(documents).map(k => DOC_LABELS[k] ?? k),
+        uploadedDocuments: Object.keys(documents).map(k => docLabel(k, applicant.id_type)),
         declarationAcceptedAt: submittedAt,
         photo,
     });
@@ -384,11 +490,11 @@ async function deliverApplication(
     const omitted: string[] = [];
     for (const [key, path] of Object.entries(documents)) {
         const buf = await download(path);
-        if (!buf) { omitted.push(DOC_LABELS[key] ?? key); continue; }
-        if (buf.length > budget) { omitted.push(DOC_LABELS[key] ?? key); continue; }
+        if (!buf) { omitted.push(docLabel(key, applicant.id_type)); continue; }
+        if (buf.length > budget) { omitted.push(docLabel(key, applicant.id_type)); continue; }
         budget -= buf.length;
         const ext = (path.split('.').pop() || 'bin').toLowerCase();
-        attachments.push({ filename: `${DOC_LABELS[key] ?? key}.${ext}`.replace(/[\/\\]/g, '-'), content: buf });
+        attachments.push({ filename: `${docLabel(key, applicant.id_type)}.${ext}`.replace(/[\/\\]/g, '-'), content: buf });
     }
 
     const link = `${FRONTEND_URL}/crm?tab=investors&application=${id}`;
@@ -511,7 +617,7 @@ async function getApplication(id: string, targetOrgId: string) {
 
     const docs: Record<string, { label: string; url: string | null }> = {};
     for (const [key, path] of Object.entries((data.documents ?? {}) as Record<string, string>)) {
-        docs[key] = { label: DOC_LABELS[key] ?? key, url: await signed(path) };
+        docs[key] = { label: docLabel(key, (data.applicant as any)?.id_type), url: await signed(path) };
     }
     const { data: investments } = await supabase
         .from('investments')
@@ -586,7 +692,24 @@ async function review(params: {
     }
 
     notifyApplicant(acct, status, accountNumber, note).catch(e => console.error('[InvestorAccounts] notify failed:', e.message));
+    pushApplicant(acct, status, accountNumber).catch(e => console.error('[InvestorAccounts] push failed:', e.message));
     return updated;
+}
+
+/** A push so the investor sees the decision straight away; a tap opens their applications. */
+async function pushApplicant(acct: any, status: InvestorAccountStatus, accountNumber: string | null) {
+    if (acct.status === status || !acct.user_id) return;
+    const target = await loadTarget(acct.investment_target_id);
+    const company = target?.display_name ?? 'the investment company';
+    const copy: Partial<Record<InvestorAccountStatus, [string, string]>> = {
+        ACTIVE: [`${company} account approved`, `Your account number is ${accountNumber}. You can invest now.`],
+        REJECTED: [`Update on your ${company} application`, 'Tap to see why and apply again.'],
+        INFO_REQUESTED: [`${company} needs more information`, 'Tap to see what they need.'],
+        SUSPENDED: [`Your ${company} account was suspended`, 'Tap for details.'],
+    };
+    const c = copy[status];
+    if (!c) return;
+    await pushService.sendToUser(acct.user_id, { title: c[0], body: c[1], data: { type: 'invest_application', id: acct.id } });
 }
 
 async function notifyApplicant(acct: any, status: InvestorAccountStatus, accountNumber: string | null, note: string | null) {
@@ -766,6 +889,7 @@ async function syncForwardAutomation(orgId: string, userId: string): Promise<'ac
 
 export const investorAccountService = {
     myAccounts,
+    extractIdDetails,
     connect,
     apply,
     assertCanInvest,

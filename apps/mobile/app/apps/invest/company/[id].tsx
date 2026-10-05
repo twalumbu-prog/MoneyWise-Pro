@@ -3,6 +3,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { ChevronRight, Star, Users, BadgeCheck } from 'lucide-react-native';
 import { TYPE_CONFIG } from '../../../../src/data/investCatalog';
 import { useInvestProviders } from '../../../../src/hooks/useInvestProviders';
+import { useInvestorAccounts } from '../../../../src/hooks/useInvestorAccounts';
 import { InvestLogo } from '../../../../src/components/invest/InvestLogo';
 import { ScreenHeader } from '../../../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../../../src/theme/tokens';
@@ -13,6 +14,9 @@ export default function InvestCompanyScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const providers = useInvestProviders();
     const provider = providers.find((p) => p.id === id) ?? providers[0];
+    const { accountFor } = useInvestorAccounts();
+    const account = accountFor(provider.investmentTargetId);
+    const verified = account?.status === 'ACTIVE';
 
     return (
         <View style={styles.root}>
@@ -30,8 +34,9 @@ export default function InvestCompanyScreen() {
                             <View style={styles.logoWrap}><InvestLogo logo={provider.logo} size={64} /></View>
                             <View style={styles.nameRow}>
                                 <Text style={styles.name}>{provider.name}</Text>
-                                <BadgeCheck size={18} color={colors.blue} />
+                                {verified && <BadgeCheck size={18} color={colors.blue} accessibilityLabel="Verified account" />}
                             </View>
+                            {verified && !!account?.accountNumber && <Text style={styles.acct}>Account no. {account.accountNumber}</Text>}
                             <View style={styles.statsRow}>
                                 <View style={styles.statItem}><Star size={12} color="#EAB308" fill="#EAB308" /><Text style={styles.statText}>{provider.reviews}</Text></View>
                                 <View style={styles.statItem}><Users size={12} color={colors.textMuted} /><Text style={styles.statText}>{provider.investors}</Text></View>
@@ -80,6 +85,7 @@ const styles = StyleSheet.create({
     },
     nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
     name: { fontFamily: fonts.bodyBold, fontSize: 19, color: colors.text },
+    acct: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted, marginTop: -4 },
     statsRow: { flexDirection: 'row', gap: 16 },
     statItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
     statText: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted },

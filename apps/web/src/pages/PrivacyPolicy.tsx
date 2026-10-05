@@ -56,6 +56,7 @@ export const PrivacyPolicy = () => {
                             <li>Account category mappings</li>
                             <li>Ledger, cashbook, budget, invoice, payroll and reporting data you or your organisation enter</li>
                             <li>Receipts, photos and documents you attach</li>
+                            <li>Identity documents you upload when applying for an investment account (ID, photo, proof of residence). An AI service reads your ID so we can pre-fill the form; the document is not used to train models</li>
                         </ul>
 
                         <h3 className="text-lg font-semibold text-gray-900 mb-2">2.2a Device Permissions and Usage</h3>

@@ -121,12 +121,13 @@ export type {
     InvestorApplicationDetail, PayoutSettings,
 } from './services/investment.service';
 export {
-    ID_TYPES, GENDERS, OCCUPATIONS, RELATIONSHIPS, ZAMBIA_BANK_NAMES, NATIONALITIES, EMPTY_APPLICANT,
+    ID_TYPES, GENDERS, OCCUPATIONS, INCOME_SOURCES, RELATIONSHIPS, ZAMBIA_BANK_NAMES, NATIONALITIES, EMPTY_APPLICANT,
     DOC_LIMITS, APPLICATION_STEPS, INVESTOR_STATUS_LABEL,
-    toIsoDate, splitIsoDate, ageFromIso, validateApplicantStep, validateDocumentsStep,
+    idNeedsBack, flagFromIso2, nationalityFlag,
+    toIsoDate, splitIsoDate, ageFromIso, validateApplicantStep, validateDocumentStep,
 } from './reference/investorOnboarding';
 export type {
-    IdType, NrcMethod, InvestorApplicant, InvestorDocuments, InvestorDocKey, FieldErrors, ApplicationStepId,
+    IdType, InvestorApplicant, InvestorDocuments, InvestorDocKey, IdExtraction, FieldErrors, ApplicationStepId,
 } from './reference/investorOnboarding';
 
 export { payrollService } from './services/payroll.service';

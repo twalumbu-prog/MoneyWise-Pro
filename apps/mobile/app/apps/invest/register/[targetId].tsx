@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CheckCircle2, Mail, Clock } from 'lucide-react-native';
+import { Check, Mail, Clock } from 'lucide-react-native';
 import { useInvestProviders } from '../../../../src/hooks/useInvestProviders';
 import { InvestApplicationWizard } from '../../../../src/components/invest/application/InvestApplicationWizard';
 import { InvestLogo } from '../../../../src/components/invest/InvestLogo';
@@ -33,7 +33,7 @@ export default function InvestRegisterScreen() {
         return (
             <View style={[styles.done, { paddingTop: insets.top + 48, paddingBottom: Math.max(insets.bottom, 20) + 12 }]}>
                 <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-                <View style={styles.tick}><CheckCircle2 size={44} color={colors.positiveInk} /></View>
+                <View style={styles.tick}><Check size={42} color={colors.positive} strokeWidth={2.5} /></View>
                 <Text style={styles.doneTitle}>Application sent</Text>
                 <Text style={styles.doneText}>
                     Your application has been sent to {provider.name}. We emailed you a confirmation.
@@ -74,7 +74,7 @@ const styles = StyleSheet.create({
     centre: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: colors.canvas, padding: 24 },
     muted: { fontFamily: fonts.body, fontSize: 14, color: colors.textMuted, textAlign: 'center' },
     done: { flex: 1, backgroundColor: colors.canvas, paddingHorizontal: 24, alignItems: 'center' },
-    tick: { width: 84, height: 84, borderRadius: 42, backgroundColor: '#ECFDF5', alignItems: 'center', justifyContent: 'center' },
+    tick: { width: 88, height: 88, borderRadius: 44, borderWidth: 3, borderColor: colors.positive, alignItems: 'center', justifyContent: 'center' },
     doneTitle: { fontFamily: fonts.bodyBold, fontSize: 24, color: colors.navy, marginTop: 20 },
     doneText: { fontFamily: fonts.body, fontSize: 15, color: colors.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 22 },
     card: { flexDirection: 'row', gap: 14, alignItems: 'flex-start', alignSelf: 'stretch', marginTop: 28, padding: 18, borderRadius: radius.lg, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },

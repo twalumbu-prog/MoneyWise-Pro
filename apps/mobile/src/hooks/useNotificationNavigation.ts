@@ -24,6 +24,9 @@ export function useNotificationNavigation() {
                 case 'cashbook':
                     router.push('/(tabs)/wallet');
                     break;
+                case 'invest_application':
+                    router.push('/apps/invest/applications');
+                    break;
                 case 'organization_switch':
                     router.push('/(tabs)/menu');
                     break;

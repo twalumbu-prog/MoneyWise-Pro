@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
+    View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requireCapability, DOC_LIMITS, toIsoDate, splitIsoDate } from 'core';
@@ -14,7 +14,7 @@ import { colors, fonts, radius } from '../../../theme/tokens';
 
 /* ── Select ───────────────────────────────────────────────────────────────── */
 
-export interface SelectOption { value: string; label: string }
+export interface SelectOption { value: string; label: string; /** Shown before the label, e.g. a flag or logo. */ leading?: React.ReactNode }
 
 /** A field that opens a searchable bottom sheet — the phone version of a <select>. */
 export const SelectField: React.FC<{
@@ -52,6 +52,7 @@ export const SelectField: React.FC<{
                 accessibilityRole="button"
                 accessibilityLabel={`${label}${selected ? `, ${selected.label}` : ''}`}
             >
+                {!!selected?.leading && <View style={styles.leading}>{selected.leading}</View>}
                 <Text style={[styles.selectText, !selected && { color: colors.textFaint }]} numberOfLines={1}>
                     {selected?.label || placeholder}
                 </Text>
@@ -94,6 +95,7 @@ export const SelectField: React.FC<{
                                         onPress={() => { onChange(item.value); close(); }}
                                         style={({ pressed }) => [styles.option, pressed && { backgroundColor: colors.chipActiveBg }]}
                                     >
+                                        {!!item.leading && <View style={styles.leading}>{item.leading}</View>}
                                         <Text style={[styles.optionText, active && styles.optionTextActive]}>{item.label}</Text>
                                         {active && <Check size={18} color={colors.blue} />}
                                     </Pressable>
@@ -173,18 +175,25 @@ export const DateField: React.FC<{
 
 /* ── Document upload ──────────────────────────────────────────────────────── */
 
-export interface UploadedDoc { path: string; name: string }
+export interface UploadedDoc {
+    path: string;
+    name: string;
+    /** Local file for the preview thumbnail (images only). */
+    uri?: string;
+}
 
 const extOf = (name: string) => (name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 5) || 'jpg';
 
 /**
- * One upload slot. Photos can come from the camera or the library; documents may also be
- * PDFs. Images are compressed on the phone, PDFs are checked against the size limit, and
- * the file goes straight to the private bucket under the investor's own folder.
+ * One upload slot, drawn as a card showing what the document should look like — tap the
+ * illustration to upload. Photos can come from the camera or the library; documents may
+ * also be PDFs. Images are compressed on the phone, PDFs are checked against the size limit,
+ * and the file goes straight to the private bucket under the investor's own folder.
  */
-export const DocumentField: React.FC<{
+export const DocUploadCard: React.FC<{
     label: string;
     hint?: string;
+    illustration: React.ReactNode;
     /** `photo` = camera/library only; `any` also allows PDFs. */
     kind?: 'photo' | 'any';
     userId: string;
@@ -193,8 +202,7 @@ export const DocumentField: React.FC<{
     value?: UploadedDoc;
     onChange: (doc: UploadedDoc | undefined) => void;
     error?: string;
-    optional?: boolean;
-}> = ({ label, hint, kind = 'any', userId, folder, slot, value, onChange, error, optional }) => {
+}> = ({ label, hint, illustration, kind = 'any', userId, folder, slot, value, onChange, error }) => {
     const insets = useSafeAreaInsets();
     const [sheet, setSheet] = useState(false);
     const [busy, setBusy] = useState(false);
@@ -225,7 +233,7 @@ export const DocumentField: React.FC<{
             const ext = isPdf ? 'pdf' : extOf(file.name);
             const path = `${userId}/${folder}/${slot}_${Date.now()}.${ext}`;
             await uploadToBucket('investor-kyc', path, { ...file, mimeType: isPdf ? 'application/pdf' : file.mimeType });
-            onChange({ path, name: picked.name || `${slot}.${ext}` });
+            onChange({ path, name: picked.name || `${slot}.${ext}`, uri: isImage ? file.uri : undefined });
         } catch (e: any) {
             setLocalError(e?.message || 'The upload failed. Check your connection and try again.');
         } finally {
@@ -237,39 +245,32 @@ export const DocumentField: React.FC<{
 
     return (
         <View style={styles.field}>
-            <View style={styles.labelRow}>
-                <Text style={styles.label}>{label}</Text>
-                {optional && <Text style={styles.optional}>Optional</Text>}
-            </View>
+            <Text style={styles.label}>{label}</Text>
             {!!hint && <Text style={styles.hint}>{hint}</Text>}
 
-            {value ? (
-                <View style={styles.docDone}>
-                    <CheckCircle2 size={20} color={colors.positiveInk} />
-                    <View style={{ flex: 1 }}>
-                        <Text style={styles.docName} numberOfLines={1}>{value.name}</Text>
-                        <Text style={styles.docMeta}>Uploaded</Text>
+            <Pressable
+                onPress={() => !busy && setSheet(true)}
+                style={({ pressed }) => [styles.docCard, !!value && styles.docCardDone, !!shownError && styles.docCardError, pressed && { opacity: 0.85 }]}
+                accessibilityRole="button"
+                accessibilityLabel={value ? `${label} uploaded. Tap to replace` : `Upload ${label}`}
+            >
+                {value?.uri ? (
+                    <Image source={{ uri: value.uri }} style={styles.docPreview} resizeMode="contain" />
+                ) : (
+                    <View style={[styles.docIllustration, !!value && { opacity: 0.35 }]}>{illustration}</View>
+                )}
+
+                {busy ? (
+                    <View style={styles.docOverlay}><ActivityIndicator color={colors.blue} /><Text style={styles.docOverlayText}>Uploading…</Text></View>
+                ) : value ? (
+                    <View style={styles.docBadgeRow}>
+                        <View style={styles.docBadge}><CheckCircle2 size={14} color={colors.positiveInk} /><Text style={styles.docBadgeText} numberOfLines={1}>{value.uri ? 'Uploaded' : value.name}</Text></View>
+                        <View style={styles.docBadgeAlt}><RefreshCw size={12} color={colors.blue} /><Text style={styles.docBadgeAltText}>Replace</Text></View>
                     </View>
-                    <Pressable onPress={() => setSheet(true)} hitSlop={8} style={styles.docAction} accessibilityLabel={`Replace ${label}`}>
-                        <RefreshCw size={16} color={colors.blue} />
-                    </Pressable>
-                    <Pressable onPress={() => onChange(undefined)} hitSlop={8} style={styles.docAction} accessibilityLabel={`Remove ${label}`}>
-                        <X size={16} color={colors.textMuted} />
-                    </Pressable>
-                </View>
-            ) : (
-                <Pressable
-                    onPress={() => setSheet(true)}
-                    disabled={busy}
-                    style={({ pressed }) => [styles.docEmpty, !!shownError && styles.docEmptyError, pressed && { opacity: 0.7 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Upload ${label}`}
-                >
-                    {busy ? <ActivityIndicator color={colors.blue} /> : <UploadCloud size={22} color={colors.blue} />}
-                    <Text style={styles.docEmptyText}>{busy ? 'Uploading…' : 'Tap to upload'}</Text>
-                </Pressable>
-            )}
-            {busy && value && <Text style={styles.docMeta}>Uploading…</Text>}
+                ) : (
+                    <View style={styles.docCta}><UploadCloud size={16} color="#FFFFFF" /><Text style={styles.docCtaText}>Tap to upload</Text></View>
+                )}
+            </Pressable>
             {!!shownError && <Text style={styles.error}>{shownError}</Text>}
 
             <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)}>
@@ -328,6 +329,7 @@ const styles = StyleSheet.create({
     inputError: { borderColor: colors.danger },
     error: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.danger, marginTop: 4 },
     selectInput: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+    leading: { marginRight: 10, alignItems: 'center', justifyContent: 'center' },
     selectText: { flex: 1, fontFamily: fonts.body, fontSize: 15, color: colors.text },
 
     backdrop: { flex: 1, backgroundColor: 'rgba(0,42,60,0.5)' },
@@ -355,19 +357,26 @@ const styles = StyleSheet.create({
     dateYear: { width: 88 },
     dateSep: { fontFamily: fonts.bodyMedium, fontSize: 18, color: colors.textFaint },
 
-    docEmpty: {
-        minHeight: 84, borderRadius: radius.md, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.borderStrong,
-        backgroundColor: colors.tabActiveBg, alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 16,
+    docCard: {
+        borderRadius: radius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.borderStrong,
+        backgroundColor: colors.surface, alignItems: 'center', paddingTop: 16, paddingBottom: 14, paddingHorizontal: 12, overflow: 'hidden',
     },
-    docEmptyError: { borderColor: colors.danger },
-    docEmptyText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.blue },
-    docDone: {
-        flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: radius.md,
-        backgroundColor: '#ECFDF5', borderWidth: 1, borderColor: '#A7F3D0',
+    docCardDone: { borderStyle: 'solid', borderColor: '#A7F3D0', backgroundColor: '#F7FEFB' },
+    docCardError: { borderColor: colors.danger },
+    docIllustration: { alignItems: 'center', justifyContent: 'center' },
+    docPreview: { width: '100%', height: 170, borderRadius: radius.md, backgroundColor: colors.canvas },
+    docCta: {
+        flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14, backgroundColor: colors.blue,
+        paddingHorizontal: 18, height: 38, borderRadius: radius.pill,
     },
-    docName: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
-    docMeta: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted },
-    docAction: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center' },
+    docCtaText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
+    docOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(255,255,255,0.8)', alignItems: 'center', justifyContent: 'center', gap: 8 },
+    docOverlayText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.blue },
+    docBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 12 },
+    docBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#ECFDF5', borderRadius: radius.pill, paddingHorizontal: 12, height: 30, maxWidth: 200 },
+    docBadgeText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.positiveInk },
+    docBadgeAlt: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: colors.tabActiveBg, borderRadius: radius.pill, paddingHorizontal: 12, height: 30 },
+    docBadgeAltText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.blue },
 
     sourceRow: { flexDirection: 'row', alignItems: 'center', gap: 14, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border },
     sourceIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: colors.chipActiveBg, alignItems: 'center', justifyContent: 'center' },

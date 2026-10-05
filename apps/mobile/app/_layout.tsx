@@ -128,6 +128,7 @@ export default function RootLayout() {
                         <Stack.Screen name="apps/invest/company/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/invest/product/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/invest/register/[targetId]" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="apps/invest/applications" options={{ animation: 'slide_from_right' }} />
                     </Stack>
                     <SessionGate />
                     <PushNotificationTapHandler />

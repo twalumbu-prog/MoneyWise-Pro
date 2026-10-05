@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { View, Text, TextInput, Pressable, FlatList, StyleSheet } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
-import { Search, ChevronRight } from 'lucide-react-native';
+import { Search, ChevronRight, BadgeCheck } from 'lucide-react-native';
 import { TYPE_CONFIG } from '../../../src/data/investCatalog';
 import { useInvestProviders } from '../../../src/hooks/useInvestProviders';
+import { useInvestorAccounts } from '../../../src/hooks/useInvestorAccounts';
+import { InvestApplicationsBanner } from '../../../src/components/invest/InvestApplicationsBanner';
 import { InvestLogo } from '../../../src/components/invest/InvestLogo';
 import { ScreenHeader } from '../../../src/components/ScreenHeader';
 import { AnimatedSegmented, AnimatedTabContent } from '../../../src/components/AnimatedTabs';
@@ -22,6 +24,7 @@ export default function InvestHomeScreen() {
     const [search, setSearch] = useState('');
     const [tab, setTab] = useState<InvestTab>('HOME');
     const providers = useInvestProviders();
+    const { accounts, accountFor } = useInvestorAccounts();
 
     const groups = useMemo(() => providers.flatMap((provider) => {
         let products = provider.products;
@@ -67,6 +70,7 @@ export default function InvestHomeScreen() {
                 data={groups}
                 keyExtractor={(g) => g.provider.id}
                 contentContainerStyle={styles.list}
+                ListHeaderComponent={<InvestApplicationsBanner accounts={accounts} />}
                 ListEmptyComponent={
                     <View style={styles.empty}>
                         <Text style={styles.emptyText}>No results{search ? ` for "${search}"` : ''}</Text>
@@ -77,7 +81,17 @@ export default function InvestHomeScreen() {
                         <View style={styles.groupHeader}>
                             <View style={styles.groupHeaderMain}>
                                 <InvestLogo logo={item.provider.logo} size={32} />
-                                <Text style={styles.providerName} numberOfLines={1}>{item.provider.name}</Text>
+                                <View style={{ flexShrink: 1 }}>
+                                    <View style={styles.nameRow}>
+                                        <Text style={styles.providerName} numberOfLines={1}>{item.provider.name}</Text>
+                                        {accountFor(item.provider.investmentTargetId)?.status === 'ACTIVE' && (
+                                            <BadgeCheck size={16} color={colors.blue} accessibilityLabel="Verified account" />
+                                        )}
+                                    </View>
+                                    {accountFor(item.provider.investmentTargetId)?.status === 'ACTIVE' && !!accountFor(item.provider.investmentTargetId)?.accountNumber && (
+                                        <Text style={styles.acctNumber} numberOfLines={1}>Account no. {accountFor(item.provider.investmentTargetId)!.accountNumber}</Text>
+                                    )}
+                                </View>
                             </View>
                             <Pressable style={styles.seeMore} onPress={() => router.push(`/apps/invest/company/${item.provider.id}`)}>
                                 <Text style={styles.seeMoreText}>See more</Text>
@@ -143,6 +157,8 @@ const styles = StyleSheet.create({
     group: { gap: 8 },
     groupHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 },
     groupHeaderMain: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 },
+    nameRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+    acctNumber: { fontFamily: fonts.bodyMedium, fontSize: 11, color: colors.textMuted, marginTop: 1 },
     providerName: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text, flexShrink: 1 },
     seeMore: { flexDirection: 'row', alignItems: 'center', gap: 1 },
     seeMoreText: { fontFamily: fonts.body, fontSize: 13, color: colors.text },

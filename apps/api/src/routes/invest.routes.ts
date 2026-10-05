@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import {
     listInvestmentTargets, walletTransferToInvestmentTarget, recordInvestmentIntent, confirmInvestment,
-    listMyInvestorAccounts, connectInvestorAccount, applyForInvestorAccount,
+    listMyInvestorAccounts, connectInvestorAccount, applyForInvestorAccount, extractInvestorId,
     listInvestorApplications, getInvestorApplication, reviewInvestorApplication,
     getPayoutSettings, savePayoutSettings,
 } from '../controllers/invest.controller';
@@ -20,6 +20,7 @@ router.post('/confirm/:reference', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN'
 router.get('/my-accounts', listMyInvestorAccounts);
 router.post('/accounts/connect', connectInvestorAccount);
 router.post('/accounts/apply', applyForInvestorAccount);
+router.post('/accounts/extract-id', extractInvestorId);
 
 // Company side: only an organization that IS an investment target has applications to show.
 router.get('/applications', requireRole(['ACCOUNTANT', 'ADMIN']), listInvestorApplications);

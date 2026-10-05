@@ -12,6 +12,8 @@ export function useInvestorAccounts() {
         queryKey: ['investor-accounts'],
         queryFn: () => investmentService.getMyAccounts(),
         staleTime: 30_000,
+        // While an application is waiting on the company, keep checking so the status changes by itself.
+        refetchInterval: (q) => (q.state.data?.some((a) => a.status === 'PENDING_REVIEW' || a.status === 'INFO_REQUESTED') ? 30_000 : false),
     });
 
     const accountFor = useCallback(
