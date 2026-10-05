@@ -231,8 +231,15 @@ async function doApiFetch(path: string, options: RequestInit = {}): Promise<Resp
         } else {
             const text = await response.text();
             console.error('[API Client] Non-JSON error response:', text.slice(0, 500));
+            // An HTML body means the request never reached our API handlers (an unknown route
+            // on an older deployment, or a gateway/platform error page) — say that instead of
+            // surfacing a bare status line.
+            const friendly =
+                response.status === 404 ? 'This isn\u2019t available on the server yet. Please try again shortly or update the app.'
+                : response.status >= 500 ? 'The server had a problem. Please try again in a moment.'
+                : `API Error: ${response.status} ${response.statusText}`;
             throw new ApiError(
-                `API Error: ${response.status} ${response.statusText}`,
+                friendly,
                 response.status,
                 { error: text.slice(0, 500) },
                 path,

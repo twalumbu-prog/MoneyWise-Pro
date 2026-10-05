@@ -172,7 +172,7 @@ const EmptyState: React.FC<{ kind: Tab; onCreate: () => void; onJoin: () => void
             <View style={styles.emptyIcon}>{copy.icon}</View>
             <Text style={styles.emptyTitle}>{copy.title}</Text>
             <Text style={styles.emptyText}>{copy.text}</Text>
-            <Pressable onPress={onCreate} style={styles.emptyBtn}><Plus size={16} color="#FFFFFF" /><Text style={styles.emptyBtnText}>{copy.cta}</Text></Pressable>
+            <Pressable onPress={onCreate} style={[styles.emptyBtn, kind === 'GROUP' && styles.emptyBtnDark]}><Plus size={16} color="#FFFFFF" /><Text style={styles.emptyBtnText}>{copy.cta}</Text></Pressable>
             {kind === 'GROUP' && <Pressable onPress={onJoin} style={{ paddingVertical: 10 }}><Text style={styles.joinLinkText}>I have an invite code</Text></Pressable>}
         </View>
     );
@@ -221,5 +221,6 @@ const styles = StyleSheet.create({
     emptyTitle: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text, textAlign: 'center' },
     emptyText: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 19 },
     emptyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.blue, borderRadius: radius.pill, paddingHorizontal: 20, height: 42, marginTop: 8 },
+    emptyBtnDark: { backgroundColor: '#000000' },
     emptyBtnText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#FFFFFF' },
 });

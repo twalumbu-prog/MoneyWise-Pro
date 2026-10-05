@@ -64,11 +64,11 @@ const AmountInput: React.FC<{ value: string; onChange: (v: string) => void; erro
     </View>
 );
 
-const PrimaryBtn: React.FC<{ label: string; onPress: () => void; loading?: boolean; disabled?: boolean }> = ({ label, onPress, loading, disabled }) => (
+const PrimaryBtn: React.FC<{ label: string; onPress: () => void; loading?: boolean; disabled?: boolean; dark?: boolean }> = ({ label, onPress, loading, disabled, dark }) => (
     <Pressable
         onPress={onPress}
         disabled={disabled || loading}
-        style={({ pressed }) => [styles.primary, (disabled || loading) && { opacity: 0.55 }, pressed && { opacity: 0.85 }]}
+        style={({ pressed }) => [styles.primary, dark && { backgroundColor: '#000000' }, (disabled || loading) && { opacity: 0.55 }, pressed && { opacity: 0.85 }]}
     >
         {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>{label}</Text>}
     </Pressable>
@@ -162,7 +162,7 @@ export const CreateSavingsSheet: React.FC<{ visible: boolean; kind: SavingsKind;
                 <TextInput value={target} onChangeText={(t) => setTarget(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))} placeholder="0.00" placeholderTextColor={colors.textFaint} keyboardType="decimal-pad" style={styles.amountInput} />
             </View>
             {kind === 'GROUP' && <Text style={styles.hint}>You'll get an invite code to share. People who join can contribute by mobile money.</Text>}
-            <PrimaryBtn label="Create" onPress={save} loading={saving} disabled={uploading} />
+            <PrimaryBtn label="Create" onPress={save} loading={saving} disabled={uploading} dark={kind === 'GROUP'} />
         </Sheet>
     );
 };

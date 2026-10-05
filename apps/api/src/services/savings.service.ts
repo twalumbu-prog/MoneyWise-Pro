@@ -177,7 +177,13 @@ export const savingsService = {
             })
             .select('*')
             .single();
-        if (goalErr || !goal) throw new Error(`Could not save: ${goalErr?.message}`);
+        if (goalErr || !goal) {
+            // Don't leave an orphan wallet/account behind (e.g. if the savings tables aren't migrated yet).
+            if (account?.id) await supabase.from('accounts').delete().eq('id', account.id);
+            await supabase.from('cashbook_entries').delete().eq('wallet_id', wallet.id);
+            await supabase.from('organization_wallets').delete().eq('id', wallet.id);
+            throw new Error(`Could not save: ${goalErr?.message}`);
+        }
 
         let members: { name: string; userId: string }[] = [];
         if (kind === 'GROUP') {
