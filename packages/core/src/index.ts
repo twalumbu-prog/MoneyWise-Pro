@@ -117,6 +117,8 @@ export type {
 
 export { lencoService } from './services/lenco.service';
 export { investmentService } from './services/investment.service';
+export { savingsService } from './services/savings.service';
+export type { SavingsKind, SavingsItem, SavingsOverview, SavingsDetail, SavingsMember } from './services/savings.service';
 export type {
     InvestmentTarget, InvestorAccountStatus, MyInvestorAccount, InvestorApplicationSummary,
     InvestorApplicationDetail, PayoutSettings,

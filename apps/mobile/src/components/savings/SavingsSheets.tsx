@@ -1,0 +1,421 @@
+import { useEffect, useRef, useState } from 'react';
+import {
+    Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Image, ScrollView, Share,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { X, ImagePlus, CheckCircle2, AlertCircle, Smartphone, Wallet as WalletIcon } from 'lucide-react-native';
+import {
+    savingsService, cashbookService, lencoService, detectMobileNetwork, formatKwacha, requireCapability, getCore,
+} from 'core';
+import type { SavingsItem, SavingsKind } from 'core';
+import { uploadToBucket } from '../../lib/uploads';
+import { useAuth } from '../../context/AuthContext';
+import { SelectField, type SelectOption } from '../invest/application/formFields';
+import { colors, fonts, radius } from '../../theme/tokens';
+
+/** Opens the share sheet with a group's invite code and join link. */
+export const shareInvite = (item: SavingsItem) => {
+    if (!item.inviteCode) return;
+    Share.share({
+        message: `Join "${item.name}" on MoneyWise group savings.\n\nInvite code: ${item.inviteCode}\nhttps://moneywise.blueopus.cloud/savings/join/${item.inviteCode}`,
+    }).catch(() => {});
+};
+
+/* ── Shared bottom sheet ─────────────────────────────────────────────────── */
+
+const Sheet: React.FC<{ visible: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ visible, onClose, title, children }) => {
+    const insets = useSafeAreaInsets();
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <Pressable style={styles.backdrop} onPress={onClose} />
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wrap} pointerEvents="box-none">
+                <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+                    <View style={styles.handle} />
+                    <View style={styles.header}>
+                        <Text style={styles.title} numberOfLines={1}>{title}</Text>
+                        <Pressable onPress={onClose} style={styles.closeBtn} hitSlop={8} accessibilityLabel="Close"><X size={18} color={colors.textFaint} /></Pressable>
+                    </View>
+                    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 20, paddingBottom: 8 }} bounces={false}>
+                        {children}
+                    </ScrollView>
+                </View>
+            </KeyboardAvoidingView>
+        </Modal>
+    );
+};
+
+const AmountInput: React.FC<{ value: string; onChange: (v: string) => void; error?: string }> = ({ value, onChange, error }) => (
+    <View style={{ marginBottom: 16 }}>
+        <Text style={styles.label}>Amount</Text>
+        <View style={[styles.amountBox, !!error && styles.inputError]}>
+            <Text style={styles.currency}>K</Text>
+            <TextInput
+                value={value}
+                onChangeText={(t) => onChange(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
+                placeholder="0.00"
+                placeholderTextColor={colors.textFaint}
+                keyboardType="decimal-pad"
+                style={styles.amountInput}
+                accessibilityLabel="Amount"
+            />
+        </View>
+        {!!error && <Text style={styles.error}>{error}</Text>}
+    </View>
+);
+
+const PrimaryBtn: React.FC<{ label: string; onPress: () => void; loading?: boolean; disabled?: boolean }> = ({ label, onPress, loading, disabled }) => (
+    <Pressable
+        onPress={onPress}
+        disabled={disabled || loading}
+        style={({ pressed }) => [styles.primary, (disabled || loading) && { opacity: 0.55 }, pressed && { opacity: 0.85 }]}
+    >
+        {loading ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.primaryText}>{label}</Text>}
+    </Pressable>
+);
+
+const Banner: React.FC<{ text: string | null; tone?: 'error' | 'info' }> = ({ text, tone = 'error' }) => text ? (
+    <View style={[styles.banner, tone === 'info' && styles.bannerInfo]}>
+        <AlertCircle size={16} color={tone === 'info' ? colors.blue : '#B91C1C'} />
+        <Text style={[styles.bannerText, tone === 'info' && { color: colors.navy }]}>{text}</Text>
+    </View>
+) : null;
+
+/** MoneyWise wallets the user can pay from / into — never a savings wallet itself. */
+function useSpendWallets(excludeId?: string) {
+    const { data } = useQuery({ queryKey: ['wallets-payment-flow'], queryFn: () => cashbookService.getWallets() });
+    const list: any[] = Array.isArray(data) ? data : (data?.data || []);
+    return list
+        .filter((w) => w.id !== excludeId && !/\(Savings( [A-Z0-9]{3})?\)$/.test(String(w.name)))
+        .map((w) => ({ id: String(w.id), name: String(w.name), balance: Number(w.balance) || 0 }));
+}
+
+const KIND_COPY: Record<SavingsKind, { title: string; namePh: string; targetLabel: string; targetOptional: boolean }> = {
+    WISHLIST: { title: 'Add to wishlist', namePh: 'e.g. Sony WH-1000XM5', targetLabel: 'Price', targetOptional: false },
+    GOAL: { title: 'New savings goal', namePh: 'e.g. Emergency fund', targetLabel: 'Target amount', targetOptional: true },
+    GROUP: { title: 'New group savings', namePh: 'e.g. Livingstone Group Trip', targetLabel: 'Group target', targetOptional: false },
+};
+
+/* ── Create ──────────────────────────────────────────────────────────────── */
+
+export const CreateSavingsSheet: React.FC<{ visible: boolean; kind: SavingsKind; onClose: () => void; onCreated: (item: SavingsItem) => void }> = ({ visible, kind, onClose, onCreated }) => {
+    const qc = useQueryClient();
+    const { organizationId } = useAuth();
+    const copy = KIND_COPY[kind];
+    const [name, setName] = useState('');
+    const [target, setTarget] = useState('');
+    const [image, setImage] = useState<{ uri: string; url: string } | null>(null);
+    const [uploading, setUploading] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => { if (visible) { setName(''); setTarget(''); setImage(null); setError(null); } }, [visible]);
+
+    const pickImage = async () => {
+        try {
+            const [file] = await requireCapability('files').pick({ kind: 'image' });
+            if (!file) return;
+            setUploading(true); setError(null);
+            const compressed = await requireCapability('files').compressImage(file, 1024 * 1024);
+            const path = `${organizationId ?? 'org'}/savings/${Date.now()}.jpg`;
+            await uploadToBucket('organization-logos', path, { ...compressed, mimeType: compressed.mimeType || 'image/jpeg' });
+            const { data } = getCore().supabase.storage.from('organization-logos').getPublicUrl(path);
+            setImage({ uri: compressed.uri, url: data.publicUrl });
+        } catch (e: any) {
+            setError(e?.message || 'Could not add the picture.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    const save = async () => {
+        if (name.trim().length < 2) { setError('Give it a name.'); return; }
+        const t = Number(target);
+        if (!copy.targetOptional && (!target || !(t > 0))) { setError(`Enter the ${copy.targetLabel.toLowerCase()}.`); return; }
+        setSaving(true); setError(null);
+        try {
+            const item = await savingsService.create({ kind, name: name.trim(), targetAmount: target ? t : undefined, imageUrl: image?.url });
+            qc.invalidateQueries({ queryKey: ['savings'] });
+            onCreated(item);
+        } catch (e: any) {
+            setError(e?.message || 'Could not create it. Please try again.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <Sheet visible={visible} onClose={onClose} title={copy.title}>
+            <Banner text={error} />
+            {kind === 'WISHLIST' && (
+                <Pressable onPress={pickImage} style={styles.imagePick} accessibilityLabel="Add a picture">
+                    {uploading ? <ActivityIndicator color={colors.blue} />
+                        : image ? <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="contain" />
+                        : (<><ImagePlus size={24} color={colors.blue} /><Text style={styles.imagePickText}>Add a picture of it</Text></>)}
+                </Pressable>
+            )}
+            <Text style={styles.label}>Name</Text>
+            <TextInput value={name} onChangeText={setName} placeholder={copy.namePh} placeholderTextColor={colors.textFaint} style={[styles.input, { marginBottom: 16 }]} autoCapitalize="sentences" />
+            <Text style={styles.label}>{copy.targetLabel}{copy.targetOptional ? ' (optional)' : ''}</Text>
+            <View style={[styles.amountBox, { marginBottom: 20 }]}>
+                <Text style={styles.currency}>K</Text>
+                <TextInput value={target} onChangeText={(t) => setTarget(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))} placeholder="0.00" placeholderTextColor={colors.textFaint} keyboardType="decimal-pad" style={styles.amountInput} />
+            </View>
+            {kind === 'GROUP' && <Text style={styles.hint}>You'll get an invite code to share. People who join can contribute by mobile money.</Text>}
+            <PrimaryBtn label="Create" onPress={save} loading={saving} disabled={uploading} />
+        </Sheet>
+    );
+};
+
+/* ── Add money ───────────────────────────────────────────────────────────── */
+
+const genRef = () => `SAV${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
+
+/**
+ * Owners move money in from one of their MoneyWise wallets (or pay by mobile money); a group
+ * member pays by mobile money, collected straight into the group's wallet.
+ */
+export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | null; onClose: () => void; onDone: () => void }> = ({ visible, item, onClose, onDone }) => {
+    const qc = useQueryClient();
+    const isOwner = item?.role === 'OWNER';
+    const wallets = useSpendWallets(item?.walletId);
+    const [method, setMethod] = useState<'WALLET' | 'MOBILE_MONEY'>('WALLET');
+    const [amount, setAmount] = useState('');
+    const [walletId, setWalletId] = useState('');
+    const [phone, setPhone] = useState('');
+    const [holder, setHolder] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [stage, setStage] = useState<'form' | 'waiting' | 'done'>('form');
+    const [error, setError] = useState<string | null>(null);
+    const cancelled = useRef(false);
+
+    useEffect(() => {
+        if (!visible) return;
+        setMethod(isOwner ? 'WALLET' : 'MOBILE_MONEY'); setAmount(''); setPhone(''); setHolder(''); setError(null); setStage('form');
+        cancelled.current = false;
+    }, [visible, isOwner]);
+    useEffect(() => { if (!walletId && wallets.length) setWalletId(wallets[0].id); }, [wallets, walletId]);
+
+    const operator = phone ? detectMobileNetwork(phone) || null : null;
+    useEffect(() => {
+        if (method !== 'MOBILE_MONEY' || !operator) { setHolder(''); return; }
+        let stop = false;
+        const t = setTimeout(async () => {
+            try { const r = await lencoService.resolveMobileMoney(phone, operator); if (!stop) setHolder(r?.accountName || ''); } catch { if (!stop) setHolder(''); }
+        }, 500);
+        return () => { stop = true; clearTimeout(t); };
+    }, [phone, operator, method]);
+
+    const walletOptions: SelectOption[] = wallets.map((w) => ({ value: w.id, label: `${w.name} · ${formatKwacha(w.balance)}` }));
+    const selected = wallets.find((w) => w.id === walletId);
+    const value = Number(amount);
+
+    const finish = () => {
+        qc.invalidateQueries({ queryKey: ['savings'] });
+        qc.invalidateQueries({ queryKey: ['wallets-payment-flow'] });
+        setStage('done');
+    };
+
+    const payFromWallet = async () => {
+        if (!item) return;
+        if (!(value > 0)) { setError('Enter an amount.'); return; }
+        if (!selected) { setError('Choose a wallet to pay from.'); return; }
+        if (selected.balance < value) { setError(`Not enough in ${selected.name}.`); return; }
+        setBusy(true); setError(null);
+        try { await savingsService.deposit(item.id, value, selected.id); finish(); }
+        catch (e: any) { setError(e?.message || 'Could not add the money.'); }
+        finally { setBusy(false); }
+    };
+
+    const payByMobileMoney = async () => {
+        if (!item) return;
+        if (!(value > 0)) { setError('Enter an amount.'); return; }
+        if (!operator) { setError('Enter a valid Airtel, MTN or Zamtel number.'); return; }
+        setBusy(true); setError(null);
+        const ref = genRef();
+        try {
+            const target = item.kind === 'GROUP'
+                ? await savingsService.startContribution(item.id, value, ref)
+                : { walletId: item.walletId, organizationId: item.organizationId, name: item.name };
+            await lencoService.logPublicWalletDepositIntent(ref, `Savings: ${target.name}`, value, target.walletId);
+            const init = await lencoService.initiateMobileMoneyCollection({ reference: ref, amount: value, phone, operator: operator.toLowerCase(), walletId: target.walletId });
+            const s = init?.data?.status;
+            if (s !== 'pay-offline' && s !== 'pending' && s !== 'successful') throw new Error(`Payment could not be started (${s || 'unknown'}).`);
+            setStage('waiting');
+            for (let i = 0; i < 8 && !cancelled.current; i++) {
+                try {
+                    const r = await lencoService.longPollCollectionStatus(ref, target.organizationId);
+                    if (r.verified) {
+                        await lencoService.finalizeCollection(ref, target.organizationId).catch(() => {});
+                        if (item.kind === 'GROUP') await savingsService.confirmContribution(item.id, ref).catch(() => {});
+                        finish();
+                        return;
+                    }
+                } catch { /* transient — keep polling */ }
+            }
+            if (!cancelled.current) {
+                setStage('form');
+                setError('We sent the request but haven’t seen the payment yet. If you approved it, it will show up shortly.');
+            }
+        } catch (e: any) {
+            setStage('form');
+            setError(e?.message || 'Could not start the payment.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const close = () => { cancelled.current = true; onClose(); };
+
+    return (
+        <Sheet visible={visible} onClose={close} title={item ? `Add money · ${item.name}` : 'Add money'}>
+            {stage === 'done' ? (
+                <View style={{ alignItems: 'center', gap: 10, paddingVertical: 12 }}>
+                    <CheckCircle2 size={44} color={colors.positiveInk} />
+                    <Text style={styles.doneTitle}>{formatKwacha(value)} added</Text>
+                    <Text style={styles.hint}>It's now in {item?.name}.</Text>
+                    <View style={{ alignSelf: 'stretch', marginTop: 8 }}><PrimaryBtn label="Done" onPress={() => { onDone(); }} /></View>
+                </View>
+            ) : stage === 'waiting' ? (
+                <View style={{ alignItems: 'center', gap: 12, paddingVertical: 20 }}>
+                    <ActivityIndicator size="large" color={colors.blue} />
+                    <Text style={styles.doneTitle}>Approve on your phone</Text>
+                    <Text style={styles.hint}>Check {phone} for the {operator} prompt and enter your PIN to pay {formatKwacha(value)}.</Text>
+                </View>
+            ) : (
+                <>
+                    <Banner text={error} />
+                    {isOwner && (
+                        <View style={styles.methodRow}>
+                            {(['WALLET', 'MOBILE_MONEY'] as const).map((m) => (
+                                <Pressable key={m} onPress={() => { setMethod(m); setError(null); }} style={[styles.methodBtn, method === m && styles.methodBtnOn]}>
+                                    {m === 'WALLET' ? <WalletIcon size={14} color={method === m ? colors.blue : colors.textMuted} /> : <Smartphone size={14} color={method === m ? colors.blue : colors.textMuted} />}
+                                    <Text style={[styles.methodText, method === m && styles.methodTextOn]}>{m === 'WALLET' ? 'MoneyWise wallet' : 'Mobile money'}</Text>
+                                </Pressable>
+                            ))}
+                        </View>
+                    )}
+                    <AmountInput value={amount} onChange={(v) => { setAmount(v); setError(null); }} />
+                    {method === 'WALLET' ? (
+                        <SelectField label="Pay from" value={walletId} options={walletOptions} onChange={setWalletId} placeholder={wallets.length ? 'Choose wallet' : 'Loading wallets…'} />
+                    ) : (
+                        <View style={{ marginBottom: 16 }}>
+                            <Text style={styles.label}>Mobile money number</Text>
+                            <TextInput value={phone} onChangeText={setPhone} placeholder="097… / 096… / 095…" placeholderTextColor={colors.textFaint} keyboardType="phone-pad" style={styles.input} />
+                            {!!holder && <Text style={styles.holder}>{holder}{operator ? ` · ${operator}` : ''}</Text>}
+                        </View>
+                    )}
+                    <PrimaryBtn label={method === 'WALLET' ? 'Add money' : 'Send payment request'} onPress={method === 'WALLET' ? payFromWallet : payByMobileMoney} loading={busy} />
+                </>
+            )}
+        </Sheet>
+    );
+};
+
+/* ── Transfer out ────────────────────────────────────────────────────────── */
+
+export const TransferOutSheet: React.FC<{ visible: boolean; item: SavingsItem | null; onClose: () => void; onDone: () => void }> = ({ visible, item, onClose, onDone }) => {
+    const qc = useQueryClient();
+    const wallets = useSpendWallets(item?.walletId);
+    const [amount, setAmount] = useState('');
+    const [walletId, setWalletId] = useState('');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => { if (visible) { setAmount(''); setError(null); } }, [visible]);
+    useEffect(() => { if (!walletId && wallets.length) setWalletId(wallets[0].id); }, [wallets, walletId]);
+
+    const go = async () => {
+        if (!item) return;
+        const v = Number(amount);
+        if (!(v > 0)) { setError('Enter an amount.'); return; }
+        if (v > item.balance) { setError(`There's only ${formatKwacha(item.balance)} in ${item.name}.`); return; }
+        if (!walletId) { setError('Choose where to send it.'); return; }
+        setBusy(true); setError(null);
+        try {
+            await savingsService.withdraw(item.id, v, walletId);
+            qc.invalidateQueries({ queryKey: ['savings'] });
+            qc.invalidateQueries({ queryKey: ['wallets-payment-flow'] });
+            onDone();
+        } catch (e: any) { setError(e?.message || 'Could not transfer.'); }
+        finally { setBusy(false); }
+    };
+
+    return (
+        <Sheet visible={visible} onClose={onClose} title={item ? `Transfer from ${item.name}` : 'Transfer'}>
+            <Banner text={error} />
+            <Text style={[styles.hint, { marginBottom: 14 }]}>Available: {formatKwacha(item?.balance ?? 0)}</Text>
+            <AmountInput value={amount} onChange={(v) => { setAmount(v); setError(null); }} />
+            <SelectField label="Send to" value={walletId} options={wallets.map((w) => ({ value: w.id, label: w.name }))} onChange={setWalletId} placeholder="Choose wallet" />
+            <PrimaryBtn label="Transfer" onPress={go} loading={busy} />
+        </Sheet>
+    );
+};
+
+/* ── Join a group ────────────────────────────────────────────────────────── */
+
+export const JoinGroupSheet: React.FC<{ visible: boolean; initialCode?: string; onClose: () => void; onJoined: (id: string) => void }> = ({ visible, initialCode, onClose, onJoined }) => {
+    const qc = useQueryClient();
+    const [code, setCode] = useState(initialCode ?? '');
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    useEffect(() => { if (visible) { setCode(initialCode ?? ''); setError(null); } }, [visible, initialCode]);
+
+    const join = async () => {
+        if (code.trim().length < 6) { setError('Enter the invite code.'); return; }
+        setBusy(true); setError(null);
+        try {
+            const r = await savingsService.join(code.trim());
+            qc.invalidateQueries({ queryKey: ['savings'] });
+            onJoined(r.id);
+        } catch (e: any) { setError(e?.message || 'Could not join.'); }
+        finally { setBusy(false); }
+    };
+
+    return (
+        <Sheet visible={visible} onClose={onClose} title="Join group savings">
+            <Banner text={error} />
+            <Text style={styles.label}>Invite code</Text>
+            <TextInput
+                value={code} onChangeText={(t) => setCode(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12))}
+                placeholder="e.g. 7KQ2MXRA" placeholderTextColor={colors.textFaint} autoCapitalize="characters" autoCorrect={false}
+                style={[styles.input, styles.codeInput, { marginBottom: 20 }]}
+            />
+            <PrimaryBtn label="Join group" onPress={join} loading={busy} />
+        </Sheet>
+    );
+};
+
+const styles = StyleSheet.create({
+    backdrop: { flex: 1, backgroundColor: 'rgba(0,42,60,0.5)' },
+    wrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
+    sheet: { backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '90%' },
+    handle: { width: 48, height: 5, borderRadius: 3, backgroundColor: colors.border, alignSelf: 'center', marginTop: 10 },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 24, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: colors.canvasAlt },
+    title: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 18, color: colors.navy },
+    closeBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.canvasAlt, alignItems: 'center', justifyContent: 'center' },
+    label: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.navy, marginBottom: 6 },
+    input: { minHeight: 48, backgroundColor: colors.surface, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, paddingHorizontal: 16, fontFamily: fonts.body, fontSize: 15, color: colors.text },
+    codeInput: { fontFamily: fonts.bodyBold, fontSize: 18, letterSpacing: 3, textAlign: 'center' },
+    inputError: { borderColor: colors.danger },
+    error: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.danger, marginTop: 4 },
+    amountBox: { flexDirection: 'row', alignItems: 'center', minHeight: 56, borderRadius: radius.md, borderWidth: 1, borderColor: colors.borderStrong, paddingHorizontal: 16, gap: 6 },
+    currency: { fontFamily: fonts.bodyBold, fontSize: 22, color: colors.textMuted },
+    amountInput: { flex: 1, fontFamily: fonts.bodyBold, fontSize: 24, color: colors.text, paddingVertical: 10 },
+    primary: { minHeight: 50, borderRadius: radius.pill, backgroundColor: colors.blue, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+    primaryText: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#FFFFFF' },
+    banner: { flexDirection: 'row', gap: 8, alignItems: 'center', backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5', borderRadius: radius.md, padding: 12, marginBottom: 14 },
+    bannerInfo: { backgroundColor: colors.tabActiveBg, borderColor: 'rgba(0,106,255,0.15)' },
+    bannerText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 13, color: '#991B1B' },
+    hint: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, textAlign: 'center', lineHeight: 19, marginBottom: 14 },
+    imagePick: { height: 140, borderRadius: radius.lg, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.borderStrong, backgroundColor: colors.tabActiveBg, alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 18, overflow: 'hidden' },
+    imagePreview: { width: '100%', height: '100%' },
+    imagePickText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.blue },
+    methodRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+    methodBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong },
+    methodBtnOn: { borderColor: colors.blue, backgroundColor: colors.tabActiveBg },
+    methodText: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted },
+    methodTextOn: { color: colors.blue, fontFamily: fonts.bodyBold },
+    holder: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.positiveInk, marginTop: 6 },
+    doneTitle: { fontFamily: fonts.bodyBold, fontSize: 18, color: colors.navy, textAlign: 'center' },
+});

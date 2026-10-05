@@ -40,6 +40,7 @@ import scheduleRoutes from './routes/schedule.routes';
 import automationRoutes from './routes/automation.routes';
 import billingRoutes from './routes/billing.routes';
 import investRoutes from './routes/invest.routes';
+import savingsRoutes from './routes/savings.routes';
 import developerRoutes from './routes/developer.routes';
 import publicApiRoutes from './routes/publicApi.routes';
 import { broadcastAfterWrite } from './lib/realtimeBroadcast';
@@ -516,6 +517,7 @@ app.use('/schedules', scheduleRoutes);
 app.use('/automations', automationRoutes);
 app.use('/billing', billingRoutes);
 app.use('/investments', investRoutes);
+app.use('/savings', savingsRoutes);
 app.use('/developer', developerRoutes);
 app.use('/v1', publicApiRoutes);
 // NOTE: /developer and /v1 (API-key feature) are unhooked until developer.routes.ts,

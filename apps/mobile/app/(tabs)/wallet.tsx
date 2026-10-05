@@ -17,6 +17,7 @@ import {
 } from '../../src/components/wallet/WalletCard';
 import { TransactionRow } from '../../src/components/wallet/TransactionRow';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
+import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 type Group = 'MONEYWISE' | 'EXTERNAL';
@@ -114,7 +115,12 @@ export default function WalletScreen() {
                 }
                 ListHeaderComponent={
                     <View>
-                        <Text style={styles.title}>Wallet</Text>
+                        <View style={styles.titleRow}>
+                            <Text style={[styles.title, { paddingHorizontal: 0, marginBottom: 0 }]}>Wallet</Text>
+                            <Pressable style={styles.iconBtn} onPress={() => router.push('/savings')} accessibilityLabel="Savings">
+                                <PiggyBankIcon size={19} color={colors.blue} />
+                            </Pressable>
+                        </View>
 
                         <AnimatedSegmented
                             value={group}
@@ -328,6 +334,11 @@ const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.canvasAlt },
     list: { paddingBottom: 120 },
     title: { fontFamily: fonts.display, fontSize: 30, color: '#000000', paddingHorizontal: 20, marginBottom: 14 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 14 },
+    iconBtn: {
+        width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface,
+        borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
+    },
     segment: {
         flexDirection: 'row', marginHorizontal: 20, marginBottom: 18, padding: 4,
         backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,
