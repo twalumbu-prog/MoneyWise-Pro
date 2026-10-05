@@ -375,6 +375,7 @@ export default function InboxScreen() {
                     setNewMenuOpen(false);
                     Alert.alert('New Sale', 'Recording sales from the app is coming in a later update — use the web app for now.');
                 }}
+                onManualEntry={() => { setNewMenuOpen(false); router.push(`/manual-entry?direction=${mode === 'inflows' ? 'in' : 'out'}`); }}
                 onNewRequisition={() => { setNewMenuOpen(false); router.push('/requisition/new'); }}
                 onSalaryAdvance={() => { setNewMenuOpen(false); router.push('/requisition/new-advance'); }}
                 onStaffLoan={() => { setNewMenuOpen(false); router.push('/requisition/new-loan'); }}

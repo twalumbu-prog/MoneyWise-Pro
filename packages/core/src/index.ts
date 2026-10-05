@@ -98,6 +98,7 @@ export { aiService } from './services/ai.service';
 export type { AccountingRule, AIMetric } from './services/ai.service';
 
 export { cashbookService } from './services/cashbook.service';
+export type { ManualEntryResult } from './services/cashbook.service';
 export type { CashbookEntry, CashbookSummary } from './services/cashbook.service';
 
 export { PL_SECTIONS, onboardingService } from './services/onboarding.service';

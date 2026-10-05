@@ -65,6 +65,16 @@ export interface CashbookSummary {
     netMovement: number;
 }
 
+export interface ManualEntryResult {
+    entryId: string;
+    referenceNumber: string | null;
+    direction: 'IN' | 'OUT';
+    amount: number;
+    date: string;
+    externalWallet: { id: string; name: string };
+    category: { id: string; code: string; name: string; emoji: string | null; source: 'USER' | 'AI'; reasoning: string | null; confidence: number | null } | null;
+}
+
 export const cashbookService = {
     async getEntries(filters?: {
         startDate?: string;
@@ -257,6 +267,20 @@ export const cashbookService = {
             method: 'POST',
             body: JSON.stringify({ amount, reference, sourceAccountType, walletName }),
         });
+        return response.json();
+    },
+
+    /** Records a transaction that happened on an external account; the server's AI picks the category. */
+    async recordManualEntry(payload: {
+        direction: 'IN' | 'OUT'; amount: number; description: string; date?: string; externalWalletId: string; accountId?: string;
+    }): Promise<ManualEntryResult> {
+        const response = await apiFetch('/cashbook/manual-entry', { method: 'POST', body: JSON.stringify(payload) });
+        return response.json();
+    },
+
+    /** Changes the category (chart-of-accounts row) an entry is booked to. */
+    async setEntryAccount(entryId: string, accountId: string) {
+        const response = await apiFetch(`/cashbook/${entryId}/account`, { method: 'PATCH', body: JSON.stringify({ accountId }) });
         return response.json();
     },
 

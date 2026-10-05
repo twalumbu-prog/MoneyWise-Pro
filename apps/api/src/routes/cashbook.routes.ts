@@ -14,6 +14,7 @@ import {
     postEntryToQuickBooks,
     createQbAccount,
     updateEntryAccount,
+    recordManualEntry,
     logWalletDepositIntent,
     narrateEntry,
     getWallets,
@@ -87,6 +88,7 @@ router.post('/return', requireRole(['CASHIER', 'ADMIN']), returnExcessCash);
 router.post('/inflow', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logCashInflow);
 
 // Record a manual (cash / mobile money / bank) product sale (Requestor, Cashier, Accountant, Admin)
+router.post('/manual-entry', requireRole(['REQUESTOR', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), recordManualEntry);
 router.post('/manual-sale', requireRole(['REQUESTOR', 'CASHIER', 'ACCOUNTANT', 'ADMIN']), recordManualSale);
 
 // Log wallet deposit intent (Cashier, Accountant, Admin)

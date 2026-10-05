@@ -1,5 +1,5 @@
 import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
-import { X, ShoppingBag, FileText, History, Plus, TrendingUp, Send } from 'lucide-react-native';
+import { X, ShoppingBag, FileText, History, Plus, TrendingUp, Send, PenLine } from 'lucide-react-native';
 import { canDisburse, isRequestorRole } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -10,6 +10,8 @@ interface Props {
     userRole: string | null;
     isPersonal?: boolean;
     onNewSale: () => void;
+    /** Personal accounts: record a transaction on an external bank / mobile-money account by hand. */
+    onManualEntry: () => void;
     onNewRequisition: () => void;
     onSalaryAdvance: () => void;
     onStaffLoan: () => void;
@@ -18,13 +20,13 @@ interface Props {
 }
 
 export const NewMenuSheet: React.FC<Props> = ({
-    visible, onClose, mode, userRole, isPersonal, onNewSale, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
+    visible, onClose, mode, userRole, isPersonal, onNewSale, onManualEntry, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
 }) => {
     const isCashHandler = canDisburse(userRole);
     const isRequestor = isRequestorRole(userRole);
 
     const sheetTitle = mode === 'inflows'
-        ? 'New Sale'
+        ? (isPersonal ? 'New Entry' : 'New Sale')
         : isPersonal
             ? 'New Transaction'
             : 'New Requisition';
@@ -43,7 +45,9 @@ export const NewMenuSheet: React.FC<Props> = ({
 
                 <View style={styles.body}>
                     {mode === 'inflows' ? (
-                        isCashHandler ? (
+                        isPersonal ? (
+                            <Row icon={PenLine} iconColor="#059669" title="New manual entry" subtitle="Record money in or out of a bank or mobile-money account" onPress={onManualEntry} />
+                        ) : isCashHandler ? (
                             <Row icon={ShoppingBag} iconColor="#059669" title="New Sale" subtitle="Ring up products & take payment" onPress={onNewSale} />
                         ) : (
                             <Text style={styles.noPermission}>You don't have permission to record sales.</Text>
@@ -51,6 +55,7 @@ export const NewMenuSheet: React.FC<Props> = ({
                     ) : isPersonal ? (
                         <>
                             <Row icon={Send} iconColor={colors.navy} title="Send Money" subtitle="Send funds or pay for personal expenses" onPress={onNewRequisition} />
+                            <Row icon={PenLine} iconColor={colors.navy} title="New manual entry" subtitle="Record a transaction on an external account" onPress={onManualEntry} />
                             <Row icon={History} iconColor={colors.navy} title="New Salary Advance" subtitle="Quick funds from your upcoming income" onPress={onSalaryAdvance} />
                             <Row icon={Plus} iconColor={colors.navy} title="New Loan" subtitle="Fixed loan with structured repayment" onPress={onStaffLoan} />
                             <Row icon={TrendingUp} iconColor={colors.navy} title="Invest" subtitle="Grow your money with our partners" onPress={onInvest} />

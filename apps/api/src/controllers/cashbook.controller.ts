@@ -428,6 +428,101 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
 };
 
 /**
+ * Manual entry for an external account (bank / mobile money tracked by hand), used mainly
+ * by personal accounts: money that moved outside MoneyWise that the user wants on the books.
+ *
+ * The user gives direction, amount, what it was and which external account; the AI picks the
+ * accounting treatment — an INCOME category for money in, an EXPENSE category for money out —
+ * and createEntry posts the balanced journal against the external account, so it lands in
+ * Reporting under that category. If the AI isn't confident the entry is still saved (so the
+ * balance is right) but left uncategorised for the user to pick; the app offers that straight away.
+ */
+export const recordManualEntry = async (req: any, res: any): Promise<any> => {
+    try {
+        const { direction, amount, description, date, externalWalletId, accountId } = req.body ?? {};
+        const organizationId = req.user.organization_id;
+        const userId = req.user.id;
+        if (!organizationId) return res.status(400).json({ error: 'User organization context missing' });
+
+        if (direction !== 'IN' && direction !== 'OUT') return res.status(400).json({ error: 'direction must be IN or OUT' });
+        const value = Math.round(Number(amount) * 100) / 100;
+        if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Enter an amount greater than zero' });
+        const details = typeof description === 'string' ? description.replace(/\s+/g, ' ').trim().slice(0, 300) : '';
+        if (details.length < 2) return res.status(400).json({ error: 'Add a short description of the transaction' });
+        const entryDate = typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : new Date().toISOString().split('T')[0];
+        if (entryDate > new Date(Date.now() + 24 * 3600 * 1000).toISOString().split('T')[0]) {
+            return res.status(400).json({ error: 'The date cannot be in the future' });
+        }
+
+        const { data: wallet } = await supabase
+            .from('external_wallets')
+            .select('id, name')
+            .eq('id', externalWalletId)
+            .eq('organization_id', organizationId)
+            .maybeSingle();
+        if (!wallet) return res.status(404).json({ error: 'Choose one of your external accounts' });
+
+        // Candidate categories for this direction.
+        const { data: accounts } = await supabase
+            .from('accounts')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .eq('is_active', true)
+            .eq('type', direction === 'IN' ? 'INCOME' : 'EXPENSE');
+        const candidates = accounts || [];
+
+        let chosen: any = null;
+        let source: 'USER' | 'AI' | null = null;
+        let reasoning: string | null = null;
+        let confidence: number | null = null;
+
+        if (accountId) {
+            chosen = candidates.find((a: any) => a.id === accountId) || null;
+            if (!chosen) return res.status(400).json({ error: 'That category is not valid for this kind of entry' });
+            source = 'USER';
+        } else if (candidates.length > 0) {
+            try {
+                const decision = await decisionRouter.classify(candidates, { description: details, amount: value }, organizationId);
+                const byCode = new Map(candidates.map((a: any) => [String(a.code || '').toLowerCase(), a]));
+                const match = decision.account_code ? byCode.get(String(decision.account_code).toLowerCase()) : null;
+                if (match && decision.confidence >= 0.5) {
+                    chosen = match; source = 'AI'; reasoning = decision.reasoning; confidence = decision.confidence;
+                }
+            } catch (e: any) {
+                console.error('[Manual entry] AI categorisation failed (saving uncategorised):', e.message);
+            }
+        }
+
+        const reference = `MANUAL-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const entry = await cashbookService.createEntry(organizationId, {
+            entry_type: direction === 'IN' ? 'INFLOW' : 'EXPENSE',
+            description: details,
+            debit: direction === 'IN' ? value : 0,
+            credit: direction === 'OUT' ? value : 0,
+            date: entryDate,
+            created_by: userId,
+            account_type: wallet.id,          // external accounts are keyed by their own id
+            account_id: chosen?.id ?? null,
+            status: chosen ? 'ACCOUNTED' : 'COMPLETED',
+            external_reference: reference,
+        } as any);
+
+        res.status(201).json({
+            entryId: (entry as any).id,
+            referenceNumber: (entry as any).reference_number ?? null,
+            direction,
+            amount: value,
+            date: entryDate,
+            externalWallet: { id: wallet.id, name: wallet.name },
+            category: chosen ? { id: chosen.id, code: chosen.code, name: chosen.name, emoji: chosen.emoji ?? null, source, reasoning, confidence } : null,
+        });
+    } catch (error: any) {
+        console.error('Error recording manual entry:', error);
+        res.status(500).json({ error: 'Failed to record the entry', details: error.message });
+    }
+};
+
+/**
  * Log wallet deposit intent
  */
 export const logWalletDepositIntent = async (req: any, res: any): Promise<any> => {
