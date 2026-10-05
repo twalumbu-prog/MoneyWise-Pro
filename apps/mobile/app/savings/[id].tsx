@@ -31,6 +31,10 @@ export default function SavingsDetailScreen() {
         queryFn: () => savingsService.get(String(id)),
     });
 
+    // Defensive defaults: an older server build doesn't send the members summary or contributions.
+    const memberSummary = item?.memberSummary ?? [];
+    const contributions = item?.contributions ?? [];
+    const activity = item?.activity ?? [];
     const owner = item?.role === 'OWNER';
     const isGroup = item?.kind === 'GROUP';
 
@@ -98,14 +102,14 @@ export default function SavingsDetailScreen() {
                                 itemStyle={styles.peopleTab}
                                 items={[
                                     { value: 'CONTRIBUTIONS', content: <Text style={[styles.peopleTabText, peopleTab === 'CONTRIBUTIONS' && styles.peopleTabTextOn]}>Contributions</Text> },
-                                    { value: 'MEMBERS', content: <Text style={[styles.peopleTabText, peopleTab === 'MEMBERS' && styles.peopleTabTextOn]}>Members · {item.memberSummary.length}</Text> },
+                                    { value: 'MEMBERS', content: <Text style={[styles.peopleTabText, peopleTab === 'MEMBERS' && styles.peopleTabTextOn]}>Members · {memberSummary.length}</Text> },
                                 ]}
                             />
 
                             {peopleTab === 'CONTRIBUTIONS' ? (
-                                item.contributions.length === 0 ? (
+                                contributions.length === 0 ? (
                                     <Text style={styles.emptyText}>No contributions yet. Be the first to add money.</Text>
-                                ) : item.contributions.map((c, i) => (
+                                ) : contributions.map((c, i) => (
                                     <View key={i} style={[styles.txRow, i > 0 && styles.hair]}>
                                         <PersonAvatar name={c.name} url={c.avatarUrl} size={40} />
                                         <View style={{ flex: 1 }}>
@@ -116,7 +120,7 @@ export default function SavingsDetailScreen() {
                                     </View>
                                 ))
                             ) : (
-                                item.memberSummary.map((m, i) => (
+                                memberSummary.map((m, i) => (
                                     <View key={m.userId} style={[styles.txRow, i > 0 && styles.hair]}>
                                         <PersonAvatar name={m.name} url={m.avatarUrl} size={40} />
                                         <View style={{ flex: 1 }}>
@@ -134,8 +138,8 @@ export default function SavingsDetailScreen() {
                     ) : (
                         <View style={styles.card}>
                             <Text style={styles.cardTitle}>History</Text>
-                            {item.activity.length === 0 && <Text style={styles.emptyText}>Nothing yet. Tap Add money to start saving.</Text>}
-                            {item.activity.map((a, i) => (
+                            {activity.length === 0 && <Text style={styles.emptyText}>Nothing yet. Tap Add money to start saving.</Text>}
+                            {activity.map((a, i) => (
                                 <View key={a.id} style={[styles.txRow, i > 0 && styles.hair]}>
                                     <View style={[styles.txIcon, { backgroundColor: a.direction === 'IN' ? '#ECFDF5' : '#FEF2F2' }]}>
                                         {a.direction === 'IN' ? <ArrowDownLeft size={16} color={colors.positiveInk} /> : <ArrowUpRight size={16} color={colors.danger} />}

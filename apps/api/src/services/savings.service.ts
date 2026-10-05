@@ -97,17 +97,28 @@ function toSummary(goal: any, balance: number, role: 'OWNER' | 'MEMBER', members
 }
 
 async function membersOf(goalIds: string[]) {
-    if (goalIds.length === 0) return new Map<string, { name: string; userId: string; avatarUrl: string | null; role: string }[]>();
-    const { data } = await supabase
+    type M = { name: string; userId: string; avatarUrl: string | null; role: string };
+    if (goalIds.length === 0) return new Map<string, M[]>();
+    const { data, error } = await supabase
         .from('savings_group_members')
-        .select('goal_id, user_id, display_name, role, joined_at, organization:organizations(logo_url)')
+        .select('goal_id, user_id, display_name, role, joined_at, organization_id')
         .in('goal_id', goalIds)
         .order('joined_at', { ascending: true });
-    const map = new Map<string, { name: string; userId: string; avatarUrl: string | null; role: string }[]>();
-    for (const m of (data ?? []) as any[]) {
-        const org = Array.isArray(m.organization) ? m.organization[0] : m.organization;
+    if (error) console.error('[Savings] members lookup failed:', error.message);
+
+    // Logos are looked up separately: the members table has no foreign key to organizations, so a
+    // PostgREST embed (organizations(logo_url)) isn't possible and would silently return nothing.
+    const orgIds = [...new Set((data ?? []).map(m => m.organization_id).filter(Boolean))] as string[];
+    const logos = new Map<string, string | null>();
+    if (orgIds.length) {
+        const { data: orgs } = await supabase.from('organizations').select('id, logo_url').in('id', orgIds);
+        for (const o of orgs ?? []) logos.set(o.id, o.logo_url ?? null);
+    }
+
+    const map = new Map<string, M[]>();
+    for (const m of data ?? []) {
         const list = map.get(m.goal_id) ?? [];
-        list.push({ name: m.display_name || 'Member', userId: m.user_id, avatarUrl: org?.logo_url ?? null, role: m.role });
+        list.push({ name: m.display_name || 'Member', userId: m.user_id, avatarUrl: (m.organization_id && logos.get(m.organization_id)) || null, role: m.role });
         map.set(m.goal_id, list);
     }
     return map;
