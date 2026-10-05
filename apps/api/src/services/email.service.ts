@@ -17,6 +17,9 @@ function getLencoLogo(): Buffer | null {
 }
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+// moneywise.blueopus.cloud is the verified Resend sending domain. The default matters: falling
+// back to Resend's resend.dev sandbox sender only delivers to the Resend account owner.
+const FROM_ADDRESS = process.env.EMAIL_FROM || 'MoneyWise <notifications@moneywise.blueopus.cloud>';
 // Falling back to localhost in production would send email recipients on other
 // machines to a dead address — fall back to the real production domain instead,
 // matching the pattern used in auth.controller.ts / user.controller.ts.
@@ -945,7 +948,7 @@ export const emailService = {
             ...(extraAttachments || []),
         ];
         const { error } = await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'MoneyWise <notifications@resend.dev>',
+            from: FROM_ADDRESS,
             to,
             subject: `Payment received — ${money(total)}`,
             html,
@@ -1138,7 +1141,7 @@ export const emailService = {
         }
 
         const { error } = await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'MoneyWise <notifications@resend.dev>',
+            from: FROM_ADDRESS,
             to,
             subject: `Proof of Transfer — ${money(amount)} · ${scheduleTitle}`,
             html,
@@ -1484,7 +1487,7 @@ export const emailService = {
         }
 
         const { data, error } = await resend.emails.send({
-            from: process.env.EMAIL_FROM || 'MoneyWise <notifications@resend.dev>', // Use verified domain in prod
+            from: FROM_ADDRESS, // Use verified domain in prod
             to: params.to,
             subject: params.subject,
             html: params.html,
