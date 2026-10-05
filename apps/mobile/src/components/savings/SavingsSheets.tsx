@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-    Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Image, ScrollView, Share,
+    Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Image, ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,14 +13,6 @@ import { uploadToBucket } from '../../lib/uploads';
 import { useAuth } from '../../context/AuthContext';
 import { SelectField, type SelectOption } from '../invest/application/formFields';
 import { colors, fonts, radius } from '../../theme/tokens';
-
-/** Opens the share sheet with a group's invite code and join link. */
-export const shareInvite = (item: SavingsItem) => {
-    if (!item.inviteCode) return;
-    Share.share({
-        message: `Join "${item.name}" on MoneyWise group savings.\n\nInvite code: ${item.inviteCode}\nhttps://moneywise.blueopus.cloud/savings/join/${item.inviteCode}`,
-    }).catch(() => {});
-};
 
 /* ── Shared bottom sheet ─────────────────────────────────────────────────── */
 

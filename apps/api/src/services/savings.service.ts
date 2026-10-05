@@ -13,6 +13,7 @@
  */
 import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
+import { pushService } from './push.service';
 
 export type SavingsKind = 'WISHLIST' | 'GOAL' | 'GROUP';
 
@@ -76,7 +77,7 @@ async function moveBetweenWallets(orgId: string, userId: string, fromId: string,
     } as any);
 }
 
-function toSummary(goal: any, balance: number, role: 'OWNER' | 'MEMBER', members: { name: string; userId: string }[]) {
+function toSummary(goal: any, balance: number, role: 'OWNER' | 'MEMBER', members: { name: string; userId: string; avatarUrl?: string | null; role?: string }[]) {
     const target = goal.target_amount != null ? Number(goal.target_amount) : null;
     return {
         id: goal.id,
@@ -96,16 +97,17 @@ function toSummary(goal: any, balance: number, role: 'OWNER' | 'MEMBER', members
 }
 
 async function membersOf(goalIds: string[]) {
-    if (goalIds.length === 0) return new Map<string, { name: string; userId: string }[]>();
+    if (goalIds.length === 0) return new Map<string, { name: string; userId: string; avatarUrl: string | null; role: string }[]>();
     const { data } = await supabase
         .from('savings_group_members')
-        .select('goal_id, user_id, display_name, role, joined_at')
+        .select('goal_id, user_id, display_name, role, joined_at, organization:organizations(logo_url)')
         .in('goal_id', goalIds)
         .order('joined_at', { ascending: true });
-    const map = new Map<string, { name: string; userId: string }[]>();
-    for (const m of data ?? []) {
+    const map = new Map<string, { name: string; userId: string; avatarUrl: string | null; role: string }[]>();
+    for (const m of (data ?? []) as any[]) {
+        const org = Array.isArray(m.organization) ? m.organization[0] : m.organization;
         const list = map.get(m.goal_id) ?? [];
-        list.push({ name: m.display_name || 'Member', userId: m.user_id });
+        list.push({ name: m.display_name || 'Member', userId: m.user_id, avatarUrl: org?.logo_url ?? null, role: m.role });
         map.set(m.goal_id, list);
     }
     return map;
@@ -185,13 +187,13 @@ export const savingsService = {
             throw new Error(`Could not save: ${goalErr?.message}`);
         }
 
-        let members: { name: string; userId: string }[] = [];
+        let members: { name: string; userId: string; avatarUrl?: string | null; role?: string }[] = [];
         if (kind === 'GROUP') {
             const owner = await displayName(params.userId);
             await supabase.from('savings_group_members').insert({
                 goal_id: goal.id, user_id: params.userId, organization_id: params.orgId, display_name: owner, role: 'OWNER',
             });
-            members = [{ name: owner, userId: params.userId }];
+            members = [{ name: owner, userId: params.userId, avatarUrl: null, role: 'OWNER' }];
         }
         return toSummary(goal, 0, 'OWNER', members);
     },
@@ -243,15 +245,28 @@ export const savingsService = {
                 }));
         }
 
-        let contributions: { name: string; amount: number; status: string; date: string; method: string }[] = [];
+        let contributions: { userId: string; name: string; avatarUrl: string | null; amount: number; status: string; date: string; method: string }[] = [];
+        let memberSummary: { userId: string; name: string; avatarUrl: string | null; role: string; count: number; total: number }[] = [];
         if (goal.kind === 'GROUP') {
             const { data } = await supabase
-                .from('savings_contributions').select('display_name, amount, status, created_at, method')
-                .eq('goal_id', goal.id).neq('status', 'FAILED').order('created_at', { ascending: false }).limit(50);
-            contributions = (data ?? []).map(c => ({ name: c.display_name || 'Member', amount: Number(c.amount), status: c.status, date: c.created_at, method: c.method }));
+                .from('savings_contributions').select('user_id, display_name, amount, status, created_at, method')
+                .eq('goal_id', goal.id).neq('status', 'FAILED').order('created_at', { ascending: false }).limit(200);
+            const avatar = new Map(members.map(m => [m.userId, m.avatarUrl ?? null]));
+            contributions = (data ?? []).map(c => ({
+                userId: c.user_id, name: c.display_name || 'Member', avatarUrl: avatar.get(c.user_id) ?? null,
+                amount: Number(c.amount), status: c.status, date: c.created_at, method: c.method,
+            }));
+            // Only money that actually landed counts towards a member's totals.
+            memberSummary = members.map(m => {
+                const mine = contributions.filter(c => c.userId === m.userId && c.status === 'CONFIRMED');
+                return {
+                    userId: m.userId, name: m.name, avatarUrl: m.avatarUrl ?? null, role: m.role ?? 'MEMBER',
+                    count: mine.length, total: round2(mine.reduce((sum, c) => sum + c.amount, 0)),
+                };
+            }).sort((a, b) => b.total - a.total);
         }
 
-        return { ...toSummary(goal, balance, role, members), activity, contributions };
+        return { ...toSummary(goal, balance, role, members), activity, contributions, memberSummary };
     },
 
     async deposit(params: { goalId: string; orgId: string; userId: string; amount: unknown; sourceWalletId: string }) {
@@ -330,6 +345,93 @@ export const savingsService = {
         if (!deposit) return { status: 'PENDING' };
         await supabase.from('savings_contributions').update({ status: 'CONFIRMED', confirmed_at: new Date().toISOString() }).eq('id', c.id).eq('status', 'PENDING');
         return { status: 'CONFIRMED' };
+    },
+
+
+
+    /** Public (no login): what someone sees on an invite link before joining. */
+    async preview(code: unknown) {
+        const c = clean(code, 12).toUpperCase();
+        const { data: goal } = await supabase.from('savings_goals').select('*').eq('invite_code', c).eq('status', 'ACTIVE').maybeSingle();
+        if (!goal || goal.kind !== 'GROUP') throw new SavingsError('NOT_FOUND', 'This invite link isn’t valid any more', 404);
+        const members = (await membersOf([goal.id])).get(goal.id) ?? [];
+        const balance = await walletBalance(goal.organization_id, goal.wallet_id);
+        const target = goal.target_amount != null ? Number(goal.target_amount) : null;
+        const organiser = members.find(m => m.role === 'OWNER')?.name ?? 'The organiser';
+        return {
+            name: goal.name,
+            organiser: organiser.split(' ')[0],
+            memberCount: members.length,
+            targetAmount: target,
+            progress: target ? Math.min(1, balance / target) : null,
+        };
+    },
+
+    /** Owner-only: find MoneyWise users (by email, username or name) to add straight into the group. */
+    async searchPeople(goalId: string, orgId: string, userId: string, q: unknown) {
+        const goal = await loadGoal(goalId);
+        if (!goal || goal.organization_id !== orgId || goal.kind !== 'GROUP') throw new SavingsError('NOT_FOUND', 'Group not found', 404);
+        const query = clean(q, 60).replace(/^@/, '').replace(/[%,()]/g, '');
+        if (query.length < 3) return [];
+
+        const { data: users } = await supabase
+            .from('users')
+            .select('id, name, email, username, organization_id, organization:organizations(logo_url)')
+            .or(`email.ilike.%${query}%,username.ilike.%${query}%,name.ilike.%${query}%`)
+            .neq('status', 'DISABLED')
+            .neq('id', userId)
+            .limit(8);
+        const memberIds = new Set(((await membersOf([goal.id])).get(goal.id) ?? []).map(m => m.userId));
+
+        const mask = (email?: string | null) => {
+            if (!email) return null;
+            const [local, domain] = email.split('@');
+            return `${local.slice(0, 1)}${'•'.repeat(Math.max(1, Math.min(4, local.length - 1)))}@${domain}`;
+        };
+        return (users ?? []).map((u: any) => {
+            const org = Array.isArray(u.organization) ? u.organization[0] : u.organization;
+            return {
+                userId: u.id as string,
+                name: (u.name as string) || (u.username as string) || 'MoneyWise user',
+                username: (u.username as string | null) ?? null,
+                email: mask(u.email),
+                avatarUrl: (org?.logo_url as string | null) ?? null,
+                isMember: memberIds.has(u.id),
+            };
+        });
+    },
+
+    /** Owner adds someone who has a MoneyWise account; they're told with a push. */
+    async addMember(goalId: string, orgId: string, ownerId: string, newUserId: unknown) {
+        const goal = await loadGoal(goalId);
+        if (!goal || goal.organization_id !== orgId || goal.kind !== 'GROUP') throw new SavingsError('NOT_FOUND', 'Group not found', 404);
+        if (typeof newUserId !== 'string') throw new SavingsError('VALIDATION', 'Choose a person to add');
+        const { data: user } = await supabase.from('users').select('id, name, email, organization_id').eq('id', newUserId).neq('status', 'DISABLED').maybeSingle();
+        if (!user) throw new SavingsError('NOT_FOUND', 'That person isn’t on MoneyWise', 404);
+
+        const { error } = await supabase.from('savings_group_members').insert({
+            goal_id: goal.id, user_id: user.id, organization_id: user.organization_id ?? null,
+            display_name: user.name || user.email || 'Member', role: 'MEMBER',
+        });
+        if (error && (error as any).code !== '23505') throw new Error(`Could not add them: ${error.message}`);
+        if (!error) {
+            const inviter = await displayName(ownerId);
+            pushService.sendToUser(user.id, {
+                title: `You were added to ${goal.name}`,
+                body: `${inviter} added you to a group savings. Open Savings to contribute.`,
+                data: { type: 'savings_group', id: goal.id },
+            }).catch(() => undefined);
+        }
+        return { added: !error };
+    },
+
+    /** A member leaves a group (the organiser can't — they'd close it instead). */
+    async leave(goalId: string, orgId: string, userId: string) {
+        const goal = await loadGoal(goalId);
+        if (!goal) throw new SavingsError('NOT_FOUND', 'Group not found', 404);
+        if (goal.organization_id === orgId) throw new SavingsError('OWNER', 'You’re the organiser. Close the group instead.');
+        await supabase.from('savings_group_members').delete().eq('goal_id', goalId).eq('user_id', userId);
+        return { left: true };
     },
 
     /** Close a savings item once it's empty (the wallet and its history are kept for the books). */

@@ -24,6 +24,9 @@ export function useNotificationNavigation() {
                 case 'cashbook':
                     router.push('/(tabs)/wallet');
                     break;
+                case 'savings_group':
+                    if (data.id) router.push(`/savings/${data.id}`);
+                    break;
                 case 'invest_application':
                     router.push('/apps/invest/applications');
                     break;

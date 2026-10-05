@@ -29,6 +29,7 @@ const Payroll = React.lazy(() => import('./pages/Payroll').then(m => ({ default:
 const CRM = React.lazy(() => import('./pages/CRM').then(m => ({ default: m.CRM })));
 const RunPayrollPage = React.lazy(() => import('./pages/RunPayrollPage').then(m => ({ default: m.RunPayrollPage })));
 const PayEntry = React.lazy(() => import('./pages/PayEntry').then(m => ({ default: m.PayEntry })));
+const SavingsJoin = React.lazy(() => import('./pages/SavingsJoin').then(m => ({ default: m.SavingsJoin })));
 const PublicPaymentLink = React.lazy(() => import('./pages/PublicPaymentLink').then(m => ({ default: m.PublicPaymentLink })));
 const Schedules = React.lazy(() => import('./pages/Schedules').then(m => ({ default: m.Schedules })));
 const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m => ({ default: m.InvestHome })));
@@ -180,6 +181,7 @@ function App() {
                         <Route path="/disconnect" element={<Disconnect />} />
                         <Route path="/pay/:wallet_id" element={<PayEntry />} />
                         <Route path="/pl/:token" element={<PublicPaymentLink />} />
+                        <Route path="/savings/join/:code" element={<SavingsJoin />} />
                         <Route
                             path="/onboarding"
                             element={

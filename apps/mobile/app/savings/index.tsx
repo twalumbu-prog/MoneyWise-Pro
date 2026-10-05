@@ -8,7 +8,8 @@ import { savingsService } from 'core';
 import type { SavingsItem, SavingsKind } from 'core';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { SavingsBalanceCard, SavingsProgress, MemberAvatars, SectionTitle } from '../../src/components/savings/SavingsUI';
-import { CreateSavingsSheet, AddMoneySheet, TransferOutSheet, JoinGroupSheet, shareInvite } from '../../src/components/savings/SavingsSheets';
+import { CreateSavingsSheet, AddMoneySheet, TransferOutSheet, JoinGroupSheet } from '../../src/components/savings/SavingsSheets';
+import { InviteModal } from '../../src/components/savings/InviteModal';
 import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -33,6 +34,7 @@ export default function SavingsScreen() {
     const [joinOpen, setJoinOpen] = useState(false);
     const [addFor, setAddFor] = useState<SavingsItem | null>(null);
     const [transferFor, setTransferFor] = useState<SavingsItem | null>(null);
+    const [inviteFor, setInviteFor] = useState<SavingsItem | null>(null);
 
     const { data, isPending, refetch, isRefetching } = useQuery({ queryKey: ['savings'], queryFn: () => savingsService.list() });
 
@@ -97,7 +99,7 @@ export default function SavingsScreen() {
                             items.map((item, i) => (
                                 <View key={item.id} style={i > 0 && styles.divider}>
                                     {tab === 'GROUP'
-                                        ? <GroupRow item={item} onOpen={() => open(item)} onAdd={() => setAddFor(item)} onTransfer={() => setTransferFor(item)} />
+                                        ? <GroupRow item={item} onOpen={() => open(item)} onAdd={() => setAddFor(item)} onTransfer={() => setTransferFor(item)} onInvite={() => setInviteFor(item)} />
                                         : <ItemRow item={item} onOpen={() => open(item)} onAdd={() => setAddFor(item)} />}
                                 </View>
                             ))
@@ -109,6 +111,7 @@ export default function SavingsScreen() {
             <CreateSavingsSheet visible={createOpen} kind={tab as SavingsKind} onClose={() => setCreateOpen(false)} onCreated={() => setCreateOpen(false)} />
             <JoinGroupSheet visible={joinOpen} onClose={() => setJoinOpen(false)} onJoined={(id) => { setJoinOpen(false); router.push(`/savings/${id}`); }} />
             <AddMoneySheet visible={!!addFor} item={addFor} onClose={() => setAddFor(null)} onDone={() => setAddFor(null)} />
+            <InviteModal visible={!!inviteFor} item={inviteFor} onClose={() => setInviteFor(null)} />
             <TransferOutSheet visible={!!transferFor} item={transferFor} onClose={() => setTransferFor(null)} onDone={() => setTransferFor(null)} />
         </View>
     );
@@ -134,7 +137,7 @@ const ItemRow: React.FC<{ item: SavingsItem; onOpen: () => void; onAdd: () => vo
 );
 
 /** Group row: name + member avatars, progress, and the Add Money · Transfer · Invite bar. */
-const GroupRow: React.FC<{ item: SavingsItem; onOpen: () => void; onAdd: () => void; onTransfer: () => void }> = ({ item, onOpen, onAdd, onTransfer }) => {
+const GroupRow: React.FC<{ item: SavingsItem; onOpen: () => void; onAdd: () => void; onTransfer: () => void; onInvite: () => void }> = ({ item, onOpen, onAdd, onTransfer, onInvite }) => {
     const owner = item.role === 'OWNER';
     return (
         <View style={{ gap: 10 }}>
@@ -150,7 +153,7 @@ const GroupRow: React.FC<{ item: SavingsItem; onOpen: () => void; onAdd: () => v
                 <View style={styles.actionDivider} />
                 <Action icon={<CreditCard size={14} color={owner ? '#000' : colors.textFaint} />} label="Transfer" onPress={onTransfer} disabled={!owner} />
                 <View style={styles.actionDivider} />
-                <Action icon={<Share2 size={14} color={owner ? '#000' : colors.textFaint} />} label="Invite" onPress={() => shareInvite(item)} disabled={!owner} />
+                <Action icon={<Share2 size={14} color={owner ? '#000' : colors.textFaint} />} label="Invite" onPress={onInvite} disabled={!owner} />
             </View>
         </View>
     );

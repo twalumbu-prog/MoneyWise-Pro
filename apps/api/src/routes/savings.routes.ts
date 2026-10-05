@@ -8,6 +8,19 @@ import { savingsService, SavingsError } from '../services/savings.service';
  * beyond looking them up.
  */
 const router = Router();
+
+// Public: the invite-link landing pages (web + app) preview a group before anyone logs in.
+// It reveals only the name, organiser's first name, member count, target and progress.
+router.get('/preview/:code', async (req: any, res: any) => {
+    try {
+        res.json(await savingsService.preview(req.params.code));
+    } catch (error: any) {
+        if (error instanceof SavingsError) return res.status(error.httpStatus).json({ error: error.message, code: error.code });
+        console.error('[Savings] preview', error);
+        res.status(500).json({ error: 'Something went wrong with savings' });
+    }
+});
+
 router.use(requireAuth);
 
 const handle = (fn: (req: any) => Promise<any>, status = 200) => async (req: any, res: any) => {
@@ -41,6 +54,9 @@ router.post('/:id/contributions', handle((req) => savingsService.contributionInt
     amount: req.body?.amount, reference: req.body?.reference,
 }), 201));
 router.post('/:id/contributions/:reference/confirm', handle((req) => savingsService.confirmContribution(req.params.id, req.params.reference, req.user.id)));
+router.get('/:id/people', handle((req) => savingsService.searchPeople(req.params.id, req.user.organization_id, req.user.id, req.query.q)));
+router.post('/:id/members', handle((req) => savingsService.addMember(req.params.id, req.user.organization_id, req.user.id, req.body?.userId), 201));
+router.post('/:id/leave', handle((req) => savingsService.leave(req.params.id, req.user.organization_id, req.user.id)));
 router.post('/:id/archive', handle((req) => savingsService.archive(req.params.id, req.user.organization_id)));
 
 export default router;

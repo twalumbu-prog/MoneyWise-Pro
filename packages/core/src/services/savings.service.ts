@@ -2,7 +2,7 @@ import { apiJson } from '../api/apiFetch';
 
 export type SavingsKind = 'WISHLIST' | 'GOAL' | 'GROUP';
 
-export interface SavingsMember { name: string; userId: string }
+export interface SavingsMember { name: string; userId: string; avatarUrl?: string | null; role?: string }
 
 export interface SavingsItem {
     id: string;
@@ -29,9 +29,49 @@ export interface SavingsOverview {
     totals: { wishlist: number; goals: number; groups: number };
 }
 
+export interface SavingsContribution {
+    userId: string;
+    name: string;
+    avatarUrl: string | null;
+    amount: number;
+    status: string;
+    date: string;
+    method: string;
+}
+
+/** One member's footprint in a group: how many confirmed contributions and the total they've put in. */
+export interface SavingsMemberSummary {
+    userId: string;
+    name: string;
+    avatarUrl: string | null;
+    role: string;
+    count: number;
+    total: number;
+}
+
 export interface SavingsDetail extends SavingsItem {
     activity: { id: string; date: string; description: string; amount: number; direction: 'IN' | 'OUT' }[];
-    contributions: { name: string; amount: number; status: string; date: string; method: string }[];
+    contributions: SavingsContribution[];
+    memberSummary: SavingsMemberSummary[];
+}
+
+/** What an invite link shows before anyone has joined. */
+export interface SavingsInvitePreview {
+    name: string;
+    organiser: string;
+    memberCount: number;
+    targetAmount: number | null;
+    progress: number | null;
+}
+
+export interface SavingsPerson {
+    userId: string;
+    name: string;
+    username: string | null;
+    /** Masked, e.g. j•••@gmail.com */
+    email: string | null;
+    avatarUrl: string | null;
+    isMember: boolean;
 }
 
 /**
@@ -63,6 +103,20 @@ export const savingsService = {
     },
     confirmContribution(id: string, reference: string): Promise<{ status: string }> {
         return apiJson(`/savings/${id}/contributions/${encodeURIComponent(reference)}/confirm`, { method: 'POST' });
+    },
+    /** Public invite-link preview (works without being signed in). */
+    previewInvite(code: string): Promise<SavingsInvitePreview> {
+        return apiJson(`/savings/preview/${encodeURIComponent(code)}`);
+    },
+    /** Organiser: look up MoneyWise users by email, username or name. */
+    searchPeople(id: string, query: string): Promise<SavingsPerson[]> {
+        return apiJson(`/savings/${id}/people?q=${encodeURIComponent(query)}`);
+    },
+    addMember(id: string, userId: string): Promise<{ added: boolean }> {
+        return apiJson(`/savings/${id}/members`, { method: 'POST', body: JSON.stringify({ userId }) });
+    },
+    leave(id: string): Promise<{ left: boolean }> {
+        return apiJson(`/savings/${id}/leave`, { method: 'POST' });
     },
     archive(id: string): Promise<{ archived: boolean }> {
         return apiJson(`/savings/${id}/archive`, { method: 'POST' });
