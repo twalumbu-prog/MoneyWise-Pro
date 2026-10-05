@@ -847,15 +847,6 @@ export const updateRequisitionExpenses = async (req: any, res: any): Promise<any
                         const { data: urlData } = supabase.storage.from('receipts').getPublicUrl(item.receipt_url);
                         const publicUrl = urlData.publicUrl;
 
-                        // Skip PDFs for now
-                        if (item.receipt_url.match(/\.pdf$/i)) {
-                            await supabase.from('line_items').update({
-                                receipt_ocr_status: 'FAILED',
-                                receipt_ocr_data: { error: 'PDF analysis not supported. Please upload an image.' }
-                            }).eq('id', item.id);
-                            return;
-                        }
-
                         const ocrData = await ocrService.analyzeReceipt(publicUrl);
 
                         await supabase.from('line_items').update({
@@ -930,10 +921,6 @@ export const analyzeReceiptItem = async (req: any, res: any): Promise<any> => {
                 error: 'No receipt URL found for this item in the database.',
                 message: 'If you just uploaded a receipt, please click "Save Expenses" first to persist the file path before starting AI analysis.'
             });
-        }
-
-        if (item.receipt_url.match(/\.pdf$/i)) {
-            return res.status(400).json({ error: 'PDF analysis not supported. Please upload an image.' });
         }
 
         // Mark as pending

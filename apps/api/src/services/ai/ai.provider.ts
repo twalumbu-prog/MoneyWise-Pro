@@ -290,6 +290,18 @@ export async function callAutoCompleteProvider(
 }
 
 /**
+ * OpenRouter takes images as image_url but PDFs as a `file` part — a PDF sent
+ * as image_url is rejected or read as nothing, which is why PDF receipts
+ * (e.g. emailed Vercel/Supabase invoices) were blocked outright.
+ */
+function openRouterMediaPart(mimeType: string, base64: string) {
+    const dataUrl = `data:${mimeType};base64,${base64}`;
+    return mimeType === 'application/pdf'
+        ? { type: 'file', file: { filename: 'receipt.pdf', file_data: dataUrl } }
+        : { type: 'image_url', image_url: { url: dataUrl } };
+}
+
+/**
  * Call OCR providers (vision) in parallel.
  * Gemini Vision is always primary; OpenRouter vision runs alongside if configured.
  */
@@ -324,7 +336,7 @@ export async function callAllOcrProviders(
                         role: 'user',
                         content: [
                             { type: 'text', text: prompt },
-                            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+                            openRouterMediaPart(mimeType, imageBase64),
                         ],
                     }],
                     temperature: 0.1,
@@ -360,7 +372,7 @@ export async function callAllOcrProviders(
                         role: 'user',
                         content: [
                             { type: 'text', text: prompt },
-                            { type: 'image_url', image_url: { url: `data:${mimeType};base64,${imageBase64}` } },
+                            openRouterMediaPart(mimeType, imageBase64),
                         ],
                     }],
                     temperature: 0.1,
