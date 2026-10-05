@@ -398,8 +398,6 @@ export const RequisitionCreate: React.FC = () => {
         return lineItems.reduce((sum: number, item: LineItem) => sum + Number(item.estimated_amount), 0);
     };
 
-    const isBlocked = activeRequisitions.length > 0;
-
     const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
         setError(null);
         const file = e.target.files?.[0];
@@ -572,7 +570,7 @@ export const RequisitionCreate: React.FC = () => {
                                             <div>
                                                 <h3 className="text-lg font-black text-amber-900 uppercase tracking-tight">Accountability Safeguard Active</h3>
                                                 <p className="text-amber-800 text-sm font-medium leading-relaxed">
-                                                    You currently have an outstanding requisition that requires reconciliation. To maintain financial accountability, new requests are paused until your active cycle is completed.
+                                                    You have an outstanding requisition that still needs reconciliation. You can still create this requisition as a draft, but no funds can be disbursed for it until your active cycle is completed.
                                                 </p>
                                             </div>
                                             
@@ -1152,7 +1150,7 @@ export const RequisitionCreate: React.FC = () => {
                         <button
                             type="submit"
                             data-tour-target="req-submit-btn"
-                            disabled={loading || isBlocked || !allPayrollVerified || isVerifying}
+                            disabled={loading || !allPayrollVerified || isVerifying}
                             className="px-6 py-2.5 bg-brand-green text-white font-bold rounded-xl hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-green-200 transition-all transform hover:-translate-y-0.5"
                         >
                             {loading ? 'Submitting...' : 'Submit Requisition'}

@@ -63,36 +63,6 @@ function validateLineItems(items: LineItemArg[]): { items: LineItemArg[]; total:
     return { items: clean, total: clean.reduce((s, li) => s + li.quantity! * li.unitPrice, 0) };
 }
 
-/**
- * Mirrors the "Accountability Safeguard" in requisition.controller.ts: a user
- * with an outstanding DISBURSED/EXPENSED requisition may not raise another
- * expense request. The agent must not be a way around a control that exists in
- * the UI — and catching it in the handler means the user is told why instead of
- * being shown an approval card for a write that would fail.
- */
-async function assertNoAccountabilityBlock(ctx: AgentContext, type?: string): Promise<void> {
-    if (type && type !== 'EXPENSE') return;
-
-    const { data: active } = await supabase
-        .from('requisitions')
-        .select('id, status, description')
-        .eq('requestor_id', ctx.userId)
-        .eq('organization_id', ctx.organizationId)
-        .in('status', ['DISBURSED', 'EXPENSED'])
-        // limit(1) rather than maybeSingle(): with two outstanding requisitions
-        // maybeSingle() errors, which would silently skip the block entirely.
-        .limit(1)
-        .maybeSingle();
-
-    if (active) {
-        invalid(
-            `This user already has an outstanding requisition ("${active.description ?? active.id.slice(0, 8)}", ` +
-            `status ${active.status}). MoneyWise blocks a new expense request until that cycle is completed. ` +
-            `Tell the user this — do not retry.`
-        );
-    }
-}
-
 const createRequisition: ToolDefinition = {
     name: 'create_requisition',
     description:
@@ -127,7 +97,6 @@ const createRequisition: ToolDefinition = {
     handler: async (ctx, args) => {
         if (!args.description?.trim()) invalid('A description is required.');
         const { items, total } = validateLineItems(args.lineItems);
-        await assertNoAccountabilityBlock(ctx, args.type);
 
         return propose(
             `Create a draft requisition: ${args.description}`,
@@ -146,9 +115,6 @@ const createRequisition: ToolDefinition = {
     },
     execute: async (ctx, args) => {
         const { items, total } = validateLineItems(args.lineItems);
-        // Re-checked at commit time: an outstanding requisition may have appeared
-        // between the proposal and the approval.
-        await assertNoAccountabilityBlock(ctx, args.type);
 
         const { data: req, error } = await supabase
             .from('requisitions')
@@ -477,9 +443,8 @@ const categorizeTransaction: ToolDefinition = {
         );
     },
     execute: async (ctx, args) => {
-        // Re-checked at commit time, same as the accountability block on
-        // create_requisition: nothing prevents the entry from having gained
-        // a requisition link between proposal and approval, and this write
+        // Re-checked at commit time: nothing prevents the entry from having
+        // gained a requisition link between proposal and approval, and this write
         // would be silently ineffective on one either way.
         const { data: entry } = await supabase
             .from('cashbook_entries')

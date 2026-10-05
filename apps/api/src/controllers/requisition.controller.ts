@@ -83,29 +83,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             return res.status(400).json({ error: 'Organization context missing. Please contact support.' });
         }
 
-        // 0. Check for existing active requisitions (Accountability Safeguard)
-        // Scoped to this organization only - a pending requisition in another
-        // org the user belongs to must not block requests here.
-        const blockingStatuses = ['DISBURSED', 'EXPENSED'];
-        const { data: activeReq, error: activeError } = await supabase
-            .from('requisitions')
-            .select('id, status')
-            .eq('requestor_id', requestor_id)
-            .eq('organization_id', organization_id)
-            .in('status', blockingStatuses)
-            .maybeSingle();
-
-        if (activeError) {
-            console.error('Error checking active requisitions:', activeError);
-        }
-
-        if (activeReq && (!type || type === 'EXPENSE')) {
-            return res.status(400).json({ 
-                error: 'Accountability Block: Multiple requisitions not allowed.',
-                message: `You have an outstanding requisition (#${activeReq.id.slice(0, 8)}) with status "${activeReq.status}". Please submit any pending change or complete the existing cycle before requesting more funds.`,
-                activeRequisitionId: activeReq.id
-            });
-        }
+        // Accountability Safeguard is enforced at disbursal (disbursement.controller),
+        // not here: a requestor with an outstanding cycle may still raise drafts.
 
         const { data: orgData } = await supabase
             .from('organizations')
