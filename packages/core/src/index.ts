@@ -116,7 +116,18 @@ export type {
 
 export { lencoService } from './services/lenco.service';
 export { investmentService } from './services/investment.service';
-export type { InvestmentTarget } from './services/investment.service';
+export type {
+    InvestmentTarget, InvestorAccountStatus, MyInvestorAccount, InvestorApplicationSummary,
+    InvestorApplicationDetail, PayoutSettings,
+} from './services/investment.service';
+export {
+    ID_TYPES, GENDERS, OCCUPATIONS, RELATIONSHIPS, ZAMBIA_BANK_NAMES, NATIONALITIES, EMPTY_APPLICANT,
+    DOC_LIMITS, APPLICATION_STEPS, INVESTOR_STATUS_LABEL,
+    toIsoDate, splitIsoDate, ageFromIso, validateApplicantStep, validateDocumentsStep,
+} from './reference/investorOnboarding';
+export type {
+    IdType, NrcMethod, InvestorApplicant, InvestorDocuments, InvestorDocKey, FieldErrors, ApplicationStepId,
+} from './reference/investorOnboarding';
 
 export { payrollService } from './services/payroll.service';
 export type {

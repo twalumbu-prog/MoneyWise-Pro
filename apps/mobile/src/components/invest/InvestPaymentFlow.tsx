@@ -54,7 +54,9 @@ export const InvestPaymentFlow: React.FC<{
     onClose: () => void;
     product: InvestProduct;
     provider: InvestProvider;
-}> = ({ visible, onClose, product, provider }) => {
+    /** The investor's account number with this company, shown so they can see what they're investing under. */
+    accountNumber?: string | null;
+}> = ({ visible, onClose, product, provider, accountNumber }) => {
     const insets = useSafeAreaInsets();
     const [step, setStep] = useState<Step>('METHOD');
     const [method, setMethod] = useState<Method>('DEPOSIT');
@@ -185,7 +187,7 @@ export const InvestPaymentFlow: React.FC<{
             // Register who is paying first, so the deposit is booked to this organization
             // (asset + owner contribution) automatically once it lands.
             if (provider.investmentTargetId) {
-                await investmentService.recordIntent(ref, provider.investmentTargetId, amount);
+                await investmentService.recordIntent(ref, provider.investmentTargetId, amount, product.name);
             }
             await lencoService.logPublicWalletDepositIntent(ref, `Investment deposit into ${provider.name}`, amount, provider.walletId);
             const initRes = await lencoService.initiateMobileMoneyCollection({
@@ -253,6 +255,7 @@ export const InvestPaymentFlow: React.FC<{
                 provider.investmentTargetId,
                 amount,
                 `Investment: ${selectedWallet.name} ➜ ${provider.name}`,
+                product.name,
             );
             setStep('SUCCESS');
         } catch (e: any) {
@@ -308,15 +311,23 @@ export const InvestPaymentFlow: React.FC<{
                             <Text style={styles.sheetTitle} numberOfLines={1}>Invest in {product.name}</Text>
                             <Pressable onPress={handleClose} hitSlop={8}><X size={18} color={colors.textFaint} /></Pressable>
                         </View>
-                        <Text style={styles.sheetSub}>Choose how you'd like to fund this investment.</Text>
+                        <Text style={styles.sheetSub}>
+                            {accountNumber ? `Account ${accountNumber} · ` : ''}Choose how you'd like to fund this investment.
+                        </Text>
 
-                        <Pressable style={styles.methodOption} onPress={() => { setMethod('AUTO_INVEST'); setStep('AMOUNT'); }}>
+                        {/* Recurring contributions aren't wired to real money yet, so a real company
+                            can't offer them — better an honest "coming soon" than a fake success. */}
+                        <Pressable
+                            style={[styles.methodOption, provider.isReal && { opacity: 0.5 }]}
+                            disabled={!!provider.isReal}
+                            onPress={() => { setMethod('AUTO_INVEST'); setStep('AMOUNT'); }}
+                        >
                             <View style={[styles.methodIcon, { backgroundColor: colors.tabActiveBg }]}>
                                 <Repeat size={20} color={colors.blue} />
                             </View>
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.methodTitle}>Auto-Invest</Text>
-                                <Text style={styles.methodDesc}>Recurring scheduled contributions</Text>
+                                <Text style={styles.methodDesc}>{provider.isReal ? 'Coming soon' : 'Recurring scheduled contributions'}</Text>
                             </View>
                         </Pressable>
 

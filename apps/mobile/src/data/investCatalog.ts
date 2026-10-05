@@ -33,6 +33,12 @@ export interface InvestProvider {
     organizationId?: string;
     walletId?: string;
     investmentTargetId?: string;
+    /** False when the company has no account to invest into yet (set from the target). */
+    requiresAccount?: boolean;
+    /** Names for the application form's "Sales Person" picker. */
+    salesPeople?: string[];
+    /** Linked from the company's "fund fact sheet", shown in the declaration. */
+    factSheetUrl?: string | null;
 }
 
 /**
@@ -42,10 +48,40 @@ export interface InvestProvider {
  * only ever one generic "product" per real target today — a direct deposit
  * into that organization's wallet, not a fund with its own NAV/performance.
  */
-export function toRealInvestProvider(target: {
+type RealTarget = {
     id: string; organizationId: string; walletId: string;
     displayName: string; category: string | null; description: string | null; logoUrl: string | null;
-}): InvestProvider {
+    providerKey?: string | null; requiresAccount?: boolean; salesPeople?: string[]; factSheetUrl?: string | null;
+};
+
+/**
+ * Real targets first. A target linked (providerKey) to a catalog provider takes over
+ * that provider's entry — same products and branding, but funding it now moves real
+ * money into the company's own MoneyWise wallet. Catalog providers with no company
+ * behind them stay listed but can't be invested in yet (isReal is false).
+ */
+export function buildInvestProviders(targets: RealTarget[]): InvestProvider[] {
+    const linked = new Set<string>();
+    const real = targets.map((t) => {
+        const demo = t.providerKey ? INVEST_PROVIDERS.find((p) => p.id === t.providerKey) : undefined;
+        if (!demo) return toRealInvestProvider(t);
+        linked.add(demo.id);
+        return {
+            ...demo,
+            logo: t.logoUrl || demo.logo,
+            isReal: true,
+            organizationId: t.organizationId,
+            walletId: t.walletId,
+            investmentTargetId: t.id,
+            requiresAccount: t.requiresAccount !== false,
+            salesPeople: t.salesPeople ?? [],
+            factSheetUrl: t.factSheetUrl ?? null,
+        } as InvestProvider;
+    });
+    return [...real, ...INVEST_PROVIDERS.filter((p) => !linked.has(p.id))];
+}
+
+export function toRealInvestProvider(target: RealTarget): InvestProvider {
     return {
         id: `real-${target.id}`,
         name: target.displayName,
@@ -57,6 +93,9 @@ export function toRealInvestProvider(target: {
         organizationId: target.organizationId,
         walletId: target.walletId,
         investmentTargetId: target.id,
+        requiresAccount: target.requiresAccount !== false,
+        salesPeople: target.salesPeople ?? [],
+        factSheetUrl: target.factSheetUrl ?? null,
         products: [{
             id: `real-${target.id}-direct`,
             name: 'Direct Investment',

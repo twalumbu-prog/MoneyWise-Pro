@@ -56,7 +56,7 @@ import pool from './db';
 // each cold Vercel instance otherwise opened a fresh direct connection and reran
 // ~15 sequential DDL statements just to find out they were all no-ops, which is
 // what was exhausting Postgres's connection limit under concurrent traffic.
-const MIGRATION_VERSION = 2;
+const MIGRATION_VERSION = 3;
 
 const runMigration = async () => {
     const directUrl = process.env.DIRECT_DATABASE_URL;
@@ -365,6 +365,80 @@ const runMigration = async () => {
                   OR lower(name) LIKE '%individual%'
               );
         `);
+
+        // Investor accounts (see supabase/migrations/20261005120000_investor_accounts.sql —
+        // keep the two in step; this is what actually runs against production).
+        console.log('[Migration] Adding investor accounts...');
+        await migrationPool.query(`
+            ALTER TABLE public.investment_targets
+                ADD COLUMN IF NOT EXISTS provider_key TEXT,
+                ADD COLUMN IF NOT EXISTS requires_account BOOLEAN NOT NULL DEFAULT TRUE,
+                ADD COLUMN IF NOT EXISTS sales_people JSONB NOT NULL DEFAULT '[]'::jsonb,
+                ADD COLUMN IF NOT EXISTS fund_fact_sheet_url TEXT;
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_investment_targets_provider_key
+                ON public.investment_targets (provider_key) WHERE provider_key IS NOT NULL;
+
+            ALTER TABLE public.organizations
+                ADD COLUMN IF NOT EXISTS payout_bank_code TEXT,
+                ADD COLUMN IF NOT EXISTS payout_bank_name TEXT,
+                ADD COLUMN IF NOT EXISTS payout_branch TEXT,
+                ADD COLUMN IF NOT EXISTS payout_account_number TEXT,
+                ADD COLUMN IF NOT EXISTS payout_account_name TEXT,
+                ADD COLUMN IF NOT EXISTS forward_investor_deposits BOOLEAN NOT NULL DEFAULT FALSE;
+
+            CREATE TABLE IF NOT EXISTS public.investor_accounts (
+                id                       UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+                investor_organization_id UUID NOT NULL REFERENCES public.organizations(id) ON DELETE CASCADE,
+                investment_target_id     UUID NOT NULL REFERENCES public.investment_targets(id) ON DELETE CASCADE,
+                target_organization_id   UUID NOT NULL,
+                user_id                  UUID NOT NULL,
+                source                   TEXT NOT NULL CHECK (source IN ('REGISTERED', 'CONNECTED')),
+                status                   TEXT NOT NULL DEFAULT 'PENDING_REVIEW'
+                    CHECK (status IN ('PENDING_REVIEW', 'INFO_REQUESTED', 'ACTIVE', 'REJECTED', 'SUSPENDED')),
+                account_number           TEXT,
+                applicant                JSONB,
+                documents                JSONB,
+                declaration_accepted_at  TIMESTAMPTZ,
+                pdf_path                 TEXT,
+                email_sent_at            TIMESTAMPTZ,
+                email_error              TEXT,
+                review_note              TEXT,
+                reviewed_by              UUID,
+                reviewed_at              TIMESTAMPTZ,
+                created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_investor_accounts_live
+                ON public.investor_accounts (investor_organization_id, investment_target_id)
+                WHERE status <> 'REJECTED';
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_investor_accounts_number
+                ON public.investor_accounts (investment_target_id, lower(account_number))
+                WHERE account_number IS NOT NULL AND status = 'ACTIVE';
+            CREATE INDEX IF NOT EXISTS idx_investor_accounts_target
+                ON public.investor_accounts (target_organization_id, status, created_at DESC);
+            ALTER TABLE public.investor_accounts ENABLE ROW LEVEL SECURITY;
+
+            ALTER TABLE public.investments
+                ADD COLUMN IF NOT EXISTS investor_account_id UUID REFERENCES public.investor_accounts(id),
+                ADD COLUMN IF NOT EXISTS investor_account_number TEXT,
+                ADD COLUMN IF NOT EXISTS product_name TEXT;
+        `);
+        // The bucket + storage policy need rights on the storage schema; if the
+        // migration role lacks them this logs and the SQL file must be run in the
+        // Supabase SQL editor instead. It must not block the rest of the migration.
+        try {
+            await migrationPool.query(`
+                INSERT INTO storage.buckets (id, name, public)
+                VALUES ('investor-kyc', 'investor-kyc', FALSE)
+                ON CONFLICT (id) DO NOTHING;
+                DROP POLICY IF EXISTS "investor-kyc upload own folder" ON storage.objects;
+                CREATE POLICY "investor-kyc upload own folder" ON storage.objects
+                    FOR INSERT TO authenticated
+                    WITH CHECK (bucket_id = 'investor-kyc' AND (storage.foldername(name))[1] = auth.uid()::text);
+            `);
+        } catch (storageErr: any) {
+            console.warn('[Migration] investor-kyc bucket/policy not applied — run the storage section of 20261005120000_investor_accounts.sql in the Supabase SQL editor:', storageErr.message);
+        }
 
         // Refresh PostgREST schema cache
         console.log('[Migration] Reloading PostgREST schema cache...');

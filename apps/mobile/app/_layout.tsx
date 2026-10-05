@@ -115,6 +115,7 @@ export default function RootLayout() {
                         <Stack.Screen name="settings/general" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/team" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="settings/integrations" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="settings/investor-payouts" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/payroll/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/payroll/config" options={{ animation: 'slide_from_right' }} />
@@ -126,6 +127,7 @@ export default function RootLayout() {
                         <Stack.Screen name="apps/invest/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/invest/company/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="apps/invest/product/[id]" options={{ animation: 'slide_from_right' }} />
+                        <Stack.Screen name="apps/invest/register/[targetId]" options={{ animation: 'slide_from_bottom' }} />
                     </Stack>
                     <SessionGate />
                     <PushNotificationTapHandler />

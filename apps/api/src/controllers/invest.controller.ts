@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
 import { investmentService } from '../services/investment.service';
+import { investorAccountService, InvestorAccountError } from '../services/investorAccount.service';
 
 /**
  * Real (non-demo) investment targets shown at the top of the Invest feature.
@@ -13,7 +14,7 @@ export const listInvestmentTargets = async (req: any, res: any): Promise<any> =>
     try {
         const { data, error } = await supabase
             .from('investment_targets')
-            .select('id, organization_id, wallet_id, display_name, category, description, logo_url, priority, organizations(logo_url)')
+            .select('id, organization_id, wallet_id, display_name, category, description, logo_url, priority, provider_key, requires_account, sales_people, fund_fact_sheet_url, organizations(logo_url)')
             .eq('is_active', true)
             .order('priority', { ascending: true });
 
@@ -28,6 +29,10 @@ export const listInvestmentTargets = async (req: any, res: any): Promise<any> =>
             description: t.description,
             // Falls back to the organization's own uploaded logo when the target has none.
             logoUrl: t.logo_url || (t as any).organizations?.logo_url || null,
+            providerKey: (t as any).provider_key ?? null,
+            requiresAccount: (t as any).requires_account !== false,
+            salesPeople: Array.isArray((t as any).sales_people) ? (t as any).sales_people : [],
+            factSheetUrl: (t as any).fund_fact_sheet_url ?? null,
         })));
     } catch (error: any) {
         console.error('Error listing investment targets:', error);
@@ -46,7 +51,7 @@ export const listInvestmentTargets = async (req: any, res: any): Promise<any> =>
  */
 export const walletTransferToInvestmentTarget = async (req: any, res: any): Promise<any> => {
     try {
-        const { sourceWalletId, targetId, amount, description } = req.body;
+        const { sourceWalletId, targetId, amount, description, productName } = req.body;
         const organizationId = (req as any).user.organization_id;
         const userId = (req as any).user.id;
 
@@ -70,6 +75,9 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
         if (target.organization_id === organizationId) {
             return res.status(400).json({ error: 'Cannot invest into your own organization' });
         }
+        // No active account with this company, no investing — checked server-side so the
+        // app's prompt can't be bypassed by calling the endpoint directly.
+        const investorAccount = await investorAccountService.assertCanInvest(organizationId, targetId);
 
         const { data: sourceWallet, error: sourceWalletError } = await supabase
             .from('organization_wallets')
@@ -125,6 +133,8 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
             await investmentService.recordWalletInvestment({
                 investorOrgId: organizationId, userId, target: fullTarget, amount,
                 reference: `WT-${outflowEntry.id}`, accountId: investmentAccountId,
+                investorAccountId: investorAccount?.id ?? null, investorAccountNumber: investorAccount?.account_number ?? null,
+                productName,
             }).catch(err => console.error('[Investments] could not record wallet investment:', err.message));
         }
 
@@ -134,6 +144,7 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
             inflowEntryId: inflowEntry.id,
         });
     } catch (error: any) {
+        if (error instanceof InvestorAccountError) return res.status(error.httpStatus).json({ error: error.message, code: error.code });
         console.error('Error transferring investment funds:', error);
         res.status(500).json({ error: 'Failed to transfer funds', details: error.message });
     }
@@ -147,14 +158,19 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
  */
 export const recordInvestmentIntent = async (req: any, res: any): Promise<any> => {
     try {
-        const { reference, investmentTargetId, amount } = req.body;
+        const { reference, investmentTargetId, amount, productName } = req.body;
         const { organization_id: investorOrgId, id: userId } = (req as any).user;
         if (!reference || !investmentTargetId || typeof amount !== 'number') {
             return res.status(400).json({ error: 'reference, investmentTargetId and amount are required' });
         }
-        const result = await investmentService.recordIntent({ investorOrgId, userId, targetId: investmentTargetId, reference, amount });
+        const investorAccount = await investorAccountService.assertCanInvest(investorOrgId, investmentTargetId);
+        const result = await investmentService.recordIntent({
+            investorOrgId, userId, targetId: investmentTargetId, reference, amount,
+            investorAccountId: investorAccount?.id ?? null, investorAccountNumber: investorAccount?.account_number ?? null, productName,
+        });
         res.status(201).json(result);
     } catch (error: any) {
+        if (error instanceof InvestorAccountError) return res.status(error.httpStatus).json({ error: error.message, code: error.code });
         res.status(400).json({ error: error.message });
     }
 };
@@ -173,4 +189,93 @@ export const confirmInvestment = async (req: any, res: any): Promise<any> => {
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
+};
+
+
+// ── Investor accounts ────────────────────────────────────────────────────────
+
+const sendAccountError = (res: any, error: any, fallback: string) => {
+    if (error instanceof InvestorAccountError) {
+        return res.status(error.httpStatus).json({ error: error.message, code: error.code, details: error.details });
+    }
+    console.error(`[Invest] ${fallback}:`, error);
+    return res.status(500).json({ error: fallback, details: error?.message });
+};
+
+/** The caller's account / application with each company (one row per company). */
+export const listMyInvestorAccounts = async (req: any, res: any): Promise<any> => {
+    try {
+        const orgId = req.user.organization_id;
+        if (!orgId) return res.status(400).json({ error: 'User organization context missing' });
+        const rows = await investorAccountService.myAccounts(orgId);
+        res.json(rows.map((r: any) => ({
+            id: r.id, targetId: r.investment_target_id, source: r.source, status: r.status,
+            accountNumber: r.account_number, reviewNote: r.review_note, createdAt: r.created_at, updatedAt: r.updated_at,
+        })));
+    } catch (error: any) { sendAccountError(res, error, 'Failed to load your investment accounts'); }
+};
+
+export const connectInvestorAccount = async (req: any, res: any): Promise<any> => {
+    try {
+        const { targetId, accountNumber } = req.body ?? {};
+        if (!targetId || typeof accountNumber !== 'string') return res.status(400).json({ error: 'targetId and accountNumber are required' });
+        const row = await investorAccountService.connect({
+            investorOrgId: req.user.organization_id, userId: req.user.id, targetId, accountNumber,
+        });
+        res.status(201).json(row);
+    } catch (error: any) { sendAccountError(res, error, 'Failed to connect the account'); }
+};
+
+export const applyForInvestorAccount = async (req: any, res: any): Promise<any> => {
+    try {
+        const { targetId, applicant, documents, declaration } = req.body ?? {};
+        if (!targetId) return res.status(400).json({ error: 'targetId is required' });
+        const row = await investorAccountService.apply({
+            investorOrgId: req.user.organization_id, userId: req.user.id, targetId, applicant, documents, declaration: declaration === true,
+        });
+        res.status(201).json(row);
+    } catch (error: any) { sendAccountError(res, error, 'Failed to submit the application'); }
+};
+
+// ── Company side (CRM → Investors, Settings → Investor payouts) ──────────────
+
+export const listInvestorApplications = async (req: any, res: any): Promise<any> => {
+    try {
+        const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+        res.json(await investorAccountService.listApplications(req.user.organization_id, status));
+    } catch (error: any) { sendAccountError(res, error, 'Failed to load applications'); }
+};
+
+export const getInvestorApplication = async (req: any, res: any): Promise<any> => {
+    try {
+        const row = await investorAccountService.getApplication(req.params.id, req.user.organization_id);
+        if (!row) return res.status(404).json({ error: 'Application not found' });
+        res.json(row);
+    } catch (error: any) { sendAccountError(res, error, 'Failed to load the application'); }
+};
+
+export const reviewInvestorApplication = async (req: any, res: any): Promise<any> => {
+    try {
+        const { status, accountNumber, note } = req.body ?? {};
+        const row = await investorAccountService.review({
+            id: req.params.id, targetOrgId: req.user.organization_id, reviewerId: req.user.id, status, accountNumber, note,
+        });
+        res.json(row);
+    } catch (error: any) { sendAccountError(res, error, 'Failed to update the application'); }
+};
+
+export const getPayoutSettings = async (req: any, res: any): Promise<any> => {
+    try {
+        res.json(await investorAccountService.getPayoutSettings(req.user.organization_id));
+    } catch (error: any) { sendAccountError(res, error, 'Failed to load payout settings'); }
+};
+
+export const savePayoutSettings = async (req: any, res: any): Promise<any> => {
+    try {
+        const { bankName, branch, accountNumber, accountName, forwardDeposits } = req.body ?? {};
+        res.json(await investorAccountService.savePayoutSettings({
+            orgId: req.user.organization_id, userId: req.user.id,
+            bankName, branch, accountNumber, accountName, forwardDeposits: forwardDeposits === true,
+        }));
+    } catch (error: any) { sendAccountError(res, error, 'Failed to save payout settings'); }
 };

@@ -1,12 +1,12 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { investmentService } from 'core';
-import { INVEST_PROVIDERS, toRealInvestProvider, type InvestProvider } from '../data/investCatalog';
+import { buildInvestProviders, type InvestProvider } from '../data/investCatalog';
 
 /**
- * Real investment targets (see apps/api/src/controllers/invest.controller.ts)
- * prepended to the static demo catalog, so a real company like Kapstone
- * Capital shows up first everywhere the Invest feature lists providers.
+ * Real investment targets (see apps/api/src/controllers/invest.controller.ts) merged
+ * into the catalog: a company linked to a catalog provider replaces its demo entry,
+ * and real companies with no catalog entry (e.g. Kapstone Capital) come first.
  */
 export function useInvestProviders(): InvestProvider[] {
     const { data } = useQuery({
@@ -15,8 +15,5 @@ export function useInvestProviders(): InvestProvider[] {
         staleTime: 60_000,
     });
 
-    return useMemo(() => {
-        const real = (data || []).map(toRealInvestProvider);
-        return [...real, ...INVEST_PROVIDERS];
-    }, [data]);
+    return useMemo(() => buildInvestProviders(data || []), [data]);
 }

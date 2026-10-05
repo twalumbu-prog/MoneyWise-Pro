@@ -5,7 +5,8 @@ import {
     ShieldCheck, ShoppingBag, LayoutGrid, TrendingUp, Landmark, Store,
     User, Settings as SettingsIcon, Users, LogOut, Plug, FolderTree, FileText, Lock, UserX,
 } from 'lucide-react-native';
-import { userService } from 'core';
+import { userService, investmentService } from 'core';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../src/context/AuthContext';
 import { OtherServiceIcon } from '../../src/components/icons/OtherServiceIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -27,6 +28,14 @@ export default function MenuScreen() {
         activeOrgName.toLowerCase().includes('personal') ||
         activeOrgName.toLowerCase().includes('individual') ||
         activeOrgName.toLowerCase().includes('private');
+
+    // Only an admin of an investment company has investor deposits to forward.
+    const { data: payoutSettings } = useQuery({
+        queryKey: ['investor-payout-settings'],
+        queryFn: () => investmentService.getPayoutSettings(),
+        enabled: userRole === 'ADMIN' && !isPersonal,
+        staleTime: 5 * 60_000,
+    });
 
     const confirmDeleteAccount = () =>
         Alert.alert(
@@ -175,6 +184,18 @@ export default function MenuScreen() {
                         <View style={styles.rowMain}>
                             <Text style={styles.rowLabel}>Integrations</Text>
                             <Text style={styles.rowSub}>QuickBooks connection</Text>
+                        </View>
+                    </Pressable>
+                )}
+                {!isPersonal && payoutSettings?.isInvestmentCompany && (
+                    <Pressable
+                        onPress={() => router.push('/settings/investor-payouts')}
+                        style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
+                    >
+                        <Landmark size={18} color={colors.blue} />
+                        <View style={styles.rowMain}>
+                            <Text style={styles.rowLabel}>Investor Payouts</Text>
+                            <Text style={styles.rowSub}>Bank account for investor deposits</Text>
                         </View>
                     </Pressable>
                 )}

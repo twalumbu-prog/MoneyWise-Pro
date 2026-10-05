@@ -4,6 +4,9 @@ import { QuickBooksIntegration } from '../components/settings/integrations/Quick
 import { LencoIntegration } from '../components/settings/integrations/LencoIntegration';
 import { MasterfeesIntegration } from '../components/settings/integrations/MasterfeesIntegration';
 import { DeveloperAPI } from '../components/settings/DeveloperAPI';
+import { InvestorPayouts } from '../components/settings/InvestorPayouts';
+import { useQuery } from '@tanstack/react-query';
+import { investmentService } from 'core';
 import {
     Settings as SettingsIcon,
     Users,
@@ -12,7 +15,8 @@ import {
     User,
     GraduationCap,
     CreditCard,
-    Code2
+    Code2,
+    Landmark
 } from 'lucide-react';
 import { GeneralSettings } from '../components/settings/GeneralSettings';
 import { UserManagement } from '../components/settings/UserManagement';
@@ -24,6 +28,14 @@ import { Layout } from '../components/Layout';
 export const Settings: React.FC = () => {
     const [searchParams, setSearchParams] = useSearchParams();
     const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'profile');
+
+    // Investment companies get an extra tab for the bank account their investor deposits are forwarded to.
+    const { data: payoutInfo } = useQuery({
+        queryKey: ['investor-payout-settings'],
+        queryFn: () => investmentService.getPayoutSettings(),
+        retry: false,
+        staleTime: 5 * 60_000,
+    });
 
     const [activeIntegration, setActiveIntegration] = useState<'quickbooks' | 'lenco' | 'masterfees' | null>(null);
     const [integrationError, setIntegrationError] = useState<string | null>(null);
@@ -82,7 +94,8 @@ export const Settings: React.FC = () => {
                                         { id: 'coa', label: 'Chart of Accounts', icon: <FileText className="w-2.5 h-2.5" /> },
                                         { id: 'integrations', label: 'Integrations', icon: <Share2 className="w-2.5 h-2.5" /> },
                                         { id: 'billing', label: 'Subscription & Billing', icon: <CreditCard className="w-2.5 h-2.5" /> },
-                                        { id: 'api', label: 'MoneyWise API', icon: <Code2 className="w-2.5 h-2.5" /> }
+                                        { id: 'api', label: 'MoneyWise API', icon: <Code2 className="w-2.5 h-2.5" /> },
+                                        ...(payoutInfo?.isInvestmentCompany ? [{ id: 'investor-payouts', label: 'Investor Payouts', icon: <Landmark className="w-2.5 h-2.5" /> }] : []),
                                     ].map(tab => (
                                         <button
                                             key={tab.id}
@@ -189,6 +202,9 @@ export const Settings: React.FC = () => {
 
                                     {/* MoneyWise API Tab */}
                                     {activeTab === 'api' && <DeveloperAPI />}
+
+                                    {/* Investor payouts (investment companies only) */}
+                                    {activeTab === 'investor-payouts' && <InvestorPayouts />}
 
                                 </div>
                             </div>

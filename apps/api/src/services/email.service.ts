@@ -38,6 +38,8 @@ interface EmailParams {
     subject: string;
     html: string;
     text?: string;
+    replyTo?: string | string[];
+    attachments?: { filename: string; content: Buffer | string }[];
 }
 
 // A bare HTML body with no plain-text alternative is a well-known spam signal —
@@ -1487,6 +1489,8 @@ export const emailService = {
             subject: params.subject,
             html: params.html,
             text: params.text || htmlToPlainText(params.html),
+            ...(params.replyTo ? { replyTo: params.replyTo } : {}),
+            ...(params.attachments?.length ? { attachments: params.attachments } : {}),
         });
 
         if (error) {

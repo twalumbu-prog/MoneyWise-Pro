@@ -205,7 +205,10 @@ export const investmentService = {
     loadTarget,
 
     /** Called before the investor pays, so the payment can be matched to them later. */
-    async recordIntent(params: { investorOrgId: string; userId: string; targetId: string; reference: string; amount: number }) {
+    async recordIntent(params: {
+        investorOrgId: string; userId: string; targetId: string; reference: string; amount: number;
+        investorAccountId?: string | null; investorAccountNumber?: string | null; productName?: string | null;
+    }) {
         const target = await loadTarget(params.targetId);
         if (!target) throw new Error('Investment target not found');
         if (target.organization_id === params.investorOrgId) throw new Error('Cannot invest into your own organization');
@@ -222,6 +225,9 @@ export const investmentService = {
                 method: 'MOBILE_MONEY',
                 amount_paid: round2(params.amount),
                 created_by: params.userId,
+                investor_account_id: params.investorAccountId ?? null,
+                investor_account_number: params.investorAccountNumber ?? null,
+                product_name: params.productName ? String(params.productName).slice(0, 120) : null,
             })
             .select('id, status')
             .single();
@@ -236,6 +242,7 @@ export const investmentService = {
     /** Records a wallet-to-wallet investment. The cashbook outflow itself is posted by the caller. */
     async recordWalletInvestment(params: {
         investorOrgId: string; userId: string; target: Target; reference: string; amount: number; accountId: string;
+        investorAccountId?: string | null; investorAccountNumber?: string | null; productName?: string | null;
     }) {
         await supabase.from('investments').insert({
             investor_organization_id: params.investorOrgId,
@@ -249,6 +256,9 @@ export const investmentService = {
             account_id: params.accountId,
             created_by: params.userId,
             confirmed_at: new Date().toISOString(),
+            investor_account_id: params.investorAccountId ?? null,
+            investor_account_number: params.investorAccountNumber ?? null,
+            product_name: params.productName ? String(params.productName).slice(0, 120) : null,
         });
     },
 

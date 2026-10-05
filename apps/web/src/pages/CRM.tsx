@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../context/AuthContext';
 import { Layout } from '../components/Layout';
 import { crmService, Customer } from '../services/crm.service';
 import { CustomerDetail } from '../components/crm/CustomerDetail';
 import { AddCustomerModal } from '../components/crm/AddCustomerModal';
+import { InvestorsPanel } from '../components/crm/InvestorsPanel';
+import { investmentService } from 'core';
 import { Search, SlidersHorizontal, ArrowDownUp, Plus, X, UserCheck } from 'lucide-react';
 
 type FilterTab = 'ALL' | 'OWING' | 'CLEAR';
@@ -21,6 +24,18 @@ export const CRM: React.FC = () => {
     const [searchOpen, setSearchOpen] = useState(false);
     const [sortDir, setSortDir] = useState<SortDir>('desc');
     const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false);
+
+    // Investment companies also see an Investors tab (account applications from the app).
+    const [searchParams] = useSearchParams();
+    const [mainTab, setMainTab] = useState<'customers' | 'investors'>(searchParams.get('tab') === 'investors' ? 'investors' : 'customers');
+    const { data: payoutInfo } = useQuery({
+        queryKey: ['investor-payout-settings'],
+        queryFn: () => investmentService.getPayoutSettings(),
+        retry: false,
+        staleTime: 5 * 60_000,
+        enabled: !!organizationId,
+    });
+    const showInvestors = !!payoutInfo?.isInvestmentCompany;
 
     const { data: customers = [], isLoading, isError } = useQuery<Customer[]>({
         queryKey: ['crm-customers', organizationId],
@@ -88,6 +103,26 @@ export const CRM: React.FC = () => {
                             </div>
                         </div>
 
+                        {showInvestors && (
+                            <div className="h-8 p-1 bg-slate-100 rounded-[10px] flex items-center gap-1 self-start">
+                                {([['customers', 'Customers'], ['investors', 'Investors']] as const).map(([id, label]) => (
+                                    <button
+                                        key={id}
+                                        onClick={() => setMainTab(id)}
+                                        className={`px-4 h-full rounded-lg text-[11px] font-['DM_Sans'] transition-all ${
+                                            mainTab === id ? 'bg-white shadow-[0px_2px_4px_0px_rgba(0,0,0,0.10)] font-bold text-gray-900' : 'font-normal text-gray-900 hover:bg-white/50'
+                                        }`}
+                                    >
+                                        {label}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+
+                        {showInvestors && mainTab === 'investors' ? (
+                            <InvestorsPanel initialOpenId={searchParams.get('application')} />
+                        ) : (
+                        <>
                         {/* Toolbar Row */}
                         <div className="flex items-center justify-between gap-3 pt-1">
                             {searchOpen ? (
@@ -238,6 +273,8 @@ export const CRM: React.FC = () => {
                                 )}
                             </div>
                         </div>
+                        </>
+                        )}
 
                     </div>
                 </div>

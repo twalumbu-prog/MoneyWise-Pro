@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { View, Text, ScrollView, Pressable, StyleSheet, Dimensions } from 'react-native';
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { Star, Users } from 'lucide-react-native';
 import { generateDailyHistory, generateIntradayHistory, sliceForTimeframe } from 'core';
 import type { Timeframe } from 'core';
@@ -9,6 +9,8 @@ import { useInvestProviders } from '../../../../src/hooks/useInvestProviders';
 import { InvestLogo } from '../../../../src/components/invest/InvestLogo';
 import { InvestAreaChart } from '../../../../src/components/invest/InvestAreaChart';
 import { InvestPaymentFlow } from '../../../../src/components/invest/InvestPaymentFlow';
+import { InvestAccountGate } from '../../../../src/components/invest/InvestAccountGate';
+import { useInvestorAccounts } from '../../../../src/hooks/useInvestorAccounts';
 import { ScreenHeader } from '../../../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../../../src/theme/tokens';
 
@@ -26,6 +28,9 @@ export default function InvestProductDetailScreen() {
     const found = findProduct(String(id), providers);
     const [timeframe, setTimeframe] = useState<Timeframe>('1M');
     const [flowOpen, setFlowOpen] = useState(false);
+    const [gateOpen, setGateOpen] = useState(false);
+    const router = useRouter();
+    const { accountFor, isPending: accountsPending } = useInvestorAccounts();
 
     const chartPoints = useMemo(() => {
         if (!found) return [];
@@ -45,6 +50,18 @@ export default function InvestProductDetailScreen() {
     }
 
     const { provider, product } = found;
+    const account = accountFor(provider.investmentTargetId);
+    const canInvest = provider.isReal && (provider.requiresAccount === false || account?.status === 'ACTIVE');
+
+    // The Invest button decides between paying and the connect/register prompt.
+    const onInvestPress = () => {
+        if (canInvest) setFlowOpen(true);
+        else setGateOpen(true);
+    };
+    const startRegistration = () => {
+        setGateOpen(false);
+        router.push(`/apps/invest/register/${provider.investmentTargetId}`);
+    };
 
     return (
         <View style={styles.root}>
@@ -82,13 +99,32 @@ export default function InvestProductDetailScreen() {
             </ScrollView>
 
             <View style={styles.footer}>
-                <Text style={styles.footerNote}>Secure payments powered by {provider.name}</Text>
-                <Pressable style={styles.investBtn} onPress={() => setFlowOpen(true)}>
+                <Text style={styles.footerNote}>
+                    {canInvest && account?.accountNumber
+                        ? `Investing as account ${account.accountNumber}`
+                        : `Secure payments powered by ${provider.name}`}
+                </Text>
+                <Pressable
+                    style={[styles.investBtn, provider.isReal && accountsPending && { opacity: 0.6 }]}
+                    onPress={onInvestPress}
+                    disabled={provider.isReal && accountsPending}
+                >
                     <Text style={styles.investBtnText}>Invest</Text>
                 </Pressable>
             </View>
 
-            <InvestPaymentFlow visible={flowOpen} onClose={() => setFlowOpen(false)} product={product} provider={provider} />
+            <InvestPaymentFlow
+                visible={flowOpen} onClose={() => setFlowOpen(false)} product={product} provider={provider}
+                accountNumber={account?.accountNumber ?? null}
+            />
+            <InvestAccountGate
+                visible={gateOpen}
+                onClose={() => setGateOpen(false)}
+                provider={provider}
+                account={account}
+                onRegister={startRegistration}
+                onConnected={() => { setGateOpen(false); setFlowOpen(true); }}
+            />
         </View>
     );
 }
