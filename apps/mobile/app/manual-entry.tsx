@@ -171,7 +171,6 @@ export default function ManualEntryScreen() {
                 )}
 
                 <View style={styles.aiNote}>
-                    <Sparkles size={16} color={colors.blue} />
                     <Text style={styles.aiNoteText}>
                         We'll work out the accounting for you: {isIn ? 'which income category this belongs to' : 'which expense category this belongs to'}, and record it in your reports.
                     </Text>
