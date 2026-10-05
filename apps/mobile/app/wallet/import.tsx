@@ -3,7 +3,7 @@ import {
     View, Text, Pressable, ScrollView, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { File } from 'expo-file-system';
 import { FileSpreadsheet, CheckCircle2 } from 'lucide-react-native';
@@ -13,6 +13,7 @@ import {
 } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 type Stage = 'pick' | 'preview' | 'importing' | 'done';
 
@@ -27,7 +28,7 @@ type Stage = 'pick' | 'preview' | 'importing' | 'done';
  */
 export default function ImportStatementScreen() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const { walletId, walletName } = useLocalSearchParams<{ walletId: string; walletName?: string }>();
 
@@ -178,7 +179,7 @@ export default function ImportStatementScreen() {
 
             {stage === 'done' && (
                 <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
-                    <Pressable style={styles.submit} onPress={() => router.back()}>
+                    <Pressable style={styles.submit} onPress={() => safeBack()}>
                         <Text style={styles.submitText}>Done</Text>
                     </Pressable>
                 </View>

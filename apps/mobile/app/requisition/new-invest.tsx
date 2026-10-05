@@ -7,6 +7,7 @@ import { useInvestorAccounts } from '../../src/hooks/useInvestorAccounts';
 import { InvestApplicationsBanner } from '../../src/components/invest/InvestApplicationsBanner';
 import { InvestLogo } from '../../src/components/invest/InvestLogo';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 /**
  * Invest from the Inbox "+" menu: choose a partner, then carry on in exactly the same flow as
@@ -16,6 +17,7 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
  */
 export default function NewInvestPartnerScreen() {
     const router = useRouter();
+    const safeBack = useGoBack();
     const insets = useSafeAreaInsets();
     const providers = useInvestProviders();
     const { accounts, accountFor } = useInvestorAccounts();
@@ -24,9 +26,9 @@ export default function NewInvestPartnerScreen() {
         <View style={styles.root}>
             <Stack.Screen options={{ headerShown: false }} />
             <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
-                <Pressable onPress={() => router.back()} hitSlop={10}><ArrowLeft size={22} color={colors.text} /></Pressable>
+                <Pressable onPress={() => safeBack()} hitSlop={10}><ArrowLeft size={22} color={colors.text} /></Pressable>
                 <Text style={styles.headerTitle}>Invest</Text>
-                <Pressable onPress={() => router.back()} hitSlop={10}><X size={22} color={colors.textFaint} /></Pressable>
+                <Pressable onPress={() => safeBack()} hitSlop={10}><X size={22} color={colors.textFaint} /></Pressable>
             </View>
 
             <FlatList

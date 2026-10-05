@@ -115,6 +115,8 @@ export const requisitionService = {
     async autoDisburse(id: string, payload: {
         payment_method: string;
         total_prepared: number;
+        /** MoneyWise-to-MoneyWise payments: the receiving organization (the API accepts this on disburse). */
+        recipient_organization_id?: string;
         recipient_account?: string;
         recipient_bank_code?: string;
         recipient_account_name?: string;

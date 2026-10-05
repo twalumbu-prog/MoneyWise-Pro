@@ -3,12 +3,13 @@ import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Switch,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CheckCircle2, AlertCircle } from 'lucide-react-native';
 import { payrollService, lencoService, detectMobileNetwork } from 'core';
 import { ScreenHeader } from '../../../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../../../src/theme/tokens';
+import { useGoBack } from '../../../../src/hooks/useGoBack';
 
 const NETWORK_COLOR: Record<string, string> = { AIRTEL: '#DC2626', MTN: '#D97706', ZAMTEL: '#2563EB' };
 
@@ -20,7 +21,7 @@ const NETWORK_COLOR: Record<string, string> = { AIRTEL: '#DC2626', MTN: '#D97706
  * payroll run, not a cosmetic nicety.
  */
 export default function AddStaffScreen() {
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
 
     const [firstName, setFirstName] = useState('');
@@ -123,7 +124,7 @@ export default function AddStaffScreen() {
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['payroll-staff'] });
-            router.back();
+            safeBack();
         },
         onError: (e: Error) => Alert.alert('Could not add staff', e.message),
     });

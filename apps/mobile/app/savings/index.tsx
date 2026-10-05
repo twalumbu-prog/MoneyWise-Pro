@@ -12,6 +12,7 @@ import { CreateSavingsSheet, AddMoneySheet, TransferOutSheet, JoinGroupSheet } f
 import { InviteModal } from '../../src/components/savings/InviteModal';
 import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 type Tab = 'WISHLIST' | 'GOAL' | 'GROUP';
 const TABS: { id: Tab; label: string; card: string; section: string }[] = [
@@ -28,6 +29,7 @@ const TABS: { id: Tab; label: string; card: string; section: string }[] = [
  */
 export default function SavingsScreen() {
     const router = useRouter();
+    const safeBack = useGoBack('/(tabs)/wallet');
     const insets = useSafeAreaInsets();
     const [tab, setTab] = useState<Tab>('WISHLIST');
     const [createOpen, setCreateOpen] = useState(false);
@@ -47,7 +49,7 @@ export default function SavingsScreen() {
         <View style={[styles.root, { paddingTop: insets.top }]}>
             <Stack.Screen options={{ headerShown: false }} />
             <View style={styles.header}>
-                <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back" style={styles.headerSide}>
+                <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Go back" style={styles.headerSide}>
                     <ChevronLeft size={24} color="#000000" />
                 </Pressable>
                 <Text style={styles.headerTitle}>Savings</Text>

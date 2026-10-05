@@ -13,6 +13,7 @@ import type { AllowanceConfig, DeductionConfig } from 'core';
 import { ScreenHeader } from '../../../../src/components/ScreenHeader';
 import { useAuth } from '../../../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../../../src/theme/tokens';
+import { useGoBack } from '../../../../src/hooks/useGoBack';
 
 const MONTHS = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -54,6 +55,7 @@ interface RunItem {
  */
 export default function RunPayrollScreen() {
     const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const { organizationId } = useAuth();
     const now = new Date();
@@ -257,7 +259,7 @@ export default function RunPayrollScreen() {
         else { setSaving(true); submit.mutate(); }
     };
     const goBack = () => {
-        if (stepIdx === 0) router.back();
+        if (stepIdx === 0) safeBack();
         else setStepIdx((i) => i - 1);
     };
 

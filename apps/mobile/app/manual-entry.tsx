@@ -13,6 +13,7 @@ import { BankAvatar } from '../src/components/BankAvatar';
 import { AccountGlyph } from '../src/components/AccountGlyph';
 import { SelectField, DateField, type SelectOption } from '../src/components/invest/application/formFields';
 import { colors, fonts, radius } from '../src/theme/tokens';
+import { useGoBack } from '../src/hooks/useGoBack';
 
 const today = () => new Date().toISOString().split('T')[0];
 const money = (n: number) => `K${n.toLocaleString('en-ZM', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -24,6 +25,7 @@ const money = (n: number) => `K${n.toLocaleString('en-ZM', { minimumFractionDigi
  */
 export default function ManualEntryScreen() {
     const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
     const params = useLocalSearchParams<{ direction?: string }>();
@@ -81,7 +83,7 @@ export default function ManualEntryScreen() {
         return (
             <ResultView
                 result={result}
-                onDone={() => router.back()}
+                onDone={() => safeBack()}
                 onAnother={() => { setResult(null); setAmount(''); setDescription(''); setErrors({}); }}
                 onCategoryChanged={(category) => setResult((r) => (r ? { ...r, category } : r))}
                 insetsBottom={insets.bottom}
@@ -96,7 +98,7 @@ export default function ManualEntryScreen() {
         <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
             <Stack.Screen options={{ headerShown: false }} />
             <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
-                <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Close"><X size={22} color={colors.textMuted} /></Pressable>
+                <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Close"><X size={22} color={colors.textMuted} /></Pressable>
                 <Text style={styles.headerTitle}>New manual entry</Text>
                 <View style={{ width: 22 }} />
             </View>

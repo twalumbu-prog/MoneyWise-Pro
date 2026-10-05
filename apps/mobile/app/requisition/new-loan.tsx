@@ -4,7 +4,7 @@ import {
     KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, X, AlertCircle, ChevronRight } from 'lucide-react-native';
 import { requisitionService, organizationService, formatKwacha } from 'core';
@@ -12,13 +12,14 @@ import { EXTERNAL_LOAN_PROVIDERS, type LoanProvider } from '../../src/data/loanC
 import { LoanLogo } from '../../src/components/loans/LoanLogo';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 type Stage = 1 | 2 | 3;
 const REPAYMENT_OPTIONS = [3, 6, 12, 18, 24, 36];
 
 /** Native port of apps/web/src/components/requisitions/MobileStaffLoanWizard.tsx. */
 export default function NewStaffLoanScreen() {
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
     const { organizationId, organizationName, userOrganizations } = useAuth();
@@ -63,7 +64,7 @@ export default function NewStaffLoanScreen() {
     const title = stage === 1 ? fallbackTitle : stage === 2 ? (provider?.name ?? fallbackTitle) : `${provider?.name ?? ''} — ${product?.name ?? ''}`;
 
     const goBack = () => {
-        if (stage === 1) router.back();
+        if (stage === 1) safeBack();
         else setStage((s) => (s - 1) as Stage);
     };
 
@@ -87,7 +88,7 @@ export default function NewStaffLoanScreen() {
                 monthly_deduction: monthlyDeduction,
             } as any);
             qc.invalidateQueries({ queryKey: ['requisitions'] });
-            router.back();
+            safeBack();
         } catch (e: any) {
             setError(e?.message ?? 'Failed to submit. Please try again.');
         } finally {
@@ -101,7 +102,7 @@ export default function NewStaffLoanScreen() {
             <View style={[styles.header, { paddingTop: insets.top + 14 }]}>
                 <Pressable onPress={goBack} hitSlop={10}><ArrowLeft size={22} color={colors.text} /></Pressable>
                 <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
-                <Pressable onPress={() => router.back()} hitSlop={10}><X size={22} color={colors.textFaint} /></Pressable>
+                <Pressable onPress={() => safeBack()} hitSlop={10}><X size={22} color={colors.textFaint} /></Pressable>
             </View>
 
             <ScrollView contentContainerStyle={styles.scroll}>

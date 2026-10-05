@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { calculatePlatformFee } from 'shared';
 import {
@@ -13,6 +13,7 @@ import { PaymentWaitingScreen } from '../../src/components/payments/PaymentWaiti
 import { useAuth } from '../../src/context/AuthContext';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 function genReference(subaccountId: string): string {
     return `DEP-${Date.now()}-${subaccountId.substring(0, 8)}-CASHXFER`;
@@ -32,7 +33,7 @@ function genReference(subaccountId: string): string {
  * for Card in the Invest payment flow.
  */
 export default function LencoTransferScreen() {
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const { organizationId } = useAuth();
 
@@ -185,7 +186,7 @@ export default function LencoTransferScreen() {
                     elapsedSeconds={elapsed}
                     reference={reference}
                     onCancel={cancel}
-                    onDone={() => router.back()}
+                    onDone={() => safeBack()}
                 />
             </View>
         );

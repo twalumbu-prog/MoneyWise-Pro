@@ -8,8 +8,8 @@ import { useRouter, Stack } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle,
-    CheckCircle, Smartphone, Building2, Mail, Zap, ChevronDown, Search,
-    UserCheck, ShieldCheck,
+    CheckCircle, Smartphone, Building2, Mail, ChevronDown, Search,
+    ShieldCheck,
 } from 'lucide-react-native';
 import {
     requisitionService, departmentService, lencoService, cashbookService, userService,
@@ -21,6 +21,7 @@ import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/Anim
 import { BankAvatar } from '../../src/components/BankAvatar';
 import { cacheStoreSync } from '../../src/platform/storage';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 const PREF_USE_MY_ACCOUNT = 'reqwizard_use_my_account';
 const PREF_MAKE_EXPENSE_LIST = 'reqwizard_make_expense_list';
@@ -93,6 +94,7 @@ const RecipientAvatar: React.FC<{ name: string; logoUrl?: string | null; size?: 
 export default function NewRequisitionScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const { userName, userRole, organizationId, organizationName, userOrganizations } = useAuth();
 
@@ -136,7 +138,7 @@ export default function NewRequisitionScreen() {
     const [momoOperator, setMomoOperator] = useState('');
     const [resolvedName, setResolvedName] = useState('');
     const [confirmingName, setConfirmingName] = useState(false);
-    const [autoAuthorize, setAutoAuthorize] = useState(true);
+    const [autoAuthorize] = useState(true);
     const [selectedWalletId, setSelectedWalletId] = useState<string | null>(null);
     const [selectedWalletBalance, setSelectedWalletBalance] = useState<number | null>(null);
     const [walletPickerOpen, setWalletPickerOpen] = useState(false);
@@ -362,7 +364,7 @@ export default function NewRequisitionScreen() {
         const seq = getStageSequence();
         const idx = seq.indexOf(stage);
         if (idx > 0) setStage(seq[idx - 1]);
-        else router.back();
+        else safeBack();
     };
 
     const handleSubmit = async () => {
@@ -445,7 +447,7 @@ export default function NewRequisitionScreen() {
             }
 
             qc.invalidateQueries({ queryKey: ['requisitions'] });
-            router.back();
+            safeBack();
         } catch (e: any) {
             setError(e?.message ?? 'Submission failed. Please try again.');
             if (e?.activeRequisitionId) setActiveRequisitionId(e.activeRequisitionId);
@@ -462,7 +464,7 @@ export default function NewRequisitionScreen() {
 
             <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
                 <Text style={styles.headerTitle}>{isPersonal ? 'New Transaction' : 'New Requisition'}</Text>
-                <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={8} accessibilityLabel="Close">
+                <Pressable onPress={() => safeBack()} style={styles.closeBtn} hitSlop={8} accessibilityLabel="Close">
                     <X size={16} color={colors.navy} strokeWidth={3} />
                 </Pressable>
             </View>

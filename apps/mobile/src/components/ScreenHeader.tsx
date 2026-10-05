@@ -1,16 +1,16 @@
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { colors, fonts } from '../theme/tokens';
+import { useGoBack } from '../hooks/useGoBack';
 
 /** Back-button header, mirroring the web mobile header on back-button routes. */
 export const ScreenHeader: React.FC<{ title: string; right?: React.ReactNode }> = ({ title, right }) => {
-    const router = useRouter();
+    const safeBack = useGoBack();
     const insets = useSafeAreaInsets();
     return (
         <View style={[styles.root, { paddingTop: insets.top + 12 }]}>
-            <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+            <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Go back">
                 <ChevronLeft size={24} color={colors.textMuted} />
             </Pressable>
             <Text style={styles.title} numberOfLines={1}>{title}</Text>

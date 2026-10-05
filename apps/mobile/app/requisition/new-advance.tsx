@@ -4,11 +4,12 @@ import {
     KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useRouter } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, AlertCircle, ChevronDown, ArrowRight } from 'lucide-react-native';
 import { requisitionService, formatKwacha } from 'core';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 const DEPARTMENTS = ['Finance', 'Admin', 'HR', 'IT', 'Education', 'Transportation', 'Stocks', 'Maintenance', 'Catering'];
 const ACCENT = '#10B981';
@@ -16,7 +17,7 @@ type Stage = 1 | 2;
 
 /** Native port of apps/web/src/components/requisitions/MobileSalaryAdvanceWizard.tsx. */
 export default function NewSalaryAdvanceScreen() {
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
 
@@ -55,7 +56,7 @@ export default function NewSalaryAdvanceScreen() {
                 loan_amount: numericAmount,
             } as any);
             qc.invalidateQueries({ queryKey: ['requisitions'] });
-            router.back();
+            safeBack();
         } catch (e: any) {
             setError(e?.message ?? 'Failed to submit. Please try again.');
         } finally {
@@ -73,7 +74,7 @@ export default function NewSalaryAdvanceScreen() {
 
             <View style={styles.header}>
                 <Text style={styles.headerTitle}>New Salary Advance</Text>
-                <Pressable onPress={() => router.back()} style={styles.closeBtn} hitSlop={8}>
+                <Pressable onPress={() => safeBack()} style={styles.closeBtn} hitSlop={8}>
                     <X size={16} color={colors.navy} strokeWidth={3} />
                 </Pressable>
             </View>

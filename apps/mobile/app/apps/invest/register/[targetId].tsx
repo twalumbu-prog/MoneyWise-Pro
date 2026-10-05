@@ -7,10 +7,12 @@ import { useInvestProviders } from '../../../../src/hooks/useInvestProviders';
 import { InvestApplicationWizard } from '../../../../src/components/invest/application/InvestApplicationWizard';
 import { InvestLogo } from '../../../../src/components/invest/InvestLogo';
 import { colors, fonts, radius } from '../../../../src/theme/tokens';
+import { useGoBack } from '../../../../src/hooks/useGoBack';
 
 /** Register for an account with an investment company: the application wizard, then a confirmation. */
 export default function InvestRegisterScreen() {
     const router = useRouter();
+    const safeBack = useGoBack();
     const insets = useSafeAreaInsets();
     const { targetId } = useLocalSearchParams<{ targetId: string }>();
     const providers = useInvestProviders();
@@ -24,7 +26,7 @@ export default function InvestRegisterScreen() {
             <View style={styles.centre}>
                 <Stack.Screen options={{ headerShown: false }} />
                 <Text style={styles.muted}>This investment company could not be found.</Text>
-                <Pressable onPress={() => router.back()} style={styles.btn}><Text style={styles.btnText}>Go back</Text></Pressable>
+                <Pressable onPress={() => safeBack()} style={styles.btn}><Text style={styles.btnText}>Go back</Text></Pressable>
             </View>
         );
     }
@@ -58,7 +60,7 @@ export default function InvestRegisterScreen() {
     return (
         <View style={{ flex: 1 }}>
             <Stack.Screen options={{ headerShown: false, gestureEnabled: false }} />
-            <InvestApplicationWizard provider={provider} onClose={() => router.back()} onSubmitted={() => setDone(true)} />
+            <InvestApplicationWizard provider={provider} onClose={() => safeBack()} onSubmitted={() => setDone(true)} />
         </View>
     );
 }

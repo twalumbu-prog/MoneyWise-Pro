@@ -4,11 +4,12 @@ import {
     ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { cashbookService, formatKwacha } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 const ACCOUNT_TYPES = [
     { value: 'CASH', label: 'Cash' },
@@ -23,7 +24,7 @@ const ACCOUNT_TYPES = [
  */
 export default function DepositScreen() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
 
     const [personName, setPersonName] = useState('');
@@ -48,7 +49,7 @@ export default function DepositScreen() {
             }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
-            router.back();
+            safeBack();
         },
         onError: (e: Error) => Alert.alert('Deposit not logged', e.message),
     });

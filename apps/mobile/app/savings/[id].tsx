@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable, ScrollView, StyleSheet, Image, RefreshControl, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, CreditCard, UserPlus, Gift, ArrowDownLeft, ArrowUpRight, CalendarDays, Repeat, ExternalLink } from 'lucide-react-native';
 import { savingsService, formatKwacha } from 'core';
@@ -12,6 +12,7 @@ import { PersonAvatar } from '../../src/components/savings/PersonAvatar';
 import { AnimatedSegmented } from '../../src/components/AnimatedTabs';
 import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 const fmtLongDate = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -32,7 +33,7 @@ function savingPlan(item: { targetAmount: number | null; balance: number; target
 
 /** One savings item: balance, progress, money in/out, members (groups) and its history. */
 export default function SavingsDetailScreen() {
-    const router = useRouter();
+    const safeBack = useGoBack('/savings');
     const qc = useQueryClient();
     const insets = useSafeAreaInsets();
     const { id } = useLocalSearchParams<{ id: string }>();
@@ -60,7 +61,7 @@ export default function SavingsDetailScreen() {
             ...(item.balance > 0 ? [] : [{
                 text: 'Close', style: 'destructive' as const,
                 onPress: async () => {
-                    try { await savingsService.archive(item.id); qc.invalidateQueries({ queryKey: ['savings'] }); router.back(); }
+                    try { await savingsService.archive(item.id); qc.invalidateQueries({ queryKey: ['savings'] }); safeBack(); }
                     catch (e: any) { Alert.alert('Could not close', e?.message ?? 'Please try again.'); }
                 },
             }]),
@@ -71,7 +72,7 @@ export default function SavingsDetailScreen() {
         <View style={[styles.root, { paddingTop: insets.top }]}>
             <Stack.Screen options={{ headerShown: false }} />
             <View style={styles.header}>
-                <Pressable onPress={() => router.back()} hitSlop={12} style={{ width: 40 }} accessibilityLabel="Go back"><ChevronLeft size={24} color="#000" /></Pressable>
+                <Pressable onPress={() => safeBack()} hitSlop={12} style={{ width: 40 }} accessibilityLabel="Go back"><ChevronLeft size={24} color="#000" /></Pressable>
                 <Text style={styles.headerTitle} numberOfLines={1}>{item?.name ?? 'Savings'}</Text>
                 <View style={{ width: 40, alignItems: 'flex-end' }}>
                     {owner && isGroup && (

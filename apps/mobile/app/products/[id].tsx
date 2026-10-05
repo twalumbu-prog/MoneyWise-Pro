@@ -3,7 +3,7 @@ import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Camera } from 'lucide-react-native';
 import {
@@ -13,13 +13,14 @@ import type { ProductType } from 'core';
 import { uploadToBucket } from '../../src/lib/uploads';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 /** `/products/new` and `/products/[id]` share this screen — the only
  * difference is whether an id was in the route. */
 export default function ProductEditScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const isNew = id === 'new';
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
 
     const { data: products } = useQuery({
@@ -62,7 +63,7 @@ export default function ProductEditScreen() {
         },
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['products'] });
-            router.back();
+            safeBack();
         },
         onError: (e: Error) => Alert.alert('Could not save', e.message),
     });

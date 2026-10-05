@@ -4,7 +4,7 @@ import {
     Alert, KeyboardAvoidingView, Platform, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, Stack } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Send, MoreVertical, Trash2 } from 'lucide-react-native';
 import {
@@ -17,6 +17,7 @@ import { RequisitionMessageCard } from '../../src/components/requisitions/Requis
 import { RequisitionAttachments } from '../../src/components/requisitions/RequisitionAttachments';
 import { AuditScoreBreakdown } from '../../src/components/requisitions/AuditScoreBreakdown';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 type Tab = 'chat' | 'attachments' | 'audit';
 const DELETABLE_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUBMITTED'];
@@ -31,7 +32,7 @@ const DELETABLE_STATUSES = ['DRAFT', 'PENDING_APPROVAL', 'REJECTED', 'CHANGE_SUB
 export default function RequisitionDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const { user, userRole } = useAuth();
     const scrollRef = useRef<ScrollView>(null);
@@ -107,7 +108,7 @@ export default function RequisitionDetailScreen() {
                     try {
                         await requisitionService.delete(String(id));
                         qc.invalidateQueries({ queryKey: ['requisitions'] });
-                        router.back();
+                        safeBack();
                     } catch (e: any) {
                         Alert.alert('Could not delete', e?.message ?? 'Please try again.');
                     }
@@ -126,7 +127,7 @@ export default function RequisitionDetailScreen() {
             <Stack.Screen options={{ headerShown: false }} />
 
             <View style={styles.header}>
-                <Pressable onPress={() => router.back()} hitSlop={12} accessibilityLabel="Go back">
+                <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Go back">
                     <ChevronLeft size={24} color={colors.text} />
                 </Pressable>
                 <View style={styles.headerMain}>

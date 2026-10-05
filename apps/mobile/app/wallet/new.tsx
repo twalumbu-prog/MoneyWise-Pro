@@ -4,12 +4,13 @@ import {
     ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { cashbookService, providersFor } from 'core';
 import type { ExternalProviderType } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 type Kind = 'MONEYWISE' | 'EXTERNAL';
 
@@ -23,7 +24,7 @@ type Kind = 'MONEYWISE' | 'EXTERNAL';
  */
 export default function NewWalletScreen() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
     const params = useLocalSearchParams<{ kind?: string }>();
 
@@ -50,7 +51,7 @@ export default function NewWalletScreen() {
                   }),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
-            router.back();
+            safeBack();
         },
         onError: (e: Error) => Alert.alert('Could not create it', e.message),
     });

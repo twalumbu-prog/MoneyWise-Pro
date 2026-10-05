@@ -4,12 +4,13 @@ import {
     ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, Stack } from 'expo-router';
+import { Stack } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowDown } from 'lucide-react-native';
 import { cashbookService, formatKwacha } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 type Mode = 'BETWEEN' | 'INTO';
 
@@ -29,7 +30,7 @@ const CASH_SOURCES = [
  */
 export default function TransferScreen() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const safeBack = useGoBack();
     const qc = useQueryClient();
 
     const [mode, setMode] = useState<Mode>('BETWEEN');
@@ -66,7 +67,7 @@ export default function TransferScreen() {
                 : cashbookService.transferToWallet(numericAmount, reference.trim(), sourceType),
         onSuccess: () => {
             qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
-            router.back();
+            safeBack();
         },
         onError: (e: Error) => Alert.alert('Transfer failed', e.message),
     });

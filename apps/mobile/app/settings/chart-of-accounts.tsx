@@ -4,7 +4,6 @@ import {
     Modal, TextInput, Alert, Switch, RefreshControl,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { ChevronLeft, Plus, Edit2, Trash2, X } from 'lucide-react-native';
 import { accountService } from 'core';
@@ -14,12 +13,13 @@ import { useAuth } from '../../src/context/AuthContext';
 import { PRESET_EMOJIS, extractEmojiAndName, getAccountEmoji } from '../../src/utils/emoji';
 import { AccountGlyph } from '../../src/components/AccountGlyph';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { useGoBack } from '../../src/hooks/useGoBack';
 
 type ManagementTab = 'NET_WORTH' | 'PROFIT_LOSS';
 
 export default function ChartOfAccountsScreen() {
     const insets = useSafeAreaInsets();
-    const router = useRouter();
+    const safeBack = useGoBack();
     const queryClient = useQueryClient();
     const { organizationId } = useAuth();
 
@@ -170,7 +170,7 @@ export default function ChartOfAccountsScreen() {
         <View style={styles.root}>
             {/* Header */}
             <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
-                <Pressable onPress={() => router.back()} style={styles.backBtn}>
+                <Pressable onPress={() => safeBack()} style={styles.backBtn}>
                     <ChevronLeft size={24} color={colors.text} />
                 </Pressable>
                 <Text style={styles.headerTitle}>Chart of Accounts</Text>
