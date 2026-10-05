@@ -2392,6 +2392,11 @@ const RequisitionMessageCard: React.FC<RequisitionMessageCardProps> = ({
                                                                 <div className={`px-2 py-1 rounded text-[13px] font-bold text-right ${item.ai_extracted_amount ? 'text-[#006AFF] bg-blue-50/50' : 'text-gray-300 italic'}`}>
                                                                     {item.ai_extracted_amount != null ? `K${item.ai_extracted_amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'Not Found'}
                                                                 </div>
+                                                                {item.receipt_ocr_data?.currency && item.receipt_ocr_data?.original_amount != null && (
+                                                                    <span className="block text-[9px] font-semibold text-gray-400 mt-0.5">
+                                                                        {item.receipt_ocr_data.currency} {Number(item.receipt_ocr_data.original_amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} @ {Number(item.receipt_ocr_data.exchange_rate).toFixed(2)}
+                                                                    </span>
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     );

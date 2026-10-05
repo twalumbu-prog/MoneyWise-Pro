@@ -267,6 +267,11 @@ export const ExpenseTracker: React.FC<{
                                                 {aiAmt != null ? formatKwacha(aiAmt) : 'Not Found'}
                                             </Text>
                                         </View>
+                                        {item.receipt_ocr_data?.currency && item.receipt_ocr_data?.original_amount != null && (
+                                            <Text style={styles.fxNote}>
+                                                {item.receipt_ocr_data.currency} {Number(item.receipt_ocr_data.original_amount).toFixed(2)} @ {Number(item.receipt_ocr_data.exchange_rate).toFixed(2)}
+                                            </Text>
+                                        )}
                                     </View>
                                 </View>
                             );
@@ -502,6 +507,7 @@ const styles = StyleSheet.create({
     aiPill: { paddingHorizontal: 8, paddingVertical: 6, borderRadius: radius.md, borderWidth: 1 },
     aiPillActive: { backgroundColor: colors.tabActiveBg, borderColor: 'rgba(0,106,255,0.2)' },
     aiPillMuted: { backgroundColor: colors.canvasAlt, borderColor: colors.border },
+    fxNote: { fontFamily: fonts.bodyMedium, fontSize: 10, color: colors.textFaint, marginTop: 4, textAlign: 'right' },
     aiPillText: { fontFamily: fonts.bodyBold, fontSize: 10 },
     aiPillTextActive: { color: colors.blue },
     aiPillTextMuted: { color: colors.textFaint, fontStyle: 'italic' },

@@ -19,6 +19,8 @@ export interface ReceiptOcrData {
     currency?: string | null;     // e.g. "ZMW", "USD"
     exchange_rate?: number | null; // rate used to convert currency → ZMW (populated for non-ZMW receipts)
     zmw_equivalent?: number | null; // total_amount converted to ZMW using exchange_rate
+    exchange_rate_source?: string | null; // which rate feed supplied exchange_rate
+    exchange_rate_date?: string | null;   // when that rate was published
     payment_method?: string | null;
     receipt_number?: string | null;
     til_number?: string | null;
@@ -27,6 +29,7 @@ export interface ReceiptOcrData {
         quantity?: number;
         unit_price?: number;
         total?: number;
+        zmw_total?: number | null; // total converted to ZMW (non-ZMW receipts only)
     }>;
     notes?: string | null;
     raw_text?: string | null;
@@ -46,7 +49,7 @@ Return a JSON object with the following fields (use null for fields not found):
   "subtotal": 0.00,
   "vat_amount": 0.00,
   "vat_rate": 0,
-  "currency": "Currency code e.g. ZMW, USD, GBP",
+  "currency": "ISO 4217 code of the currency the amounts are printed in, e.g. ZMW, USD, GBP, ZAR",
   "payment_method": "Cash, Card, Mobile Money, etc.",
   "receipt_number": "Receipt or invoice number",
   "til_number": "Till or terminal number if present",
@@ -62,6 +65,8 @@ Return a JSON object with the following fields (use null for fields not found):
   "raw_text": "Full verbatim text extracted from the receipt",
   "confidence": 0.95
 }
+
+CURRENCY: Work out the currency from the receipt itself — symbols, codes, country, vendor and address. "$" or "US$" is USD unless the receipt says otherwise (e.g. "CA$", "A$"); "£" is GBP; "€" is EUR; "R" with a South African address is ZAR; "K", "ZK", "ZMW" or "Kwacha" is ZMW. Online services and software subscriptions (e.g. Vercel, AWS, Google, OpenAI, Anthropic, Supabase) normally bill in USD. Never assume ZMW just because the user is in Zambia — only use ZMW when the receipt shows kwacha. Report amounts exactly as printed; do NOT convert them yourself.
 
 Be accurate with numbers. For VAT (Value Added Tax), look for entries like VAT, GST, Tax, or percentages near total amounts.
 
@@ -99,20 +104,65 @@ Return ONLY a JSON object:
 }
 `;
 
-/** Fetch the ZMW exchange rate for a given currency code using open.er-api.com (free, no key). */
-async function fetchZmwRate(currency: string): Promise<number | null> {
-    try {
-        const res = await fetch(`https://open.er-api.com/v6/latest/${currency.toUpperCase()}`, {
-            signal: AbortSignal.timeout(5000)
-        });
-        if (!res.ok) return null;
-        const data = await res.json();
-        const rate = data?.rates?.ZMW;
-        return typeof rate === 'number' ? rate : null;
-    } catch {
-        return null;
-    }
+const CURRENCY_ALIASES: Record<string, string> = {
+    K: 'ZMW', ZK: 'ZMW', ZMK: 'ZMW', KWACHA: 'ZMW',
+    $: 'USD', US$: 'USD', 'US DOLLAR': 'USD', DOLLAR: 'USD', DOLLARS: 'USD',
+    '£': 'GBP', '€': 'EUR', RAND: 'ZAR',
+};
+
+/** Normalise whatever the model returned ("$", "Kwacha", "usd") to an ISO code. */
+export function normalizeCurrency(raw?: string | null): string | null {
+    if (!raw) return null;
+    const v = String(raw).trim().toUpperCase();
+    if (!v) return null;
+    return CURRENCY_ALIASES[v] ?? (/^[A-Z]{3}$/.test(v) ? v : null);
 }
+
+interface ZmwRate { rate: number; source: string; date: string | null }
+
+// Rates move slowly relative to receipt scanning; an hour keeps a batch of
+// receipts on one consistent rate and spares the free feeds.
+const RATE_TTL_MS = 60 * 60 * 1000;
+const rateCache = new Map<string, { value: ZmwRate; at: number }>();
+
+/**
+ * Latest ZMW rate for a currency. open.er-api.com first, then the
+ * fawazahmed0 currency feed on jsDelivr as a fallback — a single free feed
+ * being down used to mean the receipt silently stayed unconverted.
+ */
+export async function fetchZmwRate(currency: string): Promise<ZmwRate | null> {
+    const code = currency.toUpperCase();
+    const cached = rateCache.get(code);
+    if (cached && Date.now() - cached.at < RATE_TTL_MS) return cached.value;
+
+    let value: ZmwRate | null = null;
+    try {
+        const res = await fetch(`https://open.er-api.com/v6/latest/${code}`, { signal: AbortSignal.timeout(5000) });
+        if (res.ok) {
+            const data: any = await res.json();
+            if (typeof data?.rates?.ZMW === 'number') {
+                value = { rate: data.rates.ZMW, source: 'open.er-api.com', date: data.time_last_update_utc ?? null };
+            }
+        }
+    } catch { /* fall through to the next feed */ }
+
+    if (!value) {
+        try {
+            const lower = code.toLowerCase();
+            const res = await fetch(`https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${lower}.json`, { signal: AbortSignal.timeout(5000) });
+            if (res.ok) {
+                const data: any = await res.json();
+                const rate = data?.[lower]?.zmw;
+                if (typeof rate === 'number') value = { rate, source: 'fawazahmed0/currency-api', date: data?.date ?? null };
+            }
+        } catch { /* no rate available */ }
+    }
+
+    if (value) rateCache.set(code, { value, at: Date.now() });
+    return value;
+}
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export const ocrService = {
     async analyzeReceipt(imageUrl?: string, imageData?: Buffer | Uint8Array): Promise<ReceiptOcrData> {
@@ -176,15 +226,22 @@ export const ocrService = {
                     const parsed: ReceiptOcrData = JSON.parse(jsonText);
                     console.log(`[OCR Service] Receipt analyzed via ${resp.provider}. Vendor: ${parsed.vendor}, Total: ${parsed.total_amount}, Currency: ${parsed.currency}`);
 
-                    // If the receipt is in a foreign currency, fetch the live ZMW rate so the
-                    // frontend can do an apples-to-apples comparison with the ZMW request amount.
-                    const currency = (parsed.currency || '').toUpperCase();
-                    if (currency && currency !== 'ZMW' && parsed.total_amount != null) {
-                        const rate = await fetchZmwRate(currency);
-                        if (rate != null) {
-                            parsed.exchange_rate = rate;
-                            parsed.zmw_equivalent = Math.round(parsed.total_amount * rate * 100) / 100;
-                            console.log(`[OCR Service] FX: ${parsed.total_amount} ${currency} ≈ K${parsed.zmw_equivalent} (rate ${rate})`);
+                    // Foreign-currency receipt: convert the total AND every line item to
+                    // ZMW at the latest rate. Line items feed the expense amounts, and
+                    // only converting the total left those in USD (etc.) shown as kwacha.
+                    const currency = normalizeCurrency(parsed.currency);
+                    parsed.currency = currency;
+                    if (currency && currency !== 'ZMW') {
+                        const fx = await fetchZmwRate(currency);
+                        if (fx) {
+                            parsed.exchange_rate = fx.rate;
+                            parsed.exchange_rate_source = fx.source;
+                            parsed.exchange_rate_date = fx.date;
+                            if (parsed.total_amount != null) parsed.zmw_equivalent = round2(Number(parsed.total_amount) * fx.rate);
+                            for (const li of parsed.line_items ?? []) {
+                                if (li.total != null) li.zmw_total = round2(Number(li.total) * fx.rate);
+                            }
+                            console.log(`[OCR Service] FX: ${parsed.total_amount} ${currency} ≈ K${parsed.zmw_equivalent} (rate ${fx.rate} via ${fx.source})`);
                         } else {
                             console.warn(`[OCR Service] Could not fetch ZMW rate for ${currency}; skipping conversion`);
                         }

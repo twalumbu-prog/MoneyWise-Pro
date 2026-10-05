@@ -2826,7 +2826,8 @@ export const scanReceipts = async (req: any, res: any): Promise<any> => {
                         description: `Charge from ${ocrData.vendor || 'Vendor'}`,
                         quantity: 1,
                         unit_price: ocrData.total_amount,
-                        total: ocrData.total_amount
+                        total: ocrData.total_amount,
+                        zmw_total: ocrData.zmw_equivalent ?? null
                     }];
                 }
 
@@ -2875,11 +2876,18 @@ export const scanReceipts = async (req: any, res: any): Promise<any> => {
 
                 // Prepare items for matching - tag them with their source receipt ID
                 if (ocrData.line_items) {
+                    // Requisition amounts are ZMW, so match and record in ZMW; the
+                    // printed currency amount rides along for display and audit.
+                    const isForeign = !!ocrData.currency && ocrData.currency !== 'ZMW';
                     const enrichedItems = ocrData.line_items.map((li: any) => ({
-                        ...li,
+                        description: li.description,
+                        quantity: li.quantity,
+                        total: isForeign && li.zmw_total != null ? li.zmw_total : li.total,
+                        original_total: li.total,
+                        original_currency: ocrData.currency || 'ZMW',
                         source_receipt_id: savedReceipt.id,
                         source_receipt_vendor: ocrData.vendor || 'Unknown Vendor',
-                        source_receipt_total: ocrData.total_amount
+                        source_receipt_total: isForeign && ocrData.zmw_equivalent != null ? ocrData.zmw_equivalent : ocrData.total_amount
                     }));
                     allExtractedItems.push(...enrichedItems);
                 }
@@ -2935,8 +2943,19 @@ export const scanReceipts = async (req: any, res: any): Promise<any> => {
         }
 
         if (matchResult && matchResult.matches) {
-            // 4. Update database with findings
+            // 4. Update database with findings. Attach the currency details from the
+            // receipt so the UI can show "USD 20.00 @ 26.10" next to the kwacha figure.
+            const receiptById = new Map(processedReceipts.map((r: any) => [r.id, r]));
             const updatePromises = matchResult.matches.map((match: any) => {
+                const ocr = receiptById.get(match.source_receipt_id)?.ocr_data;
+                if (ocr?.currency && ocr.currency !== 'ZMW' && ocr.exchange_rate) {
+                    match.currency = ocr.currency;
+                    match.exchange_rate = ocr.exchange_rate;
+                    match.exchange_rate_source = ocr.exchange_rate_source ?? null;
+                    match.original_amount = match.extracted_amount != null
+                        ? Math.round((Number(match.extracted_amount) / ocr.exchange_rate) * 100) / 100
+                        : null;
+                }
                 return supabase
                     .from('line_items')
                     .update({

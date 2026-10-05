@@ -12,6 +12,15 @@ export function UpdatePrompt() {
     } = useRegisterSW({
         onRegistered(r: any) {
             console.log('SW Registered:', r);
+            if (!r) return;
+            // The browser only looks for a new service worker on navigation, so a
+            // tab left open kept serving the old cached build for days after a
+            // deploy. Check periodically and whenever the tab comes back.
+            const check = () => { r.update().catch(() => {}); };
+            setInterval(check, 15 * 60 * 1000);
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') check();
+            });
         },
         onRegisterError(error: any) {
             console.log('SW registration error', error);
