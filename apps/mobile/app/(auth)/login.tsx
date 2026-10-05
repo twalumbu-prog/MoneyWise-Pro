@@ -510,6 +510,10 @@ export default function LoginScreen() {
                                     </Pressable>
                                 )}
 
+                                {/* Login gets its spacing from the "Forgot Password?" link; signup has none, so give the
+                                    password field breathing room before the message / Create Account button. */}
+                                {isSignup && <View style={styles.signupSpacer} />}
+
                                 {/* Error / Success Feedback */}
                                 {!!message && (
                                     <Text style={[styles.messageText, isError ? styles.errorText : styles.successText]}>
@@ -719,6 +723,9 @@ const styles = StyleSheet.create({
     },
 
     // Action Buttons
+    signupSpacer: {
+        height: 24,
+    },
     primaryButton: {
         backgroundColor: '#006AFF',
         borderRadius: 9999,
