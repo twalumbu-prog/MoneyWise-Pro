@@ -210,11 +210,13 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
     const selected = wallets.find((w) => w.id === walletId);
     const value = Number(amount);
 
-    const finish = () => {
+    // The lists are refreshed when the sheet is dismissed (not when the money lands), so the
+    // progress bars behind it spring to their new level while the user is looking at them.
+    const refreshLists = () => {
         qc.invalidateQueries({ queryKey: ['savings'] });
         qc.invalidateQueries({ queryKey: ['wallets-payment-flow'] });
-        setStage('done');
     };
+    const finish = () => setStage('done');
 
     const payFromWallet = async () => {
         if (!item) return;
@@ -265,7 +267,7 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
         }
     };
 
-    const close = () => { cancelled.current = true; onClose(); };
+    const close = () => { cancelled.current = true; if (stage === 'done') refreshLists(); onClose(); };
 
     return (
         <Sheet visible={visible} onClose={close} title={item ? `Add money · ${item.name}` : 'Add money'}>
@@ -274,7 +276,7 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
                     <CheckCircle2 size={44} color={colors.positiveInk} />
                     <Text style={styles.doneTitle}>{formatKwacha(value)} added</Text>
                     <Text style={styles.hint}>It's now in {item?.name}.</Text>
-                    <View style={{ alignSelf: 'stretch', marginTop: 8 }}><PrimaryBtn label="Done" onPress={() => { onDone(); }} /></View>
+                    <View style={{ alignSelf: 'stretch', marginTop: 8 }}><PrimaryBtn label="Done" onPress={() => { refreshLists(); onDone(); }} /></View>
                 </View>
             ) : stage === 'waiting' ? (
                 <View style={{ alignItems: 'center', gap: 12, paddingVertical: 20 }}>

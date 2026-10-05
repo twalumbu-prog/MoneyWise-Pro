@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle, Path } from 'react-native-svg';
@@ -19,14 +20,31 @@ export const SavingsBalanceCard: React.FC<{ label: string; amount: number }> = (
 
 const money = (n: number) => `K${n.toLocaleString('en-ZM', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 
-/** Progress bar + "K190 / K249.99 · 76%" line used by every savings row. */
+/** How long the bar waits before filling after money lands, so the eye is on the screen when it moves. */
+const FILL_DELAY_MS = 500;
+
+/**
+ * Progress bar + "K190 / K249.99 · 76%" line used by every savings row. When the balance goes up
+ * (money was just added) it pauses briefly and then springs to the new level — the same spring as
+ * the Radix/Motion Progress indicator (stiffness 100, damping 30) — and the figures update with it.
+ */
 export const SavingsProgress: React.FC<{ balance: number; target: number | null }> = ({ balance, target }) => {
-    const pct = target ? Math.min(100, Math.round((balance / target) * 100)) : 0;
+    const [shown, setShown] = useState(balance);
+
+    useEffect(() => {
+        if (balance === shown) return;
+        // A decrease (transfer out) shouldn't wait; an increase gets the pause.
+        const t = setTimeout(() => setShown(balance), balance > shown ? FILL_DELAY_MS : 0);
+        return () => clearTimeout(t);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [balance]);
+
+    const pct = target ? Math.min(100, Math.round((shown / target) * 100)) : 0;
     return (
         <View style={{ gap: 5, alignSelf: 'stretch' }}>
             {target ? <SpringProgress value={pct} height={6} trackColor="#E5E5E5" fillColor="#60A5FA" /> : null}
             <View style={styles.progressRow}>
-                <Text style={styles.progressText}>{target ? `${money(balance)} / ${money(target)}` : `${money(balance)} saved`}</Text>
+                <Text style={styles.progressText}>{target ? `${money(shown)} / ${money(target)}` : `${money(shown)} saved`}</Text>
                 {target ? <Text style={styles.progressText}>{pct}%</Text> : null}
             </View>
         </View>

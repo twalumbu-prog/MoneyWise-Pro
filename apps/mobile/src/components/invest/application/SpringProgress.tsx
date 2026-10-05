@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withDelay, withSpring } from 'react-native-reanimated';
 import { colors } from '../../../theme/tokens';
 
 /**
@@ -14,12 +14,14 @@ export const SpringProgress: React.FC<{
     height?: number;
     trackColor?: string;
     fillColor?: string;
-}> = ({ value, height = 4, trackColor = colors.borderStrong, fillColor = colors.blue }) => {
+    /** Wait this long before springing to a new value (the first value is shown without animating). */
+    delayMs?: number;
+}> = ({ value, height = 4, trackColor = colors.borderStrong, fillColor = colors.blue, delayMs = 0 }) => {
     const progress = useSharedValue(Math.max(0, Math.min(100, value)));
 
     useEffect(() => {
-        progress.value = withSpring(Math.max(0, Math.min(100, value)), { stiffness: 100, damping: 30, mass: 1 });
-    }, [value, progress]);
+        progress.value = withDelay(delayMs, withSpring(Math.max(0, Math.min(100, value)), { stiffness: 100, damping: 30, mass: 1 }));
+    }, [value, delayMs, progress]);
 
     const fillStyle = useAnimatedStyle(() => ({ width: `${progress.value}%` }));
 
