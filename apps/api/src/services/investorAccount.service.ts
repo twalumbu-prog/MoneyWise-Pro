@@ -393,7 +393,7 @@ async function deliverApplication(
 
     const link = `${FRONTEND_URL}/crm?tab=investors&application=${id}`;
     try {
-        await emailService.sendEmail({
+        const sent = await emailService.sendEmail({
             to: recipient,
             replyTo: applicant.email || undefined,
             subject: `New investor application – ${fullName}`,
@@ -411,6 +411,8 @@ async function deliverApplication(
                 <p style="color:#64748b;font-size:12px;margin-top:20px">You can reply to this email to reach the applicant directly.</p>`,
             attachments,
         });
+        // sendEmail returns false (instead of throwing) when no email provider key is configured.
+        if (sent === false) throw new Error('the email service is not configured on the server');
         await supabase.from('investor_accounts').update({ email_sent_at: new Date().toISOString(), email_error: null }).eq('id', id);
     } catch (e: any) {
         const msg = `Email to ${recipient} failed: ${e?.message || 'unknown error'}`;

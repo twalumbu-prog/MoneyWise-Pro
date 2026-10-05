@@ -1480,7 +1480,7 @@ export const emailService = {
         if (!process.env.RESEND_API_KEY) {
             console.warn('[EmailService] RESEND_API_KEY not set. Skipping email send.');
             console.log('[EmailService] WOULD HAVE SENT:', params.subject, 'to', params.to);
-            return;
+            return false;
         }
 
         const { data, error } = await resend.emails.send({
@@ -1499,6 +1499,7 @@ export const emailService = {
         }
 
         console.log('[EmailService] Email sent successfully:', data?.id);
+        return true;
     },
 
     /**
