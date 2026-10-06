@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { sweepPendingDeposits } from '../services/collectionRecovery.service';
-import { classifyRecentPersonalInflows } from '../services/inflowClassifier.service';
+import { classifyRecentPersonalInflows, classifyOneEntry } from '../services/inflowClassifier.service';
 import {
     getCashbookEntries,
     getCashBalance,
@@ -123,6 +123,17 @@ router.post('/post-to-qb', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), post
 router.post('/create-qb-account', requireRole(['ADMIN']), createQbAccount);
 
 // Update entry account (Cashier, Accountant, Admin)
+// "Auto Classify" on one entry (deposit or payment): AI picks from the org's own chart of accounts.
+router.post('/:entryId/classify', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), async (req: any, res: any) => {
+    const orgId = req.user?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'User organization context missing' });
+    try {
+        res.json(await classifyOneEntry(orgId, req.params.entryId));
+    } catch (error: any) {
+        console.error('[Cashbook] classify entry', error);
+        res.status(500).json({ error: 'Could not classify this transaction' });
+    }
+});
 router.patch('/:entryId/account', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), updateEntryAccount);
 
 // Narrate entry (Cashier, Accountant, Admin)

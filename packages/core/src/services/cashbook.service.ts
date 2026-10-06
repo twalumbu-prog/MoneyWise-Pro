@@ -228,6 +228,17 @@ export const cashbookService = {
         return response.json();
     },
 
+    /** AI picks the category for ONE entry from the org's own chart of accounts (income for money in, expense for money out). */
+    async classifyEntry(entryId: string): Promise<{
+        classified: boolean;
+        account?: { id: string; code: string | null; name: string };
+        confidence?: number;
+        reasoning?: string | null;
+        message?: string;
+    }> {
+        return apiJson(`/cashbook/${entryId}/classify`, { method: 'POST', body: JSON.stringify({}) });
+    },
+
     async updateAccount(entryId: string, accountId: string) {
         const response = await apiFetch(`/cashbook/${entryId}/account`, {
             method: 'PATCH',

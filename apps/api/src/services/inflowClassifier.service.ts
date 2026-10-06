@@ -96,3 +96,62 @@ export async function classifyRecentPersonalInflows(organizationId: string, budg
     }
     return done;
 }
+
+export interface ClassifyOneResult {
+    classified: boolean;
+    account?: { id: string; code: string | null; name: string };
+    confidence?: number;
+    reasoning?: string | null;
+    message?: string;
+}
+
+/**
+ * User-triggered "Auto Classify" on a single ledger entry (deposit or payment, any account type).
+ * Unlike the automatic personal-inflow pass this has no skip rules or confidence cut-off beyond
+ * "the AI must name one of the org's own accounts": the user asked, so they get the best match
+ * (and the reasoning) rather than silence. Money in → INCOME accounts, money out → EXPENSE accounts.
+ */
+export async function classifyOneEntry(organizationId: string, entryId: string): Promise<ClassifyOneResult> {
+    const { data: entry } = await supabase
+        .from('cashbook_entries')
+        .select('*')
+        .eq('id', entryId)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+    if (!entry) return { classified: false, message: 'Transaction not found.' };
+
+    const isIn = Number(entry.debit) > 0;
+    const description = String(entry.description || '').replace(/^PENDING_INTENT:\s*/i, '').split(' | Ref:')[0].trim();
+    const amount = Number(isIn ? entry.debit : entry.credit);
+    if (description.length < 2) return { classified: false, message: 'This transaction has no description to classify.' };
+
+    const { data: accounts } = await supabase
+        .from('accounts')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('is_active', true)
+        .eq('type', isIn ? 'INCOME' : 'EXPENSE');
+    const candidates = accounts || [];
+    if (candidates.length === 0) {
+        return { classified: false, message: `There are no ${isIn ? 'income' : 'expense'} accounts in your chart of accounts yet.` };
+    }
+
+    const { decisionRouter } = await import('./ai/decision.router');
+    const decision = await decisionRouter.classify(candidates, { description, amount }, organizationId);
+    const byCode = new Map(candidates.map((a: any) => [String(a.code || '').toLowerCase(), a]));
+    const match: any = decision.account_code ? byCode.get(String(decision.account_code).toLowerCase()) : null;
+    if (!match) {
+        return { classified: false, message: 'The AI couldn’t find a confident match. Please choose an account yourself.', reasoning: decision.reasoning };
+    }
+
+    await supabase
+        .from('cashbook_entries')
+        .update({ account_id: match.id, status: entry.status === 'COMPLETED' ? 'ACCOUNTED' : entry.status })
+        .eq('id', entryId)
+        .eq('organization_id', organizationId);
+    const { ledgerService } = await import('./ledger.service');
+    await ledgerService.repostForCashbookEntry(entryId).catch((e: any) =>
+        console.error(`[InflowClassifier] repost failed for ${entryId}:`, e?.message));
+
+    return { classified: true, account: { id: match.id, code: match.code ?? null, name: match.name }, confidence: decision.confidence, reasoning: decision.reasoning };
+}

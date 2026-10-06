@@ -4,7 +4,7 @@ import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, ChevronDown, Check, Building2, CheckCircle, ArrowRight } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
-import { cashbookService, requisitionService, integrationService, formatKwacha, formatShortDate } from 'core';
+import { cashbookService, requisitionService, integrationService, accountService, formatKwacha, formatShortDate } from 'core';
 import type { CashbookEntry } from 'core';
 import { ScreenHeader } from '../../../src/components/ScreenHeader';
 import { AccountPickerSheet, type AccountOption } from '../../../src/components/wallet/AccountPickerSheet';
@@ -62,6 +62,17 @@ export default function EntryDetailScreen() {
         enabled: !!organizationId,
     });
 
+    // The organisation's own chart of accounts (what the AI classifies against, and the only chart a
+    // personal account has — it has no QuickBooks).
+    const { data: chartRaw } = useQuery({
+        queryKey: ['chart-of-accounts', organizationId],
+        queryFn: () => accountService.getAll(),
+        enabled: !!organizationId,
+    });
+    const chart: (AccountOption & { type: string })[] = useMemo(() => (
+        (chartRaw ?? []).map((a) => ({ id: a.id, name: a.name, code: a.code, accountType: a.type, type: a.type }))
+    ), [chartRaw]);
+
     const allAccounts: AccountOption[] = useMemo(() => {
         if (!Array.isArray(qbAccountsRaw)) return [];
         return qbAccountsRaw.map((a: any) => ({
@@ -73,12 +84,15 @@ export default function EntryDetailScreen() {
     }, [qbAccountsRaw]);
 
     const expenseAccounts = useMemo(() => {
+        if (chart.length > 0) return chart.filter((a) => a.type === 'EXPENSE');
         return allAccounts.filter((a) =>
             ['Expense', 'Other Expense', 'Cost of Goods Sold'].some((t) =>
                 a.accountType?.toLowerCase().includes(t.toLowerCase())
             ) || !a.accountType
         );
-    }, [allAccounts]);
+    }, [allAccounts, chart]);
+
+    const incomeAccounts = useMemo(() => chart.filter((a) => a.type === 'INCOME'), [chart]);
 
     const paymentAccounts = useMemo(() => {
         return allAccounts.filter((a) =>
@@ -103,11 +117,19 @@ export default function EntryDetailScreen() {
                 // Uses the exact same AI assistant classification pipeline as the outflow requisitions thread
                 await requisitionService.retriggerAI(reqId);
                 await refetchReq();
-            } else {
-                await cashbookService.classifyBulk();
+                qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
+                Alert.alert('AI Classification Complete', 'AI assistant has re-analyzed line items and mapped them to general ledger accounts.');
+            } else if (entry?.id) {
+                // A plain deposit / payment: classify just this entry against the org's own chart of accounts.
+                const r = await cashbookService.classifyEntry(entry.id);
+                if (r.classified && r.account) {
+                    setLocalClassifications((prev) => ({ ...prev, SINGLE: { id: r.account!.id, name: r.account!.name, code: r.account!.code ?? '' } }));
+                    qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
+                    Alert.alert('Classified', `${r.account.name}${r.reasoning ? `\n\n${r.reasoning}` : ''}`);
+                } else {
+                    Alert.alert('Couldn’t classify', r.message || 'Please choose an account yourself.');
+                }
             }
-            qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
-            Alert.alert('AI Classification Complete', 'AI assistant has re-analyzed line items and mapped them to general ledger accounts.');
         } catch (e: any) {
             Alert.alert('AI Classification Failed', e?.message ?? 'Please select accounts manually.');
         } finally {
@@ -141,8 +163,13 @@ export default function EntryDetailScreen() {
             setSelectedPaymentAccount(acc);
         } else if (activePickerTarget) {
             setLocalClassifications((prev) => ({ ...prev, [activePickerTarget]: acc }));
-            if (entry?.id) {
-                cashbookService.updateAccount(entry.id, acc.id).catch(() => {});
+            if (entry?.id && !reqId) {
+                cashbookService.updateAccount(entry.id, acc.id)
+                    .then(() => qc.invalidateQueries({ queryKey: ['cashbook-entries'] }))
+                    .catch((e: any) => {
+                        setLocalClassifications((prev) => { const n = { ...prev }; delete n[activePickerTarget]; return n; });
+                        Alert.alert('Couldn’t change the account', e?.message ?? 'Please try again.');
+                    });
             }
         }
         setActivePickerTarget(null);
@@ -326,9 +353,9 @@ export default function EntryDetailScreen() {
                                             onPress={() => setActivePickerTarget('SINGLE')}
                                             disabled={isPosted}
                                         >
-                                            <Building2 size={13} color={entry.accounts?.name ? colors.blue : colors.textFaint} />
-                                            <Text style={[styles.accountChipText, !!entry.accounts?.name && styles.accountChipTextActive]} numberOfLines={1}>
-                                                {entry.accounts?.name || 'Assign General Ledger Account…'}
+                                            <Building2 size={13} color={(localClassifications.SINGLE?.name || entry.accounts?.name) ? colors.blue : colors.textFaint} />
+                                            <Text style={[styles.accountChipText, !!(localClassifications.SINGLE?.name || entry.accounts?.name) && styles.accountChipTextActive]} numberOfLines={1}>
+                                                {localClassifications.SINGLE?.name || entry.accounts?.name || 'Assign General Ledger Account…'}
                                             </Text>
                                             {!isPosted && <Text style={styles.accountChipChangeText}>Change</Text>}
                                         </Pressable>
@@ -425,7 +452,7 @@ export default function EntryDetailScreen() {
             {/* Account Picker Modal Sheet */}
             <AccountPickerSheet
                 visible={!!activePickerTarget}
-                accounts={activePickerTarget === 'PAYMENT' ? paymentAccounts : expenseAccounts}
+                accounts={activePickerTarget === 'PAYMENT' ? paymentAccounts : (isInflow && !reqId && incomeAccounts.length > 0 ? incomeAccounts : expenseAccounts)}
                 selectedId={
                     activePickerTarget === 'PAYMENT'
                         ? selectedPaymentAccount?.id
