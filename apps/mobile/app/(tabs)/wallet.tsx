@@ -117,8 +117,9 @@ export default function WalletScreen() {
                     <View>
                         <View style={styles.titleRow}>
                             <Text style={[styles.title, { paddingHorizontal: 0, marginBottom: 0 }]}>Wallet</Text>
-                            <Pressable style={styles.iconBtn} onPress={() => router.push('/savings')} accessibilityLabel="Savings">
+                            <Pressable style={({ pressed }) => [styles.savingsBtn, pressed && { opacity: 0.7 }]} onPress={() => router.push('/savings')} accessibilityLabel="Savings">
                                 <PiggyBankIcon size={19} color={colors.blue} />
+                                <Text style={styles.savingsText}>Savings</Text>
                             </Pressable>
                         </View>
 
@@ -335,10 +336,11 @@ const styles = StyleSheet.create({
     list: { paddingBottom: 120 },
     title: { fontFamily: fonts.display, fontSize: 30, color: '#000000', paddingHorizontal: 20, marginBottom: 14 },
     titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 14 },
-    iconBtn: {
-        width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface,
-        borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',
+    savingsBtn: {
+        height: 40, paddingLeft: 12, paddingRight: 16, borderRadius: 20, backgroundColor: colors.surface,
+        borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 7,
     },
+    savingsText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#000000' },
     segment: {
         flexDirection: 'row', marginHorizontal: 20, marginBottom: 18, padding: 4,
         backgroundColor: colors.chipActiveBg, borderRadius: radius.pill,

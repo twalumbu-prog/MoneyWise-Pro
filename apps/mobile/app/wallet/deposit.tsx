@@ -16,6 +16,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useMobileMoneyCollection } from '../../src/hooks/useMobileMoneyCollection';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
+import { phoneFromPrefixedInput, prefixedInputValue } from '../../src/lib/phone';
 
 const ACCOUNT_TYPES = [
     { value: 'CASH', label: 'Cash' },
@@ -186,11 +187,11 @@ function LencoDeposit({ onSwitch }: { onSwitch: () => void }) {
                             <View style={styles.phonePrefix}><Text style={styles.flag}>🇿🇲</Text><Text style={styles.prefixText}>+260</Text></View>
                             <TextInput
                                 style={styles.phoneInput}
-                                value={phone}
-                                onChangeText={setPhone}
-                                placeholder="097 123 4567"
+                                value={prefixedInputValue(phone)}
+                                onChangeText={(t) => setPhone(phoneFromPrefixedInput(t))}
+                                placeholder="97 123 4567"
                                 placeholderTextColor={colors.textFaint}
-                                keyboardType="phone-pad"
+                                keyboardType="number-pad"
                                 accessibilityLabel="Mobile money number"
                             />
                             {!!operator && <Text style={[styles.operator, { color: OPERATOR_COLOR[operator.toUpperCase()] || colors.text }]}>{operator.toUpperCase()}</Text>}

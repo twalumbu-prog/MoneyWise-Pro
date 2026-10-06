@@ -6,6 +6,7 @@ import { lencoService, requisitionService, detectMobileNetwork, formatKwacha } f
 import { PaymentWaitingScreen } from '../payments/PaymentWaitingScreen';
 import { useMobileMoneyCollection } from '../../hooks/useMobileMoneyCollection';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { phoneFromPrefixedInput, prefixedInputValue } from '../../lib/phone';
 
 function genReference(id: string): string {
     return `CHG-${Date.now()}-${id}`;
@@ -123,8 +124,8 @@ export const DepositChangeSheet: React.FC<{
                             <View style={styles.phoneRow}>
                                 <View style={styles.phonePrefix}><Text style={styles.phonePrefixText}>+260</Text></View>
                                 <TextInput
-                                    style={styles.phoneInput} value={phone} onChangeText={setPhone}
-                                    keyboardType="phone-pad" placeholder="971 234 567" placeholderTextColor={colors.textFaint}
+                                    style={styles.phoneInput} value={prefixedInputValue(phone)} onChangeText={(t) => setPhone(phoneFromPrefixedInput(t))}
+                                    keyboardType="number-pad" placeholder="97 123 4567" placeholderTextColor={colors.textFaint}
                                 />
                                 {operator && <Text style={styles.operatorTag}>{operator}</Text>}
                             </View>

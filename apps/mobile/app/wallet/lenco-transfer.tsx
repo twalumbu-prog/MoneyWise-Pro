@@ -14,6 +14,7 @@ import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
 import { useMobileMoneyCollection } from '../../src/hooks/useMobileMoneyCollection';
+import { phoneFromPrefixedInput, prefixedInputValue } from '../../src/lib/phone';
 
 /**
  * Native port of apps/web/src/components/TransferToWalletModal.tsx — moves
@@ -218,8 +219,8 @@ export default function LencoTransferScreen() {
                 <View style={styles.phoneRow}>
                     <View style={styles.phonePrefix}><Text style={styles.phonePrefixText}>+260</Text></View>
                     <TextInput
-                        style={styles.phoneInput} value={phone} onChangeText={setPhone}
-                        keyboardType="phone-pad" placeholder="971 234 567" placeholderTextColor={colors.textFaint}
+                        style={styles.phoneInput} value={prefixedInputValue(phone)} onChangeText={(t) => setPhone(phoneFromPrefixedInput(t))}
+                        keyboardType="number-pad" placeholder="97 123 4567" placeholderTextColor={colors.textFaint}
                     />
                     {operator && <Text style={styles.operatorTag}>{operator}</Text>}
                 </View>
