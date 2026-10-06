@@ -30,6 +30,7 @@ import { disburseRequisition } from '../controllers/disbursement.controller';
 import { processDueScheduledItems, syncScheduledRunStatuses } from './schedule.service';
 import { investmentService, INVEST_PASSTHROUGH_PREFIX } from './investment.service';
 import { savingsService } from './savings.service';
+import { sweepPendingDeposits } from './collectionRecovery.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -680,8 +681,9 @@ export const automationService = {
 
         const investments = await investmentService.confirmPending().catch((e: any) => ({ error: e.message }));
         const savings = await savingsService.confirmPending().catch((e: any) => ({ error: e.message }));
+        const deposits = await sweepPendingDeposits().catch((e: any) => ({ error: e.message }));
 
-        return { automations: total, schedules, scheduleRunsSynced, investments, savings };
+        return { automations: total, schedules, scheduleRunsSynced, investments, savings, deposits };
     },
 
     /**

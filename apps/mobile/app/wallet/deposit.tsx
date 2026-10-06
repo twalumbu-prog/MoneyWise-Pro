@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, Alert, KeyboardAvoidingView, Platform,
+    ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Smartphone, CreditCard, Check, AlertCircle } from 'lucide-react-native';
 import { cashbookService, lencoService, detectMobileNetwork, formatKwacha } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
@@ -18,26 +18,16 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
 import { phoneFromPrefixedInput, prefixedInputValue } from '../../src/lib/phone';
 
-const ACCOUNT_TYPES = [
-    { value: 'CASH', label: 'Cash' },
-    { value: 'BANK', label: 'Bank' },
-    { value: 'AIRTEL_MONEY', label: 'Mobile Money' },
-];
-
 const OPERATOR_COLOR: Record<string, string> = { AIRTEL: '#EF4444', MTN: '#F59E0B', ZAMTEL: '#10B981' };
 
 /**
  * Wallet → Deposit. Real money in through Lenco, the same way the web wallet deposit and QuickPay
  * links do it: amount and details, Mobile Money (or card, coming soon), the account holder's name
  * shown before paying, then the collection runs in the background while the payer approves on
- * their phone. Logging cash you already received is still one tap away.
+ * their phone. Only real Lenco money lands in a MoneyWise wallet; money received outside Lenco
+ * is logged from Inbox → Inflows → "Log money received" (app/log-received.tsx).
  */
 export default function DepositScreen() {
-    const [mode, setMode] = useState<'LENCO' | 'CASH'>('LENCO');
-    return mode === 'LENCO' ? <LencoDeposit onSwitch={() => setMode('CASH')} /> : <CashLogForm onSwitch={() => setMode('LENCO')} />;
-}
-
-function LencoDeposit({ onSwitch }: { onSwitch: () => void }) {
     const insets = useSafeAreaInsets();
     const safeBack = useGoBack();
     const qc = useQueryClient();
@@ -223,9 +213,6 @@ function LencoDeposit({ onSwitch }: { onSwitch: () => void }) {
                     <View style={styles.error}><AlertCircle size={15} color="#B91C1C" /><Text style={styles.errorText}>{collection.error}</Text></View>
                 )}
 
-                <Pressable onPress={onSwitch} style={styles.cashLink}>
-                    <Text style={styles.cashLinkText}>Received cash already? Log a cash deposit instead</Text>
-                </Pressable>
             </ScrollView>
 
             <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
@@ -239,122 +226,6 @@ function LencoDeposit({ onSwitch }: { onSwitch: () => void }) {
                     disabled={!canPay}
                 >
                     {collection.busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.submitText}>{value > 0 ? `Deposit ${formatKwacha(value)}` : 'Deposit'}</Text>}
-                </Pressable>
-            </View>
-        </KeyboardAvoidingView>
-    );
-}
-
-function CashLogForm({ onSwitch }: { onSwitch: () => void }) {
-    const insets = useSafeAreaInsets();
-    const safeBack = useGoBack();
-    const qc = useQueryClient();
-
-    const [personName, setPersonName] = useState('');
-    const [purpose, setPurpose] = useState('');
-    const [contactDetails, setContactDetails] = useState('');
-    const [amount, setAmount] = useState('');
-    const [accountType, setAccountType] = useState('CASH');
-
-    const numericAmount = Number(amount) || 0;
-    const valid = personName.trim().length > 0 && purpose.trim().length > 0 && numericAmount > 0;
-
-    const log = useMutation({
-        mutationFn: () =>
-            cashbookService.logInflow({
-                personName: personName.trim(),
-                purpose: purpose.trim(),
-                contactDetails: contactDetails.trim(),
-                date: new Date().toISOString().slice(0, 10),
-                amount: numericAmount,
-                denominations: {},
-                accountType,
-            }),
-        onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
-            safeBack();
-        },
-        onError: (e: Error) => Alert.alert('Deposit not logged', e.message),
-    });
-
-    return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-            <Stack.Screen options={{ headerShown: false }} />
-            <ScreenHeader title="Log cash deposit" right={<Pressable onPress={onSwitch} hitSlop={8}><Text style={styles.switchLink}>Lenco</Text></Pressable>} />
-
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-                <View style={styles.card}>
-                    <Text style={styles.label}>Amount (K)</Text>
-                    <TextInput
-                        style={[styles.input, styles.amountInput]}
-                        value={amount}
-                        onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))}
-                        keyboardType="decimal-pad"
-                        placeholder="0.00"
-                        placeholderTextColor={colors.textFaint}
-                    />
-
-                    <Text style={[styles.label, styles.spaced]}>Received into</Text>
-                    <View style={styles.chips}>
-                        {ACCOUNT_TYPES.map((t) => (
-                            <Pressable
-                                key={t.value}
-                                onPress={() => setAccountType(t.value)}
-                                style={[styles.chip, accountType === t.value && styles.chipActive]}
-                            >
-                                <Text style={[styles.chipText, accountType === t.value && styles.chipTextActive]}>
-                                    {t.label}
-                                </Text>
-                            </Pressable>
-                        ))}
-                    </View>
-                </View>
-
-                <View style={styles.card}>
-                    <Text style={styles.label}>Received from</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={personName}
-                        onChangeText={setPersonName}
-                        placeholder="Name of the person or business"
-                        placeholderTextColor={colors.textFaint}
-                    />
-
-                    <Text style={[styles.label, styles.spaced]}>What is it for?</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={purpose}
-                        onChangeText={setPurpose}
-                        placeholder="e.g. Payment for invoice 104"
-                        placeholderTextColor={colors.textFaint}
-                    />
-
-                    <Text style={[styles.label, styles.spaced]}>Contact (optional)</Text>
-                    <TextInput
-                        style={styles.input}
-                        value={contactDetails}
-                        onChangeText={setContactDetails}
-                        placeholder="Phone or email"
-                        placeholderTextColor={colors.textFaint}
-                        keyboardType="phone-pad"
-                    />
-                </View>
-
-                <View style={styles.totalCard}>
-                    <Text style={styles.totalLabel}>Depositing</Text>
-                    <Text style={styles.totalValue}>{formatKwacha(numericAmount)}</Text>
-                </View>
-            </ScrollView>
-
-            <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
-                <Pressable
-                    style={({ pressed }) => [styles.submit, !valid && styles.disabled, pressed && valid && { opacity: 0.85 }]}
-                    onPress={() => log.mutate()}
-                    disabled={!valid || log.isPending}
-                >
-                    {log.isPending
-                        ? <ActivityIndicator color="#FFFFFF" />
-                        : <Text style={styles.submitText}>Log deposit</Text>}
                 </Pressable>
             </View>
         </KeyboardAvoidingView>
@@ -380,8 +251,6 @@ const styles = StyleSheet.create({
     soonText: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 17, maxWidth: 240 },
     error: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', padding: 12, borderRadius: radius.md, backgroundColor: '#FEF2F2' },
     errorText: { flex: 1, fontFamily: fonts.bodyMedium, fontSize: 12, color: '#B91C1C', lineHeight: 17 },
-    cashLink: { alignItems: 'center', paddingVertical: 8 },
-    cashLinkText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
     totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
     totalAmount: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text },
     root: { flex: 1, backgroundColor: colors.canvasAlt },
@@ -398,21 +267,7 @@ const styles = StyleSheet.create({
         paddingHorizontal: 14, paddingVertical: 12,
     },
     amountInput: { fontFamily: fonts.bodyBold, fontSize: 24 },
-    chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    chip: {
-        paddingHorizontal: 16, paddingVertical: 10, borderRadius: radius.pill,
-        borderWidth: 1, borderColor: colors.borderStrong, backgroundColor: colors.surface,
-    },
-    chipActive: { backgroundColor: colors.tabActiveBg, borderColor: colors.blue },
-    chipText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted },
-    chipTextActive: { color: colors.blue },
-    totalCard: {
-        backgroundColor: colors.surface, borderRadius: radius.lg, padding: 20,
-        borderWidth: 1, borderColor: colors.border,
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    },
     totalLabel: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.textMuted },
-    totalValue: { fontFamily: fonts.display, fontSize: 24, color: colors.positiveInk },
     footer: {
         paddingHorizontal: 20, paddingTop: 12, backgroundColor: colors.surface,
         borderTopWidth: 1, borderTopColor: colors.border,
@@ -423,5 +278,4 @@ const styles = StyleSheet.create({
     },
     disabled: { opacity: 0.4 },
     submitText: { fontFamily: fonts.bodyBold, fontSize: 16, color: '#FFFFFF' },
-    switchLink: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
 });

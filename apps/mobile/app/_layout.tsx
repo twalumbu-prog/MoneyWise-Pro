@@ -97,6 +97,7 @@ export default function RootLayout() {
                         <Stack.Screen name="requisition/new-advance" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="requisition/new-invest" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="manual-entry" options={{ animation: 'slide_from_bottom' }} />
+                        <Stack.Screen name="log-received" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="savings/index" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="savings/[id]" options={{ animation: 'slide_from_right' }} />
                         <Stack.Screen name="savings/join/[code]" options={{ animation: 'fade' }} />

@@ -1,5 +1,5 @@
 import { Modal, View, Text, Pressable, StyleSheet } from 'react-native';
-import { X, ShoppingBag, FileText, History, Plus, TrendingUp, Send, PenLine } from 'lucide-react-native';
+import { X, ShoppingBag, FileText, History, Plus, TrendingUp, Send, PenLine, HandCoins } from 'lucide-react-native';
 import { canDisburse, isRequestorRole } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -12,6 +12,8 @@ interface Props {
     onNewSale: () => void;
     /** Personal accounts: record a transaction on an external bank / mobile-money account by hand. */
     onManualEntry: () => void;
+    /** Money received outside Lenco (cash, bank, personal mobile money) — never into a MoneyWise wallet. */
+    onLogReceived: () => void;
     onNewRequisition: () => void;
     onSalaryAdvance: () => void;
     onStaffLoan: () => void;
@@ -20,13 +22,13 @@ interface Props {
 }
 
 export const NewMenuSheet: React.FC<Props> = ({
-    visible, onClose, mode, userRole, isPersonal, onNewSale, onManualEntry, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
+    visible, onClose, mode, userRole, isPersonal, onNewSale, onManualEntry, onLogReceived, onNewRequisition, onSalaryAdvance, onStaffLoan, onInvest, onPayroll,
 }) => {
     const isCashHandler = canDisburse(userRole);
     const isRequestor = isRequestorRole(userRole);
 
     const sheetTitle = mode === 'inflows'
-        ? (isPersonal ? 'New Entry' : 'New Sale')
+        ? (isPersonal ? 'New Entry' : 'New Inflow')
         : isPersonal
             ? 'New Transaction'
             : 'New Requisition';
@@ -46,9 +48,15 @@ export const NewMenuSheet: React.FC<Props> = ({
                 <View style={styles.body}>
                     {mode === 'inflows' ? (
                         isPersonal ? (
-                            <Row icon={PenLine} iconColor="#059669" title="New manual entry" subtitle="Record money in or out of a bank or mobile-money account" onPress={onManualEntry} />
+                            <>
+                                <Row icon={HandCoins} iconColor="#059669" title="Log money received" subtitle="Cash, bank or mobile money received outside MoneyWise" onPress={onLogReceived} />
+                                <Row icon={PenLine} iconColor="#059669" title="New manual entry" subtitle="Record money in or out of a bank or mobile-money account" onPress={onManualEntry} />
+                            </>
                         ) : isCashHandler ? (
-                            <Row icon={ShoppingBag} iconColor="#059669" title="New Sale" subtitle="Ring up products & take payment" onPress={onNewSale} />
+                            <>
+                                <Row icon={ShoppingBag} iconColor="#059669" title="New Sale" subtitle="Ring up products & take payment" onPress={onNewSale} />
+                                <Row icon={HandCoins} iconColor="#059669" title="Log money received" subtitle="Cash, bank or mobile money received outside MoneyWise" onPress={onLogReceived} />
+                            </>
                         ) : (
                             <Text style={styles.noPermission}>You don't have permission to record sales.</Text>
                         )

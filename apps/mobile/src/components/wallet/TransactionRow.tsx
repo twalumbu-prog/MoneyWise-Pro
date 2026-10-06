@@ -14,6 +14,8 @@ export const TransactionRow: React.FC<{
     onPress: () => void;
 }> = ({ entry, onPress }) => {
     const isInflow = (entry.debit ?? 0) > 0;
+    // Deposits awaiting Lenco are stored as "PENDING_INTENT: <purpose> | Ref: <ref>"; show just the purpose.
+    const label = (entry.description || '').replace(/^PENDING_INTENT:\s*/i, '').replace(/\s*\|\s*Ref:.*$/i, '') || entry.description;
     const amount = isInflow ? entry.debit : entry.credit;
 
     return (
@@ -21,7 +23,7 @@ export const TransactionRow: React.FC<{
             onPress={onPress}
             style={({ pressed }) => [styles.root, pressed && styles.pressed]}
             accessibilityRole="button"
-            accessibilityLabel={`${entry.description}, ${isInflow ? 'received' : 'paid'} ${formatKwacha(amount)}`}
+            accessibilityLabel={`${label}, ${isInflow ? 'received' : 'paid'} ${formatKwacha(amount)}`}
         >
             <View style={[styles.icon, isInflow ? styles.iconIn : styles.iconOut]}>
                 {isInflow
@@ -30,7 +32,7 @@ export const TransactionRow: React.FC<{
             </View>
 
             <View style={styles.main}>
-                <Text style={styles.description} numberOfLines={1}>{entry.description}</Text>
+                <Text style={styles.description} numberOfLines={1}>{label}</Text>
                 <Text style={styles.meta} numberOfLines={1}>
                     {formatShortDate(entry.date)}
                     {entry.reference_number ? ` · ${entry.reference_number}` : ''}

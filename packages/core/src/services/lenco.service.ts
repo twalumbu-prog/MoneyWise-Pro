@@ -96,15 +96,15 @@ export const lencoService = {
     },
 
     /** Server-held long-poll (holds up to ~22s) — call in a loop until `verified`. */
-    longPollCollectionStatus(reference: string, organizationId: string): Promise<{
-        verified: boolean; status?: string; completedAt?: string; initiatedAt?: string; referenceNumber?: string;
+    longPollCollectionStatus(reference: string, organizationId: string, opts: { signal?: AbortSignal } = {}): Promise<{
+        verified: boolean; status?: string; message?: string; completedAt?: string; initiatedAt?: string; referenceNumber?: string;
     }> {
-        return apiJson(`/lenco/public-collection-longpoll/${reference}?organizationId=${organizationId}`);
+        return apiJson(`/lenco/public-collection-longpoll/${reference}?organizationId=${organizationId}`, { signal: opts.signal });
     },
 
     /** Idempotent — writes the ledger entry once Lenco has confirmed the collection. */
-    finalizeCollection(reference: string, organizationId: string): Promise<any> {
-        return apiJson(`/lenco/public-collection-finalize/${reference}?organizationId=${organizationId}`, { method: 'POST' });
+    finalizeCollection(reference: string, organizationId: string, opts: { signal?: AbortSignal } = {}): Promise<any> {
+        return apiJson(`/lenco/public-collection-finalize/${reference}?organizationId=${organizationId}`, { method: 'POST', signal: opts.signal });
     },
 
     cancelCollection(reference: string): Promise<any> {

@@ -9,7 +9,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
     Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet, AlertCircle, Mail,
 } from 'lucide-react-native';
-import { cashbookService, groupByDate, isRequestorRole, onboardingService } from 'core';
+import { cashbookService, groupByDate, isRequestorRole, isPersonalOrgName, onboardingService } from 'core';
 import type { CashbookEntry } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import {
@@ -25,7 +25,12 @@ type Group = 'MONEYWISE' | 'EXTERNAL';
 export default function WalletScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { userRole, organizationName, organizationId } = useAuth();
+    const { userRole, organizationName, organizationId, userName } = useAuth();
+    // Personal workspaces are one person's money, so the card names the person ("Stephen Kapambwe"),
+    // not the auto-generated "Stephen's Workspace"; business cards keep the organisation's name.
+    const cardHolder = isPersonalOrgName(organizationName)
+        ? (userName?.trim() || (organizationName || '').replace(/['’]s\s+(workspace|personal.*)$/i, '').trim() || organizationName)
+        : organizationName;
     const isRequestor = isRequestorRole(userRole);
     const cardWidth = useCardWidth();
 
@@ -160,7 +165,7 @@ export default function WalletScreen() {
                                                 key={c.id}
                                                 name={c.name}
                                                 balance={c.balance}
-                                                organizationName={organizationName}
+                                                organizationName={cardHolder}
                                                 dots={slideCount > 1 ? { count: slideCount, active: slide, onSelect: goToSlide } : undefined}
                                             />
                                         ))}

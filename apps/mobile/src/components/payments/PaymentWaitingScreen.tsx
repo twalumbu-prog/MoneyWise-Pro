@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated, Easing } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { X } from 'lucide-react-native';
@@ -17,11 +17,10 @@ function maskPhone(phone: string): string {
 }
 
 /**
- * Native port of apps/web/src/components/PaymentWaitingScreen.tsx, scoped to
- * the four phases InvestPaymentFlow actually drives (initiating/confirm/
- * polling/success) — web's failed/cancelled/recheck states belong to the real
- * Collections polling loop on QuickPay, which this simulated invest deposit
- * never enters.
+ * Native port of apps/web/src/components/PaymentWaitingScreen.tsx with the same motion: spinning
+ * ring + breathing orb, a sliding indeterminate bar, the glowing PIN card with a blinking cursor,
+ * a pulse ring on "waiting", panels rising in on every phase change, the tick popping in on
+ * success and a shaking red badge on decline. Driven by useMobileMoneyCollection.
  */
 export const PaymentWaitingScreen: React.FC<{
     phase: PaymentPhase;
@@ -57,6 +56,13 @@ export const PaymentWaitingScreen: React.FC<{
     const spin = useRef(new Animated.Value(0)).current;
     const breathe = useRef(new Animated.Value(0)).current;
     const pop = useRef(new Animated.Value(0)).current;
+    const bar = useRef(new Animated.Value(0)).current;
+    const blink = useRef(new Animated.Value(0)).current;
+    const ring = useRef(new Animated.Value(0)).current;
+    const rise = useRef(new Animated.Value(0)).current;
+    const shake = useRef(new Animated.Value(0)).current;
+    const attn = useRef(new Animated.Value(0)).current; // JS-driven: colours can't use the native driver
+    const [trackW, setTrackW] = useState(0);
 
     useEffect(() => {
         const loop = Animated.loop(
@@ -78,10 +84,41 @@ export const PaymentWaitingScreen: React.FC<{
     }, [breathe]);
 
     useEffect(() => {
-        if (phase !== 'success') return;
+        const loops = [
+            Animated.loop(Animated.timing(bar, { toValue: 1, duration: 1250, easing: Easing.linear, useNativeDriver: true })),
+            Animated.loop(Animated.sequence([
+                Animated.timing(blink, { toValue: 1, duration: 500, useNativeDriver: true }),
+                Animated.timing(blink, { toValue: 0, duration: 500, useNativeDriver: true }),
+            ])),
+            Animated.loop(Animated.timing(ring, { toValue: 1, duration: 1600, easing: Easing.out(Easing.ease), useNativeDriver: true })),
+        ];
+        loops.push(Animated.loop(Animated.sequence([
+            Animated.timing(attn, { toValue: 1, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+            Animated.timing(attn, { toValue: 0, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        ])));
+        loops.forEach((l) => l.start());
+        return () => loops.forEach((l) => l.stop());
+    }, [bar, blink, ring, attn]);
+
+    // Every phase change rises in, like the web panels.
+    useEffect(() => {
+        rise.setValue(0);
+        Animated.timing(rise, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    }, [phase, rise]);
+
+    const failedBadge = phase === 'failed' && !!declined;
+    useEffect(() => {
+        if (phase !== 'success' && !failedBadge) return;
         pop.setValue(0);
         Animated.spring(pop, { toValue: 1, friction: 5, tension: 90, useNativeDriver: true }).start();
-    }, [phase, pop]);
+        if (failedBadge) {
+            shake.setValue(0);
+            Animated.sequence([
+                Animated.delay(280),
+                Animated.timing(shake, { toValue: 1, duration: 500, easing: Easing.linear, useNativeDriver: true }),
+            ]).start();
+        }
+    }, [phase, failedBadge, pop, shake]);
 
     const pollingSub = useMemo(() => {
         const tips = ['Verifying with the network…', 'Confirming your payment…', 'Almost there…'];
@@ -104,6 +141,18 @@ export const PaymentWaitingScreen: React.FC<{
 
     const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
     const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] });
+    const barX = bar.interpolate({ inputRange: [0, 1], outputRange: [-0.4 * trackW, trackW] });
+    const glow = attn.interpolate({ inputRange: [0, 1], outputRange: ['#DCE6FB', '#8FB6FF'] });
+    const ringScale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.7, 2.4] });
+    const ringOpacity = ring.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.5, 0, 0] });
+    const riseStyle = { opacity: rise, transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] };
+    const shakeX = shake.interpolate({ inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1], outputRange: [0, -6, 6, -4, 4, 0] });
+    const Bar = () => (
+        <View style={styles.progressTrack} onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
+            <Animated.View style={[styles.progressBar, { transform: [{ translateX: barX }] }]} />
+        </View>
+    );
+    const canRecheckWhileWaiting = !!onRecheck && elapsedSeconds >= 20;
 
     return (
         <View style={styles.root}>
@@ -118,7 +167,7 @@ export const PaymentWaitingScreen: React.FC<{
             <View style={styles.orbWrap}>
                 <View style={styles.orbInner}>
                     {showSpinner && (
-                        <Animated.View style={[StyleSheet.absoluteFillObject, { transform: [{ rotate }] }]}>
+                        <Animated.View style={[StyleSheet.absoluteFillObject, { zIndex: 2, transform: [{ rotate }] }]}>
                             <Svg width={92} height={92} viewBox="0 0 92 92">
                                 <Circle cx={46} cy={46} r={41} fill="none" stroke={ACCENT} strokeWidth={2.5} strokeLinecap="round" strokeDasharray="60 198" />
                             </Svg>
@@ -127,6 +176,13 @@ export const PaymentWaitingScreen: React.FC<{
                     <Animated.View style={[styles.orbCore, { transform: [{ scale }] }]}>
                         <Text style={styles.orbCoreText}>ZMW</Text>
                     </Animated.View>
+                    {failedBadge && (
+                        <Animated.View style={[styles.successBadge, { backgroundColor: '#E5484D', transform: [{ scale: pop }, { translateX: shakeX }] }]}>
+                            <Svg width={30} height={30} viewBox="0 0 30 30">
+                                <Path d="M9 9 L21 21 M21 9 L9 21" fill="none" stroke="#fff" strokeWidth={3.2} strokeLinecap="round" />
+                            </Svg>
+                        </Animated.View>
+                    )}
                     {phase === 'success' && (
                         <Animated.View style={[styles.successBadge, { transform: [{ scale: pop }] }]}>
                             <Svg width={34} height={34} viewBox="0 0 34 34">
@@ -137,15 +193,15 @@ export const PaymentWaitingScreen: React.FC<{
                 </View>
             </View>
 
-            <View style={styles.headingWrap}>
+            <Animated.View style={[styles.headingWrap, riseStyle]}>
                 <Text style={styles.title}>{title}</Text>
                 <Text style={styles.sub}>{sub}</Text>
-            </View>
+            </Animated.View>
 
-            <View style={styles.panel}>
+            <Animated.View style={[styles.panel, riseStyle]}>
                 {phase === 'initiating' && (
                     <>
-                        <View style={styles.progressTrack}><View style={styles.progressBar} /></View>
+                        <Bar />
                         <View style={styles.secureRow}>
                             <Text style={styles.secureText}>🔒 Encrypted &amp; secured</Text>
                         </View>
@@ -154,25 +210,41 @@ export const PaymentWaitingScreen: React.FC<{
 
                 {phase === 'confirm' && (
                     <>
-                        <View style={styles.pinCard}>
+                        <Animated.View style={[styles.pinCard, { borderColor: glow }]}>
                             <View style={styles.pinCardTop}>
-                                <View style={styles.pinDot} />
+                                <Animated.View style={[styles.pinDot, { opacity: blink }]} />
                                 <Text style={styles.pinCardTopText}>{opLabel} · MOBILE MONEY</Text>
                             </View>
                             <Text style={styles.pinCardBody}>
                                 Pay{'\n'}Amount: <Text style={styles.pinCardBold}>{formatKwacha(amount)}</Text>{'\n'}
                                 To: {businessName}{'\n'}Enter PIN to confirm:
                             </Text>
-                            <Text style={styles.pinDots}>● ● ● |</Text>
+                            <View style={styles.pinRow}>
+                                <Text style={styles.pinDots}>● ● ●</Text>
+                                <Animated.View style={[styles.pinCursor, { opacity: blink }]} />
+                            </View>
+                        </Animated.View>
+                        <View style={styles.waitingRow}>
+                            <View style={styles.ringWrap}>
+                                <Animated.View style={[styles.ringPulse, { opacity: ringOpacity, transform: [{ scale: ringScale }] }]} />
+                                <View style={styles.ringDot} />
+                            </View>
+                            <Text style={styles.waitingText}>Waiting for your approval on your phone</Text>
                         </View>
-                        <Text style={styles.waitingText}>Waiting for your approval on your phone</Text>
+                        {canRecheckWhileWaiting && <RecheckLink onPress={onRecheck!} rechecking={rechecking} />}
+                        {!!recheckNote && <Text style={styles.noteText}>{recheckNote}</Text>}
+                        <Pressable style={styles.cancelBtn} onPress={onCancel}>
+                            <Text style={styles.cancelBtnText}>Cancel payment</Text>
+                        </Pressable>
                     </>
                 )}
 
                 {phase === 'polling' && (
                     <>
-                        <View style={styles.progressTrack}><View style={styles.progressBar} /></View>
+                        <Bar />
                         <Text style={styles.pollingText}>Keep this screen open — it updates automatically.</Text>
+                        {canRecheckWhileWaiting && <RecheckLink onPress={onRecheck!} rechecking={rechecking} />}
+                        {!!recheckNote && <Text style={styles.noteText}>{recheckNote}</Text>}
                         <Pressable style={styles.cancelBtn} onPress={onCancel}>
                             <Text style={styles.cancelBtnText}>Cancel payment</Text>
                         </Pressable>
@@ -194,10 +266,11 @@ export const PaymentWaitingScreen: React.FC<{
 
                 {(phase === 'failed' || phase === 'cancelled') && (
                     <>
-                        {!!recheckNote && <Text style={styles.pollingText}>{recheckNote}</Text>}
+                        {!!recheckNote && <Text style={styles.noteText}>{recheckNote}</Text>}
                         {!declined && onRecheck && (
-                            <Pressable style={[styles.doneBtn, rechecking && { opacity: 0.6 }]} onPress={onRecheck} disabled={rechecking}>
-                                <Text style={styles.doneBtnText}>{rechecking ? 'Checking…' : 'Check payment status'}</Text>
+                            <Pressable style={[styles.doneBtn, styles.rowCenter, rechecking && { opacity: 0.7 }]} onPress={onRecheck} disabled={rechecking}>
+                                {rechecking && <ActivityIndicator size="small" color="#FFFFFF" />}
+                                <Text style={styles.doneBtnText}>{rechecking ? 'Checking with Lenco…' : 'Check payment status'}</Text>
                             </Pressable>
                         )}
                         {onRetry && (
@@ -210,10 +283,17 @@ export const PaymentWaitingScreen: React.FC<{
                         </Pressable>
                     </>
                 )}
-            </View>
+            </Animated.View>
         </View>
     );
 };
+
+const RecheckLink: React.FC<{ onPress: () => void; rechecking?: boolean }> = ({ onPress, rechecking }) => (
+    <Pressable style={[styles.linkBtn, styles.rowCenter]} onPress={onPress} disabled={rechecking} hitSlop={6}>
+        {rechecking && <ActivityIndicator size="small" color={ACCENT} />}
+        <Text style={styles.linkBtnText}>{rechecking ? 'Checking with Lenco…' : 'Already approved? Check payment status'}</Text>
+    </Pressable>
+);
 
 const SummaryLine: React.FC<{ label: string; value: string; mono?: boolean; last?: boolean }> = ({ label, value, mono, last }) => (
     <View style={[styles.summaryRow, !last && styles.summaryRowBorder]}>
@@ -243,7 +323,7 @@ const styles = StyleSheet.create({
     sub: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, marginTop: 6, textAlign: 'center', maxWidth: 280, lineHeight: 19 },
     panel: { flex: 1, justifyContent: 'flex-end', gap: 12 },
     progressTrack: { height: 6, borderRadius: 6, backgroundColor: '#EEF1F5', overflow: 'hidden' },
-    progressBar: { width: '40%', height: '100%', borderRadius: 6, backgroundColor: ACCENT },
+    progressBar: { width: '40%', height: '100%', borderRadius: 6, backgroundColor: ACCENT, position: 'absolute', left: 0, top: 0 },
     secureRow: { alignItems: 'center' },
     secureText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textFaint },
     pinCard: { borderRadius: 16, backgroundColor: '#F7F8FA', borderWidth: 1.5, borderColor: '#DCE6FB', padding: 16 },
@@ -252,7 +332,17 @@ const styles = StyleSheet.create({
     pinCardTopText: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.textFaint, letterSpacing: 0.4 },
     pinCardBody: { fontFamily: fonts.body, fontSize: 12.5, color: '#3A424E', lineHeight: 20 },
     pinCardBold: { fontFamily: fonts.bodyBold, color: colors.text },
-    pinDots: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text, letterSpacing: 5, marginTop: 8 },
+    pinDots: { fontFamily: fonts.bodyBold, fontSize: 16, color: colors.text, letterSpacing: 5 },
+    pinRow: { flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: 8 },
+    pinCursor: { width: 9, height: 17, backgroundColor: ACCENT },
+    waitingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+    ringWrap: { width: 10, height: 10, alignItems: 'center', justifyContent: 'center' },
+    ringPulse: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: ACCENT },
+    ringDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: ACCENT },
+    noteText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: '#9A5B00', textAlign: 'center', lineHeight: 18, backgroundColor: '#FFF7E6', borderRadius: radius.md, padding: 12, overflow: 'hidden' },
+    linkBtn: { paddingVertical: 8 },
+    linkBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: ACCENT },
+    rowCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
     waitingText: { fontFamily: fonts.bodyBold, fontSize: 13, color: ACCENT, textAlign: 'center' },
     pollingText: { fontFamily: fonts.bodyMedium, fontSize: 12.5, color: colors.textFaint, textAlign: 'center' },
     cancelBtn: {
