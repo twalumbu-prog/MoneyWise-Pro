@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { sweepPendingDeposits } from '../services/collectionRecovery.service';
+import { classifyRecentPersonalInflows } from '../services/inflowClassifier.service';
 import {
     getCashbookEntries,
     getCashBalance,
@@ -99,7 +100,10 @@ router.post('/settle-pending', async (req: any, res: any) => {
     const orgId = req.user?.organization_id;
     if (!orgId) return res.status(400).json({ error: 'User organization context missing' });
     try {
-        res.json(await sweepPendingDeposits(10_000, orgId, 0));
+        const result = await sweepPendingDeposits(10_000, orgId, 0);
+        // Personal accounts: catch up any deposit that landed uncategorised.
+        const classified = await classifyRecentPersonalInflows(orgId).catch(() => 0);
+        res.json({ ...result, classified });
     } catch (error: any) {
         console.error('[Cashbook] settle-pending', error);
         res.status(500).json({ error: 'Could not check pending deposits' });

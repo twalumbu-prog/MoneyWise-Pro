@@ -230,7 +230,9 @@ async function doApiFetch(path: string, options: RequestInit = {}): Promise<Resp
             throw new ApiError(errorMsg, response.status, errorData, path);
         } else {
             const text = await response.text();
-            console.error('[API Client] Non-JSON error response:', text.slice(0, 500));
+            // A 404 is "route not deployed yet" — expected during rollouts and handled by callers; only a
+            // genuine server error deserves an error-level log (React Native shows those as a red box).
+            (response.status === 404 ? console.warn : console.error)('[API Client] Non-JSON error response:', response.status, text.slice(0, 200));
             // An HTML body means the request never reached our API handlers (an unknown route
             // on an older deployment, or a gateway/platform error page) — say that instead of
             // surfacing a bare status line.

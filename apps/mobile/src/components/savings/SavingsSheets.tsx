@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, ImagePlus, CheckCircle2, AlertCircle, Smartphone, Wallet as WalletIcon } from 'lucide-react-native';
 import {
-    savingsService, cashbookService, lencoService, detectMobileNetwork, formatKwacha, requireCapability, getCore,
+    savingsService, cashbookService, lencoService, formatKwacha, requireCapability, getCore,
 } from 'core';
 import type { SavingsItem, SavingsKind, SavingsFrequency } from 'core';
 import { uploadToBucket } from '../../lib/uploads';
@@ -15,6 +15,7 @@ import { SelectField, DateField, type SelectOption } from '../invest/application
 import { colors, fonts, radius } from '../../theme/tokens';
 import { PaymentWaitingScreen } from '../payments/PaymentWaitingScreen';
 import { useMobileMoneyCollection } from '../../hooks/useMobileMoneyCollection';
+import { MobileMoneyNumberField, useMomoHolder } from '../payments/MobileMoneyNumberField';
 
 /* ── Shared bottom sheet ─────────────────────────────────────────────────── */
 
@@ -237,7 +238,6 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
     const [amount, setAmount] = useState('');
     const [walletId, setWalletId] = useState('');
     const [phone, setPhone] = useState('');
-    const [holder, setHolder] = useState('');
     const [busy, setBusy] = useState(false);
     const [stage, setStage] = useState<'form' | 'done'>('form');
     const [error, setError] = useState<string | null>(null);
@@ -251,19 +251,11 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
 
     useEffect(() => {
         if (!visible) return;
-        setMethod(isOwner ? 'WALLET' : 'MOBILE_MONEY'); setAmount(''); setPhone(''); setHolder(''); setError(null); setStage('form');
+        setMethod(isOwner ? 'WALLET' : 'MOBILE_MONEY'); setAmount(''); setPhone(''); setError(null); setStage('form');
     }, [visible, isOwner]);
     useEffect(() => { if (!walletId && wallets.length) setWalletId(wallets[0].id); }, [wallets, walletId]);
 
-    const operator = phone ? detectMobileNetwork(phone) || null : null;
-    useEffect(() => {
-        if (method !== 'MOBILE_MONEY' || !operator) { setHolder(''); return; }
-        let stop = false;
-        const t = setTimeout(async () => {
-            try { const r = await lencoService.resolveMobileMoney(phone, operator.toLowerCase()); if (!stop) setHolder(r?.accountName || ''); } catch { if (!stop) setHolder(''); }
-        }, 450);
-        return () => { stop = true; clearTimeout(t); };
-    }, [phone, operator, method]);
+    const { operator, holder, resolving, resolveFailed } = useMomoHolder(phone, method === 'MOBILE_MONEY');
 
     const walletOptions: SelectOption[] = wallets.map((w) => ({ value: w.id, label: `${w.name} · ${formatKwacha(w.balance)}` }));
     const selected = wallets.find((w) => w.id === walletId);
@@ -366,9 +358,11 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
                         <SelectField label="Pay from" value={walletId} options={walletOptions} onChange={setWalletId} placeholder={wallets.length ? 'Choose wallet' : 'Loading wallets…'} />
                     ) : (
                         <View style={{ marginBottom: 16 }}>
-                            <Text style={styles.label}>Mobile money number</Text>
-                            <TextInput value={phone} onChangeText={setPhone} placeholder="097… / 096… / 095…" placeholderTextColor={colors.textFaint} keyboardType="phone-pad" style={styles.input} />
-                            {!!holder && <Text style={styles.holder}>{holder}{operator ? ` · ${operator.toUpperCase()}` : ''}</Text>}
+                            <MobileMoneyNumberField
+                                label="Mobile money number"
+                                phone={phone} onChangePhone={setPhone}
+                                operator={operator} holder={holder} resolving={resolving} resolveFailed={resolveFailed}
+                            />
                         </View>
                     )}
                     <PrimaryBtn

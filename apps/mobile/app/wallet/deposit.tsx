@@ -6,8 +6,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Smartphone, CreditCard, Check, AlertCircle } from 'lucide-react-native';
-import { cashbookService, lencoService, detectMobileNetwork, formatKwacha } from 'core';
+import { Smartphone, CreditCard, AlertCircle } from 'lucide-react-native';
+import { cashbookService, formatKwacha } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { PaymentWaitingScreen } from '../../src/components/payments/PaymentWaitingScreen';
 import { AnimatedSegmented } from '../../src/components/AnimatedTabs';
@@ -16,9 +16,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useMobileMoneyCollection } from '../../src/hooks/useMobileMoneyCollection';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
-import { phoneFromPrefixedInput, prefixedInputValue } from '../../src/lib/phone';
-
-const OPERATOR_COLOR: Record<string, string> = { AIRTEL: '#EF4444', MTN: '#F59E0B', ZAMTEL: '#10B981' };
+import { MobileMoneyNumberField, useMomoHolder } from '../../src/components/payments/MobileMoneyNumberField';
 
 /**
  * Wallet → Deposit. Real money in through Lenco, the same way the web wallet deposit and QuickPay
@@ -38,9 +36,6 @@ export default function DepositScreen() {
     const [purpose, setPurpose] = useState('');
     const [walletId, setWalletId] = useState('');
     const [phone, setPhone] = useState('');
-    const [holder, setHolder] = useState('');
-    const [resolving, setResolving] = useState(false);
-    const [resolveFailed, setResolveFailed] = useState(false);
 
     const { data: wallets = [] } = useQuery({
         queryKey: ['wallets-payment-flow'],
@@ -53,22 +48,7 @@ export default function DepositScreen() {
         if (!walletId && wallets.length) setWalletId((wallets.find((w) => w.isMain) ?? wallets[0]).id);
     }, [wallets, walletId]);
 
-    const operator = phone ? (detectMobileNetwork(phone) || null) : null;
-    useEffect(() => {
-        if (!operator) { setHolder(''); setResolveFailed(false); return; }
-        let stop = false;
-        const t = setTimeout(async () => {
-            setResolving(true); setResolveFailed(false);
-            try {
-                const r = await lencoService.resolveMobileMoney(phone, operator.toLowerCase());
-                if (stop) return;
-                setHolder(r?.accountName || '');
-                setResolveFailed(!r?.accountName);
-            } catch { if (!stop) { setHolder(''); setResolveFailed(true); } }
-            finally { if (!stop) setResolving(false); }
-        }, 450);
-        return () => { stop = true; clearTimeout(t); };
-    }, [phone, operator]);
+    const { operator, holder, resolving, resolveFailed } = useMomoHolder(phone, method === 'MOBILE_MONEY');
 
     const collection = useMobileMoneyCollection({
         storageKey: `wallet-deposit:${organizationId}`,
@@ -172,34 +152,10 @@ export default function DepositScreen() {
 
                 {method === 'MOBILE_MONEY' ? (
                     <View style={styles.card}>
-                        <Text style={styles.label}>Your mobile money number</Text>
-                        <View style={styles.phoneRow}>
-                            <View style={styles.phonePrefix}><Text style={styles.flag}>🇿🇲</Text><Text style={styles.prefixText}>+260</Text></View>
-                            <TextInput
-                                style={styles.phoneInput}
-                                value={prefixedInputValue(phone)}
-                                onChangeText={(t) => setPhone(phoneFromPrefixedInput(t))}
-                                placeholder="97 123 4567"
-                                placeholderTextColor={colors.textFaint}
-                                keyboardType="number-pad"
-                                accessibilityLabel="Mobile money number"
-                            />
-                            {!!operator && <Text style={[styles.operator, { color: OPERATOR_COLOR[operator.toUpperCase()] || colors.text }]}>{operator.toUpperCase()}</Text>}
-                        </View>
-
-                        {phone.replace(/[^0-9]/g, '').length >= 9 && (
-                            <View style={styles.holder}>
-                                {resolving ? <ActivityIndicator size="small" color={colors.blue} />
-                                    : holder ? <Check size={16} color={colors.positiveInk} />
-                                    : <AlertCircle size={16} color={colors.warn} />}
-                                <View style={{ flex: 1 }}>
-                                    <Text style={styles.holderLabel}>ACCOUNT HOLDER</Text>
-                                    <Text style={styles.holderName} numberOfLines={1}>
-                                        {resolving ? 'Verifying number…' : holder || (resolveFailed ? 'Could not verify — check the number' : 'Waiting for a valid number…')}
-                                    </Text>
-                                </View>
-                            </View>
-                        )}
+                        <MobileMoneyNumberField
+                            phone={phone} onChangePhone={setPhone}
+                            operator={operator} holder={holder} resolving={resolving} resolveFailed={resolveFailed}
+                        />
                     </View>
                 ) : (
                     <View style={[styles.card, { alignItems: 'center', gap: 8, paddingVertical: 28 }]}>
@@ -238,15 +194,6 @@ const styles = StyleSheet.create({
     segItem: { flex: 1, alignItems: 'center', paddingVertical: 9 },
     segInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
     segText: { fontFamily: fonts.body, fontSize: 12, color: colors.text },
-    phoneRow: { flexDirection: 'row', alignItems: 'center', minHeight: 50, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.borderStrong, overflow: 'hidden' },
-    phonePrefix: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, alignSelf: 'stretch', backgroundColor: '#F5F5F5', borderRightWidth: 1, borderRightColor: colors.borderStrong },
-    flag: { fontSize: 16 },
-    prefixText: { fontFamily: fonts.bodyBold, fontSize: 15, color: colors.textMuted },
-    phoneInput: { flex: 1, paddingHorizontal: 14, fontFamily: fonts.body, fontSize: 15, color: colors.text },
-    operator: { fontFamily: fonts.bodyBold, fontSize: 12, marginRight: 14, letterSpacing: -0.3 },
-    holder: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: 12, padding: 14, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface },
-    holderLabel: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.textFaint, letterSpacing: 1 },
-    holderName: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text, marginTop: 2 },
     soonTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     soonText: { fontFamily: fonts.body, fontSize: 12, color: colors.textMuted, textAlign: 'center', lineHeight: 17, maxWidth: 240 },
     error: { flexDirection: 'row', gap: 8, alignItems: 'flex-start', padding: 12, borderRadius: radius.md, backgroundColor: '#FEF2F2' },

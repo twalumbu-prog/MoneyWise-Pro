@@ -104,13 +104,25 @@ export default function WalletScreen() {
 
     const sections = useMemo(() => {
         const q = search.trim().toLowerCase();
+        // Each card shows only ITS OWN transactions, like the web wallet page (which asks the
+        // server for one wallet / account at a time). Without this every wallet's activity —
+        // including savings pots — piled into the main wallet's list and the totals didn't add up.
+        const card = cards[Math.min(slide, Math.max(cards.length - 1, 0))];
+        const inCard = (e: CashbookEntry) => {
+            if (group === 'MONEYWISE') {
+                if (e.account_type !== 'MONEYWISE_WALLET') return false;
+                return !card || card.id === 'main' || String((e as any).wallet_id ?? '') === card.id;
+            }
+            return !card || e.account_type === card.id;
+        };
         const filtered = entries.filter((e) =>
-            !q ||
-            e.description?.toLowerCase().includes(q) ||
-            e.reference_number?.toLowerCase().includes(q),
+            inCard(e) && (
+                !q ||
+                e.description?.toLowerCase().includes(q) ||
+                e.reference_number?.toLowerCase().includes(q)),
         );
         return groupByDate(filtered, (e) => e.date, sortOrder);
-    }, [entries, search, sortOrder]);
+    }, [entries, cards, slide, group, search, sortOrder]);
 
     const onCarouselScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
         const i = Math.round(e.nativeEvent.contentOffset.x / (cardWidth + CARD_GAP));

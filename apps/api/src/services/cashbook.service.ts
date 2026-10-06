@@ -436,6 +436,19 @@ export const cashbookService = {
             notifyInflowAsync(organizationId, fresh || updated);
         }
 
+        // Personal accounts have no accountant: categorise the deposit with AI right away. Awaited (but
+        // time-boxed) so it isn't cut off when a serverless handler returns; business orgs are untouched.
+        if (!opts.account_id) {
+            try {
+                const { classifyPersonalInflow } = await import('./inflowClassifier.service');
+                const done = await Promise.race([
+                    classifyPersonalInflow(organizationId, fresh || updated),
+                    new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
+                ]);
+                if (done) console.log(`[Cashbook] Deposit ${intentId} auto-categorised.`);
+            } catch { /* never block a deposit on categorisation */ }
+        }
+
         // A PENDING intent just became a real inflow — refresh cached ledger views.
         void broadcastInvalidate(organizationId, [
             'cashbook-overview', 'cashbook-entries', 'cashbook-balance',

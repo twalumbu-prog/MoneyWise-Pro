@@ -246,7 +246,7 @@ export const PaymentWaitingScreen: React.FC<{
                             <Text style={styles.waitingText}>Waiting for your approval on your phone</Text>
                         </View>
                         {canRecheckWhileWaiting && <RecheckLink onPress={onRecheck!} rechecking={rechecking} />}
-                        {!!recheckNote && <Text style={styles.noteText}>{recheckNote}</Text>}
+                        {!!recheckNote && <RecheckAlert note={recheckNote} onRetry={onRecheck} rechecking={rechecking} />}
                         <Pressable style={styles.cancelBtn} onPress={onCancel}>
                             <Text style={styles.cancelBtnText}>Cancel payment</Text>
                         </Pressable>
@@ -258,7 +258,7 @@ export const PaymentWaitingScreen: React.FC<{
                         <Bar />
                         <Text style={styles.pollingText}>Keep this screen open — it updates automatically.</Text>
                         {canRecheckWhileWaiting && <RecheckLink onPress={onRecheck!} rechecking={rechecking} />}
-                        {!!recheckNote && <Text style={styles.noteText}>{recheckNote}</Text>}
+                        {!!recheckNote && <RecheckAlert note={recheckNote} onRetry={onRecheck} rechecking={rechecking} />}
                         <Pressable style={styles.cancelBtn} onPress={onCancel}>
                             <Text style={styles.cancelBtnText}>Cancel payment</Text>
                         </Pressable>
@@ -280,7 +280,7 @@ export const PaymentWaitingScreen: React.FC<{
 
                 {(phase === 'failed' || phase === 'cancelled') && (
                     <>
-                        {!!recheckNote && <Text style={styles.noteText}>{recheckNote}</Text>}
+                        {!!recheckNote && <RecheckAlert note={recheckNote} onRetry={onRecheck} rechecking={rechecking} />}
                         {!declined && onRecheck && (
                             <Pressable style={[styles.doneBtn, styles.rowCenter, rechecking && { opacity: 0.7 }]} onPress={onRecheck} disabled={rechecking}>
                                 {rechecking && <ActivityIndicator size="small" color="#FFFFFF" />}
@@ -289,7 +289,7 @@ export const PaymentWaitingScreen: React.FC<{
                         )}
                         {onRetry && (
                             <Pressable style={declined || !onRecheck ? styles.doneBtn : styles.cancelBtn} onPress={onRetry}>
-                                <Text style={declined || !onRecheck ? styles.doneBtnText : styles.cancelBtnText}>Try again</Text>
+                                <Text style={declined || !onRecheck ? styles.doneBtnText : styles.cancelBtnText}>{declined || !onRecheck ? 'Try again' : 'Start a new payment'}</Text>
                             </Pressable>
                         )}
                         <Pressable style={styles.cancelBtn} onPress={onDone}>
@@ -309,10 +309,24 @@ const RecheckLink: React.FC<{ onPress: () => void; rechecking?: boolean }> = ({ 
     </Pressable>
 );
 
+/** The amber result of "Check payment status", with its own outlined Try again button inside. */
+const RecheckAlert: React.FC<{ note: string; onRetry?: () => void; rechecking?: boolean }> = ({ note, onRetry, rechecking }) => (
+    <View style={styles.noteBox}>
+        <Text style={styles.noteText}>{note}</Text>
+        {!!onRetry && (
+            <Pressable style={[styles.noteRetry, rechecking && { opacity: 0.5 }]} onPress={onRetry} disabled={rechecking}>
+                <Text style={styles.noteRetryText}>Try again</Text>
+            </Pressable>
+        )}
+    </View>
+);
+
+// Long values (the payment reference is ~70 characters) must shrink and ellipsise in the middle
+// instead of running through the card's edge.
 const SummaryLine: React.FC<{ label: string; value: string; mono?: boolean; last?: boolean }> = ({ label, value, mono, last }) => (
     <View style={[styles.summaryRow, !last && styles.summaryRowBorder]}>
         <Text style={styles.summaryLabel}>{label}</Text>
-        <Text style={[styles.summaryValue, mono && styles.summaryValueMono]}>{value}</Text>
+        <Text style={[styles.summaryValue, mono && styles.summaryValueMono]} numberOfLines={1} ellipsizeMode="middle">{value}</Text>
     </View>
 );
 
@@ -353,7 +367,10 @@ const styles = StyleSheet.create({
     ringWrap: { width: 10, height: 10, alignItems: 'center', justifyContent: 'center' },
     ringPulse: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: ACCENT },
     ringDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: ACCENT },
-    noteText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: '#9A5B00', textAlign: 'center', lineHeight: 18, backgroundColor: '#FFF7E6', borderRadius: radius.md, padding: 12, overflow: 'hidden' },
+    noteBox: { backgroundColor: '#FFF7E6', borderRadius: radius.md, padding: 12, gap: 10 },
+    noteText: { fontFamily: fonts.bodyMedium, fontSize: 13, color: '#9A5B00', textAlign: 'center', lineHeight: 18 },
+    noteRetry: { alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: radius.md, borderWidth: 1.5, borderColor: '#D9A441', backgroundColor: 'transparent' },
+    noteRetryText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#9A5B00' },
     linkBtn: { paddingVertical: 8 },
     linkBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: ACCENT },
     rowCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
@@ -365,10 +382,10 @@ const styles = StyleSheet.create({
     },
     cancelBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.textMuted },
     successCard: { borderRadius: 16, backgroundColor: '#F4F8FF', borderWidth: 1, borderColor: '#DBE6FB', padding: 16 },
-    summaryRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 7 },
+    summaryRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16, paddingVertical: 7 },
     summaryRowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: '#E7EEFA' },
     summaryLabel: { fontFamily: fonts.body, fontSize: 12.5, color: colors.textMuted },
-    summaryValue: { fontFamily: fonts.bodyBold, fontSize: 12.5, color: colors.text },
+    summaryValue: { flex: 1, textAlign: 'right', fontFamily: fonts.bodyBold, fontSize: 12.5, color: colors.text },
     summaryValueMono: { fontFamily: fonts.body },
     doneBtn: { backgroundColor: ACCENT, borderRadius: radius.md, paddingVertical: 15, alignItems: 'center', justifyContent: 'center' },
     doneBtnText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#FFFFFF' },
