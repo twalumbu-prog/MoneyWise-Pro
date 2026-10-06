@@ -42,6 +42,7 @@ interface Subscription {
     fee_credits_zmw: number;
     auto_pay_enabled: boolean;
     amountDue: number;
+    pricing?: { base: number; masterfees: number; total: number };
     daysLeft: number;
     totalDays: number;
     periodPercent: number;
@@ -181,8 +182,13 @@ async function downloadInvoice(invoice: Invoice) {
 
         <div class="line">
             <span class="desc">Monthly Subscription (Premium)</span>
-            <span class="amt">ZMW ${invoice.gross_zmw.toFixed(2)}</span>
+            <span class="amt">ZMW ${(invoice.gross_zmw - Math.max(0, invoice.gross_zmw - 250)).toFixed(2)}</span>
         </div>
+        ${invoice.gross_zmw > 250 ? `
+        <div class="line">
+            <span class="desc">Master Fees Integration<br/><small style="font-size:10px;color:#888">Add-on billed each cycle while Master Fees is connected</small></span>
+            <span class="amt">ZMW ${(invoice.gross_zmw - 250).toFixed(2)}</span>
+        </div>` : ''}
         ${invoice.credits_zmw > 0 ? `
         <div class="line credit">
             <span class="desc">Fee Credits Applied<br/><small style="font-size:10px;color:#888">Platform fees earned this period offset your subscription</small></span>
@@ -279,7 +285,8 @@ export const SubscriptionBilling: React.FC = () => {
     if (!subscription) return null;
 
     const isPremium = subscription.plan_id === 'premium';
-    const creditsPct = Math.min(100, (subscription.fee_credits_zmw / 250) * 100);
+    const pricing = subscription.pricing ?? { base: 250, masterfees: 0, total: 250 };
+    const creditsPct = Math.min(100, (subscription.fee_credits_zmw / pricing.total) * 100);
     const periodPct = subscription.periodPercent;
     const nextPaymentDate = formatDate(subscription.current_period_end);
 
@@ -306,7 +313,7 @@ export const SubscriptionBilling: React.FC = () => {
                                 </div>
                                 {isPremium && (
                                     <div className="flex items-end gap-2">
-                                        <span className="text-black text-3xl font-bold leading-7">ZMW250</span>
+                                        <span className="text-black text-3xl font-bold leading-7">ZMW{pricing.total}</span>
                                         <span className="text-black text-base font-light leading-6">/month</span>
                                     </div>
                                 )}
@@ -361,7 +368,7 @@ export const SubscriptionBilling: React.FC = () => {
                                     <div className="mt-1 flex flex-col gap-1">
                                         <div className="flex justify-between items-center">
                                             <span className="text-neutral-400 text-[10px] font-normal">
-                                                Fee credits earned: ZMW {subscription.fee_credits_zmw.toFixed(2)} of ZMW 250
+                                                Fee credits earned: ZMW {subscription.fee_credits_zmw.toFixed(2)} of ZMW {pricing.total}
                                             </span>
                                             <span className="text-[10px] font-semibold text-[#0058DB]">
                                                 –{creditsPct.toFixed(0)}%
@@ -414,6 +421,11 @@ export const SubscriptionBilling: React.FC = () => {
                                         ZMW {subscription.amountDue.toFixed(2)}
                                     </span>
                                 </div>
+                                {pricing.masterfees > 0 && (
+                                    <p className="text-[10px] text-gray-500">
+                                        Includes ZMW {pricing.base} Premium + ZMW {pricing.masterfees} Master Fees integration.
+                                    </p>
+                                )}
                                 {subscription.fee_credits_zmw > 0 && (
                                     <p className="text-[10px] text-gray-500">
                                         ZMW {subscription.fee_credits_zmw.toFixed(2)} already covered by platform fees your customers paid this period.

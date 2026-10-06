@@ -3,7 +3,8 @@ import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
 import { LencoService } from '../services/lenco.service';
 
-const SUBSCRIPTION_PRICE = 250; // K250/month
+const SUBSCRIPTION_PRICE = 250; // K250/month base
+const MASTERFEES_ADDON_PRICE = 500; // +K500 each billing cycle while Master Fees is integrated
 
 // ──────────────────────────────────────────────
 // Helpers
@@ -14,6 +15,22 @@ function invoiceNumber(orgId: string): string {
     const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
     const short = orgId.replace(/-/g, '').slice(0, 6).toUpperCase();
     return `INV-${ym}-${short}`;
+}
+
+/**
+ * Billable price for an org's billing cycle: the base plan plus the Master Fees
+ * add-on while the integration is connected. Disconnecting deletes the
+ * `integrations` row, so row existence == integrated.
+ */
+async function getBillingPrice(organizationId: string): Promise<{ base: number; masterfees: number; total: number }> {
+    const { data } = await supabase
+        .from('integrations')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('provider', 'MASTERFEES')
+        .maybeSingle();
+    const masterfees = data ? MASTERFEES_ADDON_PRICE : 0;
+    return { base: SUBSCRIPTION_PRICE, masterfees, total: SUBSCRIPTION_PRICE + masterfees };
 }
 
 /**
@@ -47,16 +64,33 @@ async function ensureSubscription(organizationId: string) {
 async function ensureCurrentInvoice(sub: any): Promise<void> {
     if (sub.plan_id !== 'premium') return;
 
+    const price = await getBillingPrice(sub.organization_id);
+    const credits = Math.min(sub.fee_credits_zmw || 0, price.total);
+    const netAmount = Math.max(0, price.total - credits);
+
     const { data: existing } = await supabase
         .from('subscription_invoices')
-        .select('id')
+        .select('id, status, gross_zmw')
         .eq('subscription_id', sub.id)
         .eq('period_start', sub.current_period_start)
         .maybeSingle();
 
-    if (existing) return;
+    if (existing) {
+        // Integration connected/disconnected mid-cycle: reprice the still-open invoice.
+        if (existing.status === 'pending' && Number(existing.gross_zmw) !== price.total) {
+            await supabase
+                .from('subscription_invoices')
+                .update({
+                    gross_zmw: price.total,
+                    credits_zmw: credits,
+                    net_zmw: netAmount,
+                    ...(netAmount === 0 ? { status: 'free', paid_at: new Date().toISOString(), paid_via: 'fee_credits' } : {}),
+                })
+                .eq('id', existing.id);
+        }
+        return;
+    }
 
-    const netAmount = Math.max(0, SUBSCRIPTION_PRICE - (sub.fee_credits_zmw || 0));
     const invNum = invoiceNumber(sub.organization_id);
 
     await supabase
@@ -67,8 +101,8 @@ async function ensureCurrentInvoice(sub: any): Promise<void> {
             invoice_number: invNum,
             period_start: sub.current_period_start,
             period_end: sub.current_period_end,
-            gross_zmw: SUBSCRIPTION_PRICE,
-            credits_zmw: sub.fee_credits_zmw || 0,
+            gross_zmw: price.total,
+            credits_zmw: credits,
             net_zmw: netAmount,
             // Payment is in arrears — due at end of the billing period
             status: netAmount === 0 ? 'free' : 'pending',
@@ -89,6 +123,7 @@ export async function getSubscription(req: Request, res: Response) {
 
         // Ensure a live invoice exists for this billing period (premium only)
         await ensureCurrentInvoice(sub);
+        const price = await getBillingPrice(organizationId);
 
         const [planResult, creditsResult, invoicesResult] = await Promise.all([
             supabase.from('subscription_plans').select('*').eq('id', sub.plan_id).single(),
@@ -109,7 +144,7 @@ export async function getSubscription(req: Request, res: Response) {
         const credits = creditsResult.data || [];
         const invoices = invoicesResult.data || [];
 
-        const amountDue = Math.max(0, SUBSCRIPTION_PRICE - sub.fee_credits_zmw);
+        const amountDue = Math.max(0, price.total - sub.fee_credits_zmw);
         const periodStart = new Date(sub.current_period_start);
         const periodEnd = new Date(sub.current_period_end);
         const today = new Date();
@@ -122,6 +157,7 @@ export async function getSubscription(req: Request, res: Response) {
                 ...sub,
                 plan,
                 amountDue,
+                pricing: price,
                 daysLeft,
                 totalDays,
                 periodPercent,
@@ -233,12 +269,13 @@ export async function recordFeeCredit(
         if (!organizationId || amount <= 0) return;
 
         const sub = await ensureSubscription(organizationId);
+        const { total: cap } = await getBillingPrice(organizationId);
 
         // Only credit premium-eligible orgs (or all orgs to track potential value)
         // Skip if already fully credited this period
-        if (sub.fee_credits_zmw >= SUBSCRIPTION_PRICE) return;
+        if (sub.fee_credits_zmw >= cap) return;
 
-        const newCredits = Math.min(sub.fee_credits_zmw + amount, SUBSCRIPTION_PRICE);
+        const newCredits = Math.min(sub.fee_credits_zmw + amount, cap);
         const actualCredit = newCredits - sub.fee_credits_zmw;
 
         // Insert credit record (unique on reference — idempotent)
@@ -275,12 +312,12 @@ export async function recordFeeCredit(
 
         console.log(
             `[Billing] Credited K${actualCredit.toFixed(2)} toward subscription for org ${organizationId}` +
-            ` (total this period: K${newCredits.toFixed(2)} / K${SUBSCRIPTION_PRICE})`
+            ` (total this period: K${newCredits.toFixed(2)} / K${cap})`
         );
 
         // Keep the live invoice in sync: update credits_zmw, net_zmw, and status
-        const newNet = Math.max(0, SUBSCRIPTION_PRICE - newCredits);
-        const fullyPaid = newCredits >= SUBSCRIPTION_PRICE;
+        const newNet = Math.max(0, cap - newCredits);
+        const fullyPaid = newCredits >= cap;
         await supabase
             .from('subscription_invoices')
             .update({
@@ -329,8 +366,8 @@ export async function generateInvoice(req: Request, res: Response) {
             return res.status(409).json({ error: 'Invoice for this period already exists' });
         }
 
-        const grossAmount = SUBSCRIPTION_PRICE;
-        const credits = sub.fee_credits_zmw;
+        const grossAmount = (await getBillingPrice(organizationId)).total;
+        const credits = Math.min(sub.fee_credits_zmw, grossAmount);
         const netAmount = Math.max(0, grossAmount - credits);
         const dueDate = sub.current_period_end;
 
@@ -691,9 +728,15 @@ export async function getInvoiceReceipt(req: Request, res: Response) {
             .eq('id', organizationId)
             .single();
 
+        // Invoices store only the gross total; anything above the base price is the
+        // Master Fees add-on. Invoices issued before the add-on existed stay at K250.
+        const gross = Number(invoice.gross_zmw) || 0;
+        const masterfees = Math.max(0, gross - SUBSCRIPTION_PRICE);
+
         res.json({
             receipt: {
                 ...invoice,
+                breakdown: { base: gross - masterfees, masterfees },
                 organization_name: org?.name || 'Organization',
             },
         });
