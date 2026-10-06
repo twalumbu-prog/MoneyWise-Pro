@@ -58,11 +58,11 @@ export async function finalizeIfPaid(reference: string, organizationId: string):
  * intents with app-generated references and books the ones Lenco reports as paid. Runs on the
  * automations tick; bounded by count and time so it never crowds the tick.
  */
-export async function sweepPendingDeposits(budgetMs = 8000): Promise<{ checked: number; finalized: number }> {
+export async function sweepPendingDeposits(budgetMs = 8000, organizationId?: string, minAgeMs = 45_000): Promise<{ checked: number; finalized: number }> {
     const startedAt = Date.now();
     const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const settledBefore = new Date(Date.now() - 45 * 1000).toISOString(); // let the live app finish first
-    const { data } = await supabase
+    const settledBefore = new Date(Date.now() - minAgeMs).toISOString(); // let the live app finish first
+    let query = supabase
         .from('cashbook_entries')
         .select('external_reference, organization_id, created_at')
         .eq('status', 'PENDING')
@@ -73,6 +73,8 @@ export async function sweepPendingDeposits(budgetMs = 8000): Promise<{ checked: 
         .or('external_reference.like.DEP-%,external_reference.like.CHG-%')
         .order('created_at', { ascending: false })
         .limit(12);
+    if (organizationId) query = query.eq('organization_id', organizationId);
+    const { data } = await query;
 
     let checked = 0;
     let finalized = 0;

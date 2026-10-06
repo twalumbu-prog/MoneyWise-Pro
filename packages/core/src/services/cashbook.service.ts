@@ -1,4 +1,4 @@
-import { apiFetch } from '../api/apiFetch';
+import { apiFetch, apiJson } from '../api/apiFetch';
 
 export interface CashbookEntry {
     id: string;
@@ -95,6 +95,11 @@ export const cashbookService = {
 
         const response = await apiFetch(`/cashbook?${params.toString()}`);
         return response.json();
+    },
+
+    /** Books this org's recent PENDING deposits that Lenco reports as paid (pull-to-refresh). */
+    async settlePending(): Promise<{ checked: number; finalized: number }> {
+        return apiJson('/cashbook/settle-pending', { method: 'POST', body: JSON.stringify({}) });
     },
 
     /**

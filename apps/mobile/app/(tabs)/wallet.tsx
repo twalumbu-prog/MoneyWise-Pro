@@ -5,11 +5,11 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     Search, ArrowUpDown, X, ArrowDownToLine, ArrowLeftRight, Link2, FileSpreadsheet, AlertCircle, Mail,
 } from 'lucide-react-native';
-import { cashbookService, groupByDate, isRequestorRole, isPersonalOrgName, onboardingService } from 'core';
+import { cashbookService, lencoService, groupByDate, isRequestorRole, isPersonalOrgName, onboardingService } from 'core';
 import type { CashbookEntry } from 'core';
 import { useAuth } from '../../src/context/AuthContext';
 import {
@@ -46,6 +46,25 @@ export default function WalletScreen() {
         queryFn: () => cashbookService.getOverview(),
         enabled: !!organizationId,
     });
+
+    // Pull-to-refresh pulls from Lenco, not just our cache: first book any paid-but-PENDING
+    // deposits straight from Lenco (fast, by reference), then run this org's full Lenco sync
+    // in the background (it can take a while) and refresh again when it lands.
+    const qc = useQueryClient();
+    const [syncing, setSyncing] = useState(false);
+    const syncWithLenco = async () => {
+        if (syncing) return;
+        setSyncing(true);
+        try {
+            await cashbookService.settlePending().catch(() => undefined);
+            await refetch();
+        } finally {
+            setSyncing(false);
+        }
+        lencoService.syncNow()
+            .then(() => { void refetch(); qc.invalidateQueries({ queryKey: ['cashbook-entries'] }); })
+            .catch(() => undefined);
+    };
 
     const { data: walletStatus } = useQuery({
         queryKey: ['wallet-status', organizationId],
@@ -113,8 +132,8 @@ export default function WalletScreen() {
                 contentContainerStyle={styles.list}
                 refreshControl={
                     <RefreshControl
-                        refreshing={isRefetching}
-                        onRefresh={() => { void refetch(); }}
+                        refreshing={syncing || isRefetching}
+                        onRefresh={() => { void syncWithLenco(); }}
                         tintColor={colors.blue}
                     />
                 }

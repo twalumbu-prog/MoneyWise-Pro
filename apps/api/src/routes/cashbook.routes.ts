@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { sweepPendingDeposits } from '../services/collectionRecovery.service';
 import {
     getCashbookEntries,
     getCashBalance,
@@ -93,6 +94,17 @@ router.post('/manual-sale', requireRole(['REQUESTOR', 'CASHIER', 'ACCOUNTANT', '
 
 // Log wallet deposit intent (Cashier, Accountant, Admin)
 router.post('/wallet-deposit-intent', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), logWalletDepositIntent);
+// Pull-to-refresh: ask Lenco directly about this org's recent PENDING deposits and book the paid ones.
+router.post('/settle-pending', async (req: any, res: any) => {
+    const orgId = req.user?.organization_id;
+    if (!orgId) return res.status(400).json({ error: 'User organization context missing' });
+    try {
+        res.json(await sweepPendingDeposits(10_000, orgId, 0));
+    } catch (error: any) {
+        console.error('[Cashbook] settle-pending', error);
+        res.status(500).json({ error: 'Could not check pending deposits' });
+    }
+});
 
 // Close book (Cashier, Accountant, Admin)
 router.post('/close', requireRole(['CASHIER', 'ACCOUNTANT', 'ADMIN']), closeBook);

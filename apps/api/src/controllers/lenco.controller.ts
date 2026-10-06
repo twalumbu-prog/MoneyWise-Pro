@@ -2202,6 +2202,8 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
 
         console.log(`[Lenco Sync] Found ${orgs.length} organizations to process.`);
         const syncResults: any[] = [];
+        // Per-run cache of the collections maps, keyed by API key (see the settlement map below).
+        const collectionMapsByKey = new Map<string, { settlementToRef: Map<string, string>; refToCollection: Map<string, any> }>();
 
         for (const org of orgs) {
             if (Date.now() - SYNC_START_MS > SYNC_TIME_BUDGET_MS) {
@@ -2372,11 +2374,20 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             // By mapping settlement.id → reference, we can resolve the correct
             // merchant reference for each bank credit transaction before doing
             // the dedup check against our cashbook_entries table.
-            const settlementToRef = new Map<string, string>();
+            //
+            // The collections list depends only on the API key, and every org on the shared
+            // master key gets the identical list (1,416 entries / 24 pages ≈ 9 s on 2026-10-06).
+            // Rebuilding it per org exhausted the sync budget after 1–2 of 16 orgs, so each org
+            // was only reached every ~50 minutes and paid deposits sat PENDING. Built once per
+            // key per run, then reused.
+            const cachedMaps = collectionMapsByKey.get(secretKey);
+            const settlementToRef: Map<string, string> = cachedMaps?.settlementToRef ?? new Map<string, string>();
             // reference → collection object; lets the stale-intent janitor below check
             // collection status without an extra API call per intent.
-            const refToCollection = new Map<string, any>();
-            try {
+            const refToCollection: Map<string, any> = cachedMaps?.refToCollection ?? new Map<string, any>();
+            if (cachedMaps) {
+                console.log(`[Lenco Sync] Reusing settlement→ref map (${settlementToRef.size} entries) for org ${org.name}`);
+            } else try {
                 // Lenco's collections page size is NOT 100 (observed ~50). The old
                 // `length < 100` break stopped after page 1, so the map only covered
                 // the newest page — older same-day payments became unresolvable and
@@ -2401,6 +2412,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                     colPage++;
                 }
                 console.log(`[Lenco Sync] Built settlement→ref map with ${settlementToRef.size} entries (${colPage} page(s)) for org ${org.name}`);
+                collectionMapsByKey.set(secretKey, { settlementToRef, refToCollection });
             } catch (err: any) {
                 // Non-fatal: we can still sync, just with less deduplication accuracy
                 console.warn(`[Lenco Sync] Could not fetch collections for org ${org.name}: ${err.message}. Proceeding without settlement map.`);

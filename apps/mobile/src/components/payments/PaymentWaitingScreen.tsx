@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated, Easing, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Path } from 'react-native-svg';
+import { LinearGradient } from 'expo-linear-gradient';
 import { X } from 'lucide-react-native';
 import { formatKwacha } from 'core';
 import { colors, fonts, radius } from '../../theme/tokens';
@@ -85,7 +86,10 @@ export const PaymentWaitingScreen: React.FC<{
 
     useEffect(() => {
         const loops = [
-            Animated.loop(Animated.timing(bar, { toValue: 1, duration: 1250, easing: Easing.linear, useNativeDriver: true })),
+            Animated.loop(Animated.sequence([
+                Animated.timing(bar, { toValue: 1, duration: 1500, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
+                Animated.delay(150),
+            ])),
             Animated.loop(Animated.sequence([
                 Animated.timing(blink, { toValue: 1, duration: 500, useNativeDriver: true }),
                 Animated.timing(blink, { toValue: 0, duration: 500, useNativeDriver: true }),
@@ -141,7 +145,8 @@ export const PaymentWaitingScreen: React.FC<{
 
     const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
     const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] });
-    const barX = bar.interpolate({ inputRange: [0, 1], outputRange: [-0.4 * trackW, trackW] });
+    const bandW = Math.max(80, trackW * 0.45);
+    const barX = bar.interpolate({ inputRange: [0, 1], outputRange: [-bandW, trackW] });
     const glow = attn.interpolate({ inputRange: [0, 1], outputRange: ['#DCE6FB', '#8FB6FF'] });
     const ringScale = ring.interpolate({ inputRange: [0, 1], outputRange: [0.7, 2.4] });
     const ringOpacity = ring.interpolate({ inputRange: [0, 0.7, 1], outputRange: [0.5, 0, 0] });
@@ -149,7 +154,16 @@ export const PaymentWaitingScreen: React.FC<{
     const shakeX = shake.interpolate({ inputRange: [0, 0.2, 0.4, 0.6, 0.8, 1], outputRange: [0, -6, 6, -4, 4, 0] });
     const Bar = () => (
         <View style={styles.progressTrack} onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}>
-            <Animated.View style={[styles.progressBar, { transform: [{ translateX: barX }] }]} />
+            {/* A soft glow sweeping across the whole track — an activity pulse, not a percentage. */}
+            <Animated.View style={[styles.progressBar, { width: bandW, transform: [{ translateX: barX }] }]}>
+                <LinearGradient
+                    colors={['rgba(0,106,255,0)', 'rgba(0,106,255,0.85)', ACCENT, 'rgba(0,106,255,0.85)', 'rgba(0,106,255,0)']}
+                    locations={[0, 0.3, 0.5, 0.7, 1]}
+                    start={{ x: 0, y: 0.5 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={StyleSheet.absoluteFillObject}
+                />
+            </Animated.View>
         </View>
     );
     const canRecheckWhileWaiting = !!onRecheck && elapsedSeconds >= 20;
@@ -322,8 +336,8 @@ const styles = StyleSheet.create({
     title: { fontFamily: fonts.bodyBold, fontSize: 19, color: colors.text, letterSpacing: -0.3, textAlign: 'center' },
     sub: { fontFamily: fonts.body, fontSize: 13, color: colors.textMuted, marginTop: 6, textAlign: 'center', maxWidth: 280, lineHeight: 19 },
     panel: { flex: 1, justifyContent: 'flex-end', gap: 12 },
-    progressTrack: { height: 6, borderRadius: 6, backgroundColor: '#EEF1F5', overflow: 'hidden' },
-    progressBar: { width: '40%', height: '100%', borderRadius: 6, backgroundColor: ACCENT, position: 'absolute', left: 0, top: 0 },
+    progressTrack: { height: 6, borderRadius: 6, backgroundColor: '#EAF1FF', overflow: 'hidden' },
+    progressBar: { height: '100%', position: 'absolute', left: 0, top: 0 },
     secureRow: { alignItems: 'center' },
     secureText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textFaint },
     pinCard: { borderRadius: 16, backgroundColor: '#F7F8FA', borderWidth: 1.5, borderColor: '#DCE6FB', padding: 16 },
