@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Modal, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle2, X } from 'lucide-react-native';
 import { lencoService, requisitionService, detectMobileNetwork, formatKwacha } from 'core';
-import { PaymentWaitingScreen, type PaymentPhase } from '../payments/PaymentWaitingScreen';
+import { PaymentWaitingScreen } from '../payments/PaymentWaitingScreen';
+import { useMobileMoneyCollection } from '../../hooks/useMobileMoneyCollection';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 function genReference(id: string): string {
@@ -35,14 +36,13 @@ export const DepositChangeSheet: React.FC<{
     const [resolvedAccountName, setResolvedAccountName] = useState('');
     const [resolvingAccountName, setResolvingAccountName] = useState(false);
     const [resolveFailed, setResolveFailed] = useState(false);
-    const [step, setStep] = useState<'PAY' | 'WAITING'>('PAY');
-    const [phase, setPhase] = useState<PaymentPhase>('initiating');
-    const [elapsed, setElapsed] = useState(0);
-    const [reference, setReference] = useState('');
     const [payError, setPayError] = useState<string | null>(null);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const elapsedInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-    const cancelledRef = useRef(false);
+    const collection = useMobileMoneyCollection({
+        storageKey: `change:${requisitionId}`,
+        // Same call web makes after its checkout succeeds; the server nets the CHG- deposit into the disbursal.
+        onConfirmed: (ref) => requisitionService.submitChange(requisitionId, [], amount, 'MONEYWISE_WALLET', ref),
+    });
+    const step = collection.phase ? 'WAITING' : 'PAY';
 
     const operator = phone ? detectMobileNetwork(phone) || null : null;
 
@@ -52,14 +52,7 @@ export const DepositChangeSheet: React.FC<{
         setResolvedAccountName('');
         setResolvingAccountName(false);
         setResolveFailed(false);
-        setStep('PAY');
-        setPhase('initiating');
-        setElapsed(0);
-        setReference('');
         setPayError(null);
-        setIsSubmitting(false);
-        cancelledRef.current = false;
-        return () => { if (elapsedInterval.current) clearInterval(elapsedInterval.current); };
     }, [visible]);
 
     useEffect(() => {
@@ -94,65 +87,21 @@ export const DepositChangeSheet: React.FC<{
             setPayError('No wallet is set up to receive this deposit yet.');
             return;
         }
-        const ref = genReference(requisitionId);
-        setReference(ref);
+        if (!operator) return;
         setPayError(null);
-        cancelledRef.current = false;
-
-        try {
-            await lencoService.logPublicWalletDepositIntent(ref, `Requisition change return`, amount, walletId);
-            const initRes = await lencoService.initiateMobileMoneyCollection({
-                reference: ref, amount, phone, operator: (operator || '').toLowerCase(), walletId,
-            });
-            const status = initRes?.data?.status;
-            if (status !== 'pay-offline' && status !== 'pending' && status !== 'successful') {
-                throw new Error(`Payment could not be started (status: ${status || 'unknown'}). Please try again.`);
-            }
-
-            setStep('WAITING');
-            setPhase('confirm');
-            setElapsed(0);
-            elapsedInterval.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-
-            for (let attempt = 0; attempt < 8; attempt++) {
-                if (cancelledRef.current) return;
-                setPhase((p) => (p === 'confirm' ? 'polling' : p));
-                try {
-                    const res = await lencoService.longPollCollectionStatus(ref, organizationId);
-                    if (cancelledRef.current) return;
-                    if (res.verified) {
-                        if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-                        await lencoService.finalizeCollection(ref, organizationId).catch(() => {});
-                        setIsSubmitting(true);
-                        try {
-                            await requisitionService.submitChange(requisitionId, [], amount, 'MONEYWISE_WALLET', ref);
-                        } finally {
-                            setIsSubmitting(false);
-                        }
-                        setPhase('success');
-                        return;
-                    }
-                } catch {
-                    // transient — the loop just retries
-                }
-            }
-            if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-            setPayError('We confirmed the request with Lenco, but it hasn\'t reconciled yet. It will settle automatically — check back shortly.');
-            setStep('PAY');
-        } catch (e: any) {
-            setPayError(e?.message ?? 'Failed to start the deposit. Please try again.');
-            setStep('PAY');
-        }
+        await collection.start({
+            tag: 'CHG',
+            reference: genReference(requisitionId),
+            organizationId,
+            walletId,
+            amount,
+            phone,
+            operator,
+            prepare: (ref) => lencoService.logPublicWalletDepositIntent(ref, `Requisition change return`, amount, walletId),
+        });
     };
 
-    const handleCancelWaiting = () => {
-        cancelledRef.current = true;
-        if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-        lencoService.cancelCollection(reference).catch(() => {});
-        setStep('PAY');
-    };
-
-    const disabled = !operator || !resolvedAccountName || resolvingAccountName || !walletId;
+    const disabled = collection.busy || !operator || !resolvedAccountName || resolvingAccountName || !walletId;
 
     return (
         <Modal visible={visible} animationType="slide" onRequestClose={onClose} presentationStyle="fullScreen">
@@ -192,36 +141,38 @@ export const DepositChangeSheet: React.FC<{
                             )}
                         </View>
 
-                        {payError && (
-                            <View style={styles.payErrorCard}><Text style={styles.payErrorText}>{payError}</Text></View>
+                        {!!(payError || collection.error) && (
+                            <View style={styles.payErrorCard}><Text style={styles.payErrorText}>{payError || collection.error}</Text></View>
                         )}
 
                         <View style={styles.payFooter}>
                             <Pressable style={[styles.ctaBtn, disabled && styles.ctaBtnDisabled]} onPress={startDeposit} disabled={disabled}>
-                                <Text style={styles.ctaBtnText}>Deposit {formatKwacha(amount)}</Text>
+                                {collection.busy ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.ctaBtnText}>Deposit {formatKwacha(amount)}</Text>}
                             </Pressable>
                         </View>
                     </View>
                 )}
 
-                {step === 'WAITING' && (
+                {step === 'WAITING' && collection.phase && (
                     <PaymentWaitingScreen
-                        phase={phase}
-                        amount={amount}
+                        phase={collection.phase}
+                        amount={collection.amount || amount}
                         businessName="MoneyWise Wallet"
-                        payerPhone={phone}
-                        operator={operator}
-                        elapsedSeconds={elapsed}
-                        reference={reference}
-                        onCancel={handleCancelWaiting}
-                        onDone={onDone}
+                        payerPhone={collection.phone}
+                        operator={collection.operator}
+                        elapsedSeconds={collection.elapsed}
+                        reference={collection.reference}
+                        headerLabel="Deposit change"
+                        doneLabel="Done"
+                        failureMessage={collection.failureMessage}
+                        declined={collection.declined}
+                        rechecking={collection.rechecking}
+                        recheckNote={collection.recheckNote}
+                        onRecheck={collection.recheck}
+                        onRetry={collection.reset}
+                        onCancel={collection.cancel}
+                        onDone={() => { const ok = collection.phase === 'success'; collection.reset(); if (ok) onDone(); else onClose(); }}
                     />
-                )}
-
-                {isSubmitting && (
-                    <View style={styles.submittingOverlay}>
-                        <ActivityIndicator color={colors.blue} />
-                    </View>
                 )}
             </View>
         </Modal>

@@ -12,6 +12,7 @@ import {
 } from 'core';
 import type { InvestProduct, InvestProvider } from '../../data/investCatalog';
 import { PaymentWaitingScreen, type PaymentPhase } from '../payments/PaymentWaitingScreen';
+import { useMobileMoneyCollection } from '../../hooks/useMobileMoneyCollection';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 type Step = 'METHOD' | 'AMOUNT' | 'PAY' | 'WAITING' | 'ACTIVATING' | 'SUCCESS';
@@ -75,6 +76,11 @@ export const InvestPaymentFlow: React.FC<{
     const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
     const elapsedInterval = useRef<ReturnType<typeof setInterval> | null>(null);
     const cancelledRef = useRef(false);
+    const collection = useMobileMoneyCollection({
+        storageKey: `invest:${provider.investmentTargetId || provider.walletId || provider.name}`,
+        // Book it now; if the deposit hasn't reconciled yet the server sweep does it.
+        onConfirmed: (ref) => investmentService.confirm(ref),
+    });
 
     const { data: wallets = [] } = useQuery({
         queryKey: ['wallets-payment-flow'],
@@ -114,6 +120,15 @@ export const InvestPaymentFlow: React.FC<{
             if (elapsedInterval.current) clearInterval(elapsedInterval.current);
         };
     }, [visible]);
+
+    // A real deposit still in flight from last time: go straight back to watching it.
+    useEffect(() => {
+        if (!visible || !provider.isReal || !collection.phase) return;
+        setStep((st) => (st === 'WAITING' || st === 'SUCCESS' ? st : 'WAITING'));
+        if (collection.reference) setReference(collection.reference);
+        if (collection.amount && !amountStr) setAmountStr(String(collection.amount));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [visible, collection.phase]);
 
     useEffect(() => {
         if (wallets.length > 0 && !selectedWalletId) setSelectedWalletId(wallets[0].id);
@@ -177,57 +192,27 @@ export const InvestPaymentFlow: React.FC<{
      * of the caller's own.
      */
     const startRealDeposit = async () => {
-        if (!provider.walletId || !provider.organizationId) return;
-        const ref = genReference();
-        setReference(ref);
+        if (!provider.walletId || !provider.organizationId || !operator) return;
         setPayError(null);
-        cancelledRef.current = false;
-
-        try {
-            // Register who is paying first, so the deposit is booked to this organization
-            // (asset + owner contribution) automatically once it lands.
-            if (provider.investmentTargetId) {
-                await investmentService.recordIntent(ref, provider.investmentTargetId, amount, product.name);
-            }
-            await lencoService.logPublicWalletDepositIntent(ref, `Investment deposit into ${provider.name}`, amount, provider.walletId);
-            const initRes = await lencoService.initiateMobileMoneyCollection({
-                reference: ref, amount, phone, operator: (operator || '').toLowerCase(), walletId: provider.walletId,
-            });
-            const status = initRes?.data?.status;
-            if (status !== 'pay-offline' && status !== 'pending' && status !== 'successful') {
-                throw new Error(`Payment could not be started (status: ${status || 'unknown'}). Please try again.`);
-            }
-
-            setStep('WAITING');
-            setPhase('confirm');
-            setElapsed(0);
-            elapsedInterval.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-
-            for (let attempt = 0; attempt < 8; attempt++) {
-                if (cancelledRef.current) return;
-                setPhase((p) => (p === 'confirm' ? 'polling' : p));
-                try {
-                    const res = await lencoService.longPollCollectionStatus(ref, provider.organizationId);
-                    if (cancelledRef.current) return;
-                    if (res.verified) {
-                        if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-                        setPhase('success');
-                        lencoService.finalizeCollection(ref, provider.organizationId).catch(() => {});
-                        // Book it now; if the deposit hasn't reconciled yet the server sweep does it within a minute.
-                        investmentService.confirm(ref).catch(() => {});
-                        return;
-                    }
-                } catch {
-                    // transient — the loop just retries
+        setStep('WAITING');
+        const ok = await collection.start({
+            tag: 'INV',
+            organizationId: provider.organizationId,
+            walletId: provider.walletId,
+            amount,
+            phone,
+            operator,
+            prepare: async (ref) => {
+                setReference(ref);
+                // Register who is paying first, so the deposit is booked to this organization
+                // (asset + owner contribution) automatically once it lands.
+                if (provider.investmentTargetId) {
+                    await investmentService.recordIntent(ref, provider.investmentTargetId, amount, product.name);
                 }
-            }
-            if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-            setPayError('We confirmed the request with Lenco, but it hasn\'t reconciled yet. It will settle automatically — check back shortly.');
-            setStep('PAY');
-        } catch (e: any) {
-            setPayError(e?.message ?? 'Failed to start the deposit. Please try again.');
-            setStep('PAY');
-        }
+                await lencoService.logPublicWalletDepositIntent(ref, `Investment deposit into ${provider.name}`, amount, provider.walletId!);
+            },
+        });
+        if (!ok) setStep('PAY');
     };
 
     const startAutoInvestActivation = () => {
@@ -287,7 +272,7 @@ export const InvestPaymentFlow: React.FC<{
         setStep('PAY');
     };
 
-    const handleClose = () => { cancelledRef.current = true; clearTimers(); onClose(); };
+    const handleClose = () => { cancelledRef.current = true; clearTimers(); if (collection.phase !== 'confirm' && collection.phase !== 'polling') collection.reset(); onClose(); };
 
     const ctaLabel = method === 'DEPOSIT' ? 'Proceed to Payment' : 'Activate Auto-Invest';
     const charge = Math.max(1, Math.round(amount * 0.01 * 100) / 100);
@@ -481,8 +466,8 @@ export const InvestPaymentFlow: React.FC<{
                                 </View>
                             )}
 
-                            {payError && (
-                                <View style={styles.payErrorCard}><Text style={styles.payErrorText}>{payError}</Text></View>
+                            {!!(payError || collection.error) && (
+                                <View style={styles.payErrorCard}><Text style={styles.payErrorText}>{payError || collection.error}</Text></View>
                             )}
                         </ScrollView>
 
@@ -505,17 +490,50 @@ export const InvestPaymentFlow: React.FC<{
                 )}
 
                 {step === 'WAITING' && (
-                    <PaymentWaitingScreen
-                        phase={phase}
-                        amount={amount}
-                        businessName={provider.name}
-                        payerPhone={phone}
-                        operator={operator}
-                        elapsedSeconds={elapsed}
-                        reference={reference}
-                        onCancel={handleCancelWaiting}
-                        onDone={() => setStep('SUCCESS')}
-                    />
+                    provider.isReal ? (
+                        collection.phase ? (
+                            <PaymentWaitingScreen
+                                phase={collection.phase}
+                                amount={collection.amount || amount}
+                                businessName={provider.name}
+                                payerPhone={collection.phone || phone}
+                                operator={collection.operator || operator}
+                                elapsedSeconds={collection.elapsed}
+                                reference={collection.reference}
+                                headerLabel="Invest"
+                                doneLabel="Continue"
+                                failureMessage={collection.failureMessage}
+                                declined={collection.declined}
+                                rechecking={collection.rechecking}
+                                recheckNote={collection.recheckNote}
+                                onRecheck={collection.recheck}
+                                onRetry={() => { collection.reset(); setStep('PAY'); }}
+                                onCancel={collection.cancel}
+                                onDone={() => {
+                                    const ok = collection.phase === 'success';
+                                    collection.reset();
+                                    if (ok) setStep('SUCCESS'); else handleClose();
+                                }}
+                            />
+                        ) : (
+                            <View style={[styles.activatingRoot, { paddingTop: insets.top }]}>
+                                <ActivityIndicator size="large" color={colors.blue} />
+                                <Text style={styles.activatingText}>Starting payment…</Text>
+                            </View>
+                        )
+                    ) : (
+                        <PaymentWaitingScreen
+                            phase={phase}
+                            amount={amount}
+                            businessName={provider.name}
+                            payerPhone={phone}
+                            operator={operator}
+                            elapsedSeconds={elapsed}
+                            reference={reference}
+                            onCancel={handleCancelWaiting}
+                            onDone={() => setStep('SUCCESS')}
+                        />
+                    )
                 )}
 
                 {step === 'ACTIVATING' && (

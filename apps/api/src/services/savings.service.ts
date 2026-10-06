@@ -14,6 +14,7 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { pushService } from './push.service';
+import { finalizeIfPaid } from './collectionRecovery.service';
 
 export type SavingsKind = 'WISHLIST' | 'GOAL' | 'GROUP';
 
@@ -126,6 +127,39 @@ async function membersOf(goalIds: string[]) {
         map.set(m.goal_id, list);
     }
     return map;
+}
+
+/** Asks Lenco about a PENDING mobile-money contribution and records the outcome. */
+async function settleContribution(c: any, organizationId: string): Promise<'CONFIRMED' | 'PENDING' | 'FAILED'> {
+    const outcome = await finalizeIfPaid(c.reference, organizationId);
+    if (outcome === 'finalized') {
+        await supabase.from('savings_contributions').update({ status: 'CONFIRMED', confirmed_at: new Date().toISOString() }).eq('id', c.id).eq('status', 'PENDING');
+        return 'CONFIRMED';
+    }
+    const ageMs = Date.now() - new Date(c.created_at).getTime();
+    // Declined at the phone, or never paid within a day: stop showing it as pending.
+    if (outcome === 'failed' || ageMs > 24 * 60 * 60 * 1000) {
+        await supabase.from('savings_contributions').update({ status: 'FAILED' }).eq('id', c.id).eq('status', 'PENDING');
+        return 'FAILED';
+    }
+    return 'PENDING';
+}
+
+/** Before showing balances, settle any of this user's recent deposits that are still pending. */
+async function settleMine(userId: string, goalIds?: string[]) {
+    let q = supabase
+        .from('savings_contributions')
+        .select('*, goal:savings_goals(organization_id)')
+        .eq('user_id', userId).eq('status', 'PENDING').eq('method', 'MOBILE_MONEY')
+        .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(3);
+    if (goalIds?.length) q = q.in('goal_id', goalIds);
+    const { data } = await q;
+    await Promise.all((data ?? []).map((c: any) => {
+        const goal = Array.isArray(c.goal) ? c.goal[0] : c.goal;
+        return goal?.organization_id ? settleContribution(c, goal.organization_id).catch(() => undefined) : undefined;
+    }));
 }
 
 export const savingsService = {
@@ -241,6 +275,7 @@ export const savingsService = {
 
     /** Everything the caller can see: their own org's savings plus groups they've joined. */
     async list(orgId: string, userId: string) {
+        await settleMine(userId).catch(() => undefined);
         const { data: own } = await supabase
             .from('savings_goals').select('*').eq('organization_id', orgId).eq('status', 'ACTIVE').order('created_at', { ascending: false });
         const { data: memberships } = await supabase.from('savings_group_members').select('goal_id').eq('user_id', userId);
@@ -268,6 +303,7 @@ export const savingsService = {
         if (!goal) throw new SavingsError('NOT_FOUND', 'Savings not found', 404);
         const role = await access(goal, orgId, userId);
         if (!role) throw new SavingsError('NOT_FOUND', 'Savings not found', 404);
+        await settleMine(userId, [goal.id]).catch(() => undefined);
 
         const balance = await walletBalance(goal.organization_id, goal.wallet_id);
         const members = (await membersOf([goal.id])).get(goal.id) ?? [];
@@ -356,8 +392,10 @@ export const savingsService = {
     /** A member is about to pay by mobile money: remember who, so the deposit is credited to them. */
     async contributionIntent(params: { goalId: string; orgId: string; userId: string; amount: unknown; reference: unknown }) {
         const goal = await loadGoal(params.goalId);
-        if (!goal || goal.kind !== 'GROUP') throw new SavingsError('NOT_FOUND', 'Group not found', 404);
-        if (!(await access(goal, params.orgId, params.userId))) throw new SavingsError('NOT_FOUND', 'Group not found', 404);
+        if (!goal) throw new SavingsError('NOT_FOUND', 'Savings not found', 404);
+        // Every mobile-money deposit is recorded here (not just group ones) so the server can always
+        // find and confirm it later, even if the app was closed before Lenco confirmed.
+        if (!(await access(goal, params.orgId, params.userId))) throw new SavingsError('NOT_FOUND', 'Savings not found', 404);
         const amount = round2(Number(params.amount));
         if (!Number.isFinite(amount) || amount <= 0) throw new SavingsError('VALIDATION', 'Enter an amount');
         const reference = typeof params.reference === 'string' && /^[A-Za-z0-9_-]{6,64}$/.test(params.reference) ? params.reference : null;
@@ -371,24 +409,41 @@ export const savingsService = {
         return { walletId: goal.wallet_id, organizationId: goal.organization_id, name: goal.name };
     },
 
-    /** Marks a mobile-money contribution confirmed once its deposit is in the group wallet's ledger. */
+    /**
+     * Confirms a mobile-money deposit into a savings wallet. Doesn't wait for the app's finalise
+     * call or the webhook: if Lenco says it was paid, it books it right here (same finaliser).
+     */
     async confirmContribution(goalId: string, reference: string, userId: string) {
         const { data: c } = await supabase.from('savings_contributions').select('*').eq('goal_id', goalId).eq('reference', reference).eq('user_id', userId).maybeSingle();
         if (!c) throw new SavingsError('NOT_FOUND', 'Contribution not found', 404);
         if (c.status !== 'PENDING') return { status: c.status };
         const goal = await loadGoal(goalId);
-        if (!goal) throw new SavingsError('NOT_FOUND', 'Group not found', 404);
-
-        const { data: deposit } = await supabase
-            .from('cashbook_entries').select('id')
-            .eq('organization_id', goal.organization_id).eq('external_reference', reference).gt('debit', 0)
-            .limit(1).maybeSingle();
-        if (!deposit) return { status: 'PENDING' };
-        await supabase.from('savings_contributions').update({ status: 'CONFIRMED', confirmed_at: new Date().toISOString() }).eq('id', c.id).eq('status', 'PENDING');
-        return { status: 'CONFIRMED' };
+        if (!goal) throw new SavingsError('NOT_FOUND', 'Savings not found', 404);
+        return { status: await settleContribution(c, goal.organization_id) };
     },
 
-
+    /** Sweep: settle mobile-money deposits that never got confirmed (called from the automations tick). */
+    async confirmPending(budgetMs = 8_000) {
+        const started = Date.now();
+        const { data: pending } = await supabase
+            .from('savings_contributions')
+            .select('*, goal:savings_goals(organization_id)')
+            .eq('status', 'PENDING')
+            .eq('method', 'MOBILE_MONEY')
+            .order('created_at', { ascending: true })
+            .limit(25);
+        const out = { checked: 0, confirmed: 0, failed: 0 };
+        for (const c of (pending ?? []) as any[]) {
+            if (Date.now() - started > budgetMs) break;
+            const goal = Array.isArray(c.goal) ? c.goal[0] : c.goal;
+            if (!goal?.organization_id) continue;
+            out.checked++;
+            const st = await settleContribution(c, goal.organization_id).catch(() => 'PENDING');
+            if (st === 'CONFIRMED') out.confirmed++;
+            if (st === 'FAILED') out.failed++;
+        }
+        return out;
+    },
 
     /** Public (no login): what someone sees on an invite link before joining. */
     async preview(code: unknown) {

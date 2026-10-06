@@ -22,6 +22,7 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { lusakaToday } from './schedule.service';
+import { finalizeIfPaid } from './collectionRecovery.service';
 
 /** Marks the pass-through cashbook rows so automations never mistake them for deposits. */
 export const INVEST_PASSTHROUGH_PREFIX = 'INVEST-PT:';
@@ -269,7 +270,7 @@ export const investmentService = {
     async confirm(inv: any): Promise<'confirmed' | 'waiting' | 'failed'> {
         if (inv.status !== 'PENDING') return inv.status === 'CONFIRMED' ? 'confirmed' : 'failed';
 
-        const { data: deposit } = await supabase
+        const findDeposit = () => supabase
             .from('cashbook_entries')
             .select('id, debit, status')
             .eq('organization_id', inv.target_organization_id)
@@ -279,6 +280,19 @@ export const investmentService = {
             .order('created_at', { ascending: true })
             .limit(1)
             .maybeSingle();
+
+        let { data: deposit } = await findDeposit();
+        if (!deposit && inv.method === 'MOBILE_MONEY') {
+            // Paid at Lenco but never finalised (app closed mid-wait, webhook late)? Book it now.
+            const outcome = await finalizeIfPaid(inv.reference, inv.target_organization_id);
+            if (outcome === 'finalized') ({ data: deposit } = await findDeposit());
+            if (outcome === 'failed') {
+                await supabase.from('investments')
+                    .update({ status: 'FAILED', failure_reason: 'The mobile money payment was declined or not approved.' })
+                    .eq('id', inv.id).eq('status', 'PENDING');
+                return 'failed';
+            }
+        }
 
         if (!deposit) {
             if (Date.now() - new Date(inv.created_at).getTime() > PENDING_EXPIRY_MS) {

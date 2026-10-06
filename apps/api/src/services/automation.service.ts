@@ -29,6 +29,7 @@ import { LencoService } from './lenco.service';
 import { disburseRequisition } from '../controllers/disbursement.controller';
 import { processDueScheduledItems, syncScheduledRunStatuses } from './schedule.service';
 import { investmentService, INVEST_PASSTHROUGH_PREFIX } from './investment.service';
+import { savingsService } from './savings.service';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -678,8 +679,9 @@ export const automationService = {
         const scheduleRunsSynced = await syncScheduledRunStatuses().catch(() => 0);
 
         const investments = await investmentService.confirmPending().catch((e: any) => ({ error: e.message }));
+        const savings = await savingsService.confirmPending().catch((e: any) => ({ error: e.message }));
 
-        return { automations: total, schedules, scheduleRunsSynced, investments };
+        return { automations: total, schedules, scheduleRunsSynced, investments, savings };
     },
 
     /**

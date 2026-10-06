@@ -8,7 +8,7 @@ import { colors, fonts, radius } from '../../theme/tokens';
 
 const ACCENT = colors.blue;
 
-export type PaymentPhase = 'initiating' | 'confirm' | 'polling' | 'success';
+export type PaymentPhase = 'initiating' | 'confirm' | 'polling' | 'success' | 'failed' | 'cancelled';
 
 function maskPhone(phone: string): string {
     const clean = (phone || '').replace(/[^0-9]/g, '');
@@ -33,7 +33,23 @@ export const PaymentWaitingScreen: React.FC<{
     reference?: string | null;
     onCancel: () => void;
     onDone: () => void;
-}> = ({ phase, amount, businessName, payerPhone, operator, elapsedSeconds, reference, onCancel, onDone }) => {
+    /** Header caption (defaults to "Send money"). */
+    headerLabel?: string;
+    /** Label of the success button (defaults to "View receipt"). */
+    doneLabel?: string;
+    /** failed phase: why it stopped. `declined` = the payer refused / the network rejected it. */
+    failureMessage?: string | null;
+    declined?: boolean;
+    /** failed / cancelled: ask Lenco again whether the payment actually went through. */
+    onRecheck?: () => void;
+    rechecking?: boolean;
+    recheckNote?: string | null;
+    /** failed / cancelled: start a fresh attempt. */
+    onRetry?: () => void;
+}> = ({
+    phase, amount, businessName, payerPhone, operator, elapsedSeconds, reference, onCancel, onDone,
+    headerLabel = 'Send money', doneLabel = 'View receipt', failureMessage, declined, onRecheck, rechecking, recheckNote, onRetry,
+}) => {
     const insets = useSafeAreaInsets();
     const opLabel = operator ? operator.toUpperCase() : 'MOBILE MONEY';
     const showSpinner = phase === 'initiating' || phase === 'confirm' || phase === 'polling';
@@ -79,8 +95,12 @@ export const PaymentWaitingScreen: React.FC<{
             case 'confirm': return { title: 'Approve on your phone', sub: `Open the prompt on ${maskPhone(payerPhone)} and enter your PIN to approve.` };
             case 'polling': return { title: 'Confirming your payment', sub: pollingSub };
             case 'success': return { title: 'Payment successful', sub: `${formatKwacha(amount)} paid to ${businessName}.` };
+            case 'failed': return declined
+                ? { title: 'Payment not completed', sub: failureMessage || 'The payment was declined or not approved on your phone. Nothing was charged.' }
+                : { title: 'Still confirming', sub: failureMessage || 'This is taking longer than usual. If you approved the prompt, it may still be processing.' };
+            case 'cancelled': return { title: 'Payment stopped', sub: 'We stopped waiting. If the prompt is still on your phone and you approve it, the money will still arrive and be recorded.' };
         }
-    }, [phase, opLabel, payerPhone, pollingSub, amount, businessName]);
+    }, [phase, opLabel, payerPhone, pollingSub, amount, businessName, declined, failureMessage]);
 
     const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
     const scale = breathe.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] });
@@ -89,8 +109,8 @@ export const PaymentWaitingScreen: React.FC<{
         <View style={styles.root}>
             <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
                 <View style={{ width: 34 }} />
-                <Text style={styles.headerLabel}>Send money</Text>
-                <Pressable onPress={phase === 'success' ? onDone : onCancel} style={styles.headerBtn} hitSlop={8}>
+                <Text style={styles.headerLabel}>{headerLabel}</Text>
+                <Pressable onPress={phase === 'success' || phase === 'failed' || phase === 'cancelled' ? onDone : onCancel} style={styles.headerBtn} hitSlop={8}>
                     <X size={14} color={colors.textFaint} />
                 </Pressable>
             </View>
@@ -167,7 +187,26 @@ export const PaymentWaitingScreen: React.FC<{
                             <SummaryLine label="Reference" value={reference ? `#${reference}` : '—'} mono last />
                         </View>
                         <Pressable style={styles.doneBtn} onPress={onDone}>
-                            <Text style={styles.doneBtnText}>View receipt</Text>
+                            <Text style={styles.doneBtnText}>{doneLabel}</Text>
+                        </Pressable>
+                    </>
+                )}
+
+                {(phase === 'failed' || phase === 'cancelled') && (
+                    <>
+                        {!!recheckNote && <Text style={styles.pollingText}>{recheckNote}</Text>}
+                        {!declined && onRecheck && (
+                            <Pressable style={[styles.doneBtn, rechecking && { opacity: 0.6 }]} onPress={onRecheck} disabled={rechecking}>
+                                <Text style={styles.doneBtnText}>{rechecking ? 'Checking…' : 'Check payment status'}</Text>
+                            </Pressable>
+                        )}
+                        {onRetry && (
+                            <Pressable style={declined || !onRecheck ? styles.doneBtn : styles.cancelBtn} onPress={onRetry}>
+                                <Text style={declined || !onRecheck ? styles.doneBtnText : styles.cancelBtnText}>Try again</Text>
+                            </Pressable>
+                        )}
+                        <Pressable style={styles.cancelBtn} onPress={onDone}>
+                            <Text style={styles.cancelBtnText}>Close</Text>
                         </Pressable>
                     </>
                 )}

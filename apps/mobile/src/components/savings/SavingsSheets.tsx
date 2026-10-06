@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Image, ScrollView
 } from 'react-native';
@@ -13,6 +13,8 @@ import { uploadToBucket } from '../../lib/uploads';
 import { useAuth } from '../../context/AuthContext';
 import { SelectField, DateField, type SelectOption } from '../invest/application/formFields';
 import { colors, fonts, radius } from '../../theme/tokens';
+import { PaymentWaitingScreen } from '../payments/PaymentWaitingScreen';
+import { useMobileMoneyCollection } from '../../hooks/useMobileMoneyCollection';
 
 /* ── Shared bottom sheet ─────────────────────────────────────────────────── */
 
@@ -220,11 +222,12 @@ export const CreateSavingsSheet: React.FC<{ visible: boolean; kind: SavingsKind;
 
 /* ── Add money ───────────────────────────────────────────────────────────── */
 
-const genRef = () => `SAV${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).slice(2, 5).toUpperCase()}`;
-
 /**
  * Owners move money in from one of their MoneyWise wallets (or pay by mobile money); a group
- * member pays by mobile money, collected straight into the group's wallet.
+ * member pays by mobile money, collected straight into the group's wallet. Mobile money runs
+ * through the shared hardened collection flow (org-attributed reference, awaited finalise,
+ * declined handling, resume, "check payment status"), and every kind records a contribution so
+ * the server can settle it on its own if the app is closed before Lenco confirms.
  */
 export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | null; onClose: () => void; onDone: () => void }> = ({ visible, item, onClose, onDone }) => {
     const qc = useQueryClient();
@@ -236,14 +239,19 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
     const [phone, setPhone] = useState('');
     const [holder, setHolder] = useState('');
     const [busy, setBusy] = useState(false);
-    const [stage, setStage] = useState<'form' | 'waiting' | 'done'>('form');
+    const [stage, setStage] = useState<'form' | 'done'>('form');
     const [error, setError] = useState<string | null>(null);
-    const cancelled = useRef(false);
+    const [target, setTarget] = useState<{ walletId: string; organizationId: string; name: string } | null>(null);
+
+    const itemId = item?.id;
+    const collection = useMobileMoneyCollection({
+        storageKey: `savings:${itemId ?? 'none'}`,
+        onConfirmed: async (ref) => { if (itemId) await savingsService.confirmContribution(itemId, ref); },
+    });
 
     useEffect(() => {
         if (!visible) return;
         setMethod(isOwner ? 'WALLET' : 'MOBILE_MONEY'); setAmount(''); setPhone(''); setHolder(''); setError(null); setStage('form');
-        cancelled.current = false;
     }, [visible, isOwner]);
     useEffect(() => { if (!walletId && wallets.length) setWalletId(wallets[0].id); }, [wallets, walletId]);
 
@@ -252,8 +260,8 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
         if (method !== 'MOBILE_MONEY' || !operator) { setHolder(''); return; }
         let stop = false;
         const t = setTimeout(async () => {
-            try { const r = await lencoService.resolveMobileMoney(phone, operator); if (!stop) setHolder(r?.accountName || ''); } catch { if (!stop) setHolder(''); }
-        }, 500);
+            try { const r = await lencoService.resolveMobileMoney(phone, operator.toLowerCase()); if (!stop) setHolder(r?.accountName || ''); } catch { if (!stop) setHolder(''); }
+        }, 450);
         return () => { stop = true; clearTimeout(t); };
     }, [phone, operator, method]);
 
@@ -267,7 +275,6 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
         qc.invalidateQueries({ queryKey: ['savings'] });
         qc.invalidateQueries({ queryKey: ['wallets-payment-flow'] });
     };
-    const finish = () => setStage('done');
 
     const payFromWallet = async () => {
         if (!item) return;
@@ -275,7 +282,7 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
         if (!selected) { setError('Choose a wallet to pay from.'); return; }
         if (selected.balance < value) { setError(`Not enough in ${selected.name}.`); return; }
         setBusy(true); setError(null);
-        try { await savingsService.deposit(item.id, value, selected.id); finish(); }
+        try { await savingsService.deposit(item.id, value, selected.id); setStage('done'); }
         catch (e: any) { setError(e?.message || 'Could not add the money.'); }
         finally { setBusy(false); }
     };
@@ -284,41 +291,53 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
         if (!item) return;
         if (!(value > 0)) { setError('Enter an amount.'); return; }
         if (!operator) { setError('Enter a valid Airtel, MTN or Zamtel number.'); return; }
-        setBusy(true); setError(null);
-        const ref = genRef();
-        try {
-            const target = item.kind === 'GROUP'
-                ? await savingsService.startContribution(item.id, value, ref)
-                : { walletId: item.walletId, organizationId: item.organizationId, name: item.name };
-            await lencoService.logPublicWalletDepositIntent(ref, `Savings: ${target.name}`, value, target.walletId);
-            const init = await lencoService.initiateMobileMoneyCollection({ reference: ref, amount: value, phone, operator: operator.toLowerCase(), walletId: target.walletId });
-            const s = init?.data?.status;
-            if (s !== 'pay-offline' && s !== 'pending' && s !== 'successful') throw new Error(`Payment could not be started (${s || 'unknown'}).`);
-            setStage('waiting');
-            for (let i = 0; i < 8 && !cancelled.current; i++) {
-                try {
-                    const r = await lencoService.longPollCollectionStatus(ref, target.organizationId);
-                    if (r.verified) {
-                        await lencoService.finalizeCollection(ref, target.organizationId).catch(() => {});
-                        if (item.kind === 'GROUP') await savingsService.confirmContribution(item.id, ref).catch(() => {});
-                        finish();
-                        return;
-                    }
-                } catch { /* transient — keep polling */ }
-            }
-            if (!cancelled.current) {
-                setStage('form');
-                setError('We sent the request but haven’t seen the payment yet. If you approved it, it will show up shortly.');
-            }
-        } catch (e: any) {
-            setStage('form');
-            setError(e?.message || 'Could not start the payment.');
-        } finally {
-            setBusy(false);
-        }
+        setError(null);
+        const fallback = { walletId: item.walletId, organizationId: item.organizationId, name: item.name };
+        setTarget(fallback);
+        await collection.start({
+            tag: 'SAV',
+            organizationId: item.organizationId,
+            walletId: item.walletId,
+            amount: value,
+            phone,
+            operator,
+            prepare: async (ref) => {
+                // Record the contribution first (any kind), then the PENDING ledger intent.
+                const t = await savingsService.startContribution(item.id, value, ref);
+                const dest = { walletId: t?.walletId || fallback.walletId, organizationId: t?.organizationId || fallback.organizationId, name: t?.name || fallback.name };
+                setTarget(dest);
+                await lencoService.logPublicWalletDepositIntent(ref, `Savings: ${dest.name}`, value, dest.walletId);
+            },
+        });
     };
 
-    const close = () => { cancelled.current = true; if (stage === 'done') refreshLists(); onClose(); };
+    const close = () => { if (stage === 'done' || collection.phase) refreshLists(); onClose(); };
+
+    if (visible && collection.phase) {
+        return (
+            <Modal visible animationType="slide" onRequestClose={() => { refreshLists(); onClose(); }}>
+                <PaymentWaitingScreen
+                    phase={collection.phase}
+                    amount={collection.amount}
+                    businessName={target?.name || item?.name || 'Savings'}
+                    payerPhone={collection.phone}
+                    operator={collection.operator}
+                    elapsedSeconds={collection.elapsed}
+                    reference={collection.reference}
+                    headerLabel="Add money"
+                    doneLabel="Done"
+                    failureMessage={collection.failureMessage}
+                    declined={collection.declined}
+                    rechecking={collection.rechecking}
+                    recheckNote={collection.recheckNote}
+                    onRecheck={collection.recheck}
+                    onRetry={collection.reset}
+                    onCancel={collection.cancel}
+                    onDone={() => { const ok = collection.phase === 'success'; collection.reset(); refreshLists(); if (ok) onDone(); else onClose(); }}
+                />
+            </Modal>
+        );
+    }
 
     return (
         <Sheet visible={visible} onClose={close} title={item ? `Add money · ${item.name}` : 'Add money'}>
@@ -329,19 +348,13 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
                     <Text style={styles.hint}>It's now in {item?.name}.</Text>
                     <View style={{ alignSelf: 'stretch', marginTop: 8 }}><PrimaryBtn label="Done" onPress={() => { refreshLists(); onDone(); }} /></View>
                 </View>
-            ) : stage === 'waiting' ? (
-                <View style={{ alignItems: 'center', gap: 12, paddingVertical: 20 }}>
-                    <ActivityIndicator size="large" color={colors.blue} />
-                    <Text style={styles.doneTitle}>Approve on your phone</Text>
-                    <Text style={styles.hint}>Check {phone} for the {operator} prompt and enter your PIN to pay {formatKwacha(value)}.</Text>
-                </View>
             ) : (
                 <>
-                    <Banner text={error} />
+                    <Banner text={error || collection.error} />
                     {isOwner && (
                         <View style={styles.methodRow}>
                             {(['WALLET', 'MOBILE_MONEY'] as const).map((m) => (
-                                <Pressable key={m} onPress={() => { setMethod(m); setError(null); }} style={[styles.methodBtn, method === m && styles.methodBtnOn]}>
+                                <Pressable key={m} onPress={() => { setMethod(m); setError(null); collection.setError(null); }} style={[styles.methodBtn, method === m && styles.methodBtnOn]}>
                                     {m === 'WALLET' ? <WalletIcon size={14} color={method === m ? colors.blue : colors.textMuted} /> : <Smartphone size={14} color={method === m ? colors.blue : colors.textMuted} />}
                                     <Text style={[styles.methodText, method === m && styles.methodTextOn]}>{m === 'WALLET' ? 'MoneyWise wallet' : 'Mobile money'}</Text>
                                 </Pressable>
@@ -355,10 +368,14 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
                         <View style={{ marginBottom: 16 }}>
                             <Text style={styles.label}>Mobile money number</Text>
                             <TextInput value={phone} onChangeText={setPhone} placeholder="097… / 096… / 095…" placeholderTextColor={colors.textFaint} keyboardType="phone-pad" style={styles.input} />
-                            {!!holder && <Text style={styles.holder}>{holder}{operator ? ` · ${operator}` : ''}</Text>}
+                            {!!holder && <Text style={styles.holder}>{holder}{operator ? ` · ${operator.toUpperCase()}` : ''}</Text>}
                         </View>
                     )}
-                    <PrimaryBtn label={method === 'WALLET' ? 'Add money' : 'Send payment request'} onPress={method === 'WALLET' ? payFromWallet : payByMobileMoney} loading={busy} />
+                    <PrimaryBtn
+                        label={method === 'WALLET' ? 'Add money' : 'Send payment request'}
+                        onPress={method === 'WALLET' ? payFromWallet : payByMobileMoney}
+                        loading={busy || collection.busy}
+                    />
                 </>
             )}
         </Sheet>

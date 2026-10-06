@@ -6,18 +6,14 @@ import { Stack } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { calculatePlatformFee } from 'shared';
 import {
-    cashbookService, lencoService, detectMobileNetwork, formatKwacha, organizationService,
+    cashbookService, lencoService, detectMobileNetwork, formatKwacha, getCore,
 } from 'core';
-import type { PaymentPhase } from '../../src/components/payments/PaymentWaitingScreen';
 import { PaymentWaitingScreen } from '../../src/components/payments/PaymentWaitingScreen';
 import { useAuth } from '../../src/context/AuthContext';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
-
-function genReference(subaccountId: string): string {
-    return `DEP-${Date.now()}-${subaccountId.substring(0, 8)}-CASHXFER`;
-}
+import { useMobileMoneyCollection } from '../../src/hooks/useMobileMoneyCollection';
 
 /**
  * Native port of apps/web/src/components/TransferToWalletModal.tsx — moves
@@ -45,14 +41,28 @@ export default function LencoTransferScreen() {
     const [resolvingAccountName, setResolvingAccountName] = useState(false);
     const [resolveFailed, setResolveFailed] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [submitting, setSubmitting] = useState(false);
-    const [phase, setPhase] = useState<PaymentPhase | 'form'>('form');
-    const [elapsed, setElapsed] = useState(0);
-    const [reference, setReference] = useState('');
-    const cancelledRef = useRef(false);
-    const elapsedInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+    // The cash-side leg of the move. Persisted with the reference so it still runs when a
+    // payment is resumed after the screen was closed.
+    const legKey = `cash-to-wallet-leg:${organizationId}`;
+    const pendingLeg = useRef<{ ref?: string; gross: number; walletName: string } | null>(null);
+    const collection = useMobileMoneyCollection({
+        storageKey: `cash-to-wallet:${organizationId}`,
+        onConfirmed: async (ref) => {
+            let leg = pendingLeg.current;
+            if (!leg) {
+                try { const raw = await getCore().storage.get(legKey); leg = raw ? JSON.parse(raw) : null; } catch { leg = null; }
+                if (leg?.ref && leg.ref !== ref) leg = null;
+            }
+            getCore().storage.remove(legKey).catch(() => undefined);
+            if (leg) {
+                try { await cashbookService.transferToWallet(leg.gross, ref, 'CASH', leg.walletName); }
+                catch { /* cash-side leg failed; the deposit itself is real and reconciles */ }
+            }
+            pendingLeg.current = null;
+            qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
+        },
+    });
 
-    const { data: org } = useQuery({ queryKey: ['organization', organizationId], queryFn: () => organizationService.getOrganization(), enabled: !!organizationId });
     const { data: wallets = [] } = useQuery({
         queryKey: ['wallets-lenco-transfer', organizationId],
         queryFn: async () => {
@@ -99,7 +109,6 @@ export default function LencoTransferScreen() {
         return () => { cancelled = true; clearTimeout(timer); };
     }, [phone, operator]);
 
-    useEffect(() => () => { if (elapsedInterval.current) clearInterval(elapsedInterval.current); }, []);
 
     const gross = Number(amount) || 0;
     const platformFee = calculatePlatformFee(gross);
@@ -111,82 +120,48 @@ export default function LencoTransferScreen() {
     const valid = gross > 0 && gross <= sourceBalance && netToWallet > 0 && !!walletId
         && !!operator && !!resolvedAccountName && !resolvingAccountName;
 
-    const cancel = async () => {
-        cancelledRef.current = true;
-        if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-        try { await lencoService.cancelCollection(reference); } catch { /* best-effort */ }
-        setPhase('form');
-    };
-
     const startTransfer = async () => {
-        if (!organizationId || !destWallet) return;
+        if (!organizationId || !destWallet || !operator) return;
         setError(null);
-        setSubmitting(true);
-        cancelledRef.current = false;
-
-        const ref = genReference(org?.lenco_subaccount_id || organizationId);
-        setReference(ref);
-
-        try {
-            await cashbookService.logWalletDepositIntent(ref, `Transfer to MoneyWise (from Cash Account)`, netToWallet, walletId);
-
-            const initRes = await lencoService.initiateMobileMoneyCollection({
-                reference: ref, amount: gross, phone, operator: operator!.toLowerCase(), walletId,
-            });
-            const status = initRes?.data?.status;
-            if (status !== 'pay-offline' && status !== 'pending' && status !== 'successful') {
-                throw new Error(`Payment could not be started (status: ${status || 'unknown'}). Please try again.`);
-            }
-
-            setSubmitting(false);
-            setPhase('confirm');
-            setElapsed(0);
-            elapsedInterval.current = setInterval(() => setElapsed((e) => e + 1), 1000);
-
-            for (let attempt = 0; attempt < 8; attempt++) {
-                if (cancelledRef.current) return;
-                setPhase((p) => (p === 'confirm' ? 'polling' : p));
-                try {
-                    const res = await lencoService.longPollCollectionStatus(ref, organizationId);
-                    if (cancelledRef.current) return;
-                    if (res.verified) {
-                        if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-                        setPhase('success');
-                        lencoService.finalizeCollection(ref, organizationId).catch(() => {});
-                        try {
-                            await cashbookService.transferToWallet(gross, ref, 'CASH', destWallet.name);
-                        } catch { /* cash-side leg failed; the deposit itself is real and reconciles */ }
-                        qc.invalidateQueries({ queryKey: ['cashbook-entries'] });
-                        return;
-                    }
-                } catch {
-                    // transient — the loop just retries
-                }
-            }
-            if (elapsedInterval.current) clearInterval(elapsedInterval.current);
-            setError('We confirmed the request with Lenco, but it hasn\'t appeared in your ledger yet. It will reconcile automatically — check back shortly.');
-            setPhase('form');
-        } catch (e: any) {
-            setSubmitting(false);
-            setPhase('form');
-            setError(e?.message ?? 'Failed to start the transfer. Please try again.');
-        }
+        const ok = await collection.start({
+            tag: 'CASHXFER',
+            organizationId,
+            walletId,
+            amount: gross,
+            phone,
+            operator,
+            prepare: async (ref) => {
+                pendingLeg.current = { ref, gross, walletName: destWallet.name };
+                await getCore().storage.set(legKey, JSON.stringify(pendingLeg.current)).catch(() => undefined);
+                await cashbookService.logWalletDepositIntent(ref, `Transfer to MoneyWise (from Cash Account)`, netToWallet, walletId);
+            },
+        });
+        if (!ok) pendingLeg.current = null;
     };
+    const submitting = collection.busy;
 
-    if (phase !== 'form') {
+    if (collection.phase) {
         return (
             <View style={styles.root}>
                 <Stack.Screen options={{ headerShown: false }} />
                 <PaymentWaitingScreen
-                    phase={phase}
-                    amount={gross}
+                    phase={collection.phase}
+                    amount={collection.amount}
                     businessName={destWallet?.name || 'your wallet'}
-                    payerPhone={phone}
-                    operator={operator}
-                    elapsedSeconds={elapsed}
-                    reference={reference}
-                    onCancel={cancel}
-                    onDone={() => safeBack()}
+                    payerPhone={collection.phone}
+                    operator={collection.operator}
+                    elapsedSeconds={collection.elapsed}
+                    reference={collection.reference}
+                    headerLabel="Transfer"
+                    doneLabel="Done"
+                    failureMessage={collection.failureMessage}
+                    declined={collection.declined}
+                    rechecking={collection.rechecking}
+                    recheckNote={collection.recheckNote}
+                    onRecheck={collection.recheck}
+                    onRetry={collection.reset}
+                    onCancel={collection.cancel}
+                    onDone={() => { collection.reset(); safeBack(); }}
                 />
             </View>
         );
