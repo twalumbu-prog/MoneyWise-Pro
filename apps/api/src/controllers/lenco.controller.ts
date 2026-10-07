@@ -2146,7 +2146,7 @@ async function completeSalesForReference(orgId: string, reference: string): Prom
 //
 // Now each org remembers how far it has been synced ("through" = its newest transaction seen) in
 // app_settings (key/value, no migration needed). A run only re-examines transactions from
-// SYNC_OVERLAP_MS before that point — or from before its oldest still-PENDING deposit, whichever is
+// SYNC_OVERLAP_MS before its last completed sync — or from before its oldest still-PENDING deposit, whichever is
 // earlier, so an unbooked payment is never skipped — and only fetches as many collections pages as
 // that window needs. Once a day each org still gets a FULL pass as a safety net (the old behaviour),
 // and an org with no marker yet does a full pass, which seeds it.
@@ -2156,21 +2156,25 @@ const SYNC_FULL_PASS_MS = 24 * 3600 * 1000;        // …and everything, once a 
 const SYNC_MAP_MARGIN_MS = 7 * 24 * 3600 * 1000;   // collections settle up to days after they start
 const syncMarkerKey = (orgId: string) => `lenco_sync_marker:${orgId}`;
 
-async function readSyncMarker(orgId: string): Promise<{ throughMs: number; fullAtMs: number } | null> {
+async function readSyncMarker(orgId: string): Promise<{ throughMs: number; fullAtMs: number; syncedAtMs: number } | null> {
     try {
         const { data } = await supabase.from('app_settings').select('value').eq('key', syncMarkerKey(orgId)).maybeSingle();
         const v: any = data?.value;
         const throughMs = v?.through ? Date.parse(v.through) : NaN;
         const fullAtMs = v?.fullAt ? Date.parse(v.fullAt) : NaN;
-        return Number.isFinite(throughMs) && Number.isFinite(fullAtMs) ? { throughMs, fullAtMs } : null;
+        // syncedAt = when the last completed pass STARTED. Markers written before it existed fall back
+        // to fullAt (a moment everything was known to be synced).
+        const syncedAtRaw = v?.syncedAt ? Date.parse(v.syncedAt) : NaN;
+        const syncedAtMs = Number.isFinite(syncedAtRaw) ? syncedAtRaw : fullAtMs;
+        return Number.isFinite(throughMs) && Number.isFinite(fullAtMs) ? { throughMs, fullAtMs, syncedAtMs } : null;
     } catch { return null; }
 }
 
-async function writeSyncMarker(orgId: string, throughMs: number, fullAtMs: number): Promise<void> {
+async function writeSyncMarker(orgId: string, throughMs: number, fullAtMs: number, syncedAtMs: number): Promise<void> {
     try {
         await supabase.from('app_settings').upsert({
             key: syncMarkerKey(orgId),
-            value: { through: new Date(throughMs).toISOString(), fullAt: new Date(fullAtMs).toISOString() },
+            value: { through: new Date(throughMs).toISOString(), fullAt: new Date(fullAtMs).toISOString(), syncedAt: new Date(syncedAtMs).toISOString() },
             description: 'Lenco sync: how far this organization has been synced (incremental sync marker). Safe to delete — the next run does a full pass.',
             updated_at: new Date().toISOString(),
         }, { onConflict: 'key' });
@@ -2388,7 +2392,9 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             const isFullPass = !marker || syncNowMs - marker.fullAtMs > SYNC_FULL_PASS_MS;
             let windowStartMs: number | null = null;
             if (!isFullPass && marker) {
-                windowStartMs = marker.throughMs - SYNC_OVERLAP_MS;
+                // Anchored to the last completed sync, NOT the newest transaction: an org whose last
+                // activity was a big burst must not re-examine that burst on every run.
+                windowStartMs = marker.syncedAtMs - SYNC_OVERLAP_MS;
                 const { data: oldestPending } = await supabase
                     .from('cashbook_entries')
                     .select('created_at')
@@ -3116,6 +3122,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 orgId,
                 Math.max(newestTxnMs, marker?.throughMs ?? 0),
                 isFullPass ? syncNowMs : (marker?.fullAtMs ?? syncNowMs),
+                syncNowMs,
             );
 
             syncResults.push({
