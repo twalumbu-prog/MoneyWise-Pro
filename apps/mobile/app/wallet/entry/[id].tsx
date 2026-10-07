@@ -4,7 +4,7 @@ import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Download, ChevronDown, Check, Building2, CheckCircle, ArrowRight } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
-import { cashbookService, requisitionService, integrationService, accountService, formatKwacha, formatShortDate } from 'core';
+import { cashbookService, requisitionService, integrationService, accountService, isPersonalOrgName, formatKwacha, formatShortDate } from 'core';
 import type { CashbookEntry } from 'core';
 import { ScreenHeader } from '../../../src/components/ScreenHeader';
 import { AccountPickerSheet, type AccountOption } from '../../../src/components/wallet/AccountPickerSheet';
@@ -21,7 +21,8 @@ export default function EntryDetailScreen() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const qc = useQueryClient();
-    const { organizationId } = useAuth();
+    const { organizationId, organizationName } = useAuth();
+    const isPersonalAccount = isPersonalOrgName(organizationName);
 
     const [activePickerTarget, setActivePickerTarget] = useState<'PAYMENT' | string | null>(null);
     const [selectedPaymentAccount, setSelectedPaymentAccount] = useState<AccountOption | null>(null);
@@ -107,7 +108,8 @@ export default function EntryDetailScreen() {
     const req = reqData || entry?.requisitions;
     const items = reqData?.items || entry?.requisitions?.line_items || [];
 
-    const isPosted = entry?.status === 'ACCOUNTED' || reqData?.status === 'ACCOUNTED' || entry?.qb_sync_status === 'SUCCESS';
+    // Personal accounts have no ledger-posting step, so a category can always be corrected.
+    const isPosted = !isPersonalAccount && (entry?.status === 'ACCOUNTED' || reqData?.status === 'ACCOUNTED' || entry?.qb_sync_status === 'SUCCESS');
 
     const handleAutoClassify = async () => {
         if (!reqId && !entry?.id) return;
@@ -365,7 +367,10 @@ export default function EntryDetailScreen() {
                         )}
                     </View>
 
-                    {/* CARD 4: General Ledger Posting (Collapsible) */}
+                    {/* CARD 4: General Ledger Posting — businesses only. A personal account's money is all in
+                        its MoneyWise wallet, so once the entry has a category there is nothing to post. */}
+                    {!isPersonalAccount && (
+                    <>
                     <View style={styles.card}>
                         <View style={styles.sectionHeaderRow}>
                             <Pressable style={styles.cardHeaderTitleWrap} onPress={() => setIsPostingExpanded((e) => !e)}>
@@ -420,6 +425,8 @@ export default function EntryDetailScreen() {
                             </View>
                         )}
                     </View>
+                    </>
+                    )}
 
                     {/* CARD 5: Linked Request (Collapsible) */}
                     {req && (

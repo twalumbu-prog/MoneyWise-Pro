@@ -160,9 +160,22 @@ export const aiService = {
             if (!r || !r.account_code) return false;
             if (r.account_code === 'UNCATEGORIZED') return true;
 
-            // Strip surrounding brackets some models emit e.g. "[1200]" → "1200"
-            const key = String(r.account_code).trim().replace(/^\[|\]$/g, '').toLowerCase();
-            const matched = codeMap.get(key) || nameMap.get(key);
+            // Models often echo more than the bare code: "[1200]", or the whole prompt line
+            // "[INC-101] Salary & Wages: Personal employment salary" / "INC-101 - Salary & Wages".
+            // Try each reading in turn, but still require an EXACT member of the COA.
+            const raw = String(r.account_code).trim();
+            const candidates = [
+                raw,
+                raw.replace(/^\[|\]$/g, ''),
+                raw.match(/^\[([^\]]+)\]/)?.[1],                    // "[INC-101] …" → INC-101
+                raw.split(/\s*[:–—]\s*|\s+-\s+/)[0]?.replace(/^\[|\]$/g, ''), // "INC-101: …" / "INC-101 - …"
+                raw.match(/^([A-Za-z]{2,5}-?\d{2,6})\b/)?.[1],        // leading code token
+            ].filter((c): c is string => !!c).map((c) => c.trim().toLowerCase());
+            let matched: any;
+            for (const key of candidates) {
+                matched = codeMap.get(key) || nameMap.get(key);
+                if (matched) break;
+            }
             if (matched) {
                 r.account_code = String(matched.code ?? matched.AcctNum ?? '');
                 return true;

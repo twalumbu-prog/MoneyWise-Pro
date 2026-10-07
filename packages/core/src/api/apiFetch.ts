@@ -191,7 +191,14 @@ async function doApiFetch(path: string, options: RequestInit = {}): Promise<Resp
         // getSession lost a race with a token refresh (auth-lock contention), or a
         // backgrounded tab's token expired, so we sent a stale/absent token. Attempt
         // exactly ONE refresh + retry before doing anything destructive.
-        const refresh = await refreshAccessToken();
+        let refresh = await refreshAccessToken();
+        if (refresh.status === 'transient') {
+            // Coming back from the background the radio is often still waking up, so the very
+            // first refresh fails at the network level. One short pause and a second attempt turns
+            // that "Unauthorized" into a normal request instead of making the user press again.
+            await new Promise((r) => setTimeout(r, 1500));
+            refresh = await refreshAccessToken();
+        }
         if (refresh.status === 'refreshed') {
             response = await sendRequest(path, options, refresh.token);
         }

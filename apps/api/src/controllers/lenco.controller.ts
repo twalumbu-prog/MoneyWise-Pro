@@ -2136,6 +2136,49 @@ async function completeSalesForReference(orgId: string, reference: string): Prom
  *   - syncMyOrganizationLencoTransactions: the ledger's "Cycle" button, normal login auth,
  *     ONLY the caller's organization (scopeOrgId set).
  */
+// ─────────────────────────────────────────────────────────────────────────────
+// Incremental sync marker
+//
+// Every run used to re-download the last page of Lenco transactions, re-check each one against the
+// ledger (~0.7 s/txn) and page through ALL of the org's Lenco collections (~9 s) to resolve
+// references — even when nothing had happened. With 16 orgs and a 15 s budget, a run reached 1–2 of
+// them, so an org was only synced every ~50 minutes.
+//
+// Now each org remembers how far it has been synced ("through" = its newest transaction seen) in
+// app_settings (key/value, no migration needed). A run only re-examines transactions from
+// SYNC_OVERLAP_MS before that point — or from before its oldest still-PENDING deposit, whichever is
+// earlier, so an unbooked payment is never skipped — and only fetches as many collections pages as
+// that window needs. Once a day each org still gets a FULL pass as a safety net (the old behaviour),
+// and an org with no marker yet does a full pass, which seeds it.
+// ─────────────────────────────────────────────────────────────────────────────
+const SYNC_OVERLAP_MS = 3 * 24 * 3600 * 1000;      // re-check this much history every run
+const SYNC_FULL_PASS_MS = 24 * 3600 * 1000;        // …and everything, once a day
+const SYNC_MAP_MARGIN_MS = 7 * 24 * 3600 * 1000;   // collections settle up to days after they start
+const syncMarkerKey = (orgId: string) => `lenco_sync_marker:${orgId}`;
+
+async function readSyncMarker(orgId: string): Promise<{ throughMs: number; fullAtMs: number } | null> {
+    try {
+        const { data } = await supabase.from('app_settings').select('value').eq('key', syncMarkerKey(orgId)).maybeSingle();
+        const v: any = data?.value;
+        const throughMs = v?.through ? Date.parse(v.through) : NaN;
+        const fullAtMs = v?.fullAt ? Date.parse(v.fullAt) : NaN;
+        return Number.isFinite(throughMs) && Number.isFinite(fullAtMs) ? { throughMs, fullAtMs } : null;
+    } catch { return null; }
+}
+
+async function writeSyncMarker(orgId: string, throughMs: number, fullAtMs: number): Promise<void> {
+    try {
+        await supabase.from('app_settings').upsert({
+            key: syncMarkerKey(orgId),
+            value: { through: new Date(throughMs).toISOString(), fullAt: new Date(fullAtMs).toISOString() },
+            description: 'Lenco sync: how far this organization has been synced (incremental sync marker). Safe to delete — the next run does a full pass.',
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
+    } catch (e: any) {
+        console.warn(`[Lenco Sync] Could not save sync marker for ${orgId.slice(0, 8)}: ${e?.message}`);
+    }
+}
+
 const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) => {
     console.log(`[Lenco Sync] ${scopeOrgId ? `On-demand synchronization for org ${scopeOrgId.slice(0, 8)}` : 'Background synchronization triggered'}`);
 
@@ -2202,8 +2245,6 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
 
         console.log(`[Lenco Sync] Found ${orgs.length} organizations to process.`);
         const syncResults: any[] = [];
-        // Per-run cache of the collections maps, keyed by API key (see the settlement map below).
-        const collectionMapsByKey = new Map<string, { settlementToRef: Map<string, string>; refToCollection: Map<string, any> }>();
 
         for (const org of orgs) {
             if (Date.now() - SYNC_START_MS > SYNC_TIME_BUDGET_MS) {
@@ -2340,6 +2381,39 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 }
             }
 
+            // ── Incremental window (see the marker notes above runLencoSync) ──────────────────────
+            // Computed AFTER the balance-chain maths above, which needs neighbouring transactions.
+            const syncNowMs = Date.now();
+            const marker = await readSyncMarker(orgId);
+            const isFullPass = !marker || syncNowMs - marker.fullAtMs > SYNC_FULL_PASS_MS;
+            let windowStartMs: number | null = null;
+            if (!isFullPass && marker) {
+                windowStartMs = marker.throughMs - SYNC_OVERLAP_MS;
+                const { data: oldestPending } = await supabase
+                    .from('cashbook_entries')
+                    .select('created_at')
+                    .eq('organization_id', orgId)
+                    .eq('entry_type', 'INFLOW')
+                    .eq('status', 'PENDING')
+                    .order('created_at', { ascending: true })
+                    .limit(1)
+                    .maybeSingle();
+                if (oldestPending?.created_at) {
+                    // Capped at 14 days: an abandoned intent from months ago must not turn every run into a
+                    // full pass (the stale-intent janitor below checks those by reference instead).
+                    const pendingFromMs = Math.max(Date.parse(oldestPending.created_at) - 24 * 3600 * 1000, syncNowMs - 14 * 24 * 3600 * 1000);
+                    windowStartMs = Math.min(windowStartMs, pendingFromMs);
+                }
+            }
+            const newestTxnMs = txns.reduce((m, t) => {
+                const ms = t.datetime ? Date.parse(t.datetime) : NaN;
+                return Number.isFinite(ms) && ms > m ? ms : m;
+            }, 0);
+            const windowTxns = windowStartMs === null
+                ? txns
+                : txns.filter((t) => { const ms = t.datetime ? Date.parse(t.datetime) : NaN; return !Number.isFinite(ms) || ms >= windowStartMs!; });
+            console.log(`[Lenco Sync] ${org.name}: ${isFullPass ? 'FULL pass' : 'incremental'} — ${windowTxns.length}/${txns.length} transactions to examine.`);
+
             // Build a lookup map of all disbursements for this org to pair matching transactions
             const { data: disbursements, error: disbError } = await supabase
                 .from('disbursements')
@@ -2375,19 +2449,14 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             // merchant reference for each bank credit transaction before doing
             // the dedup check against our cashbook_entries table.
             //
-            // The collections list depends only on the API key, and every org on the shared
-            // master key gets the identical list (1,416 entries / 24 pages ≈ 9 s on 2026-10-06).
-            // Rebuilding it per org exhausted the sync budget after 1–2 of 16 orgs, so each org
-            // was only reached every ~50 minutes and paid deposits sat PENDING. Built once per
-            // key per run, then reused.
-            const cachedMaps = collectionMapsByKey.get(secretKey);
-            const settlementToRef: Map<string, string> = cachedMaps?.settlementToRef ?? new Map<string, string>();
+            const settlementToRef = new Map<string, string>();
             // reference → collection object; lets the stale-intent janitor below check
             // collection status without an extra API call per intent.
-            const refToCollection: Map<string, any> = cachedMaps?.refToCollection ?? new Map<string, any>();
-            if (cachedMaps) {
-                console.log(`[Lenco Sync] Reusing settlement→ref map (${settlementToRef.size} entries) for org ${org.name}`);
-            } else try {
+            const refToCollection = new Map<string, any>();
+            // Nothing new to examine → the map is only ever consulted per-transaction, and the janitor
+            // falls back to a per-reference lookup when a payment isn't in it, so skip the ~9 s build.
+            const mapBoundMs = windowStartMs === null ? null : windowStartMs - SYNC_MAP_MARGIN_MS;
+            if (windowTxns.length > 0) try {
                 // Lenco's collections page size is NOT 100 (observed ~50). The old
                 // `length < 100` break stopped after page 1, so the map only covered
                 // the newest page — older same-day payments became unresolvable and
@@ -2409,10 +2478,17 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                         }
                     }
                     if (newRefs === 0) break; // page param ignored or repeating data
+                    // Incremental runs stop once a whole page is older than any transaction we'll look at
+                    // (full passes still page to the end — an incomplete map re-logs duplicate inflows).
+                    if (mapBoundMs !== null) {
+                        const dated = collections
+                            .map((c: any) => Date.parse(c.completedAt || c.initiatedAt || c.createdAt || ''))
+                            .filter((ms: number) => Number.isFinite(ms));
+                        if (dated.length === collections.length && dated.every((ms: number) => ms < mapBoundMs)) break;
+                    }
                     colPage++;
                 }
                 console.log(`[Lenco Sync] Built settlement→ref map with ${settlementToRef.size} entries (${colPage} page(s)) for org ${org.name}`);
-                collectionMapsByKey.set(secretKey, { settlementToRef, refToCollection });
             } catch (err: any) {
                 // Non-fatal: we can still sync, just with less deduplication accuracy
                 console.warn(`[Lenco Sync] Could not fetch collections for org ${org.name}: ${err.message}. Proceeding without settlement map.`);
@@ -2421,7 +2497,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             let newEntriesCount = 0;
             let finalizedCount = 0;
 
-            for (const txn of txns) {
+            for (const txn of windowTxns) {
                 const txnId = txn.id || txn.transactionId;
                 const txnType = (txn.type || '').toLowerCase(); // 'credit' or 'debit'
                 const txnDesc = txn.remarks || txn.narration || txn.description || '';
@@ -3034,6 +3110,13 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             } catch (sweepErr: any) {
                 console.error(`[Lenco Sync][Ledger Sweep] Error for org ${org.name}:`, sweepErr.message);
             }
+
+            // Done: move the marker forward (never backwards) so the next run only looks at what's new.
+            await writeSyncMarker(
+                orgId,
+                Math.max(newestTxnMs, marker?.throughMs ?? 0),
+                isFullPass ? syncNowMs : (marker?.fullAtMs ?? syncNowMs),
+            );
 
             syncResults.push({
                 orgId,
