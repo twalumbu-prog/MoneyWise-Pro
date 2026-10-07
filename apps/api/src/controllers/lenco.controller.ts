@@ -3112,7 +3112,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             // so a slow or pathological org's sweep can never itself blow the function's
             // maxDuration — see [[vercel-cost-pause]] for the 2026-07-10 504 this fixes.
             try {
-                await ledgerService.runSweep(orgId, SYNC_START_MS + SYNC_TIME_BUDGET_MS);
+                await ledgerService.runSweep(orgId, Math.min(SYNC_START_MS + SYNC_TIME_BUDGET_MS, Date.now() + 3_000)); // capped per org: one backlog must not starve the rest
             } catch (sweepErr: any) {
                 console.error(`[Lenco Sync][Ledger Sweep] Error for org ${org.name}:`, sweepErr.message);
             }

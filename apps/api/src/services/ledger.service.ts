@@ -238,6 +238,10 @@ async function resolveLineItemAccount(orgId: string, li: any): Promise<string | 
     return null;
 }
 
+/** Entries the sweep recently attempted (see runSweep) — per warm instance, best effort. */
+const sweepAttempts = new Map<string, number>();
+const SWEEP_RETRY_COOLDOWN_MS = 10 * 60 * 1000;
+
 export const ledgerService = {
     /** Delete the journal entry (and its lines) derived from a cashbook entry. */
     async removeForCashbookEntry(entryId: string, organizationId?: string): Promise<void> {
@@ -435,16 +439,26 @@ export const ledgerService = {
             console.error(`[Ledger] sweep detector failed for org ${organizationId}:`, error.message);
             return 0;
         }
-        const rows = (data as { id: string }[]) || [];
+        const now = Date.now();
+        // An entry that was just attempted and is STILL reported as needing a repost can't be posted
+        // (e.g. a zero-value "Dr 0 Cr 0" row). Left alone it sits at the head of the queue and eats
+        // the whole time budget on every run, starving every other entry and organisation — so give
+        // it a cooldown and let the rest of the queue through.
+        const rows = ((data as { id: string }[]) || []).filter((r) => {
+            const last = sweepAttempts.get(r.id);
+            return !last || now - last > SWEEP_RETRY_COOLDOWN_MS;
+        });
         let repaired = 0;
         for (const row of rows) {
             if (Date.now() > deadlineMs) {
                 console.warn(`[Ledger] sweep time budget exceeded for org ${organizationId} — deferring remaining ${rows.length - repaired} entr(y/ies) to the next run.`);
                 break;
             }
+            sweepAttempts.set(row.id, Date.now());
             await this.repostForCashbookEntry(row.id);
             repaired++;
         }
+        if (sweepAttempts.size > 5000) sweepAttempts.clear();
         if (repaired > 0) console.log(`[Ledger] sweep processed ${repaired} entries for org ${organizationId}.`);
         return repaired;
     },
