@@ -36,6 +36,21 @@ async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
     return (count ?? 0) > 0;
 }
 
+/** Personal accounts (one person's money) vs businesses — the same name-based test used across the codebase. */
+async function isPersonalOrganization(organizationId: string): Promise<boolean> {
+    const withFlag = await supabase.from('organizations').select('name, is_personal').eq('id', organizationId).maybeSingle();
+    const row: any = withFlag.error
+        ? (await supabase.from('organizations').select('name').eq('id', organizationId).maybeSingle()).data
+        : withFlag.data;
+    if (!row) return false;
+    if (row.is_personal === true) return true;
+    const n = String(row.name || '').toLowerCase();
+    return n.includes('workspace') || n.includes('personal') || n.includes('individual') || n.includes('private');
+}
+
+/** The equity account that accumulated income − expense is rolled onto: Personal Equity for a person, Retained Earnings for a business. */
+const PERSONAL_EQUITY_CODE = '3100';
+
 /**
  * Build the report rows from the GL trial balance, keeping the legacy response shape
  * ({account_id, account_name, total_amount, transaction_count, type}).
@@ -62,6 +77,13 @@ async function buildFinancialsFromGL(organizationId: string, startDate: string, 
     }
     const retainedEarnings = cumIncome - cumExpense;
 
+    // In a personal account income increases the person's own equity ("Personal Equity"), not a
+    // separate Retained Earnings line. Falls back to the retained row if Personal Equity is missing.
+    const personal = await isPersonalOrganization(organizationId);
+    const rollupCode = personal && (rows || []).some((r: any) => r.type === 'EQUITY' && r.code === PERSONAL_EQUITY_CODE)
+        ? PERSONAL_EQUITY_CODE
+        : 'QB-73';
+
     let retainedSeen = false;
     const financials = (rows || []).map((r: any) => {
         const pd = Number(r.period_debit || 0);
@@ -77,7 +99,7 @@ async function buildFinancialsFromGL(organizationId: string, startDate: string, 
             case 'LIABILITY': total = cc - cd; count = Number(r.cumulative_n || 0); break;
             case 'EQUITY':
                 total = cc - cd; count = Number(r.cumulative_n || 0);
-                if (r.code === 'QB-73') { total += retainedEarnings; retainedSeen = true; }
+                if (r.code === rollupCode) { total += retainedEarnings; retainedSeen = true; }
                 break;
         }
         return {
@@ -103,7 +125,7 @@ async function buildFinancialsFromGL(organizationId: string, startDate: string, 
     if (!retainedSeen && Math.abs(retainedEarnings) > 0.005) {
         financials.push({
             account_id: 'RETAINED_EARNINGS',
-            account_name: 'Retained Earnings',
+            account_name: personal ? 'Personal Equity' : 'Retained Earnings',
             total_amount: retainedEarnings,
             transaction_count: 0,
             type: 'EQUITY'
@@ -334,7 +356,11 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
             acc.code === 'QB-73' ||
             /retained earnings/i.test(acc.name || '')
         );
-        const reAccount = (accounts || []).find(isRetainedAccount);
+        // Personal accounts roll income onto Personal Equity (see buildFinancialsFromGL).
+        const personalEquity = (await isPersonalOrganization(organization_id))
+            ? (accounts || []).find((a: any) => a.type === 'EQUITY' && a.code === PERSONAL_EQUITY_CODE)
+            : undefined;
+        const reAccount = personalEquity ?? (accounts || []).find(isRetainedAccount);
         const reRow = reAccount ? financials.find(f => f.account_id === reAccount.id) : undefined;
         if (reRow) {
             reRow.total_amount += retainedEarnings;
@@ -370,7 +396,16 @@ async function buildItemsFromGL(
     startDate: string,
     endDate: string
 ) {
-    const isRetained = accountId === 'RETAINED_EARNINGS' || account?.code === 'QB-73';
+    // For a personal account the roll-up row is Personal Equity (which also has postings of its own);
+    // the Retained row only carries the roll-up when a personal account has no Personal Equity row.
+    const personal = await isPersonalOrganization(organizationId);
+    let hasPersonalEquity = false;
+    if (personal) {
+        const { data: pe } = await supabase.from('accounts').select('id').eq('organization_id', organizationId).eq('code', PERSONAL_EQUITY_CODE).eq('type', 'EQUITY').limit(1);
+        hasPersonalEquity = !!pe?.length;
+    }
+    const isPersonalEquity = personal && account?.type === 'EQUITY' && account?.code === PERSONAL_EQUITY_CODE;
+    const isRetained = accountId === 'RETAINED_EARNINGS' || isPersonalEquity || (account?.code === 'QB-73' && !hasPersonalEquity);
 
     // Which accounts' postings to list, and the date window.
     let accountIds: string[] = [];
@@ -384,6 +419,7 @@ async function buildItemsFromGL(
             .eq('organization_id', organizationId)
             .in('type', ['INCOME', 'EXPENSE']);
         accountIds = (pnlAccts || []).map((a: any) => a.id);
+        if (isPersonalEquity) accountIds.push(accountId); // its own postings (opening balance, contributions) too
         periodWindow = false;      // balance-sheet RE is cumulative
         signMode = 'CREDIT_NORMAL'; // income(credit-debit) + (-(expense)) both = credit-debit
     } else {

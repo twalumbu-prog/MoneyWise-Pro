@@ -43,7 +43,7 @@ export async function seedDefaultAccounts(organizationId: string): Promise<void>
 
 export const DEFAULT_PERSONAL_ACCOUNTS = [
     { code: 'QB-1150040000', name: 'MoneyWise Wallet', type: 'ASSET', subtype: 'Bank', description: 'Main Personal Wallet' },
-    { code: '3100', name: "Personal Equity", type: 'EQUITY', subtype: "Owner's Equity", description: 'Opening balance and personal worth' },
+    { code: '3100', name: "Personal Equity", type: 'EQUITY', subtype: "Owner's Equity", description: 'Your personal worth: opening balance, contributions and everything you have earned less spent (income increases it, expenses reduce it)' },
     { code: 'QB-73', name: 'Retained Savings', type: 'EQUITY', subtype: 'Retained Earnings', description: 'Accumulated net savings/deficit' },
 
     // Income Sources
