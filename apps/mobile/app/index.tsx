@@ -91,7 +91,12 @@ export default function Index() {
         let cancelled = false;
         setNeedsOnboarding(null);
 
-        onboardingService.getState()
+        // Never let a slow or missing connection hold the whole app on a spinner: after 5 s assume
+        // onboarding is done (the same fallback as a failed request) and open the app.
+        Promise.race([
+            onboardingService.getState(),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+        ])
             .then(s => {
                 if (cancelled) return;
                 if (s.progress?.status === 'COMPLETED') {

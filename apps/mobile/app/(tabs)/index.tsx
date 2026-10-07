@@ -14,6 +14,7 @@ import { RequisitionRow, type RequisitionRowData } from '../../src/components/re
 import { InflowCard } from '../../src/components/inflows/InflowCard';
 import { InflowDetailSheet } from '../../src/components/inflows/InflowDetailSheet';
 import { INFLOW_TABS, getInflowTab, type InflowRow } from '../../src/components/inflows/inflowUtils';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { NewMenuSheet } from '../../src/components/requisitions/NewMenuSheet';
 import { AccountMenuSheet } from '../../src/components/requisitions/AccountMenuSheet';
 import { GuidedMissionsModal } from '../../src/components/onboarding/GuidedMissionsModal';
@@ -274,7 +275,8 @@ export default function InboxScreen() {
                 <View style={styles.centre}><ActivityIndicator color={colors.blue} /></View>
             )}
 
-            {mode === 'outflows' && isError && !isLoading && (
+            {mode === 'outflows' && isError && !!data && <OfflineNotice />}
+            {mode === 'outflows' && isError && !data && !isLoading && (
                 <View style={styles.errorCard}>
                     <Text style={styles.errorTitle}>Couldn’t load requests</Text>
                     <Text style={styles.errorBody}>{(error as Error)?.message}</Text>
@@ -339,7 +341,7 @@ export default function InboxScreen() {
                     </View>
                 )}
                 ListEmptyComponent={
-                    !isLoading && !isError ? (
+                    !isLoading && (!isError || !!data) ? (
                         <View style={styles.empty}>
                             <Text style={styles.emptyText}>
                                 {search || tab !== 'ALL' ? 'Nothing matches that filter.' : 'No requests yet.'}

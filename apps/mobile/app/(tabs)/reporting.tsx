@@ -25,6 +25,7 @@ import { BucketProgressBar } from '../../src/components/reporting/BucketProgress
 import { ReportChartView, type ChartTimeframe, type TrendPoint } from '../../src/components/reporting/ReportChartView';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { colors, fonts, radius } from '../../src/theme/tokens';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 
 function buildChartPeriods(tf: ChartTimeframe): { startDate: string; endDate: string; label: string; shortLabel: string }[] {
     const periods: { startDate: string; endDate: string; label: string; shortLabel: string }[] = [];
@@ -397,7 +398,8 @@ export default function ReportingScreen() {
                             </View>
                         </View>
 
-                        {isError && (
+                        {isError && !!data && <OfflineNotice style={{ marginHorizontal: 0 }} />}
+                        {isError && !data && (
                             <View style={styles.errorCard}>
                                 <Text style={styles.errorTitle}>Couldn’t load the report</Text>
                             </View>
@@ -533,7 +535,7 @@ export default function ReportingScreen() {
                             );
                         })}
 
-                        {!isLoading && !isError && Object.values(groups).every((g: any) => g.items.length === 0) && (
+                        {!isLoading && (!isError || !!data) && Object.values(groups).every((g: any) => g.items.length === 0) && (
                             <View style={styles.empty}>
                                 <Text style={styles.emptyText}>No activity in this period.</Text>
                             </View>

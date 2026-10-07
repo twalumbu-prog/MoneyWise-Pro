@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState } from 'r
 import { AppState } from 'react-native';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { clearCache, cacheStore } from '../platform/storage';
+import { clearCache, cacheStore, secureStore } from '../platform/storage';
 import { queryClient } from '../lib/queryClient';
 import { registerForPushNotificationsAsync } from '../lib/pushNotifications';
 import { userService } from 'core';
@@ -37,6 +37,48 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+/**
+ * Offline-first startup. Opening the app must never wait on the network: every request here has a
+ * time limit, and the last known profile + organisations are kept on the device so the app can open
+ * (showing its saved data) without a connection and refresh itself once one is back.
+ */
+const SNAPSHOT_KEY = 'auth_snapshot_v1';
+interface AuthSnapshot {
+    userId: string;
+    userName: string | null;
+    userRole: UserRole | null;
+    userStatus: string | null;
+    organizationId: string | null;
+    organizationName: string | null;
+    userOrganizations: UserOrganization[];
+}
+const withTimeout = <T,>(promise: PromiseLike<T>, ms: number): Promise<T> =>
+    Promise.race([
+        Promise.resolve(promise),
+        new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+    ]);
+
+async function readSnapshot(userId?: string): Promise<AuthSnapshot | null> {
+    try {
+        const raw = await cacheStore.get(SNAPSHOT_KEY);
+        if (!raw) return null;
+        const snap = JSON.parse(raw) as AuthSnapshot;
+        return !userId || snap.userId === userId ? snap : null;
+    } catch { return null; }
+}
+
+/** The session Supabase persisted on this device, read straight from the Keychain (no network, no refresh). */
+async function readStoredSession(): Promise<Session | null> {
+    try {
+        const key = (supabase.auth as any).storageKey as string | undefined;
+        if (!key) return null;
+        const raw = await secureStore.get(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return parsed?.access_token && parsed?.user ? (parsed as Session) : null;
+    } catch { return null; }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const [session, setSession] = useState<Session | null>(null);
     const [user, setUser] = useState<User | null>(null);
@@ -49,6 +91,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userOrganizations, setUserOrganizations] = useState<UserOrganization[]>([]);
 
     const mounted = useRef(true);
+    const loadingRef = useRef(true);
+    loadingRef.current = loading;
+
+    // Keep the last known profile on the device for offline starts.
+    useEffect(() => {
+        if (!user || !userRole) return;
+        const snap: AuthSnapshot = { userId: user.id, userName, userRole, userStatus, organizationId, organizationName, userOrganizations };
+        cacheStore.set(SNAPSHOT_KEY, JSON.stringify(snap)).catch(() => undefined);
+    }, [user?.id, userName, userRole, userStatus, organizationId, organizationName, userOrganizations]);
 
     useEffect(() => {
         const sub = AppState.addEventListener('change', (state) => {
@@ -62,17 +113,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
         mounted.current = true;
 
+        const applySnapshot = (snap: AuthSnapshot) => {
+            setUserName(snap.userName);
+            setUserRole(snap.userRole);
+            setUserStatus(snap.userStatus);
+            setOrganizationId(snap.organizationId);
+            setOrganizationName(snap.organizationName);
+            setUserOrganizations(snap.userOrganizations ?? []);
+        };
+
         const loadProfile = async (userId: string) => {
-            const { data, error } = await supabase
-                .from('users')
-                .select('role, status, name, organization_id, organizations(name)')
-                .eq('id', userId)
-                .single();
+            let row: any = null;
+            try {
+                const { data, error } = await withTimeout(
+                    supabase
+                        .from('users')
+                        .select('role, status, name, organization_id, organizations(name)')
+                        .eq('id', userId)
+                        .single(),
+                    5000,
+                );
+                if (!error && data) row = data;
+            } catch { /* offline or slow — fall back to what this device last knew */ }
 
             if (!mounted.current) return;
-            if (error || !data) return;
+            if (!row) {
+                const snap = await readSnapshot(userId);
+                if (snap && mounted.current) applySnapshot(snap);
+                return;
+            }
 
-            const row = data as any;
             setUserName(row.name ?? null);
             setUserRole(row.role ?? null);
             setUserStatus(row.status ?? null);
@@ -84,7 +154,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const orgObj: any = row.organizations;
             const fetchedOrgName = Array.isArray(orgObj) ? orgObj[0]?.name : orgObj?.name;
             setOrganizationName(fetchedOrgName ?? null);
-            await refreshUserOrganizations();
+            await withTimeout(refreshUserOrganizations(), 5000).catch(() => undefined);
 
             registerForPushNotificationsAsync().then((result) => {
                 if (!result || !mounted.current) return;
@@ -93,21 +163,77 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
         };
 
-        supabase.auth.getSession().then(async ({ data }) => {
+        const bootstrap = async () => {
+            let found: Session | null = null;
+            let timedOut = false;
+            try {
+                found = (await withTimeout(supabase.auth.getSession(), 3500)).data.session;
+            } catch { timedOut = true; }
             if (!mounted.current) return;
-            setSession(data.session);
-            setUser(data.session?.user ?? null);
-            if (data.session?.user) await loadProfile(data.session.user.id);
+
+            if (timedOut) {
+                // getSession is waiting on the network (an expired token being refreshed with no signal).
+                // Open the app with the session saved on the device instead of making the user wait.
+                const stored = await readStoredSession();
+                if (!mounted.current) return;
+                if (stored?.user) {
+                    setSession(stored);
+                    setUser(stored.user);
+                    const snap = await readSnapshot(stored.user.id);
+                    if (snap && mounted.current) applySnapshot(snap);
+                    setLoading(false);
+                    void loadProfile(stored.user.id); // refresh in the background when the network answers
+                    return;
+                }
+                setLoading(false);
+                return;
+            }
+
+            if (!found) {
+                // Supabase says "no session" — but if the device still holds one, it is only that the
+                // expired token can't be refreshed without a connection. Keep the user signed in.
+                const stored = await readStoredSession();
+                if (stored?.user && mounted.current) {
+                    found = stored;
+                    const snap = await readSnapshot(stored.user.id);
+                    if (snap) applySnapshot(snap);
+                }
+            }
+            setSession(found);
+            setUser(found?.user ?? null);
+            if (found?.user) await loadProfile(found.user.id);
             if (mounted.current) setLoading(false);
-        });
+        };
+        void bootstrap();
+
+        // Last line of defence: whatever is still hanging, the app opens after 9 s.
+        const watchdog = setTimeout(async () => {
+            if (!mounted.current || !loadingRef.current) return;
+            const stored = await readStoredSession();
+            if (!mounted.current || !loadingRef.current) return;
+            if (stored?.user) {
+                setSession((cur) => cur ?? stored);
+                setUser((cur) => cur ?? stored.user);
+                const snap = await readSnapshot(stored.user.id);
+                if (snap && mounted.current) applySnapshot(snap);
+            }
+            setLoading(false);
+        }, 9000);
 
         const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, next) => {
             if (!mounted.current) return;
+            if (!next) {
+                // A signed-out event only counts when nothing is stored any more (signOut clears the
+                // Keychain first). While a session is still saved, this is just a failed refresh.
+                const stored = await readStoredSession();
+                if (stored) return;
+            }
             setSession(next);
             setUser(next?.user ?? null);
             if (next?.user) {
                 await loadProfile(next.user.id);
             } else {
+                cacheStore.remove(SNAPSHOT_KEY).catch(() => undefined);
                 setUserName(null);
                 setUserRole(null);
                 setUserStatus(null);
@@ -120,6 +246,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         return () => {
             mounted.current = false;
+            clearTimeout(watchdog);
             subscription.unsubscribe();
         };
     }, []);

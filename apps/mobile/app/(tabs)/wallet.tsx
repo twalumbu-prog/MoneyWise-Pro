@@ -16,6 +16,7 @@ import {
     WalletCard, AddWalletCard, useCardWidth, CARD_GAP, CARD_HEIGHT,
 } from '../../src/components/wallet/WalletCard';
 import { TransactionRow } from '../../src/components/wallet/TransactionRow';
+import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { PiggyBankIcon } from '../../src/components/icons/PiggyBankIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -289,7 +290,8 @@ export default function WalletScreen() {
                             )}
                         </View>
 
-                        {isError && (
+                        {isError && !!data && <OfflineNotice style={{ marginHorizontal: 0 }} />}
+                        {isError && !data && (
                             <View style={styles.errorCard}>
                                 <Text style={styles.errorTitle}>Couldn’t load the ledger</Text>
                                 <Text style={styles.errorBody}>{(error as Error)?.message}</Text>
@@ -311,7 +313,7 @@ export default function WalletScreen() {
                     </View>
                 )}
                 ListEmptyComponent={
-                    !isLoading && !isError ? (
+                    !isLoading && (!isError || !!data) ? (
                         isInactiveWallet ? (
                             <View style={styles.inactiveCard}>
                                 <View style={styles.inactiveIconBox}>
