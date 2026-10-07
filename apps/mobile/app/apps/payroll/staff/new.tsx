@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Switch,
+    ActivityIndicator, Alert, KeyboardAvoidingView, Switch,
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -130,7 +130,7 @@ export default function AddStaffScreen() {
     });
 
     return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
             <Stack.Screen options={{ headerShown: false }} />
             <ScreenHeader title="Add Staff" />
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">

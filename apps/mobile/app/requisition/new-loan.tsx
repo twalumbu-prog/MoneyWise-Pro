@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator,
-    KeyboardAvoidingView, Platform,
+    KeyboardAvoidingView, 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -147,7 +147,7 @@ export default function NewStaffLoanScreen() {
                 )}
 
                 {stage === 3 && product && provider && (
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                    <KeyboardAvoidingView behavior="padding">
                         <Text style={styles.stepTitle}>Loan Details</Text>
                         <Text style={styles.stepSub}>Fill in the details for your {product.name}.</Text>
 

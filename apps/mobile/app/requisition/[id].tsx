@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
     View, Text, ScrollView, TextInput, Pressable, StyleSheet, ActivityIndicator,
-    Alert, KeyboardAvoidingView, Platform, Modal,
+    Alert, KeyboardAvoidingView, Modal,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, Stack } from 'expo-router';
@@ -174,7 +174,7 @@ export default function RequisitionDetailScreen() {
             )}
 
             {req && tab === 'chat' && (
-                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={insets.top + 44}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding" keyboardVerticalOffset={insets.top + 44}>
                     <ScrollView ref={scrollRef} style={styles.thread} contentContainerStyle={styles.threadContent}>
                         {messages.length === 0 && (
                             <View style={styles.emptyThread}>
@@ -233,7 +233,7 @@ export default function RequisitionDetailScreen() {
                 </ScrollView>
             )}
 
-            <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+            <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)} statusBarTranslucent>
                 <Pressable style={styles.menuBackdrop} onPress={() => setMenuOpen(false)}>
                     <View style={[styles.menuCard, { marginTop: insets.top + 56 }]}>
                         {canDelete ? (

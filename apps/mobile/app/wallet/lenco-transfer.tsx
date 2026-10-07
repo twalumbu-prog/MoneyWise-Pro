@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-    View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform,
+    View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, 
 } from 'react-native';
 import { Stack } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -169,7 +169,7 @@ export default function LencoTransferScreen() {
     }
 
     return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
             <Stack.Screen options={{ headerShown: false }} />
             <ScreenHeader title="Transfer to MoneyWise" />
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Modal,
-    KeyboardAvoidingView, Platform,
+    KeyboardAvoidingView, 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -92,7 +92,7 @@ export default function NewSalaryAdvanceScreen() {
                 )}
 
                 {stage === 1 && (
-                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                    <KeyboardAvoidingView behavior="padding">
                         <Text style={styles.stepTitle}>Advance Details</Text>
                         <Text style={styles.stepSub}>Fill in the details for the salary advance</Text>
 
@@ -156,7 +156,7 @@ export default function NewSalaryAdvanceScreen() {
                 </View>
             )}
 
-            <Modal visible={deptPickerOpen} transparent animationType="fade" onRequestClose={() => setDeptPickerOpen(false)}>
+            <Modal visible={deptPickerOpen} transparent animationType="fade" onRequestClose={() => setDeptPickerOpen(false)} statusBarTranslucent>
                 <Pressable style={styles.pickerBackdrop} onPress={() => setDeptPickerOpen(false)}>
                     <View style={styles.pickerSheet}>
                         {DEPARTMENTS.map((d) => (

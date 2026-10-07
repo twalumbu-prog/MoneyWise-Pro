@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Modal, View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Share } from 'react-native';
+import { Modal, View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, ScrollView, Share } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Clipboard from 'expo-clipboard';
 import { X, Copy, Check, Share2, Search, Link2, UserPlus } from 'lucide-react-native';
@@ -61,9 +61,9 @@ export const InviteModal: React.FC<{ visible: boolean; item: SavingsItem | null;
     };
 
     return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
             <Pressable style={styles.backdrop} onPress={onClose} />
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.center} pointerEvents="box-none">
+            <KeyboardAvoidingView behavior="padding" style={styles.center} pointerEvents="box-none">
                 <View style={styles.card}>
                     <View style={styles.head}>
                         <Text style={styles.title} numberOfLines={1}>Invite to {item.name}</Text>

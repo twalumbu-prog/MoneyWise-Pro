@@ -100,7 +100,8 @@ router.post('/settle-pending', async (req: any, res: any) => {
     const orgId = req.user?.organization_id;
     if (!orgId) return res.status(400).json({ error: 'User organization context missing' });
     try {
-        const result = await sweepPendingDeposits(10_000, orgId, 0);
+        // Pull-to-refresh: verify every recent pending deposit with Lenco — book the paid ones, drop the dead ones.
+        const result = await sweepPendingDeposits(10_000, orgId, 0, { discardAfterMs: 3 * 60 * 1000, lookbackMs: 30 * 24 * 3600 * 1000 });
         // Personal accounts: catch up any deposit that landed uncategorised.
         const classified = (await classifyRecentPersonalInflows(orgId).catch(() => 0)) + (await classifyRecentSavingsEntries(orgId).catch(() => 0));
         res.json({ ...result, classified });

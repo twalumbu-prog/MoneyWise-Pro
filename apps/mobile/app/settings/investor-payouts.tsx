@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, ActivityIndicator, Alert, KeyboardAvoidingView } from 'react-native';
 import { Stack } from 'expo-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ShieldCheck, Mail } from 'lucide-react-native';
@@ -92,7 +92,7 @@ export default function InvestorPayoutsScreen() {
             ) : data && !data.isInvestmentCompany ? (
                 <View style={styles.centre}><Text style={styles.muted}>This organization isn't listed as an investment company, so there are no investor deposits to forward.</Text></View>
             ) : (
-                <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+                <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
                     <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
                         <Text style={styles.intro}>Money investors deposit into your MoneyWise wallet can be sent on to your bank account automatically.</Text>
                         <ErrorBanner message={banner} />

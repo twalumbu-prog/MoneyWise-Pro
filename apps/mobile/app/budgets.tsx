@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator,
-    ScrollView, Switch, KeyboardAvoidingView, Platform, Alert,
+    ScrollView, Switch, KeyboardAvoidingView, Alert,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Target } from 'lucide-react-native';
@@ -111,7 +111,7 @@ export default function BudgetsScreen() {
     };
 
     return (
-        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior="padding">
             <ScreenHeader title="Budgets" />
 
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">

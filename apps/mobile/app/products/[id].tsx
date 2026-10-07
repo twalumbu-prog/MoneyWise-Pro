@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform,
+    ActivityIndicator, Alert, Image, KeyboardAvoidingView, 
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -88,7 +88,7 @@ export default function ProductEditScreen() {
     };
 
     return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
             <Stack.Screen options={{ headerShown: false }} />
             <ScreenHeader title={isNew ? 'New Product' : 'Edit Product'} />
 

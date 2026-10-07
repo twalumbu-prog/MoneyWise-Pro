@@ -681,7 +681,7 @@ export const automationService = {
 
         const investments = await investmentService.confirmPending().catch((e: any) => ({ error: e.message }));
         const savings = await savingsService.confirmPending().catch((e: any) => ({ error: e.message }));
-        const deposits = await sweepPendingDeposits().catch((e: any) => ({ error: e.message }));
+        const deposits = await sweepPendingDeposits(8000, undefined, 45_000, { discardAfterMs: 10 * 60 * 1000 }).catch((e: any) => ({ error: e.message }));
 
         return { automations: total, schedules, scheduleRunsSynced, investments, savings, deposits };
     },

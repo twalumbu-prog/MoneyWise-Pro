@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, KeyboardAvoidingView, Platform,
+    ActivityIndicator, KeyboardAvoidingView, 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -108,7 +108,7 @@ export default function DepositScreen() {
     }
 
     return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
             <Stack.Screen options={{ headerShown: false }} />
             <ScreenHeader title="Deposit" />
 

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Animated, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Animated, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { onboardingService, OnboardingState, BusinessProfile, CoaAccount } from 'core';
@@ -192,7 +192,7 @@ export default function OnboardingScreen() {
     return (
         <KeyboardAvoidingView
             style={[styles.container, { paddingTop: insets.top }]}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
         >
             <OnboardingProgressHeader
                 step={step}

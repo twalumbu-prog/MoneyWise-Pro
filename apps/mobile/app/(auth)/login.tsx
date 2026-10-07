@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, StyleSheet,
-    KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
+    KeyboardAvoidingView, ActivityIndicator, ScrollView,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -168,7 +168,7 @@ export default function LoginScreen() {
             && (accountType === 'INDIVIDUAL' || signupOrgMode === 'CREATE' ? organizationName.trim().length > 0 || accountType === 'INDIVIDUAL' : !!organizationId)));
 
     return (
-        <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.flex} behavior="padding">
             <ScrollView
                 contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 28 }]}
                 keyboardShouldPersistTaps="handled"

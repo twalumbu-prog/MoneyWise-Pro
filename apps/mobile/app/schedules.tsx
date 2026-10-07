@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import {
     View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
-    RefreshControl, Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
+    RefreshControl, Modal, TextInput, Alert, KeyboardAvoidingView, 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
@@ -399,7 +399,7 @@ export default function SchedulesScreen() {
             </Pressable>
 
             {/* Modal Form: Create / Edit Schedule */}
-            <Modal visible={addOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setAddOpen(false)}>
+            <Modal visible={addOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setAddOpen(false)} statusBarTranslucent>
                 <ScheduleFormModal
                     initial={editItem}
                     onClose={() => { setAddOpen(false); setEditItem(null); }}
@@ -408,7 +408,7 @@ export default function SchedulesScreen() {
 
             {/* Modal Detail View */}
             {detailItem && (
-                <Modal visible={!!detailItem} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailItem(null)}>
+                <Modal visible={!!detailItem} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setDetailItem(null)} statusBarTranslucent>
                     <ScheduleDetailModal
                         item={detailItem}
                         onClose={() => setDetailItem(null)}
@@ -421,7 +421,7 @@ export default function SchedulesScreen() {
 
             {/* Context Action Menu Modal */}
             {actionMenuItem && (
-                <Modal visible={!!actionMenuItem} transparent animationType="fade" onRequestClose={() => setActionMenuItem(null)}>
+                <Modal visible={!!actionMenuItem} transparent animationType="fade" onRequestClose={() => setActionMenuItem(null)} statusBarTranslucent>
                     <Pressable style={styles.menuOverlay} onPress={() => setActionMenuItem(null)}>
                         <View style={styles.menuBox}>
                             <Text style={styles.menuTitle}>{actionMenuItem.title}</Text>
@@ -549,7 +549,7 @@ const ScheduleFormModal: React.FC<{ initial?: ScheduledItem | null; onClose: () 
     });
 
     return (
-        <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.modalRoot} behavior="padding">
             <View style={styles.modalHeader}>
                 <Text style={styles.modalTitle}>{initial ? 'Edit Schedule' : 'Add to Schedule'}</Text>
                 <Pressable onPress={onClose} hitSlop={8}><X size={22} color={colors.textMuted} /></Pressable>

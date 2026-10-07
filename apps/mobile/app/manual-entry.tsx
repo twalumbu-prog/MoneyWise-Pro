@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-    View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Modal, FlatList,
+    View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Modal, FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
@@ -95,7 +95,7 @@ export default function ManualEntryScreen() {
     const isIn = direction === 'IN';
 
     return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
             <Stack.Screen options={{ headerShown: false }} />
             <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                 <Pressable onPress={() => safeBack()} hitSlop={12} accessibilityLabel="Close"><X size={22} color={colors.textMuted} /></Pressable>
@@ -257,7 +257,7 @@ const ResultView: React.FC<{
             <Pressable onPress={onDone} style={({ pressed }) => [styles.saveBtn, pressed && { opacity: 0.85 }]}><Text style={styles.saveText}>Done</Text></Pressable>
             <Pressable onPress={onAnother} style={styles.anotherBtn}><Text style={styles.anotherText}>Add another entry</Text></Pressable>
 
-            <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)}>
+            <Modal visible={open} transparent animationType="slide" onRequestClose={() => setOpen(false)} statusBarTranslucent>
                 <Pressable style={styles.backdrop} onPress={() => setOpen(false)} />
                 <View style={styles.sheetWrap} pointerEvents="box-none">
                     <View style={[styles.sheet, { paddingBottom: Math.max(insetsBottom, 16) }]}>

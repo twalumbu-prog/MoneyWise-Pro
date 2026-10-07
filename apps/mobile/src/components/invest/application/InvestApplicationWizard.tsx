@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, ScrollView, Pressable, StyleSheet, Alert, KeyboardAvoidingView, Platform, Linking, ActivityIndicator,
+    View, Text, ScrollView, Pressable, StyleSheet, Alert, KeyboardAvoidingView, Linking, ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -242,7 +242,7 @@ export const InvestApplicationWizard: React.FC<{
     const reading = step.id === 'id' && read === 'reading';
 
     return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
             <View style={[styles.header, { paddingTop: insets.top + 12 }]}>
                 <Pressable onPress={confirmExit} hitSlop={12} accessibilityLabel="Close application">
                     <X size={22} color={colors.textMuted} />

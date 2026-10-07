@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, KeyboardAvoidingView, Platform, Modal, FlatList, Image,
+    ActivityIndicator, KeyboardAvoidingView, Modal, FlatList, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
@@ -459,7 +459,7 @@ export default function NewRequisitionScreen() {
     const total = getTotal();
 
     return (
-        <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.root} behavior="padding">
             <Stack.Screen options={{ headerShown: false }} />
 
             <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
@@ -1100,7 +1100,7 @@ const PickerSheet: React.FC<{
     const filtered = query ? items.filter((i) => i.label.toLowerCase().includes(query.toLowerCase())) : items;
 
     return (
-        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
             <Pressable style={styles.pickerBackdrop} onPress={onClose}>
                 <Pressable style={styles.pickerSheet} onPress={(e) => e.stopPropagation()}>
                     <Text style={styles.pickerTitle}>{title}</Text>

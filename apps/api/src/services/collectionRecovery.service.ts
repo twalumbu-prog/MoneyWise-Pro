@@ -13,7 +13,12 @@ import { LencoService } from './lenco.service';
 import { getCachedOrgSecretKey } from '../lib/orgSecretKeyCache';
 import { handleCollectionSuccessful } from '../controllers/lenco.webhook.controller';
 
-export type CollectionOutcome = 'finalized' | 'pending' | 'failed' | 'unknown';
+/**
+ * finalized — paid and booked | pending — still waiting on the payer | failed — Lenco says it failed /
+ * expired / was cancelled | notfound — Lenco has no such collection (the charge was never sent) |
+ * unknown — couldn't tell (network / Lenco error): never act on this.
+ */
+export type CollectionOutcome = 'finalized' | 'pending' | 'failed' | 'notfound' | 'unknown';
 
 async function finalizedEntry(reference: string, organizationId: string) {
     const { data } = await supabase
@@ -37,12 +42,16 @@ export async function finalizeIfPaid(reference: string, organizationId: string):
     try {
         status = await LencoService.getCollectionStatus(reference, secretKey);
     } catch (e: any) {
+        // Lenco answers "not found" for a reference it never received (our intent was logged, the
+        // charge was never fired). That is a definite answer, unlike a network or 5xx error.
+        if (/not found/i.test(String(e?.message || ''))) return 'notfound';
         console.warn(`[CollectionRecovery] Lenco lookup failed for ${reference}: ${e.message}`);
         return 'unknown';
     }
-    if (!status) return 'pending';
-    if (status.status === 'failed') return 'failed';
-    if (status.status !== 'successful') return 'pending';
+    if (!status) return 'notfound';
+    const st = String(status.status || '').toLowerCase();
+    if (st === 'failed' || st === 'expired' || st === 'cancelled' || st === 'canceled') return 'failed';
+    if (st !== 'successful') return 'pending';
 
     try {
         await handleCollectionSuccessful(status, organizationId);
@@ -58,13 +67,18 @@ export async function finalizeIfPaid(reference: string, organizationId: string):
  * intents with app-generated references and books the ones Lenco reports as paid. Runs on the
  * automations tick; bounded by count and time so it never crowds the tick.
  */
-export async function sweepPendingDeposits(budgetMs = 8000, organizationId?: string, minAgeMs = 45_000): Promise<{ checked: number; finalized: number }> {
+export async function sweepPendingDeposits(
+    budgetMs = 8000,
+    organizationId?: string,
+    minAgeMs = 45_000,
+    opts: { discardAfterMs?: number; lookbackMs?: number } = {}
+): Promise<{ checked: number; finalized: number; discarded: number }> {
     const startedAt = Date.now();
-    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const since = new Date(Date.now() - (opts.lookbackMs ?? 24 * 60 * 60 * 1000)).toISOString();
     const settledBefore = new Date(Date.now() - minAgeMs).toISOString(); // let the live app finish first
     let query = supabase
         .from('cashbook_entries')
-        .select('external_reference, organization_id, created_at')
+        .select('id, external_reference, organization_id, created_at')
         .eq('status', 'PENDING')
         .like('description', 'PENDING_INTENT%')
         .gt('debit', 0)
@@ -78,6 +92,7 @@ export async function sweepPendingDeposits(budgetMs = 8000, organizationId?: str
 
     let checked = 0;
     let finalized = 0;
+    let discarded = 0;
     for (const row of data || []) {
         if (Date.now() - startedAt > budgetMs) break;
         if (!row.external_reference || !row.organization_id) continue;
@@ -86,7 +101,27 @@ export async function sweepPendingDeposits(budgetMs = 8000, organizationId?: str
         if (outcome === 'finalized') {
             finalized++;
             console.log(`[CollectionRecovery] Swept and booked ${row.external_reference}`);
+        } else if ((outcome === 'failed' || outcome === 'notfound') && opts.discardAfterMs !== undefined) {
+            // Only a definite "didn't go through" from Lenco, and only once the payer has had time to
+            // approve — a live prompt reads as pending, never as failed/not-found.
+            if (Date.now() - Date.parse(row.created_at) < opts.discardAfterMs) continue;
+            const { data: removed } = await supabase
+                .from('cashbook_entries')
+                .delete()
+                .eq('id', row.id)
+                .eq('status', 'PENDING')
+                .select('id');
+            if (removed && removed.length > 0) {
+                discarded++;
+                await supabase
+                    .from('product_sales')
+                    .update({ status: 'FAILED', updated_at: new Date().toISOString() })
+                    .eq('organization_id', row.organization_id)
+                    .eq('reference', row.external_reference)
+                    .eq('status', 'PENDING');
+                console.log(`[CollectionRecovery] Removed dead intent ${row.external_reference} (Lenco: ${outcome}).`);
+            }
         }
     }
-    return { checked, finalized };
+    return { checked, finalized, discarded };
 }

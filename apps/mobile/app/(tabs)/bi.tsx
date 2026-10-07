@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    View, Text, FlatList, StyleSheet, KeyboardAvoidingView, Platform, Pressable, Alert,
+    View, Text, FlatList, StyleSheet, KeyboardAvoidingView, Pressable, Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from 'expo-router';
@@ -241,7 +241,7 @@ export default function BiScreen() {
     return (
         <KeyboardAvoidingView
             style={styles.root}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            behavior="padding"
             keyboardVerticalOffset={insets.top}
         >
             {inChat ? (

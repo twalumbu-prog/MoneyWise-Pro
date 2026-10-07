@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-    Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, Platform, ActivityIndicator, Image, ScrollView
+    Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Image, ScrollView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,9 +22,9 @@ import { MobileMoneyNumberField, useMomoHolder } from '../payments/MobileMoneyNu
 const Sheet: React.FC<{ visible: boolean; onClose: () => void; title: string; children: React.ReactNode }> = ({ visible, onClose, title, children }) => {
     const insets = useSafeAreaInsets();
     return (
-        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
             <Pressable style={styles.backdrop} onPress={onClose} />
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.wrap} pointerEvents="box-none">
+            <KeyboardAvoidingView behavior="padding" style={styles.wrap} pointerEvents="box-none">
                 <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
                     <View style={styles.handle} />
                     <View style={styles.header}>
@@ -307,7 +307,7 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
 
     if (visible && collection.phase) {
         return (
-            <Modal visible animationType="slide" onRequestClose={() => { refreshLists(); onClose(); }}>
+            <Modal visible animationType="slide" onRequestClose={() => { refreshLists(); onClose(); }} statusBarTranslucent>
                 <PaymentWaitingScreen
                     phase={collection.phase}
                     amount={collection.amount}

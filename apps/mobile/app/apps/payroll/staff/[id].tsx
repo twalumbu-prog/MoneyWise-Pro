@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
     View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
-    TextInput, Alert, Modal, KeyboardAvoidingView, Platform,
+    TextInput, Alert, Modal, KeyboardAvoidingView, 
 } from 'react-native';
 import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -223,8 +223,8 @@ const EditStaffModal: React.FC<{
     });
 
     return (
-        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-            <KeyboardAvoidingView style={styles.modalRoot} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose} statusBarTranslucent>
+            <KeyboardAvoidingView style={styles.modalRoot} behavior="padding">
                 <View style={styles.modalHeader}>
                     <Text style={styles.modalTitle}>Edit Profile</Text>
                     <Pressable onPress={onClose} hitSlop={8}><X size={22} color={colors.textMuted} /></Pressable>

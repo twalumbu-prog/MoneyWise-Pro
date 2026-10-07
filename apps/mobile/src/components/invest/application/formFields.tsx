@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, Image,
+    View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requireCapability, DOC_LIMITS, toIsoDate, splitIsoDate } from 'core';
@@ -60,9 +60,9 @@ export const SelectField: React.FC<{
             </Pressable>
             {!!error && <Text style={styles.error}>{error}</Text>}
 
-            <Modal visible={open} transparent animationType="slide" onRequestClose={close}>
+            <Modal visible={open} transparent animationType="slide" onRequestClose={close} statusBarTranslucent>
                 <Pressable style={styles.backdrop} onPress={close} />
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetWrap} pointerEvents="box-none">
+                <KeyboardAvoidingView behavior="padding" style={styles.sheetWrap} pointerEvents="box-none">
                     <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
                         <View style={styles.handle} />
                         <View style={styles.sheetHeader}>
@@ -273,7 +273,7 @@ export const DocUploadCard: React.FC<{
             </Pressable>
             {!!shownError && <Text style={styles.error}>{shownError}</Text>}
 
-            <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)}>
+            <Modal visible={sheet} transparent animationType="slide" onRequestClose={() => setSheet(false)} statusBarTranslucent>
                 <Pressable style={styles.backdrop} onPress={() => setSheet(false)} />
                 <View style={styles.sheetWrap} pointerEvents="box-none">
                     <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
