@@ -28,6 +28,10 @@
       "ios": {
         "appleId": "masterfees101@gmail.com",
         "ascAppId": "6818773296"
+      },
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed"
       }
     }
   }
