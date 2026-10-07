@@ -46,6 +46,10 @@ router.post('/:id/deposit', handle((req) => savingsService.deposit({
     goalId: req.params.id, orgId: req.user.organization_id, userId: req.user.id,
     amount: req.body?.amount, sourceWalletId: req.body?.sourceWalletId,
 })));
+router.post('/:id/member-deposit', handle((req) => savingsService.memberWalletDeposit({
+    goalId: req.params.id, orgId: req.user.organization_id, userId: req.user.id,
+    amount: req.body?.amount, sourceWalletId: req.body?.sourceWalletId,
+})));
 router.post('/:id/withdraw', handle((req) => savingsService.withdraw({
     goalId: req.params.id, orgId: req.user.organization_id, userId: req.user.id,
     amount: req.body?.amount, destinationWalletId: req.body?.destinationWalletId,

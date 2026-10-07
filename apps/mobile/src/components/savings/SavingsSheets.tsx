@@ -251,8 +251,8 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
 
     useEffect(() => {
         if (!visible) return;
-        setMethod(isOwner ? 'WALLET' : 'MOBILE_MONEY'); setAmount(''); setPhone(''); setError(null); setStage('form');
-    }, [visible, isOwner]);
+        setMethod('WALLET'); setAmount(''); setPhone(''); setError(null); setStage('form');
+    }, [visible, isOwner, item?.id]);
     useEffect(() => { if (!walletId && wallets.length) setWalletId(wallets[0].id); }, [wallets, walletId]);
 
     const { operator, holder, resolving, resolveFailed } = useMomoHolder(phone, method === 'MOBILE_MONEY');
@@ -274,7 +274,20 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
         if (!selected) { setError('Choose a wallet to pay from.'); return; }
         if (selected.balance < value) { setError(`Not enough in ${selected.name}.`); return; }
         setBusy(true); setError(null);
-        try { await savingsService.deposit(item.id, value, selected.id); setStage('done'); }
+        try {
+            if (isOwner) {
+                await savingsService.deposit(item.id, value, selected.id);
+                setStage('done');
+            } else {
+                // A member's wallet is in a different organization from the group's: a real Lenco transfer.
+                const r = await savingsService.memberDeposit(item.id, value, selected.id);
+                if (r.status === 'CONFIRMED') setStage('done');
+                else if (r.status === 'PENDING') {
+                    setError('Your transfer is on its way. It can take a minute to confirm — it will show in the group once it lands.');
+                    refreshLists();
+                } else setError('The transfer didn’t go through. Nothing was taken from your wallet.');
+            }
+        }
         catch (e: any) { setError(e?.message || 'Could not add the money.'); }
         finally { setBusy(false); }
     };
@@ -343,7 +356,7 @@ export const AddMoneySheet: React.FC<{ visible: boolean; item: SavingsItem | nul
             ) : (
                 <>
                     <Banner text={error || collection.error} />
-                    {isOwner && (
+                    {(isOwner || item?.kind === 'GROUP') && (
                         <View style={styles.methodRow}>
                             {(['WALLET', 'MOBILE_MONEY'] as const).map((m) => (
                                 <Pressable key={m} onPress={() => { setMethod(m); setError(null); collection.setError(null); }} style={[styles.methodBtn, method === m && styles.methodBtnOn]}>

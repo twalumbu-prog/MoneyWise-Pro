@@ -212,6 +212,20 @@ export class LencoService {
         }
     }
 
+    /** Lenco account details (type, name, tillNumber, balances) — read-only. */
+    static async getAccountDetails(accountId: string, secretKey?: string) {
+        try {
+            const response = await axios.get(`${this.BASE_URL}/accounts/${accountId}`, {
+                headers: this.getHeaders(secretKey),
+                timeout: 20000
+            });
+            return response.data.data;
+        } catch (error: any) {
+            console.error('Lenco account details failed:', error.response?.data || error.message);
+            throw new Error(error.response?.data?.message || 'Failed to fetch account details');
+        }
+    }
+
     /**
      * Get account balance
      */

@@ -107,6 +107,11 @@ export const savingsService = {
         return apiJson('/savings/join', { method: 'POST', body: JSON.stringify({ code }) });
     },
     /** Registers a mobile-money contribution to a group before paying; returns where to collect it. */
+    /** A group member (another organization) pays from their own wallet by a real Lenco transfer. */
+    memberDeposit(id: string, amount: number, sourceWalletId: string): Promise<{ status: 'CONFIRMED' | 'PENDING' | 'FAILED'; reference: string; balance: number }> {
+        return apiJson(`/savings/${id}/member-deposit`, { method: 'POST', body: JSON.stringify({ amount, sourceWalletId }) });
+    },
+
     startContribution(id: string, amount: number, reference: string): Promise<{ walletId: string; organizationId: string; name: string }> {
         return apiJson(`/savings/${id}/contributions`, { method: 'POST', body: JSON.stringify({ amount, reference }) });
     },

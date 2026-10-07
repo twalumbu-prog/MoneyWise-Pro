@@ -16,6 +16,7 @@ import { cashbookService } from './cashbook.service';
 import { pushService } from './push.service';
 import { finalizeIfPaid } from './collectionRecovery.service';
 import { ensureSavingsTransferAccount } from './ledger.service';
+import { LencoService } from './lenco.service';
 import { classifyRecentSavingsEntries } from './inflowClassifier.service';
 
 export type SavingsKind = 'WISHLIST' | 'GOAL' | 'GROUP';
@@ -157,7 +158,7 @@ async function settleMine(userId: string, goalIds?: string[]) {
     let q = supabase
         .from('savings_contributions')
         .select('*, goal:savings_goals(organization_id)')
-        .eq('user_id', userId).eq('status', 'PENDING').eq('method', 'MOBILE_MONEY')
+        .eq('user_id', userId).eq('status', 'PENDING').in('method', ['MOBILE_MONEY', 'WALLET'])
         .gt('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
         .order('created_at', { ascending: false })
         .limit(3);
@@ -165,8 +166,77 @@ async function settleMine(userId: string, goalIds?: string[]) {
     const { data } = await q;
     await Promise.all((data ?? []).map((c: any) => {
         const goal = Array.isArray(c.goal) ? c.goal[0] : c.goal;
-        return goal?.organization_id ? settleContribution(c, goal.organization_id).catch(() => undefined) : undefined;
+        if (String(c.reference || '').startsWith('SVT-')) return settleWalletTransfer(c).catch(() => undefined);
+        return goal?.organization_id && c.method === 'MOBILE_MONEY' ? settleContribution(c, goal.organization_id).catch(() => undefined) : undefined;
     }));
+}
+
+
+/**
+ * A group member paying from their OWN MoneyWise wallet. They belong to a different organization from the
+ * group's owner, so this is a real Lenco merchant-to-merchant transfer (member's Lenco account → the
+ * owner's), not a ledger-only move: balances stay true on both sides. The two ledger entries are booked
+ * only once Lenco confirms the transfer, both carrying the transfer's reference so the 5-minute Lenco
+ * sync recognises them instead of logging the same movement a second time.
+ */
+async function bookWalletTransfer(c: any, goal: any, memberOrgId: string, sourceWalletId: string, sourceWalletName: string, amount: number) {
+    // Flip PENDING → CONFIRMED first: only the caller that wins this update books the entries (idempotent).
+    const { data: won } = await supabase.from('savings_contributions')
+        .update({ status: 'CONFIRMED', confirmed_at: new Date().toISOString() })
+        .eq('id', c.id).eq('status', 'PENDING').select('id');
+    if (!won || won.length === 0) return;
+
+    const ref = c.reference as string;
+    const label = `Savings contribution: ${sourceWalletName} ➜ ${goal.name}`;
+    const [memberAcct, ownerAcct] = await Promise.all([ensureSavingsTransferAccount(memberOrgId), ensureSavingsTransferAccount(goal.organization_id)]);
+    const classified = (id: string | null) => (id ? { account_id: id, status: 'ACCOUNTED' } : { status: 'COMPLETED' });
+
+    await cashbookService.createEntry(memberOrgId, {
+        entry_type: 'ADJUSTMENT', description: `${label} (Outflow) | Ref: ${ref}`, debit: 0, credit: amount, date: today(),
+        created_by: c.user_id, account_type: 'MONEYWISE_WALLET', wallet_id: sourceWalletId, external_reference: ref, ...classified(memberAcct),
+    } as any);
+    await cashbookService.createEntry(goal.organization_id, {
+        entry_type: 'ADJUSTMENT', description: `${label} (Inflow) | Ref: ${ref}`, debit: amount, credit: 0, date: today(),
+        created_by: c.user_id, account_type: 'MONEYWISE_WALLET', wallet_id: goal.wallet_id, external_reference: ref, ...classified(ownerAcct),
+    } as any);
+}
+
+/** Asks Lenco whether a pending member wallet transfer went through; books it or fails it. */
+async function settleWalletTransfer(c: any): Promise<'CONFIRMED' | 'PENDING' | 'FAILED'> {
+    const meta = (c.meta || {}) as any;
+    const { data: goal } = await supabase.from('savings_goals').select('*').eq('id', c.goal_id).maybeSingle();
+    const { data: member } = await supabase.from('savings_group_members').select('organization_id').eq('goal_id', c.goal_id).eq('user_id', c.user_id).maybeSingle();
+    if (!goal || !member?.organization_id) return 'PENDING';
+    const { data: org } = await supabase.from('organizations').select('lenco_secret_key').eq('id', member.organization_id).maybeSingle();
+    let status: any = null;
+    try { status = await LencoService.getTransferStatus(c.reference, (org as any)?.lenco_secret_key || undefined); } catch { return 'PENDING'; }
+    const st = String(status?.status || '').toLowerCase();
+    if (st === 'successful') {
+        const wallet = meta.sourceWalletId ? meta : await loadTransferSource(c.reference);
+        if (!wallet?.sourceWalletId) return 'PENDING';
+        await bookWalletTransfer(c, goal, member.organization_id, wallet.sourceWalletId, wallet.sourceWalletName || 'MoneyWise wallet', Number(c.amount));
+        return 'CONFIRMED';
+    }
+    if (st === 'failed' || st === 'declined' || st === 'rejected') {
+        await supabase.from('savings_contributions').update({ status: 'FAILED' }).eq('id', c.id).eq('status', 'PENDING');
+        return 'FAILED';
+    }
+    if (!status && Date.now() - new Date(c.created_at).getTime() > 60 * 60 * 1000) {
+        // Lenco has never heard of it an hour later: the transfer was never sent.
+        await supabase.from('savings_contributions').update({ status: 'FAILED' }).eq('id', c.id).eq('status', 'PENDING');
+        return 'FAILED';
+    }
+    return 'PENDING';
+}
+
+/** The source wallet for a pending transfer is remembered in app_settings (no schema change needed). */
+const transferKey = (ref: string) => `savings_transfer:${ref}`;
+async function rememberTransferSource(ref: string, sourceWalletId: string, sourceWalletName: string) {
+    await supabase.from('app_settings').upsert({ key: transferKey(ref), value: { sourceWalletId, sourceWalletName }, description: 'Pending group-savings wallet transfer (safe to delete once settled).', updated_at: new Date().toISOString() }, { onConflict: 'key' });
+}
+async function loadTransferSource(ref: string): Promise<{ sourceWalletId?: string; sourceWalletName?: string } | null> {
+    const { data } = await supabase.from('app_settings').select('value').eq('key', transferKey(ref)).maybeSingle();
+    return (data?.value as any) ?? null;
 }
 
 export const savingsService = {
@@ -370,6 +440,74 @@ export const savingsService = {
             });
         }
         return { balance: await walletBalance(goal.organization_id, goal.wallet_id) };
+    },
+
+
+    /**
+     * A group MEMBER (another organization) adds money from their own MoneyWise wallet by a real Lenco
+     * transfer into the group's wallet. See bookWalletTransfer for how/when it's booked.
+     */
+    async memberWalletDeposit(params: { goalId: string; orgId: string; userId: string; amount: unknown; sourceWalletId: string }) {
+        const goal = await loadGoal(params.goalId);
+        if (!goal || goal.kind !== 'GROUP') throw new SavingsError('NOT_FOUND', 'Savings not found', 404);
+        const role = await access(goal, params.orgId, params.userId);
+        if (role === 'OWNER') return this.deposit(params);          // same organization: the normal ledger move
+        if (role !== 'MEMBER') throw new SavingsError('NOT_FOUND', 'Savings not found', 404);
+
+        const amount = round2(Number(params.amount));
+        if (!Number.isFinite(amount) || amount <= 0) throw new SavingsError('VALIDATION', 'Enter an amount');
+
+        const { data: src } = await supabase.from('organization_wallets').select('id, name').eq('id', params.sourceWalletId).eq('organization_id', params.orgId).maybeSingle();
+        if (!src) throw new SavingsError('WALLET_NOT_FOUND', 'Wallet not found', 404);
+        const ledger = await walletBalance(params.orgId, src.id);
+        if (ledger < amount) throw new SavingsError('INSUFFICIENT_FUNDS', `Not enough in ${src.name}. Available: K${ledger.toFixed(2)}`);
+
+        const [{ data: memberOrg }, { data: ownerOrg }] = await Promise.all([
+            supabase.from('organizations').select('lenco_subaccount_id, lenco_secret_key').eq('id', params.orgId).maybeSingle(),
+            supabase.from('organizations').select('lenco_subaccount_id, lenco_secret_key').eq('id', goal.organization_id).maybeSingle(),
+        ]);
+        const mKey = (memberOrg as any)?.lenco_secret_key as string | undefined;
+        const oKey = (ownerOrg as any)?.lenco_secret_key as string | undefined;
+        if (!(memberOrg as any)?.lenco_subaccount_id || !(ownerOrg as any)?.lenco_subaccount_id || !mKey || !oKey) {
+            throw new SavingsError('UNAVAILABLE', 'Paying from a wallet isn’t available for this group right now. Please pay by mobile money.', 409);
+        }
+
+        // The money must really be in the member's Lenco account, not just on the ledger.
+        const real = await LencoService.getAccountBalance((memberOrg as any).lenco_subaccount_id, mKey).catch(() => null);
+        const available = Number(real?.availableBalance ?? real?.balance ?? NaN);
+        if (Number.isFinite(available) && available < amount) {
+            throw new SavingsError('INSUFFICIENT_FUNDS', `Your wallet doesn’t have K${amount.toFixed(2)} available at the moment.`);
+        }
+
+        const owner = await LencoService.getAccountDetails((ownerOrg as any).lenco_subaccount_id, oKey).catch(() => null);
+        const till = owner?.details?.tillNumber ? String(owner.details.tillNumber) : '';
+        if (!till) throw new SavingsError('UNAVAILABLE', 'The group’s wallet can’t receive a wallet transfer right now. Please pay by mobile money.', 409);
+
+        const reference = `SVT-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+        const { data: contribution, error: insErr } = await supabase.from('savings_contributions').insert({
+            goal_id: goal.id, user_id: params.userId, display_name: await displayName(params.userId), amount,
+            method: 'WALLET', reference, status: 'PENDING',
+        }).select('*').single();
+        if (insErr || !contribution) throw new Error(`Could not record the contribution: ${insErr?.message}`);
+        await rememberTransferSource(reference, src.id, src.name);
+
+        try {
+            await LencoService.transferToLencoMerchant(
+                { amount, reference, tillNumber: till, narration: `Savings: ${goal.name}`.slice(0, 60) },
+                (memberOrg as any).lenco_subaccount_id, mKey,
+            );
+        } catch (e: any) {
+            await supabase.from('savings_contributions').update({ status: 'FAILED' }).eq('id', contribution.id);
+            throw new SavingsError('TRANSFER_FAILED', e?.message || 'The transfer could not be started. Nothing was taken.', 502);
+        }
+
+        // Lenco on-us transfers normally settle within seconds: wait briefly, otherwise settle later.
+        let outcome: 'CONFIRMED' | 'PENDING' | 'FAILED' = 'PENDING';
+        for (let i = 0; i < 6 && outcome === 'PENDING'; i++) {
+            await new Promise((r) => setTimeout(r, 1500));
+            outcome = await settleWalletTransfer(contribution).catch(() => 'PENDING' as const);
+        }
+        return { status: outcome, reference, balance: await walletBalance(goal.organization_id, goal.wallet_id) };
     },
 
     /** "Transfer": move money back out of the savings wallet. Owner organization only. */
