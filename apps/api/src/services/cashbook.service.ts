@@ -440,7 +440,11 @@ export const cashbookService = {
         // time-boxed) so it isn't cut off when a serverless handler returns; business orgs are untouched.
         if (!opts.account_id) {
             try {
-                const { classifyPersonalInflow } = await import('./inflowClassifier.service');
+                const { classifyPersonalInflow, classifySavingsEntry } = await import('./inflowClassifier.service');
+                // A deposit into a savings pot is deterministic (known destination) — no AI involved.
+                if (await classifySavingsEntry(organizationId, fresh || updated)) {
+                    console.log(`[Cashbook] Savings deposit ${intentId} classified.`);
+                }
                 const done = await Promise.race([
                     classifyPersonalInflow(organizationId, fresh || updated),
                     new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),

@@ -155,3 +155,72 @@ export async function classifyOneEntry(organizationId: string, entryId: string):
 
     return { classified: true, account: { id: match.id, code: match.code ?? null, name: match.name }, confidence: decision.confidence, reasoning: decision.reasoning };
 }
+
+
+/**
+ * Savings entries are deterministic: money moving in or out of a savings pot has a known source and
+ * destination, so it is classified straight to the org's "Savings Transfers" account — no AI, no
+ * confidence threshold. Covers entries created before this existed and deposits that arrive from
+ * outside (Lenco / mobile money) through the webhook or the sync.
+ */
+async function isSavingsWallet(walletId: string | null | undefined): Promise<boolean> {
+    if (!walletId) return false;
+    const { data } = await supabase.from('organization_wallets').select('name').eq('id', walletId).maybeSingle();
+    return /\(savings\)$/i.test(String((data as any)?.name || ''));
+}
+
+export async function classifySavingsEntry(organizationId: string, entry: any): Promise<boolean> {
+    try {
+        if (!entry?.id || entry.account_id || entry.status === 'PENDING') return false;
+        if (Math.abs(Number(entry.debit || 0) - Number(entry.credit || 0)) < 0.005) return false; // opening / zero markers
+        if (!(await isSavingsWallet(entry.wallet_id))) return false;
+
+        const { ensureSavingsTransferAccount } = await import('./ledger.service');
+        const accountId = await ensureSavingsTransferAccount(organizationId);
+        if (!accountId) return false;
+
+        const { data: updated } = await supabase
+            .from('cashbook_entries')
+            .update({ account_id: accountId, status: entry.status === 'COMPLETED' ? 'ACCOUNTED' : entry.status })
+            .eq('id', entry.id)
+            .eq('organization_id', organizationId)
+            .is('account_id', null)
+            .select('id')
+            .maybeSingle();
+        if (!updated) return false;
+
+        const { ledgerService } = await import('./ledger.service');
+        await ledgerService.repostForCashbookEntry(entry.id).catch((e: any) =>
+            console.error(`[InflowClassifier] savings repost failed for ${entry.id}:`, e?.message));
+        return true;
+    } catch (e: any) {
+        console.error('[InflowClassifier] savings classify failed:', e?.message);
+        return false;
+    }
+}
+
+/** Catch-up: classify any savings-wallet entry that is still unassigned. Two cheap queries when there is nothing to do. */
+export async function classifyRecentSavingsEntries(organizationId: string, limit = 40): Promise<number> {
+    try {
+        const { data: wallets } = await supabase
+            .from('organization_wallets')
+            .select('id')
+            .eq('organization_id', organizationId)
+            .ilike('name', '%(Savings)');
+        const ids = (wallets || []).map((w: any) => w.id);
+        if (ids.length === 0) return 0;
+
+        const { data } = await supabase
+            .from('cashbook_entries')
+            .select('*')
+            .eq('organization_id', organizationId)
+            .in('wallet_id', ids)
+            .is('account_id', null)
+            .neq('status', 'PENDING')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+        let done = 0;
+        for (const e of data || []) if (await classifySavingsEntry(organizationId, e)) done++;
+        return done;
+    } catch { return 0; }
+}

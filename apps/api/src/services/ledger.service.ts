@@ -120,6 +120,41 @@ async function getOrCreateSuspenseAccount(orgId: string): Promise<string | null>
     return data.id;
 }
 
+const CODE_SAVINGS_TRANSFER = 'SYS-SAVINGS-TRANSFER';
+
+/**
+ * The per-org "Savings Transfers" equity account: the deterministic classification of every
+ * movement in or out of a savings pot. A wallet→savings transfer posts as two independent entries
+ * (cash leg + contra each), so their contras cancel in this one account — exactly what Suspense
+ * did before, but named and classified so the transaction shows a real line item instead of
+ * "Assign…". Created on first use.
+ */
+export async function ensureSavingsTransferAccount(orgId: string): Promise<string | null> {
+    const existing = await getAccountIdByCode(orgId, CODE_SAVINGS_TRANSFER);
+    if (existing) return existing;
+    const { data, error } = await supabase
+        .from('accounts')
+        .insert({
+            organization_id: orgId,
+            code: CODE_SAVINGS_TRANSFER,
+            name: 'Savings Transfers',
+            type: 'EQUITY',
+            subtype: 'Equity',
+            description: 'Money moved into and out of savings pots (wishlist, goals, group savings). Nets to zero between wallets.',
+        })
+        .select('id')
+        .single();
+    if (error || !data) {
+        // A concurrent request may have created it a moment ago.
+        accountCodeCache.delete(`${orgId}:${CODE_SAVINGS_TRANSFER}`);
+        const again = await getAccountIdByCode(orgId, CODE_SAVINGS_TRANSFER);
+        if (!again) console.error(`[Ledger] Failed to create Savings Transfers account for org ${orgId}:`, error?.message);
+        return again;
+    }
+    accountCodeCache.set(`${orgId}:${CODE_SAVINGS_TRANSFER}`, data.id);
+    return data.id;
+}
+
 /** Resolve the ASSET account that represents the wallet/cash this entry moved. */
 async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
     const orgId = ce.organization_id;

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth';
 import { sweepPendingDeposits } from '../services/collectionRecovery.service';
-import { classifyRecentPersonalInflows, classifyOneEntry } from '../services/inflowClassifier.service';
+import { classifyRecentPersonalInflows, classifyOneEntry, classifyRecentSavingsEntries } from '../services/inflowClassifier.service';
 import {
     getCashbookEntries,
     getCashBalance,
@@ -102,7 +102,7 @@ router.post('/settle-pending', async (req: any, res: any) => {
     try {
         const result = await sweepPendingDeposits(10_000, orgId, 0);
         // Personal accounts: catch up any deposit that landed uncategorised.
-        const classified = await classifyRecentPersonalInflows(orgId).catch(() => 0);
+        const classified = (await classifyRecentPersonalInflows(orgId).catch(() => 0)) + (await classifyRecentSavingsEntries(orgId).catch(() => 0));
         res.json({ ...result, classified });
     } catch (error: any) {
         console.error('[Cashbook] settle-pending', error);

@@ -15,6 +15,8 @@ import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { pushService } from './push.service';
 import { finalizeIfPaid } from './collectionRecovery.service';
+import { ensureSavingsTransferAccount } from './ledger.service';
+import { classifyRecentSavingsEntries } from './inflowClassifier.service';
 
 export type SavingsKind = 'WISHLIST' | 'GOAL' | 'GROUP';
 
@@ -67,14 +69,19 @@ async function moveBetweenWallets(orgId: string, userId: string, fromId: string,
     const available = await walletBalance(orgId, fromId);
     if (available < amount) throw new SavingsError('INSUFFICIENT_FUNDS', `Not enough in ${from.name}. Available: K${available.toFixed(2)}`);
 
+    // Source and destination are both known, so the movement is classified here — no AI, nothing left
+    // for the user to assign. Both legs carry the same account; their contras cancel in the ledger.
+    const accountId = await ensureSavingsTransferAccount(orgId);
+    const classified = accountId ? { account_id: accountId, status: 'ACCOUNTED' } : { status: 'COMPLETED' };
+
     const desc = `${label}: ${from.name} ➜ ${to.name}`;
     await cashbookService.createEntry(orgId, {
         entry_type: 'ADJUSTMENT', description: `${desc} (Outflow)`, debit: 0, credit: amount, date: today(),
-        created_by: userId, account_type: 'MONEYWISE_WALLET', wallet_id: fromId, status: 'COMPLETED',
+        created_by: userId, account_type: 'MONEYWISE_WALLET', wallet_id: fromId, ...classified,
     } as any);
     await cashbookService.createEntry(orgId, {
         entry_type: 'ADJUSTMENT', description: `${desc} (Inflow)`, debit: amount, credit: 0, date: today(),
-        created_by: userId, account_type: 'MONEYWISE_WALLET', wallet_id: toId, status: 'COMPLETED',
+        created_by: userId, account_type: 'MONEYWISE_WALLET', wallet_id: toId, ...classified,
     } as any);
 }
 
@@ -276,6 +283,7 @@ export const savingsService = {
     /** Everything the caller can see: their own org's savings plus groups they've joined. */
     async list(orgId: string, userId: string) {
         await settleMine(userId).catch(() => undefined);
+        await classifyRecentSavingsEntries(orgId).catch(() => 0); // anything still unassigned in a savings pot
         const { data: own } = await supabase
             .from('savings_goals').select('*').eq('organization_id', orgId).eq('status', 'ACTIVE').order('created_at', { ascending: false });
         const { data: memberships } = await supabase.from('savings_group_members').select('goal_id').eq('user_id', userId);

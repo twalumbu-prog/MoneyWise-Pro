@@ -2216,7 +2216,12 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
     // duplicate inflows (incident CR-2026-0085/0086), so correctness wins over
     // squeezing more orgs into one cycle; deferred orgs rotate in next run.
     const SYNC_START_MS = Date.now();
-    const SYNC_TIME_BUDGET_MS = 15_000;
+    // 32 s (was 15 s). That ceiling existed because ONE org's run could take 15 s on its own (the
+    // full ~9 s collections download + ~0.7 s per transaction). With the incremental sync an org
+    // typically takes 1–3 s, so 32 s lets every org be reached each run and still leaves ~13 s
+    // under the 45 s function limit for the org in flight when the budget runs out. The daily full
+    // pass is the one slow case — see the deferral below, which keeps it near the front of a run.
+    const SYNC_TIME_BUDGET_MS = 32_000;
 
     try {
         // 1. Fetch all organizations with a linked Lenco subaccount, oldest-synced first
@@ -2259,6 +2264,17 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             const orgId = org.id;
             const subaccountId = org.lenco_subaccount_id;
             const secretKey = org.lenco_secret_key || process.env.LENCO_SECRET_KEY;
+
+            // A due daily FULL pass can take ~25–30 s on a big org. If this run is already well in, put it
+            // off WITHOUT stamping the org: it stays first in line (oldest-synced), so the next run starts
+            // with it while there is plenty of time. Orgs with no marker yet must still do their first pass.
+            if (Date.now() - SYNC_START_MS > 8_000) {
+                const early = await readSyncMarker(org.id);
+                if (early && Date.now() - early.fullAtMs > SYNC_FULL_PASS_MS) {
+                    console.log(`[Lenco Sync] ${org.name}: full pass is due — deferring to the start of the next run.`);
+                    continue;
+                }
+            }
 
             // Stamp every attempted org immediately so a hung/slow org doesn't
             // keep re-sorting to the front of the next cycle's queue.
