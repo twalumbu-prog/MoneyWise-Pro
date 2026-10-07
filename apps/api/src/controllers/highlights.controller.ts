@@ -33,6 +33,113 @@ const pctChange = (curr: number, prev: number) => {
     return Math.round(((curr - prev) / Math.abs(prev)) * 100);
 };
 
+/** Kwacha for a person: keeps ngwee when they matter (K12.50), drops them when they don't (K500). */
+const kwacha = (n: number) => {
+    const v = Math.abs(n);
+    return `K${v.toLocaleString('en-US', { minimumFractionDigits: v % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
+};
+
+/**
+ * The same week, told for a PERSON rather than a business: money received, where it went, what was
+ * kept, and what went into savings. No "sales", no "profit", no "your business". Every figure here
+ * already excludes money moved between the person's own pots (see highlights.service).
+ */
+export function buildPersonalHighlightCards(
+    current: PeriodSummary,
+    previous: PeriodSummary,
+    achievements: Achievement[] = []
+): HighlightCard[] {
+    const cards: HighlightCard[] = [];
+
+    for (const a of achievements.slice(0, 2)) {
+        const title = achievementTitle(a, true);
+        const beat = a.previous_value
+            ? ` That beats your previous best of ${kwacha(Number(a.previous_value))}.`
+            : ' That\'s your first record — a good start!';
+        cards.push({
+            id: `achievement-${a.id}`,
+            tone: 'positive',
+            title,
+            body: `${kwacha(Number(a.value))} — ${title.toLowerCase()}.${beat}`,
+        });
+    }
+
+    // What came in.
+    if (current.revenue > 0 || previous.revenue > 0) {
+        const diff = Math.abs(current.revenue - previous.revenue);
+        let body: string;
+        if (current.revenue === 0) {
+            body = `Nothing has come in this week yet. Last week you received ${kwacha(previous.revenue)}.`;
+        } else if (previous.revenue === 0) {
+            body = `You received ${kwacha(current.revenue)} this week.`;
+        } else {
+            body = `You received ${kwacha(current.revenue)} this week — ${kwacha(diff)} ${current.revenue >= previous.revenue ? 'more' : 'less'} than last week.`;
+        }
+        cards.push({
+            id: 'revenue',
+            tone: current.revenue >= previous.revenue ? 'positive' : 'neutral',
+            title: 'Money you received',
+            body,
+        });
+    }
+
+    // Where it went.
+    if (current.spending > 0 || previous.spending > 0) {
+        const top = current.categories[0];
+        const topLine = top ? ` Mostly ${top.name} (${kwacha(top.amount)}).` : '';
+        const trend = previous.spending > 0
+            ? `, ${current.spending <= previous.spending ? 'down' : 'up'} from ${kwacha(previous.spending)} last week`
+            : '';
+        cards.push({
+            id: 'spending',
+            tone: current.spending <= previous.spending ? 'positive' : 'neutral',
+            title: 'Where your money went',
+            body: current.spending === 0
+                ? `You haven't spent anything this week. Last week you spent ${kwacha(previous.spending)}.`
+                : `You spent ${kwacha(current.spending)} this week${trend}.${topLine}`,
+        });
+    }
+
+    // What's left.
+    if (current.revenue > 0 || current.spending > 0) {
+        const kept = current.profit;
+        const share = current.revenue > 0 ? Math.round((kept / current.revenue) * 100) : null;
+        cards.push({
+            id: 'profit',
+            tone: kept >= 0 ? 'positive' : 'warning',
+            title: kept >= 0 ? 'What you kept' : 'You overspent this week',
+            body: kept >= 0
+                ? (share !== null && current.revenue > 0
+                    ? `You kept ${kwacha(kept)} of the ${kwacha(current.revenue)} you received (${share}%). Nice work.`
+                    : `You've kept ${kwacha(kept)} so far this week.`)
+                : `You spent ${kwacha(kept)} more than you received this week. Have a look at where it went.`,
+        });
+    }
+
+    // Savings.
+    if (Math.abs(current.saved) > 0.004) {
+        cards.push({
+            id: 'saved',
+            tone: current.saved > 0 ? 'positive' : 'neutral',
+            title: current.saved > 0 ? 'Put into savings' : 'Taken from savings',
+            body: current.saved > 0
+                ? `You moved ${kwacha(current.saved)} into your savings this week. Great habit!`
+                : `You took ${kwacha(current.saved)} out of your savings this week.`,
+        });
+    }
+
+    if (current.topInflow && current.topInflow.amount > 0) {
+        cards.push({
+            id: 'top-inflow',
+            tone: 'positive',
+            title: 'Biggest deposit',
+            body: `Your largest deposit this week was ${kwacha(current.topInflow.amount)} — ${current.topInflow.label}.`,
+        });
+    }
+
+    return cards;
+}
+
 /**
  * Turn a week's figures into the headline cards.
  *
@@ -46,6 +153,8 @@ export function buildHighlightCards(
     previous: PeriodSummary,
     achievements: Achievement[] = []
 ): HighlightCard[] {
+    if (current.personal) return buildPersonalHighlightCards(current, previous, achievements);
+
     const cards: HighlightCard[] = [];
 
     // Achievements lead — a broken record is the most interesting thing that
@@ -118,7 +227,7 @@ export function buildHighlightCards(
  * to soften or mangle the record figures. Falls back to the deterministic copy
  * whenever the model is unavailable or returns something unusable.
  */
-async function phraseWithAI(cards: HighlightCard[]): Promise<HighlightCard[]> {
+async function phraseWithAI(cards: HighlightCard[], personal = false): Promise<HighlightCard[]> {
     const geminiApiKey = process.env.GEMINI_API_KEY;
     if (!geminiApiKey) return cards;
 
@@ -128,7 +237,7 @@ async function phraseWithAI(cards: HighlightCard[]): Promise<HighlightCard[]> {
 
     try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiApiKey}`;
-        const prompt = `You are a friendly financial assistant for a small-business owner using MoneyWise.
+        const prompt = `You are a friendly financial assistant for ${personal ? 'a person managing their own personal money (not a business — never say sales, customers, profit or business)' : 'a small-business owner'} using MoneyWise.
 Rewrite each of these raw financial signals as an upbeat, bite-size highlight. Keep each body under 30 words, plain and encouraging, currency stays in Kwacha (K). Do NOT invent numbers or change any figure — only rephrase what's given.
 Return STRICT JSON: {"cards":[{"id","title","body","tone"}]}. Keep the same id and tone for each signal, same order.
 
@@ -216,7 +325,7 @@ export const getFinancialHighlights = async (req: AuthRequest, res: Response) =>
         }
 
         return res.json({
-            cards: (await phraseWithAI(cards)).slice(0, 6),
+            cards: (await phraseWithAI(cards, current.personal)).slice(0, 6),
             headline: {
                 revenue: current.revenue,
                 spending: current.spending,
@@ -233,7 +342,7 @@ export const getFinancialHighlights = async (req: AuthRequest, res: Response) =>
                 previousValue: a.previous_value === null ? null : Number(a.previous_value),
                 periodStart: a.period_start,
                 periodEnd: a.period_end,
-                title: achievementTitle(a),
+                title: achievementTitle(a, current.personal),
             })),
         });
     } catch (err: any) {

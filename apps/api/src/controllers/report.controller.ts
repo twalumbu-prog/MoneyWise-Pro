@@ -1,3 +1,4 @@
+import { isPersonalOrganization } from '../lib/orgType';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 
@@ -34,18 +35,6 @@ async function isOrgFullyPosted(organizationId: string): Promise<boolean> {
         .select('id', { count: 'exact', head: true })
         .eq('organization_id', organizationId);
     return (count ?? 0) > 0;
-}
-
-/** Personal accounts (one person's money) vs businesses — the same name-based test used across the codebase. */
-async function isPersonalOrganization(organizationId: string): Promise<boolean> {
-    const withFlag = await supabase.from('organizations').select('name, is_personal').eq('id', organizationId).maybeSingle();
-    const row: any = withFlag.error
-        ? (await supabase.from('organizations').select('name').eq('id', organizationId).maybeSingle()).data
-        : withFlag.data;
-    if (!row) return false;
-    if (row.is_personal === true) return true;
-    const n = String(row.name || '').toLowerCase();
-    return n.includes('workspace') || n.includes('personal') || n.includes('individual') || n.includes('private');
 }
 
 /** The equity account that accumulated income − expense is rolled onto: Personal Equity for a person, Retained Earnings for a business. */

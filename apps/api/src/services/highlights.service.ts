@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { isPersonalOrganization } from '../lib/orgType';
 
 /**
  * Financial Highlights — the shared money-movement maths behind the Highlights
@@ -37,6 +38,10 @@ export interface PeriodSummary {
     revenueCategories: CategoryTotal[];
     /** Largest single inflow in the window, for the "biggest win" line. */
     topInflow: { label: string; amount: number } | null;
+    /** A personal account: figures exclude money moved between your own pots, and the wording is personal. */
+    personal: boolean;
+    /** Personal only: net money moved INTO savings pots in the window (negative = taken out). */
+    saved: number;
 }
 
 /** Something the weekly report thinks an admin should look into. */
@@ -58,6 +63,7 @@ export interface Achievement {
 }
 
 interface LedgerRow {
+    wallet_id?: string | null;
     date: string | null;
     created_at: string;
     debit: number | string | null;
@@ -111,14 +117,56 @@ const cleanLabel = (description: string | null): string => {
 };
 
 /**
+ * Personal accounts: what counts as money in / money out.
+ *
+ * A person's "income" is money that arrives from outside, and "spending" is money that leaves —
+ * NOT money they shuffle between their own pots. So these are all excluded: anything in or out of a
+ * savings pot (deposits, transfers, goal contributions), cash→wallet transfers, investments, and
+ * change returned on a request. Without this a K5 salary that was then saved read as K10 of income.
+ */
+interface PersonalCtx { savingsWalletIds: Set<string>; savingsTransferAccountId: string | null }
+
+async function loadPersonalCtx(organizationId: string): Promise<PersonalCtx> {
+    const [wallets, acct] = await Promise.all([
+        supabase.from('organization_wallets').select('id').eq('organization_id', organizationId).ilike('name', '%(Savings)'),
+        supabase.from('accounts').select('id').eq('organization_id', organizationId).eq('code', 'SYS-SAVINGS-TRANSFER').maybeSingle(),
+    ]);
+    return {
+        savingsWalletIds: new Set((wallets.data || []).map((w: any) => w.id as string)),
+        savingsTransferAccountId: (acct.data as any)?.id ?? null,
+    };
+}
+
+const PERSONAL_OWN_MONEY = /^(savings( deposit| transfer)?:|transfer to moneywise|investment( deposit)?[: ]|requisition change)/i;
+
+function isPersonalSavingsRow(row: LedgerRow, ctx: PersonalCtx): boolean {
+    return !!row.wallet_id && ctx.savingsWalletIds.has(row.wallet_id);
+}
+
+function isPersonalOwnMoneyMove(row: LedgerRow, ctx: PersonalCtx): boolean {
+    const d = (row.description || '').replace(/^PENDING_INTENT:\s*/i, '');
+    return (
+        isPersonalSavingsRow(row, ctx) ||
+        (!!row.account_id && row.account_id === ctx.savingsTransferAccountId) ||
+        PERSONAL_OWN_MONEY.test(d) ||
+        d.includes('➜') || d.includes('➡️')
+    );
+}
+
+/**
  * Pull the ledger rows that count as trading activity in [start, end]
  * inclusive. Shared by every figure below so the numbers can never disagree
  * with each other.
  */
-async function fetchLedgerRows(organizationId: string, start: string, end: string): Promise<LedgerRow[]> {
+async function fetchLedgerRows(
+    organizationId: string,
+    start: string,
+    end: string,
+    personalCtx?: PersonalCtx
+): Promise<{ rows: LedgerRow[]; saved: number }> {
     const { data, error } = await supabase
         .from('cashbook_entries')
-        .select('date, created_at, debit, credit, description, entry_type, account_id')
+        .select('date, created_at, debit, credit, description, entry_type, account_id, wallet_id')
         .eq('organization_id', organizationId)
         .neq('status', 'PENDING')
         .gte('date', start)
@@ -126,9 +174,16 @@ async function fetchLedgerRows(organizationId: string, start: string, end: strin
 
     if (error) throw error;
 
-    return (data || []).filter(
-        (row: LedgerRow) => !isInternalTransfer(row) && !isBalanceMarker(row)
-    );
+    const all = ((data || []) as LedgerRow[]).filter((row) => !isBalanceMarker(row));
+    if (!personalCtx) {
+        return { rows: all.filter((row) => !isInternalTransfer(row)), saved: 0 };
+    }
+
+    // Personal: money in/out of savings pots is "saved", not income or spending.
+    const saved = all
+        .filter((row) => isPersonalSavingsRow(row, personalCtx))
+        .reduce((sum, row) => sum + num(row.debit) - num(row.credit), 0);
+    return { rows: all.filter((row) => !isPersonalOwnMoneyMove(row, personalCtx)), saved };
 }
 
 /** account_id -> display name, for naming spend/income categories. */
@@ -173,8 +228,10 @@ export async function getPeriodSummary(
     start: string,
     end: string
 ): Promise<PeriodSummary> {
-    const [rows, accounts] = await Promise.all([
-        fetchLedgerRows(organizationId, start, end),
+    const personal = await isPersonalOrganization(organizationId);
+    const personalCtx = personal ? await loadPersonalCtx(organizationId) : undefined;
+    const [{ rows, saved }, accounts] = await Promise.all([
+        fetchLedgerRows(organizationId, start, end, personalCtx),
         fetchAccountNames(organizationId),
     ]);
 
@@ -196,6 +253,8 @@ export async function getPeriodSummary(
         topInflow: biggest
             ? { label: cleanLabel(biggest.description), amount: num(biggest.debit) }
             : null,
+        personal,
+        saved: Math.round(saved * 100) / 100,
     };
 }
 
@@ -210,6 +269,7 @@ export async function getPeriodSummary(
  */
 export function buildConcerns(current: PeriodSummary, previous: PeriodSummary): Concern[] {
     const concerns: Concern[] = [];
+    const personal = !!current.personal;
     const fmt = (n: number) => `K${Math.abs(Math.round(n)).toLocaleString('en-US')}`;
     const pct = (curr: number, prev: number) =>
         prev === 0 ? (curr > 0 ? 100 : 0) : Math.round(((curr - prev) / Math.abs(prev)) * 100);
@@ -229,7 +289,7 @@ export function buildConcerns(current: PeriodSummary, previous: PeriodSummary): 
     const revenueDrop = previous.revenue - current.revenue;
     if (previous.revenue > 0 && revenueDrop > MATERIAL && pct(current.revenue, previous.revenue) <= -25) {
         concerns.push({
-            title: 'Sales dropped sharply',
+            title: personal ? 'Your income dropped' : 'Sales dropped sharply',
             detail: `Income fell ${Math.abs(pct(current.revenue, previous.revenue))}% to ${fmt(current.revenue)}, ${fmt(revenueDrop)} less than last week.`,
         });
     }
@@ -276,7 +336,7 @@ export function buildConcerns(current: PeriodSummary, previous: PeriodSummary): 
     if (topSource && current.revenue > 0 && topSource.amount / current.revenue >= 0.7 && current.revenueCategories.length > 1) {
         concerns.push({
             title: 'Most income came from one source',
-            detail: `${Math.round((topSource.amount / current.revenue) * 100)}% of your income came from ${topSource.name}. Losing it would hit hard.`,
+            detail: `${Math.round((topSource.amount / current.revenue) * 100)}% of your income came from ${topSource.name}. ${personal ? 'Worth building a second source if you can.' : 'Losing it would hit hard.'}`,
         });
     }
 
@@ -288,14 +348,14 @@ export function buildConcerns(current: PeriodSummary, previous: PeriodSummary): 
  * revenue/profit buckets. One query — record detection compares the just-closed
  * window against every earlier one, so it needs the whole history anyway.
  */
-async function bucketHistory(organizationId: string): Promise<{
+async function bucketHistory(organizationId: string, personalCtx?: PersonalCtx): Promise<{
     DAY: Map<string, { revenue: number; profit: number }>;
     WEEK: Map<string, { revenue: number; profit: number }>;
     MONTH: Map<string, { revenue: number; profit: number }>;
 }> {
     const { data, error } = await supabase
         .from('cashbook_entries')
-        .select('date, created_at, debit, credit, description, entry_type, account_id')
+        .select('date, created_at, debit, credit, description, entry_type, account_id, wallet_id')
         .eq('organization_id', organizationId)
         .neq('status', 'PENDING');
 
@@ -320,7 +380,8 @@ async function bucketHistory(organizationId: string): Promise<{
     };
 
     for (const row of (data || []) as LedgerRow[]) {
-        if (isInternalTransfer(row) || isBalanceMarker(row)) continue;
+        if (isBalanceMarker(row)) continue;
+        if (personalCtx ? isPersonalOwnMoneyMove(row, personalCtx) : isInternalTransfer(row)) continue;
         const day = (row.date || row.created_at || '').slice(0, 10);
         if (!day) continue;
 
@@ -360,7 +421,8 @@ export async function detectAchievements(
     organizationId: string,
     now: Date = new Date()
 ): Promise<Achievement[]> {
-    const buckets = await bucketHistory(organizationId);
+    const personal = await isPersonalOrganization(organizationId);
+    const buckets = await bucketHistory(organizationId, personal ? await loadPersonalCtx(organizationId) : undefined);
 
     const today = iso(now);
     const thisWeek = iso(startOfWeek(now));
@@ -407,18 +469,34 @@ export async function detectAchievements(
         }
     }
 
-    if (candidates.length === 0) return [];
-
     // Only write rows we don't already hold for that exact window.
     const { data: existing, error: existingError } = await supabase
         .from('business_achievements')
-        .select('metric, period, period_start')
+        .select('id, metric, period, period_start, value')
         .eq('organization_id', organizationId);
 
     if (existingError) {
         console.error('[Highlights] Could not read existing achievements:', existingError.message);
         return [];
     }
+
+    // Personal accounts: records recorded by the old (business) maths can be wrong — e.g. savings
+    // moves counted as income. Drop any record that is no longer the best window or whose value
+    // changed, so the stored records always match the corrected figures.
+    if (personal && existing && existing.length > 0) {
+        const wanted = new Map(candidates.map((c) => [`${c.metric}|${c.period}|${c.periodStart}`, c.value]));
+        const stale = existing.filter((r: any) => {
+            const v = wanted.get(`${r.metric}|${r.period}|${r.period_start}`);
+            return v === undefined || Math.abs(Number(r.value) - v) > 0.005;
+        });
+        if (stale.length > 0) {
+            await supabase.from('business_achievements').delete().in('id', stale.map((r: any) => r.id));
+            const staleIds = new Set(stale.map((r: any) => r.id));
+            for (let i = existing.length - 1; i >= 0; i--) if (staleIds.has((existing[i] as any).id)) existing.splice(i, 1);
+        }
+    }
+
+    if (candidates.length === 0) return [];
 
     const held = new Set(
         (existing || []).map((r: any) => `${r.metric}|${r.period}|${r.period_start}`)
@@ -482,8 +560,12 @@ export async function markAchievementsSeen(organizationId: string, ids: string[]
 }
 
 /** Human label for a badge, e.g. "Best revenue day ever". */
-export function achievementTitle(a: Pick<Achievement, 'metric' | 'period'>): string {
-    const metric = a.metric === 'REVENUE' ? 'sales' : 'profit';
+export function achievementTitle(a: Pick<Achievement, 'metric' | 'period'>, personal = false): string {
     const period = a.period.toLowerCase();
+    if (personal) {
+        // "Profit" for a person is what they kept: income less spending.
+        return a.metric === 'REVENUE' ? `Biggest income ${period} ever` : `Most you've kept in a ${period}`;
+    }
+    const metric = a.metric === 'REVENUE' ? 'sales' : 'profit';
     return `Best ${metric} ${period} ever`;
 }
