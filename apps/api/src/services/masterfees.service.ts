@@ -793,6 +793,10 @@ async function loadPriorRecords<T>(organizationId: string, recordType: 'INVOICE'
             .select(`mf_id, ${columns}`)
             .eq('organization_id', organizationId)
             .eq('record_type', recordType)
+            // Deterministic order: offset paging over an unordered query can skip or
+            // repeat rows when the cron upserts concurrently, making already-synced
+            // payments look "never synced" (or hiding voids/edits from change detection).
+            .order('mf_id', { ascending: true })
             .range(from, from + PAGE - 1);
         if (error) throw error;
         for (const row of data || []) map.set((row as any).mf_id, row as any);
@@ -949,31 +953,103 @@ function isLencoProcessed(txn: MFTransaction): boolean {
     return String(txn.reference || '').toUpperCase().startsWith('REF-');
 }
 
+/**
+ * Reverse a payment that Master Fees has since voided. Only entries MoneyWise
+ * itself created are removed (account_type MASTERFEES/MASTERFEES_MANUAL, or a
+ * per-bank wallet row tagged with mf_payment_channel). A row that is the real
+ * Lenco wallet inflow (shared mode) or was matched to a bank statement is real
+ * money — refuse and surface it for a human instead of deleting it.
+ */
+async function reversePostedPayment(
+    organizationId: string,
+    integrationId: string,
+    txn: MFTransaction,
+    prior: PriorPaymentRecord,
+    studentName: string,
+    amount: number
+): Promise<void> {
+    if (prior.cashbook_entry_id) {
+        const { data: ce } = await supabase
+            .from('cashbook_entries')
+            .select('id, date, created_at, account_type, wallet_id, mf_payment_channel, bank_statement_reference')
+            .eq('id', prior.cashbook_entry_id)
+            .maybeSingle();
+        if (ce) {
+            const ours = ce.account_type === 'MASTERFEES' || ce.account_type === 'MASTERFEES_MANUAL' || !!ce.mf_payment_channel;
+            if (!ours) throw new Error(`voided in Master Fees but cashbook row ${ce.id} is a real wallet inflow — needs manual review`);
+            if (ce.bank_statement_reference) throw new Error(`voided in Master Fees but cashbook row ${ce.id} is bank-reconciled — needs manual review`);
+            await ledgerService.removeForCashbookEntry(ce.id, organizationId);
+            await supabase.from('cashbook_entries').delete().eq('id', ce.id).eq('organization_id', organizationId);
+            await cashbookService.recalculateBalancesFrom(organizationId, ce.date, ce.created_at, ce.account_type, ce.wallet_id || undefined);
+        } else {
+            // The record points at a cashbook row that no longer exists, but its
+            // derived journal can outlive it and keep counting in the books.
+            await ledgerService.removeForCashbookEntry(prior.cashbook_entry_id, organizationId);
+        }
+    }
+    // Payments posted by an earlier version wrote a journal directly (no cashbook row).
+    await removeJournal(organizationId, txn.transaction_id);
+    await upsertRecord(organizationId, integrationId, {
+        record_type: 'PAYMENT', mf_id: txn.transaction_id, mf_reference: txn.reference, mf_invoice_id: txn.invoice_id,
+        student_name: studentName, grade: txn.student?.grade, amount, mf_status: txn.status,
+        journal_entry_id: null, cashbook_entry_id: null, external_reference: txn.reference, raw: txn,
+    });
+}
+
 async function postPayment(
     organizationId: string,
     integrationId: string,
     config: MasterFeesConfig,
     txn: MFTransaction,
     priorMap: Map<string, PriorPaymentRecord>
-): Promise<'posted' | 'reclassified' | 'deferred' | 'skipped'> {
+): Promise<'posted' | 'reclassified' | 'deferred' | 'skipped' | 'reversed'> {
     const amount = num(txn.amount);
     if (amount <= 0) return 'skipped';
     const studentName = txn.student?.full_name || [txn.student?.first_name, txn.student?.last_name].filter(Boolean).join(' ');
     const status = String(txn.status || '').toLowerCase();
+    const prior = priorMap.get(txn.transaction_id);
+
+    // Voided in Master Fees AFTER we posted it: take the money back out of the
+    // books. Without this the non-success early-return below left the entry (and
+    // its revenue/AR effect) in place forever.
+    if (VOID_STATUSES.has(status) && prior && (prior.cashbook_entry_id || prior.journal_entry_id) && !VOID_STATUSES.has(String(prior.mf_status || '').toLowerCase())) {
+        await reversePostedPayment(organizationId, integrationId, txn, prior, studentName, amount);
+        return 'reversed';
+    }
+
     if (status && !['completed', 'complete', 'success', 'successful', 'paid'].includes(status)) return 'skipped';
 
-    const prior = priorMap.get(txn.transaction_id);
     const unchanged = prior && Math.abs(num(prior.amount) - amount) < TOLERANCE;
 
-    // Manual payment amount was edited in Master Fees — update the existing cashbook
-    // row in place and re-derive its journal. Lenco payments cannot be edited at
-    // source (they are gateway-authoritative), so we only handle this for manual ones.
-    if (!unchanged && prior?.cashbook_entry_id && !isLencoProcessed(txn)) {
-        const channel = classifyManualChannel(txn);
-        await getManualCollectionsAccountForChannel(organizationId, channel);
+    // Payment amount was edited in Master Fees — update the existing cashbook row in
+    // place and re-derive its journal. Manual payments are always ours to edit. A
+    // Lenco-processed payment is editable only when the row is one MoneyWise itself
+    // created (separate mode, account_type 'MASTERFEES', not bank-reconciled); in
+    // shared mode the row is the real wallet inflow from Lenco's own sync, which is
+    // gateway-authoritative and must not be rewritten from Master Fees.
+    const manualPayment = !isLencoProcessed(txn);
+    let editable = false;
+    if (!unchanged && prior?.cashbook_entry_id) {
+        if (manualPayment) editable = true;
+        else {
+            const { data: own } = await supabase
+                .from('cashbook_entries')
+                .select('account_type, bank_statement_reference')
+                .eq('id', prior.cashbook_entry_id)
+                .maybeSingle();
+            editable = own?.account_type === 'MASTERFEES' && !own.bank_statement_reference;
+        }
+    }
+    if (editable && prior?.cashbook_entry_id) {
+        const patch: Record<string, any> = { debit: amount };
+        if (manualPayment) {
+            const channel = classifyManualChannel(txn);
+            await getManualCollectionsAccountForChannel(organizationId, channel);
+            patch.mf_payment_channel = channel.key;
+        }
         await supabase
             .from('cashbook_entries')
-            .update({ debit: amount, mf_payment_channel: channel.key })
+            .update(patch)
             .eq('id', prior.cashbook_entry_id);
         await ledgerService.repostForCashbookEntry(prior.cashbook_entry_id);
         const { data: ce } = await supabase
@@ -1312,7 +1388,7 @@ const MF_ROW_CAP = 200_000;
 
 export interface SyncSummary {
     invoices: { posted: number; skipped: number; voided: number };
-    payments: { posted: number; reclassified: number; deferred: number; skipped: number };
+    payments: { posted: number; reclassified: number; deferred: number; skipped: number; reversed?: number };
     errors: string[];
     /** True when invoices and/or transactions hit the pagination safety
      *  ceiling this sync — see MF_ROW_CAP. Should be rare/never in practice
@@ -1413,8 +1489,21 @@ export async function syncMasterfeesPayments(
             organizationId, 'PAYMENT', 'amount, mf_status, journal_entry_id, cashbook_entry_id'
         );
 
+        // onlyMissing still has to notice changes to payments we already hold: a
+        // void, a re-activation, or an edited amount at Master Fees. All three are
+        // pure in-memory comparisons against the preloaded priorMap, so this stays cheap.
+        const isVoidStatus = (v: any) => VOID_STATUSES.has(String(v || '').toLowerCase());
+        const changedAtSource = (t: MFTransaction): boolean => {
+            const p = priorMap.get(t.transaction_id);
+            if (!p) return true;
+            const liveVoid = isVoidStatus(t.status);
+            const priorVoid = isVoidStatus(p.mf_status);
+            if (liveVoid) return !priorVoid && !!(p.cashbook_entry_id || p.journal_entry_id);
+            if (priorVoid) return true;
+            return num(t.amount) > 0 && Math.abs(num(p.amount) - num(t.amount)) >= TOLERANCE;
+        };
         let queue = opts.onlyMissing
-            ? transactions.filter(t => !priorMap.has(t.transaction_id))
+            ? transactions.filter(changedAtSource)
             : transactions;
         // Scope to an explicit, pre-identified set of transaction_ids — for a
         // targeted backfill (e.g. "just this recent gap") without touching the
@@ -1429,7 +1518,7 @@ export async function syncMasterfeesPayments(
             if (Date.now() > deadline) { deferredByBudget = true; break; }
             try {
                 const r = await postPayment(organizationId, integration.id, config, txn, priorMap);
-                summary.payments[r]++;
+                summary.payments[r] = (summary.payments[r] ?? 0) + 1;
             } catch (err: any) {
                 summary.errors.push(`payment ${txn.transaction_id}: ${err.message}`);
             }
@@ -1662,7 +1751,7 @@ async function runMasterfeesSync(
                 if (Date.now() > deadline) { deferredByBudget = true; break; }
                 try {
                     const r = await postPayment(organizationId, integration.id, config, txn, priorMap);
-                    summary.payments[r]++;
+                    summary.payments[r] = (summary.payments[r] ?? 0) + 1;
                 } catch (err: any) {
                     summary.errors.push(`payment ${txn.transaction_id}: ${err.message}`);
                 }
