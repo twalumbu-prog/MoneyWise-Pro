@@ -106,7 +106,8 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             .single();
 
         // Personal accounts auto-approve their own requisitions since there is
-        // no one else to approve them. This used to be inferred from the org's
+        // no one else to approve them. (They are created AUTHORISED: there is no 'APPROVED'
+        // requisition status, and inserting one is rejected by requisitions_status_check.) This used to be inferred from the org's
         // display name, which any business could accidentally (or deliberately)
         // match — is_personal is a real column, set only by ensurePersonalWorkspace.
         const isPersonalOrg = orgData?.is_personal === true;
@@ -117,7 +118,7 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             organization_id,
             description,
             estimated_total,
-            status: isPersonalOrg ? 'APPROVED' : 'DRAFT',
+            status: isPersonalOrg ? 'AUTHORISED' : 'DRAFT',
             interest_rate,
             monthly_deduction,
             type: type || 'EXPENSE',
@@ -295,6 +296,17 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             return res.status(500).json({ error: 'Failed to create line items', details: itemsError.message });
         }
 
+        // An AUTHORISED requisition always carries its reference number (the approval path assigns it).
+        if (isPersonalOrg && !requisition.reference_number) {
+            const { data: newRef } = await supabase.rpc('generate_sequential_reference', {
+                p_org_id: organization_id, p_entity_type: 'REQUISITION', p_prefix: 'REQ',
+            });
+            if (newRef) {
+                await supabase.from('requisitions').update({ reference_number: newRef }).eq('id', requisition.id);
+                requisition.reference_number = newRef;
+            }
+        }
+
         res.status(201).json(requisition);
 
         // Post-response side effects must never reach the outer catch — the
@@ -306,9 +318,9 @@ export const createRequisition = async (req: any, res: any): Promise<any> => {
             await RequisitionMessageService.createMessage({
                 requisitionId: requisition.id,
                 userId: requestor_id,
-                content: 'Requisition submitted for approval',
+                content: isPersonalOrg ? 'How would you like to disburse these funds?' : 'Requisition submitted for approval',
                 type: 'SYSTEM',
-                metadata: { stage: 'APPROVAL' }
+                metadata: isPersonalOrg ? { status: 'AUTHORISED', stage: 'DISBURSAL' } : { stage: 'APPROVAL' }
             });
         } catch (msgErr) {
             console.error('[Create Requisition] Failed to create initial system message:', msgErr);
