@@ -201,9 +201,63 @@ async function postExternalInvestment(inv: any, target: Target, received: number
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+export interface InvestorPayoutContext {
+    investorName: string;
+    investorEmail: string | null;
+    accountNumber: string | null;
+    fundName: string;
+    companyName: string;
+    reference: string;
+    /** What the recipient's bank statement should show: who paid, their account number, which fund. */
+    narration: string;
+}
+
+/**
+ * Who a deposit into an investment company's wallet came from. Works from the cashbook
+ * row: mobile-money deposits carry the investment's reference in external_reference,
+ * wallet transfers in reference_number. Null when the deposit isn't a known investment.
+ */
+async function payoutContextForDeposit(
+    targetOrgId: string,
+    entry: { id?: string | null; external_reference?: string | null; reference_number?: string | null }
+): Promise<InvestorPayoutContext | null> {
+    const refs = [entry.external_reference, entry.reference_number].filter((r): r is string => !!r);
+    if (!refs.length) return null;
+
+    const { data: inv } = await supabase
+        .from('investments')
+        .select('reference, product_name, created_by, investor_account_id, investor_account_number, investment_target_id')
+        .eq('target_organization_id', targetOrgId)
+        .in('reference', refs)
+        .limit(1)
+        .maybeSingle();
+    if (!inv) return null;
+
+    const [{ data: user }, { data: acct }, { data: target }] = await Promise.all([
+        supabase.from('users').select('name, email').eq('id', inv.created_by).maybeSingle(),
+        inv.investor_account_id
+            ? supabase.from('investor_accounts').select('applicant').eq('id', inv.investor_account_id).maybeSingle()
+            : Promise.resolve({ data: null as any }),
+        supabase.from('investment_targets').select('display_name').eq('id', inv.investment_target_id).maybeSingle(),
+    ]);
+
+    const a = (acct?.applicant ?? {}) as any;
+    const applicantName = [a.first_name, a.last_name].filter(Boolean).join(' ').trim();
+    const investorName = applicantName || user?.name || 'Investor';
+    const investorEmail: string | null = a.email || user?.email || null;
+    const companyName = target?.display_name || 'Investment company';
+    const fundName = inv.product_name || companyName;
+    const accountNumber = inv.investor_account_number || null;
+
+    // Bank statements truncate long narrations, so lead with what reconciliation keys on.
+    const narration = [investorName, accountNumber, fundName].filter(Boolean).join(' - ').replace(/\s+/g, ' ').slice(0, 100);
+    return { investorName, investorEmail, accountNumber, fundName, companyName, reference: inv.reference, narration };
+}
+
 export const investmentService = {
     ensureInvestmentAccount,
     loadTarget,
+    payoutContextForDeposit,
 
     /** Called before the investor pays, so the payment can be matched to them later. */
     async recordIntent(params: {

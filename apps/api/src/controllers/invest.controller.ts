@@ -120,6 +120,8 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
         const inflowEntry = await cashbookService.createEntry(target.organization_id, {
             entry_type: 'ADJUSTMENT',
             description: `${transferDesc} (Inflow)`,
+            // Lets an investor-payout automation find the investment (and so who paid) for this deposit.
+            reference_number: `WT-${outflowEntry.id}`,
             debit: amount,
             credit: 0,
             date: today,

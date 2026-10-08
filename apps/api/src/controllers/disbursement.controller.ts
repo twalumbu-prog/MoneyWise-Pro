@@ -13,8 +13,12 @@ import { getAccountabilityBlock } from '../services/accountability.service';
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
-        const { denominations, total_prepared, payment_method, transfer_proof_url, recipient_account, recipient_bank_code, recipient_account_name } = req.body;
+        const { denominations, total_prepared, payment_method, transfer_proof_url, recipient_account, recipient_bank_code, recipient_account_name, narration: customNarration } = req.body;
         const cashier_id = (req as any).user.id;
+        // Optional text for the recipient's bank statement (used by automations that must carry a reference).
+        const payoutNarration = (typeof customNarration === 'string' && customNarration.trim())
+            ? customNarration.replace(/[\r\n]+/g, ' ').trim().slice(0, 100)
+            : `Disbursement for Requisition #${id.slice(0, 8)}`;
         const organizationId = (req as any).user.organization_id;
         const isDigital = payment_method !== 'CASH' && payment_method !== 'CASH_PICKUP' && payment_method !== 'OTHER';
 
@@ -253,7 +257,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                                     reference: resolvedRef,
                                     phone: recipient_account,
                                     operator: (recipient_bank_code || '').toLowerCase(),
-                                    narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                                    narration: payoutNarration
                                 }, org.lenco_subaccount_id, org.lenco_secret_key);
                             } else {
                                 const bankId = await LencoService.findBankId(recipient_bank_code || '', org.lenco_secret_key);
@@ -262,7 +266,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                                     reference: resolvedRef,
                                     accountNumber: recipient_account,
                                     bankId,
-                                    narration: `Disbursement for Requisition #${id.slice(0, 8)}`
+                                    narration: payoutNarration
                                 }, org.lenco_subaccount_id, org.lenco_secret_key);
                             }
                         }

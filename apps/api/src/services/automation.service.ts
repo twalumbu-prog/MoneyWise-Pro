@@ -28,7 +28,7 @@ import { emailService } from './email.service';
 import { LencoService } from './lenco.service';
 import { disburseRequisition } from '../controllers/disbursement.controller';
 import { processDueScheduledItems, syncScheduledRunStatuses } from './schedule.service';
-import { investmentService, INVEST_PASSTHROUGH_PREFIX } from './investment.service';
+import { investmentService, INVEST_PASSTHROUGH_PREFIX, InvestorPayoutContext } from './investment.service';
 import { savingsService } from './savings.service';
 import { sweepPendingDeposits } from './collectionRecovery.service';
 
@@ -220,6 +220,30 @@ function describeDeposit(e: { debit: any; description: string | null; sender_nam
     return `${money(Number(e.debit))} — ${who}`.slice(0, 200);
 }
 
+/**
+ * For investor-payout automations: who paid this deposit. Reads the deposit back from
+ * the run's trigger_ref (`ref:<external_reference>` or `entry:<id>`). Null for any other
+ * automation or a deposit that isn't a known investment.
+ */
+async function investorContextForRun(automation: Automation, run: RunRow): Promise<InvestorPayoutContext | null> {
+    if ((automation.trigger_config as any)?.managed_by !== 'investor_payout_settings') return null;
+    if (!run.trigger_ref) return null;
+    try {
+        const q = supabase
+            .from('cashbook_entries')
+            .select('id, external_reference, reference_number')
+            .eq('organization_id', automation.organization_id);
+        const { data: entry } = run.trigger_ref.startsWith('entry:')
+            ? await q.eq('id', run.trigger_ref.slice(6)).maybeSingle()
+            : await q.eq('external_reference', run.trigger_ref.replace(/^ref:/, '')).limit(1).maybeSingle();
+        if (!entry) return null;
+        return await investmentService.payoutContextForDeposit(automation.organization_id, entry);
+    } catch (err: any) {
+        console.error('[Automations] Could not resolve investor for deposit:', err.message);
+        return null;
+    }
+}
+
 // ── Action: forward payment ──────────────────────────────────────────────────
 
 /**
@@ -375,6 +399,9 @@ async function forwardPayment(automation: Automation, action: ForwardPaymentActi
     // A retry may plan a different amount than the first attempt did.
     await supabase.from('requisitions').update({ estimated_total: plan.transfer }).eq('id', requisitionId).eq('status', 'AUTHORISED');
 
+    // Investor deposits: put who paid, their account number and the fund on the bank statement.
+    const investor = await investorContextForRun(automation, run);
+
     const result = await invokeDisburse(
         { id: automation.created_by, organization_id: automation.organization_id },
         requisitionId,
@@ -385,6 +412,7 @@ async function forwardPayment(automation: Automation, action: ForwardPaymentActi
             recipient_bank_code: action.recipient_bank_code,
             recipient_account_name: action.recipient_name,
             wallet_id: walletId,
+            ...(investor ? { narration: investor.narration } : {}),
         }
     );
 
@@ -448,12 +476,13 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
     // The steps log is the record of whether the email really went out; pop_sent_at
     // is only a short-lived claim while a send is in flight (released on failure).
     const popSent = run.steps.some(st => st.step === 'send_pop_email' && st.status === 'ok');
-    if (pop?.to && !popSent) {
+    const investor = await investorContextForRun(automation, run);
+    if ((pop?.to || investor?.investorEmail) && !popSent) {
         const fails = run.steps.filter(st => st.step === 'send_pop_email' && st.status === 'failed');
         const lastFail = fails.length ? new Date(fails[fails.length - 1].at).getTime() : 0;
 
         if (fails.length >= MAX_POP_ATTEMPTS) {
-            popNote = `The Proof of Payment email to ${pop.to} could not be sent after ${fails.length} attempts.`;
+            popNote = `The Proof of Payment email to ${pop?.to ?? investor?.investorEmail} could not be sent after ${fails.length} attempts.`;
         } else if (Date.now() - lastFail < POP_RETRY_AFTER_MS) {
             return false;
         } else {
@@ -471,26 +500,53 @@ async function settleRun(automation: Automation, run: RunRow): Promise<boolean> 
 
             try {
                 const { data: org } = await supabase.from('organizations').select('name').eq('id', automation.organization_id).maybeSingle();
-                await emailService.sendScheduledProofOfPayment({
-                    to: pop.to,
-                    orgName: org?.name || 'Your Organization',
-                    scheduleTitle: automation.name,
-                    amount: Number(run.forwarded_amount) || Number(disbursement.total_prepared) || 0,
+                const amount = Number(run.forwarded_amount) || Number(disbursement.total_prepared) || 0;
+                const popBase = {
+                    amount,
                     recipientName: disbursement.recipient_account_name || null,
                     recipientAccount: disbursement.recipient_account || null,
                     paymentMethod: disbursement.payment_method || null,
                     txRef: disbursement.external_reference || null,
                     transactedAt: disbursement.issued_at ? new Date(disbursement.issued_at) : new Date(),
-                });
-                await saveRun(run, {
-                    pop_sent_at: now(),
-                    steps: [...run.steps, step('send_pop_email', 'ok', `Proof of Payment emailed to ${pop.to}.`)],
-                });
+                };
+                const steps = [...run.steps];
+
+                if (pop?.to) {
+                    await emailService.sendScheduledProofOfPayment({
+                        ...popBase,
+                        to: pop.to,
+                        orgName: org?.name || 'Your Organization',
+                        scheduleTitle: investor ? `Investment by ${investor.investorName} in ${investor.fundName}` : automation.name,
+                        narration: investor?.narration,
+                    });
+                    steps.push(step('send_pop_email', 'ok', `Proof of Payment emailed to ${pop.to}.`));
+                }
+
+                // The investor gets their own copy. A failure here is logged, not retried:
+                // the company's copy has already gone, so a retry would send it twice.
+                if (investor?.investorEmail) {
+                    try {
+                        await emailService.sendScheduledProofOfPayment({
+                            ...popBase,
+                            to: investor.investorEmail,
+                            orgName: investor.companyName,
+                            scheduleTitle: `Your investment in ${investor.fundName}`,
+                            narration: investor.narration,
+                        });
+                        steps.push(step('send_investor_pop', 'ok', `Proof of Payment emailed to the investor (${investor.investorEmail}).`));
+                    } catch (invErr: any) {
+                        steps.push(step('send_investor_pop', 'failed', `Email to the investor (${investor.investorEmail}) failed: ${invErr.message}`));
+                    }
+                    if (!pop?.to) steps.push(step('send_pop_email', 'info', 'No company email set; only the investor was emailed.'));
+                }
+
+                await saveRun(run, { pop_sent_at: now(), steps });
+                run.steps = steps;
             } catch (err: any) {
                 await supabase.from('automation_runs').update({ pop_sent_at: null }).eq('id', run.id);
                 await saveRun(run, {
                     pop_sent_at: null,
-                    steps: [...run.steps, step('send_pop_email', 'failed', `Email to ${pop.to} failed: ${err.message}`)],
+                    steps: [...run.steps, step('send_pop_email', 'failed', `Email to ${pop?.to ?? investor?.investorEmail} failed: ${err.message}`)],
                 });
                 return false;
             }
