@@ -9,6 +9,7 @@ import { LencoService } from '../services/lenco.service';
 import { RequisitionMessageService } from '../services/requisition_message.service';
 import { triggerAIReview } from './requisition.controller';
 import { getAccountabilityBlock } from '../services/accountability.service';
+import { ensureOrgLencoCredentials } from '../services/lencoAccountLink.service';
 
 export const disburseRequisition = async (req: any, res: any): Promise<any> => {
     try {
@@ -199,6 +200,7 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                     (req as any).resolvedRef = lencoReference;
                     (req as any).lencoTransactionAt = new Date().toISOString();
                 } else {
+                    await ensureOrgLencoCredentials(targetOrgId);
                     const { data: org } = await supabase
                         .from('organizations')
                         .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
@@ -1347,6 +1349,7 @@ export const disburseExcessRequisition = async (req: any, res: any): Promise<any
         const stableRef = `EXC-${id.slice(0, 8)}-${excess.toFixed(0)}`;
 
         if (isDigital) {
+            await ensureOrgLencoCredentials(organizationId);
             const { data: org } = await supabase
                 .from('organizations')
                 .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')

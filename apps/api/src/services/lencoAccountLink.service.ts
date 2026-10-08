@@ -68,3 +68,36 @@ export async function ensureValidLencoAccountId(orgId: string): Promise<HealResu
         return { ok: false, reason: e?.message || 'could not verify the account with Lenco' };
     }
 }
+
+/**
+ * An organization whose wallet-pool row is LINKED but whose own Lenco columns are empty can't
+ * pay out ("Organization is not properly configured for MoneyWise Wallet"). The pool row holds
+ * the credentials, so copy them across — only into columns that are empty, never over a value.
+ * Cheap no-op for every healthy organization.
+ */
+export async function ensureOrgLencoCredentials(orgId: string): Promise<boolean> {
+    const { data: org } = await supabase
+        .from('organizations')
+        .select('lenco_subaccount_id, lenco_secret_key, lenco_public_key, payment_test_mode')
+        .eq('id', orgId)
+        .maybeSingle();
+    if (!org || org.payment_test_mode || (org.lenco_subaccount_id && org.lenco_secret_key)) return false;
+
+    const { data: pool } = await supabase
+        .from('wallet_pool')
+        .select('provider_account_id, api_secret, public_key')
+        .eq('linked_organization_id', orgId)
+        .eq('status', 'LINKED')
+        .maybeSingle();
+    if (!pool?.provider_account_id || !pool.api_secret) return false;
+
+    const patch: Record<string, string> = {};
+    if (!org.lenco_subaccount_id) patch.lenco_subaccount_id = pool.provider_account_id;
+    if (!org.lenco_secret_key) patch.lenco_secret_key = pool.api_secret;
+    if (!org.lenco_public_key && pool.public_key) patch.lenco_public_key = pool.public_key;
+
+    const { error } = await supabase.from('organizations').update(patch).eq('id', orgId);
+    if (error) { console.error(`[LencoAccountLink] Could not backfill credentials for ${orgId}:`, error.message); return false; }
+    console.warn(`[LencoAccountLink] Backfilled Lenco credentials for org ${orgId.slice(0, 8)} from its wallet pool row`);
+    return true;
+}
