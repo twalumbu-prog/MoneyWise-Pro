@@ -468,7 +468,18 @@ export const savingsService = {
         ]);
         const mKey = (memberOrg as any)?.lenco_secret_key as string | undefined;
         const oKey = (ownerOrg as any)?.lenco_secret_key as string | undefined;
-        if (!(memberOrg as any)?.lenco_subaccount_id || !(ownerOrg as any)?.lenco_subaccount_id || !mKey || !oKey) {
+        // A real Lenco account id is a UUID. Some organizations were linked with their till number in its place
+        // (Lenco then answers "Invalid accountId" for everything), so check before trying to move money.
+        const LENCO_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!LENCO_ACCOUNT_ID.test(String((memberOrg as any)?.lenco_subaccount_id || ''))) {
+            console.error(`[Savings] member org ${params.orgId} has an invalid Lenco account id (${(memberOrg as any)?.lenco_subaccount_id}) — wallet transfers unavailable until it's relinked.`);
+            throw new SavingsError('UNAVAILABLE', 'Your wallet isn’t fully connected for transfers yet, so we can’t pay from it. Please pay by mobile money for now — our team has been told.', 409);
+        }
+        if (!LENCO_ACCOUNT_ID.test(String((ownerOrg as any)?.lenco_subaccount_id || ''))) {
+            console.error(`[Savings] group owner org ${goal.organization_id} has an invalid Lenco account id (${(ownerOrg as any)?.lenco_subaccount_id}).`);
+            throw new SavingsError('UNAVAILABLE', 'This group can’t receive wallet transfers right now. Please pay by mobile money.', 409);
+        }
+        if (!mKey || !oKey) {
             throw new SavingsError('UNAVAILABLE', 'Paying from a wallet isn’t available for this group right now. Please pay by mobile money.', 409);
         }
 
@@ -498,7 +509,7 @@ export const savingsService = {
             );
         } catch (e: any) {
             await supabase.from('savings_contributions').update({ status: 'FAILED' }).eq('id', contribution.id);
-            throw new SavingsError('TRANSFER_FAILED', e?.message || 'The transfer could not be started. Nothing was taken.', 502);
+            throw new SavingsError('TRANSFER_FAILED', e?.message || 'The transfer could not be started. Nothing was taken.', 422);
         }
 
         // Lenco on-us transfers normally settle within seconds: wait briefly, otherwise settle later.
