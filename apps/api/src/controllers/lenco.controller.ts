@@ -2559,6 +2559,13 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 const descLower = txnDesc.toLowerCase();
                 const txnRefRaw = (txn.reference || txn.clientReference || '').trim();
 
+                // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
+                if (await matchesRecordedInternalTransfer(orgId, walletId, {
+                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate,
+                })) {
+                    continue;
+                }
+
                 // Skip ONLY the OUTFLOW leg of the MoneyWise platform-fee sweep (the debit
                 // leaving the merchant's collecting sub-account). The merchant wallet already
                 // reflects the NET amount (the fee was never posted there), so logging this
@@ -2573,13 +2580,6 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 if (txnType === 'debit' && (
                     descLower.includes('split payment') ||
                     txnRefRaw.toUpperCase().startsWith('SPLIT-') ||
-                // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
-                if (await matchesRecordedInternalTransfer(orgId, walletId, {
-                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate,
-                })) {
-                    continue;
-                }
-
                     descLower.includes('split-inflow') ||
                     descLower.includes('split-inflow payment') ||
                     descLower.includes('to blue opus software')
