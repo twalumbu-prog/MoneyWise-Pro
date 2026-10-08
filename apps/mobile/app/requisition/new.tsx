@@ -244,6 +244,14 @@ export default function NewRequisitionScreen() {
         setMwQuery('');
     };
 
+    /** A rejected sign-in or a dropped connection is not the same thing as "this number has no name". */
+    const lookupFailureText = (e: any): string => {
+        const msg = String(e?.message || '');
+        if (/unauthorized|session|token/i.test(msg)) return 'Session expired — please sign in again';
+        if (/network|timeout|failed to fetch|reach/i.test(msg)) return 'Can’t verify right now — check your connection';
+        return 'Name not confirmed';
+    };
+
     const handleResolveName = async () => {
         if (paymentMethod === 'mobile') {
             if (phoneNumber.length < 10 || !momoOperator) return;
@@ -251,8 +259,8 @@ export default function NewRequisitionScreen() {
             try {
                 const res = await lencoService.resolveMobileMoney(phoneNumber, momoOperator, organizationId ?? undefined);
                 setResolvedName(res.accountName || res.account_name || res.name || '');
-            } catch {
-                setResolvedName('Name not confirmed');
+            } catch (e: any) {
+                setResolvedName(lookupFailureText(e));
             } finally {
                 setConfirmingName(false);
             }
@@ -262,8 +270,8 @@ export default function NewRequisitionScreen() {
             try {
                 const res = await lencoService.resolveBankAccount(accountNumber, bankId, organizationId ?? undefined);
                 setResolvedName(res.accountName || res.account_name || res.name || '');
-            } catch {
-                setResolvedName('Name not confirmed');
+            } catch (e: any) {
+                setResolvedName(lookupFailureText(e));
             } finally {
                 setConfirmingName(false);
             }
@@ -884,6 +892,7 @@ export default function NewRequisitionScreen() {
                                 ) : paymentMethod === 'mobile' ? (
                                     <View style={styles.field}>
                                         <Text style={styles.label}>Phone Number or Contact</Text>
+                                        <Text style={styles.fieldHint}>Enter a number to verify the account holder, or type a name to search your contacts.</Text>
                                         <View style={styles.phoneWrap}>
                                             <TextInput
                                                 style={[styles.phoneInput, { paddingRight: momoOperator ? 128 : 56 }]}
@@ -1303,6 +1312,7 @@ const styles = StyleSheet.create({
     },
     operatorBadge: { position: 'absolute', right: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
     contactsBtn: { position: 'absolute', width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF1FF' },
+    fieldHint: { fontFamily: fonts.body, fontSize: 11.5, color: colors.textFaint, lineHeight: 16, marginTop: -2, marginBottom: 6 },
     pickedContact: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted, marginTop: 6 },
     operatorBadgeText: { fontFamily: fonts.bodyBold, fontSize: 9, letterSpacing: 0.5 },
     holderCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#EEF4FF', borderWidth: 1, borderColor: 'rgba(0,106,255,0.1)', borderRadius: radius.lg, padding: 14 },
