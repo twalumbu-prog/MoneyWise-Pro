@@ -17,6 +17,7 @@
  *     automation in step with the company's saved bank details.
  */
 import { supabase } from '../lib/supabase';
+import { ensureOrgLencoCredentials } from './lencoAccountLink.service';
 import { emailService } from './email.service';
 import { LencoService } from './lenco.service';
 import { buildApplicationPdf } from './investorApplicationPdf';
@@ -782,11 +783,16 @@ async function savePayoutSettings(params: {
     if (!bankName || !accountNumber) throw new InvestorAccountError('VALIDATION', 'Bank name and account number are required.');
     if (!/^[0-9A-Za-z-]{4,34}$/.test(accountNumber)) throw new InvestorAccountError('VALIDATION', 'The account number is not valid.');
 
+    // Forwarding pays out of this organization's own Lenco wallet, so refuse now rather than at the first deposit.
+    await ensureOrgLencoCredentials(params.orgId);
     const { data: org } = await supabase
         .from('organizations')
-        .select('lenco_secret_key, payment_test_mode')
+        .select('lenco_secret_key, lenco_subaccount_id, payment_test_mode')
         .eq('id', params.orgId)
         .single();
+    if (!org?.payment_test_mode && (!org?.lenco_subaccount_id || !org?.lenco_secret_key)) {
+        throw new InvestorAccountError('NO_WALLET', 'This organization has no MoneyWise wallet yet, so deposits can’t be forwarded. Activate the wallet first.', 409);
+    }
 
     // Verify with the bank before saving: money is sent here automatically, so a typo
     // would otherwise only surface as a failed (or worse, misdirected) transfer.

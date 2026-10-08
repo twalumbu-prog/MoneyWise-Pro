@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { cashbookService } from '../services/cashbook.service';
-import { investmentService } from '../services/investment.service';
+import { investmentService, WalletInvestError } from '../services/investment.service';
 import { investorAccountService, InvestorAccountError } from '../services/investorAccount.service';
 
 /**
@@ -95,6 +95,28 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
             return res.status(400).json({ error: `Insufficient funds in ${sourceWallet.name}. Available: K${sourceBalance.toFixed(2)}` });
         }
 
+        // Real money: move it between the two Lenco accounts first and book the ledgers once Lenco confirms.
+        // Only test-mode organizations (no real Lenco account) fall through to the ledger-only path below.
+        const realTarget = await investmentService.loadTarget(targetId);
+        if (realTarget) {
+            const started = await investmentService.startWalletInvestment({
+                investorOrgId: organizationId, userId, target: realTarget, sourceWalletId, sourceWalletName: sourceWallet.name, amount,
+                investorAccountId: investorAccount?.id ?? null, investorAccountNumber: investorAccount?.account_number ?? null, productName,
+            });
+            if (started.mode === 'LENCO') {
+                if (started.outcome === 'failed') {
+                    return res.status(422).json({ error: 'The wallet transfer was not completed. Nothing was taken.', reference: started.reference });
+                }
+                return res.json({
+                    message: started.outcome === 'confirmed'
+                        ? 'Investment transfer completed successfully'
+                        : 'Your investment is being processed and will show shortly.',
+                    status: started.outcome === 'confirmed' ? 'CONFIRMED' : 'PENDING',
+                    reference: started.reference,
+                });
+            }
+        }
+
         const transferDesc = description || `Investment: ${sourceWallet.name} ➜ ${target.display_name}`;
         const today = new Date().toISOString().split('T')[0];
 
@@ -147,6 +169,7 @@ export const walletTransferToInvestmentTarget = async (req: any, res: any): Prom
         });
     } catch (error: any) {
         if (error instanceof InvestorAccountError) return res.status(error.httpStatus).json({ error: error.message, code: error.code });
+        if (error instanceof WalletInvestError) return res.status(error.httpStatus).json({ error: error.message, code: error.code });
         console.error('Error transferring investment funds:', error);
         res.status(500).json({ error: 'Failed to transfer funds', details: error.message });
     }

@@ -23,6 +23,8 @@ import { supabase } from '../lib/supabase';
 import { cashbookService } from './cashbook.service';
 import { lusakaToday } from './schedule.service';
 import { finalizeIfPaid } from './collectionRecovery.service';
+import { LencoService } from './lenco.service';
+import { ensureOrgLencoCredentials, ensureValidLencoAccountId, isLencoAccountId } from './lencoAccountLink.service';
 
 /** Marks the pass-through cashbook rows so automations never mistake them for deposits. */
 export const INVEST_PASSTHROUGH_PREFIX = 'INVEST-PT:';
@@ -34,6 +36,7 @@ interface Target {
     id: string;
     organization_id: string;
     display_name: string;
+    wallet_id: string;
     logo_url: string | null;
     organizations?: { logo_url: string | null } | null;
 }
@@ -43,7 +46,7 @@ const targetLogo = (t: Target) => t.logo_url || t.organizations?.logo_url || nul
 async function loadTarget(targetId: string): Promise<Target | null> {
     const { data } = await supabase
         .from('investment_targets')
-        .select('id, organization_id, display_name, logo_url, organizations(logo_url)')
+        .select('id, organization_id, wallet_id, display_name, logo_url, organizations(logo_url)')
         .eq('id', targetId)
         .eq('is_active', true)
         .maybeSingle();
@@ -199,6 +202,165 @@ async function postExternalInvestment(inv: any, target: Target, received: number
     return { assetAcct, fee };
 }
 
+
+// ── Wallet-to-wallet investments (real money) ───────────────────────────────
+
+export class WalletInvestError extends Error {
+    constructor(public code: string, message: string, public httpStatus = 422) { super(message); }
+}
+
+const walletInvestKey = (ref: string) => `invest_transfer:${ref}`;
+
+/**
+ * Pays an investment company from the investor's MoneyWise wallet with a REAL Lenco on-us
+ * transfer (the same mechanism group-savings uses), and books both ledgers only once Lenco
+ * confirms it. Booking the ledgers alone moved no money: the company's wallet looked funded
+ * but its Lenco account was empty, so forwarding the deposit on to its bank could never work.
+ *
+ * Returns { mode: 'LEDGER' } for test-mode organizations (no real Lenco account exists), in
+ * which case the caller keeps the old ledger-only behaviour.
+ */
+async function startWalletInvestment(params: {
+    investorOrgId: string; userId: string; target: Target; sourceWalletId: string; sourceWalletName: string;
+    amount: number; investorAccountId?: string | null; investorAccountNumber?: string | null; productName?: string | null;
+}): Promise<{ mode: 'LEDGER' } | { mode: 'LENCO'; reference: string; outcome: 'confirmed' | 'waiting' | 'failed' }> {
+    await Promise.all([ensureOrgLencoCredentials(params.investorOrgId), ensureOrgLencoCredentials(params.target.organization_id)]);
+    const [{ data: investor }, { data: company }] = await Promise.all([
+        supabase.from('organizations').select('lenco_subaccount_id, lenco_secret_key, payment_test_mode').eq('id', params.investorOrgId).maybeSingle(),
+        supabase.from('organizations').select('lenco_subaccount_id, lenco_secret_key, payment_test_mode').eq('id', params.target.organization_id).maybeSingle(),
+    ]);
+    if (investor?.payment_test_mode || company?.payment_test_mode) return { mode: 'LEDGER' };
+
+    for (const [row, id] of [[investor, params.investorOrgId], [company, params.target.organization_id]] as const) {
+        if (row && row.lenco_subaccount_id && !isLencoAccountId(row.lenco_subaccount_id)) {
+            const fixed = await ensureValidLencoAccountId(id);
+            if (fixed.ok) (row as any).lenco_subaccount_id = fixed.accountId;
+        }
+    }
+    if (!investor?.lenco_subaccount_id || !investor.lenco_secret_key || !isLencoAccountId(investor.lenco_subaccount_id)) {
+        console.error(`[Invest] investor org ${params.investorOrgId} has no usable Lenco wallet`);
+        throw new WalletInvestError('WALLET_UNAVAILABLE', "Your wallet isn't fully connected for transfers yet. Please pay by mobile money for now.", 409);
+    }
+    if (!company?.lenco_subaccount_id || !company.lenco_secret_key || !isLencoAccountId(company.lenco_subaccount_id)) {
+        console.error(`[Invest] target org ${params.target.organization_id} has no usable Lenco wallet`);
+        throw new WalletInvestError('TARGET_UNAVAILABLE', `${params.target.display_name} can't receive wallet payments right now. Please pay by mobile money.`, 409);
+    }
+
+    // The money must really be in the investor's Lenco account, not just on the ledger.
+    const real = await LencoService.getAccountBalance(investor.lenco_subaccount_id, investor.lenco_secret_key).catch(() => null);
+    const available = Number(real?.availableBalance ?? real?.balance ?? NaN);
+    if (Number.isFinite(available) && available < params.amount) {
+        throw new WalletInvestError('INSUFFICIENT_FUNDS', `Your wallet doesn't have K${params.amount.toFixed(2)} available at the moment.`, 400);
+    }
+
+    const details = await LencoService.getAccountDetails(company.lenco_subaccount_id, company.lenco_secret_key).catch(() => null);
+    const till = details?.details?.tillNumber ? String(details.details.tillNumber) : '';
+    if (!till) throw new WalletInvestError('TARGET_UNAVAILABLE', `${params.target.display_name} can't receive wallet payments right now. Please pay by mobile money.`, 409);
+
+    const reference = `INVW-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const { error: insErr } = await supabase.from('investments').insert({
+        investor_organization_id: params.investorOrgId,
+        investment_target_id: params.target.id,
+        target_organization_id: params.target.organization_id,
+        reference,
+        method: 'WALLET',
+        amount_paid: round2(params.amount),
+        status: 'PENDING',
+        created_by: params.userId,
+        investor_account_id: params.investorAccountId ?? null,
+        investor_account_number: params.investorAccountNumber ?? null,
+        product_name: params.productName ? String(params.productName).slice(0, 120) : null,
+    });
+    if (insErr) throw new Error(`Could not record the investment: ${insErr.message}`);
+    await supabase.from('app_settings').upsert({
+        key: walletInvestKey(reference),
+        value: { sourceWalletId: params.sourceWalletId, sourceWalletName: params.sourceWalletName },
+        description: 'Pending wallet investment transfer (safe to delete once settled).',
+        updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+
+    try {
+        await LencoService.transferToLencoMerchant(
+            { amount: round2(params.amount), reference, tillNumber: till, narration: `Investment: ${params.target.display_name}`.slice(0, 60) },
+            investor.lenco_subaccount_id, investor.lenco_secret_key,
+        );
+    } catch (e: any) {
+        await supabase.from('investments').update({ status: 'FAILED', failure_reason: e?.message || 'Transfer could not be started' }).eq('reference', reference);
+        throw new WalletInvestError('TRANSFER_FAILED', e?.message || 'The transfer could not be started. Nothing was taken.', 422);
+    }
+
+    // On-us transfers normally settle within seconds; otherwise the cron settles it.
+    let outcome: 'confirmed' | 'waiting' | 'failed' = 'waiting';
+    for (let i = 0; i < 6 && outcome === 'waiting'; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        const { data: inv } = await supabase.from('investments').select('*').eq('reference', reference).maybeSingle();
+        if (!inv) break;
+        outcome = await settleWalletInvestment(inv).catch(() => 'waiting' as const);
+    }
+    return { mode: 'LENCO', reference, outcome };
+}
+
+/** Asks Lenco whether a pending wallet investment went through; books both ledgers or fails it. Safe to repeat. */
+async function settleWalletInvestment(inv: any): Promise<'confirmed' | 'waiting' | 'failed'> {
+    if (inv.status !== 'PENDING') return inv.status === 'CONFIRMED' ? 'confirmed' : 'failed';
+    const { data: org } = await supabase.from('organizations').select('lenco_secret_key').eq('id', inv.investor_organization_id).maybeSingle();
+
+    let status: any = null;
+    try { status = await LencoService.getTransferStatus(inv.reference, (org as any)?.lenco_secret_key || undefined); } catch { return 'waiting'; }
+    const st = String(status?.status || '').toLowerCase();
+
+    if (st === 'failed' || st === 'declined' || st === 'rejected') {
+        await supabase.from('investments')
+            .update({ status: 'FAILED', failure_reason: status?.reasonForFailure || 'The wallet transfer was not completed.' })
+            .eq('id', inv.id).eq('status', 'PENDING');
+        return 'failed';
+    }
+    if (st !== 'successful') {
+        if (!status && Date.now() - new Date(inv.created_at).getTime() > 60 * 60 * 1000) {
+            await supabase.from('investments')
+                .update({ status: 'FAILED', failure_reason: 'Lenco never received the transfer.' })
+                .eq('id', inv.id).eq('status', 'PENDING');
+            return 'failed';
+        }
+        return 'waiting';
+    }
+
+    // Claim before posting so two callers can't both post; postOnce makes a crash-retry safe.
+    const amount = round2(Number(inv.amount_paid));
+    const { data: claimed } = await supabase.from('investments')
+        .update({ status: 'CONFIRMED', amount_received: amount, confirmed_at: new Date().toISOString() })
+        .eq('id', inv.id).eq('status', 'PENDING').select('*').maybeSingle();
+    if (!claimed) return 'confirmed';
+
+    try {
+        const target = await loadTarget(inv.investment_target_id);
+        if (!target) throw new Error('Investment target no longer exists');
+        const { data: saved } = await supabase.from('app_settings').select('value').eq('key', walletInvestKey(inv.reference)).maybeSingle();
+        const sourceWalletId = (saved?.value as any)?.sourceWalletId || await investorWallet(inv.investor_organization_id);
+        const sourceName = (saved?.value as any)?.sourceWalletName || 'MoneyWise wallet';
+
+        const assetAcct = await ensureInvestmentAccount(inv.investor_organization_id, target);
+        const label = `Investment: ${sourceName} ➜ ${target.display_name}`;
+        const date = lusakaToday();
+
+        // Both rows carry the transfer's reference so the Lenco sync recognises them instead of logging the same movement again.
+        await postOnce(inv.investor_organization_id, inv.reference, {
+            entry_type: 'ADJUSTMENT', description: `${label} (Outflow) | Ref: ${inv.reference}`, debit: 0, credit: amount, date,
+            created_by: inv.created_by, account_type: 'MONEYWISE_WALLET', wallet_id: sourceWalletId, status: 'COMPLETED', account_id: assetAcct,
+        });
+        await postOnce(inv.target_organization_id, inv.reference, {
+            entry_type: 'ADJUSTMENT', description: `${label} (Inflow) | Ref: ${inv.reference}`, debit: amount, credit: 0, date,
+            reference_number: inv.reference, created_by: inv.created_by, account_type: 'MONEYWISE_WALLET', wallet_id: target.wallet_id, status: 'COMPLETED',
+        });
+        await supabase.from('investments').update({ account_id: assetAcct }).eq('id', inv.id);
+        return 'confirmed';
+    } catch (err: any) {
+        console.error(`[Investments] Posting wallet investment ${inv.reference} failed:`, err);
+        await supabase.from('investments').update({ status: 'PENDING', confirmed_at: null }).eq('id', inv.id);
+        return 'waiting';
+    }
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export interface InvestorPayoutContext {
@@ -258,6 +420,7 @@ export const investmentService = {
     ensureInvestmentAccount,
     loadTarget,
     payoutContextForDeposit,
+    startWalletInvestment,
 
     /** Called before the investor pays, so the payment can be matched to them later. */
     async recordIntent(params: {
@@ -323,6 +486,7 @@ export const investmentService = {
      */
     async confirm(inv: any): Promise<'confirmed' | 'waiting' | 'failed'> {
         if (inv.status !== 'PENDING') return inv.status === 'CONFIRMED' ? 'confirmed' : 'failed';
+        if (inv.method === 'WALLET') return settleWalletInvestment(inv);
 
         const findDeposit = () => supabase
             .from('cashbook_entries')

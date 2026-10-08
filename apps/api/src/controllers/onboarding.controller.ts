@@ -1,4 +1,4 @@
-import { ensureValidLencoAccountId } from '../services/lencoAccountLink.service';
+import { ensureValidLencoAccountId, ensureOrgLencoCredentials } from '../services/lencoAccountLink.service';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
@@ -479,6 +479,9 @@ export const claimWallet = async (req: any, res: Response): Promise<any> => {
         // The pool value is copied into the organization unchecked. If it isn't a real Lenco account id
         // (a till number), repair it now — verified — rather than activating a wallet that can't transact.
         let providerAccountId = claimed.provider_account_id;
+        // An already-linked pool row returns early inside the claim and never re-copies its credentials
+        // onto the organization; make sure they are there (Longhorn was linked this way and couldn't pay out).
+        await ensureOrgLencoCredentials(organization_id);
         const link = await ensureValidLencoAccountId(organization_id);
         if (link.ok) providerAccountId = link.accountId;
         else {
