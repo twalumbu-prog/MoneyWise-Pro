@@ -76,6 +76,46 @@ async function loadUserProfile(
     return { ok: false };
 }
 
+/**
+ * Per-device active organization.
+ *
+ * `users.organization_id` is ONE value per person, so using it as "the" active organization made a
+ * switch on one device (phone, laptop) change it for every other device signed in as the same user.
+ * Clients now send the organization THEY are working in as `x-organization-id`; if the user really is
+ * an ACTIVE member of it, that organization (and their role/employee id in it) is used for this request
+ * instead of the shared default. Anything else — no header, a malformed one, or an organization the
+ * user doesn't belong to — falls back to the stored default, so this can never grant access to an
+ * organization the user isn't a member of (membership is checked server-side every time).
+ */
+const ORG_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const membershipCache = new Map<string, { at: number; value: { role: string; employee_id: string | null } | null }>();
+const MEMBERSHIP_TTL_MS = 30_000;
+
+async function applyOrganizationOverride(req: any, user: any): Promise<void> {
+    const wanted = String(req.headers['x-organization-id'] || '').trim();
+    if (!wanted || !ORG_UUID.test(wanted) || wanted === user.organization_id) return;
+
+    const key = `${user.id}:${wanted}`;
+    const hit = membershipCache.get(key);
+    let membership = hit && Date.now() - hit.at < MEMBERSHIP_TTL_MS ? hit.value : undefined;
+    if (membership === undefined) {
+        const { data, error } = await supabase
+            .from('user_organizations')
+            .select('role, employee_id, status')
+            .eq('user_id', user.id)
+            .eq('organization_id', wanted)
+            .maybeSingle();
+        if (error) return; // can't verify → keep the default rather than guess
+        membership = data && data.status === 'ACTIVE' ? { role: data.role, employee_id: data.employee_id ?? null } : null;
+        membershipCache.set(key, { at: Date.now(), value: membership });
+        if (membershipCache.size > 2000) membershipCache.clear();
+    }
+    if (!membership) return;
+    user.organization_id = wanted;
+    user.role = membership.role;
+    user.employee_id = membership.employee_id;
+}
+
 export const requireAuth = async (req: any, res: any, next: any) => {
     const authHeader = req.headers.authorization;
     console.log(`[Auth] Incoming request: ${req.method} ${req.path}`);
@@ -135,6 +175,7 @@ export const requireAuth = async (req: any, res: any, next: any) => {
             } else {
                 user.role = lookup.profile.role;
                 user.organization_id = lookup.profile.organization_id;
+                await applyOrganizationOverride(req, user);
             }
 
             req.user = user;
@@ -200,6 +241,7 @@ export const requireAuth = async (req: any, res: any, next: any) => {
         } else {
             user.role = lookup.profile.role;
             user.organization_id = lookup.profile.organization_id;
+            await applyOrganizationOverride(req, user);
         }
 
         req.user = user;

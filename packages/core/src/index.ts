@@ -29,7 +29,7 @@ export type {
     StreamAdapter,
 } from './platform';
 
-export { apiFetch, apiJson } from './api/apiFetch';
+export { apiFetch, apiJson, setActiveOrganizationId } from './api/apiFetch';
 export { ApiError, isApiError } from './api/ApiError';
 
 export { userService } from './services/user.service';

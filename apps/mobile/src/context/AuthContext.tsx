@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase';
 import { clearCache, cacheStore, secureStore } from '../platform/storage';
 import { queryClient } from '../lib/queryClient';
 import { registerForPushNotificationsAsync } from '../lib/pushNotifications';
-import { userService } from 'core';
+import { userService, setActiveOrganizationId } from 'core';
 
 import type { UserRole } from 'core';
 export type { UserRole };
@@ -27,7 +27,7 @@ interface AuthContextValue {
     organizationId: string | null;
     organizationName: string | null;
     userOrganizations: UserOrganization[];
-    refreshUserOrganizations: () => Promise<void>;
+    refreshUserOrganizations: () => Promise<UserOrganization[] | void>;
     switchOrganization: (organizationId: string) => Promise<void>;
     signInWithPassword: (identifier: string, password: string, preferredAccountType?: 'INDIVIDUAL' | 'BUSINESS') => Promise<void>;
     signUp: (email: string, password: string, name: string, organizationName: string, username: string) => Promise<void>;
@@ -52,6 +52,19 @@ interface AuthSnapshot {
     organizationName: string | null;
     userOrganizations: UserOrganization[];
 }
+/** This DEVICE's own active organization. The server-side default is shared by every device the user is signed in on. */
+const DEVICE_ORG_KEY = 'device_active_org_v1';
+async function readDeviceOrg(userId: string): Promise<string | null> {
+    try {
+        const raw = await cacheStore.get(DEVICE_ORG_KEY);
+        if (!raw) return null;
+        const v = JSON.parse(raw) as { userId: string; orgId: string };
+        return v.userId === userId ? v.orgId : null;
+    } catch { return null; }
+}
+const writeDeviceOrg = (userId: string, orgId: string) =>
+    cacheStore.set(DEVICE_ORG_KEY, JSON.stringify({ userId, orgId })).catch(() => undefined);
+
 const withTimeout = <T,>(promise: PromiseLike<T>, ms: number): Promise<T> =>
     Promise.race([
         Promise.resolve(promise),
@@ -120,9 +133,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setOrganizationId(snap.organizationId);
             setOrganizationName(snap.organizationName);
             setUserOrganizations(snap.userOrganizations ?? []);
+            setActiveOrganizationId(snap.organizationId);
         };
 
         const loadProfile = async (userId: string) => {
+            // Announce this device's own organization from the very first request.
+            const preferredOrgId = await readDeviceOrg(userId);
+            if (preferredOrgId) setActiveOrganizationId(preferredOrgId);
+
             let row: any = null;
             try {
                 const { data, error } = await withTimeout(
@@ -143,18 +161,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return;
             }
 
-            setUserName(row.name ?? null);
-            setUserRole(row.role ?? null);
-            setUserStatus(row.status ?? null);
-            const activeOrgId = row.organization_id ?? null;
-            setOrganizationId(activeOrgId);
-            if (activeOrgId) {
-                await cacheStore.set('last_active_organization_id', activeOrgId);
-            }
             const orgObj: any = row.organizations;
             const fetchedOrgName = Array.isArray(orgObj) ? orgObj[0]?.name : orgObj?.name;
-            setOrganizationName(fetchedOrgName ?? null);
-            await withTimeout(refreshUserOrganizations(), 5000).catch(() => undefined);
+            let eff = {
+                role: (row.role ?? null) as UserRole | null,
+                status: (row.status ?? null) as string | null,
+                orgId: (row.organization_id ?? null) as string | null,
+                name: (fetchedOrgName ?? null) as string | null,
+            };
+            const orgs = await withTimeout(refreshUserOrganizations(), 5000).catch(() => [] as UserOrganization[]);
+            // If this device was last working in a different organization and the user still belongs to
+            // it, stay there — another device's switch must not move this one.
+            if (preferredOrgId && preferredOrgId !== eff.orgId) {
+                const m = orgs.find((o) => o.organization?.id === preferredOrgId && (o.status === 'ACTIVE' || !o.status));
+                if (m) eff = { role: m.role, status: 'ACTIVE', orgId: preferredOrgId, name: m.organization?.name ?? null };
+            }
+            if (!mounted.current) return;
+            setActiveOrganizationId(eff.orgId);
+            if (eff.orgId) void writeDeviceOrg(userId, eff.orgId);
+            setUserName(row.name ?? null);
+            setUserRole(eff.role);
+            setUserStatus(eff.status);
+            setOrganizationId(eff.orgId);
+            setOrganizationName(eff.name);
 
             registerForPushNotificationsAsync().then((result) => {
                 if (!result || !mounted.current) return;
@@ -353,16 +382,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const refreshUserOrganizations = async () => {
         try {
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) return;
+            if (!session) return [] as UserOrganization[];
             const { getCore } = await import('core');
             const apiUrl = getCore().env.apiUrl;
             const res = await fetch(`${apiUrl}/auth/my-organizations`, {
                 headers: { Authorization: `Bearer ${session.access_token}` },
             });
-            if (res.ok) setUserOrganizations((await res.json()) || []);
+            if (res.ok) {
+                const list = ((await res.json()) || []) as UserOrganization[];
+                setUserOrganizations(list);
+                return list;
+            }
         } catch (err) {
             console.error('Failed to fetch user organizations:', err);
         }
+        return [] as UserOrganization[];
     };
 
     const switchOrganization = async (orgId: string) => {
@@ -382,6 +416,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         clearCache();
         if (orgId) {
             await cacheStore.set('last_active_organization_id', orgId);
+            // Remember it for THIS device only and announce it on every request from now on.
+            await writeDeviceOrg(session.user.id, orgId);
+            setActiveOrganizationId(orgId);
         }
         setUserRole(data.user.role);
         setUserStatus(data.user.status);
@@ -399,6 +436,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             new Promise((resolve) => setTimeout(resolve, 1000)),
         ]).catch((err) => console.warn('[Push] Unregister on sign-out background warning:', err));
 
+        setActiveOrganizationId(null);
         setSession(null);
         setUser(null);
         setUserName(null);

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { apiFetch } from '../lib/api';
+import { apiFetch, setActiveOrganizationId } from '../lib/api';
 import posthog from '../lib/posthog';
 import { trackEvent } from '../lib/analytics';
 
@@ -122,6 +122,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         const fetchRoleAndOrg = async (userId: string, email?: string) => {
+            // This browser's own active organization. The server-side default is shared by every
+            // device signed in as this user, so each device keeps (and announces) its own choice.
+            const prefKey = `moneywise:active_org:${userId}`;
+            const preferredOrgId = localStorage.getItem(prefKey);
+            if (preferredOrgId) setActiveOrganizationId(preferredOrgId);
+
             let { data, error } = await supabase
                 .from('users')
                 .select('role, status, name, organization_id, organizations(name, logo_url)')
@@ -143,21 +149,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             if (data && !error) {
                 const userData = data as any;
-                setUserRole(userData.role);
-                setUserStatus(userData.status);
+                // Effective context: this device's remembered organization if the user is still an
+                // active member of it, otherwise the shared default from the users row.
+                let eff = {
+                    role: userData.role as string,
+                    status: userData.status as string,
+                    orgId: userData.organization_id as string | null,
+                    name: (userData.organizations?.name || null) as string | null,
+                    logo: (userData.organizations?.logo_url || null) as string | null,
+                };
+                if (preferredOrgId && preferredOrgId !== userData.organization_id) {
+                    try {
+                        const { data: { session: s2 } } = await supabase.auth.getSession();
+                        const apiUrl = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
+                        const r = s2 ? await fetch(`${apiUrl}/auth/my-organizations`, { headers: { Authorization: `Bearer ${s2.access_token}` } }) : null;
+                        const orgs: any[] = r && r.ok ? ((await r.json()) || []) : [];
+                        const m = orgs.find((o) => o.organization?.id === preferredOrgId && (o.status === 'ACTIVE' || !o.status));
+                        if (m) {
+                            eff = { role: m.role, status: 'ACTIVE', orgId: preferredOrgId, name: m.organization?.name || null, logo: m.organization?.logo_url || null };
+                            setUserOrganizations(orgs);
+                        } else {
+                            localStorage.removeItem(prefKey); // no longer a member there → fall back to the default
+                        }
+                    } catch { /* keep the default */ }
+                }
+                setActiveOrganizationId(eff.orgId);
+
+                setUserRole(eff.role);
+                setUserStatus(eff.status);
                 setUserName(userData.name);
-                orgIdRef.current = userData.organization_id;
-                setOrganizationId(userData.organization_id);
-                setOrganizationName(userData.organizations?.name || null);
-                const logo = userData.organizations?.logo_url || null;
-                setOrganizationLogoUrl(logo);
-                preloadImage(logo);
+                orgIdRef.current = eff.orgId;
+                setOrganizationId(eff.orgId);
+                setOrganizationName(eff.name);
+                setOrganizationLogoUrl(eff.logo);
+                preloadImage(eff.logo);
                 posthog.identify(userId, {
                     email,
                     name: userData.name,
-                    role: userData.role,
-                    organization_id: userData.organization_id,
-                    organization_name: userData.organizations?.name,
+                    role: eff.role,
+                    organization_id: eff.orgId,
+                    organization_name: eff.name,
                 });
                 refreshNotifications();
                 refreshUserOrganizations();
@@ -415,6 +446,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             const data = await response.json();
+            // Remember it for THIS browser only and announce it on every request from now on.
+            localStorage.setItem(`moneywise:active_org:${session.user.id}`, orgId);
+            setActiveOrganizationId(orgId);
             setUserRole(data.user.role);
             setUserStatus(data.user.status);
             orgIdRef.current = data.user.organization_id;
@@ -438,6 +472,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         posthog.capture('user_signed_out');
         posthog.reset();
         await supabase.auth.signOut();
+        setActiveOrganizationId(null);
         setUser(null);
         setSession(null);
         setUserRole(null);

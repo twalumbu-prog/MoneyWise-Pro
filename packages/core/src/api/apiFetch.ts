@@ -127,11 +127,22 @@ async function getAccessToken(): Promise<string | null> {
     }
 }
 
+// ── This device's active organization ────────────────────────────────────────
+// The server's stored "active organization" is ONE value per person, so switching on one device used
+// to switch every other device signed in as the same user. Each client now remembers the organization
+// it is working in and sends it on every request; the server verifies membership before honouring it.
+let activeOrganizationId: string | null = null;
+
+export function setActiveOrganizationId(id: string | null): void {
+    activeOrganizationId = id;
+}
+
 function sendRequest(path: string, options: RequestInit, token: string | null) {
     const apiUrl = getCore().env.apiUrl;
     const headers = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(activeOrganizationId ? { 'x-organization-id': activeOrganizationId } : {}),
         ...options.headers,
     };
     return fetch(`${apiUrl}${path.startsWith('/') ? path : `/${path}`}`, { ...options, headers });

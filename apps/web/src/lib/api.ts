@@ -3,4 +3,4 @@
  * the same token-refresh and retry behaviour. Re-exported here so existing
  * call sites keep their import path.
  */
-export { apiFetch, apiJson } from 'core';
+export { apiFetch, apiJson, setActiveOrganizationId } from 'core';
