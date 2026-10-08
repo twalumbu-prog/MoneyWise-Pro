@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { LencoService, classifyLencoFailureReason } from '../services/lenco.service';
+import { isLencoAccountId, ensureValidLencoAccountId } from '../services/lencoAccountLink.service';
 import { emailService } from '../services/email.service';
 import { supabase } from '../lib/supabase';
 import pool from '../db';
@@ -2262,7 +2263,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             }
 
             const orgId = org.id;
-            const subaccountId = org.lenco_subaccount_id;
+            let subaccountId = org.lenco_subaccount_id;
             const secretKey = org.lenco_secret_key || process.env.LENCO_SECRET_KEY;
 
             // A due daily FULL pass can take ~25–30 s on a big org. If this run is already well in, put it
@@ -2284,6 +2285,18 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
             if (!secretKey) {
                 console.warn(`[Lenco Sync] Missing API key for organization ${org.name} (${orgId}). Skipping.`);
                 continue;
+            }
+
+            // A Lenco account id is a UUID. If this org was linked with something else (its till number),
+            // Lenco answers "Invalid accountId" forever — repair the link now (verified) or say so clearly.
+            if (!isLencoAccountId(subaccountId)) {
+                const link = await ensureValidLencoAccountId(orgId);
+                if (!link.ok) {
+                    console.error(`[Lenco Sync] ${org.name}: invalid Lenco account id "${subaccountId}" and it could not be repaired (${link.reason}). Skipping.`);
+                    syncResults.push({ orgId, orgName: org.name, success: false, error: 'invalid Lenco account id' });
+                    continue;
+                }
+                subaccountId = link.accountId;
             }
 
             console.log(`[Lenco Sync] Processing organization: ${org.name} (${orgId}) | Subaccount: ${subaccountId}`);

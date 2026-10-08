@@ -17,6 +17,7 @@ import { pushService } from './push.service';
 import { finalizeIfPaid } from './collectionRecovery.service';
 import { ensureSavingsTransferAccount } from './ledger.service';
 import { LencoService } from './lenco.service';
+import { ensureValidLencoAccountId } from './lencoAccountLink.service';
 import { classifyRecentSavingsEntries } from './inflowClassifier.service';
 
 export type SavingsKind = 'WISHLIST' | 'GOAL' | 'GROUP';
@@ -471,6 +472,13 @@ export const savingsService = {
         // A real Lenco account id is a UUID. Some organizations were linked with their till number in its place
         // (Lenco then answers "Invalid accountId" for everything), so check before trying to move money.
         const LENCO_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        // Repair a till-number link on the spot if it can be done safely, then carry on.
+        for (const [orgRow, id] of [[memberOrg, params.orgId], [ownerOrg, goal.organization_id]] as const) {
+            if (orgRow && !LENCO_ACCOUNT_ID.test(String((orgRow as any).lenco_subaccount_id || ''))) {
+                const fixed = await ensureValidLencoAccountId(id);
+                if (fixed.ok) (orgRow as any).lenco_subaccount_id = fixed.accountId;
+            }
+        }
         if (!LENCO_ACCOUNT_ID.test(String((memberOrg as any)?.lenco_subaccount_id || ''))) {
             console.error(`[Savings] member org ${params.orgId} has an invalid Lenco account id (${(memberOrg as any)?.lenco_subaccount_id}) — wallet transfers unavailable until it's relinked.`);
             throw new SavingsError('UNAVAILABLE', 'Your wallet isn’t fully connected for transfers yet, so we can’t pay from it. Please pay by mobile money for now — our team has been told.', 409);

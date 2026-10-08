@@ -1,3 +1,4 @@
+import { ensureValidLencoAccountId } from '../services/lencoAccountLink.service';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
@@ -475,6 +476,23 @@ export const claimWallet = async (req: any, res: Response): Promise<any> => {
             });
         }
 
+        // The pool value is copied into the organization unchecked. If it isn't a real Lenco account id
+        // (a till number), repair it now — verified — rather than activating a wallet that can't transact.
+        let providerAccountId = claimed.provider_account_id;
+        const link = await ensureValidLencoAccountId(organization_id);
+        if (link.ok) providerAccountId = link.accountId;
+        else {
+            console.error(`[Onboarding] Org ${organization_id} was linked to an unusable Lenco account (${link.reason}).`);
+            const admins = String(process.env.SUPER_ADMIN_EMAILS || '').split(',').map(e => e.trim()).filter(Boolean);
+            if (admins.length > 0) {
+                emailService.sendEmail({
+                    to: admins,
+                    subject: '⚠️ A newly linked MoneyWise wallet has an invalid Lenco account id',
+                    html: `<p>Organization <code>${organization_id}</code> was linked to a pool wallet whose Lenco account id is not usable (${link.reason}). Payments, payouts and sync will fail for it until the wallet_pool row is corrected.</p>`,
+                }).catch((e: any) => console.error('[Onboarding] Link alert email failed:', e?.message));
+            }
+        }
+
         await getOrCreateMainWallet(organization_id);
 
         captureEvent('onboarding_wallet_linked', {
@@ -486,7 +504,7 @@ export const claimWallet = async (req: any, res: Response): Promise<any> => {
         return res.json({
             linked: true,
             alreadyLinked: !!claimed.already_linked,
-            providerAccountId: claimed.provider_account_id,
+            providerAccountId,
             publicKey: claimed.public_key,
             linkedAt: claimed.linked_at,
         });
