@@ -208,7 +208,7 @@ export interface InvestorPayoutContext {
     fundName: string;
     companyName: string;
     reference: string;
-    /** What the recipient's bank statement should show: who paid, their account number, which fund. */
+    /** What the recipient's bank statement should show: the investor's account number. */
     narration: string;
 }
 
@@ -249,8 +249,8 @@ async function payoutContextForDeposit(
     const fundName = inv.product_name || companyName;
     const accountNumber = inv.investor_account_number || null;
 
-    // Bank statements truncate long narrations, so lead with what reconciliation keys on.
-    const narration = [investorName, accountNumber, fundName].filter(Boolean).join(' - ').replace(/\s+/g, ' ').slice(0, 100);
+    // The company reconciles on the investor's account number alone (falls back to the name if none is on file).
+    const narration = (accountNumber || investorName).replace(/\s+/g, ' ').slice(0, 100);
     return { investorName, investorEmail, accountNumber, fundName, companyName, reference: inv.reference, narration };
 }
 
