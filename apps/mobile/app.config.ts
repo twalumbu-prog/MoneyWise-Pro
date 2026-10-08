@@ -45,6 +45,15 @@ const PLUGINS: ExpoConfig['plugins'] = [
                 'MoneyWise uses the camera so you can photograph receipts and attach them to a request.',
         },
     ],
+    // Lets "Send money → Mobile Money" search the phone's contacts by name. Contacts are read on the
+    // device only to fill in a number; nothing is uploaded.
+    [
+        'expo-contacts',
+        {
+            contactsPermission:
+                'MoneyWise reads your contacts so you can pick who to send money to by name. Contacts stay on your phone.',
+        },
+    ],
     // Sets the iOS deployment target to 16.4 -- expo-speech-recognition's
     // native module requires it (Apple's on-device Speech APIs used there
     // were introduced across 16.x). Every other native dependency here

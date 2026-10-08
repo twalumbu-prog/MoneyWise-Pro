@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle,
     CheckCircle, Smartphone, Building2, Mail, ChevronDown, Search,
-    ShieldCheck,
+    ShieldCheck, BookUser,
 } from 'lucide-react-native';
 import {
     requisitionService, departmentService, lencoService, cashbookService, userService,
@@ -22,6 +22,8 @@ import { BankAvatar } from '../../src/components/BankAvatar';
 import { cacheStoreSync } from '../../src/platform/storage';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
+import { ContactSuggestions, ContactPickerSheet, useContactBook } from '../../src/components/payments/ContactPicker';
+import type { ContactNumber } from '../../src/lib/contacts';
 
 const PREF_USE_MY_ACCOUNT = 'reqwizard_use_my_account';
 const PREF_MAKE_EXPENSE_LIST = 'reqwizard_make_expense_list';
@@ -305,6 +307,38 @@ export default function NewRequisitionScreen() {
         else if (normalized.startsWith('095') || normalized.startsWith('075')) operator = 'ZAMTEL';
         setMomoOperator(operator);
     };
+
+    // Mobile money number field: digits are a number as before; letters search the phone's contacts by name.
+    const contactBook = useContactBook();
+    const [momoText, setMomoText] = useState('');
+    const [contactQuery, setContactQuery] = useState('');
+    const [contactPickerOpen, setContactPickerOpen] = useState(false);
+    const [pickedContactName, setPickedContactName] = useState('');
+
+    const onMomoTextChange = (val: string) => {
+        setMomoText(val);
+        setPickedContactName('');
+        if (/[A-Za-z]/.test(val)) {
+            setContactQuery(val);
+            onPhoneChange('');
+        } else {
+            setContactQuery('');
+            onPhoneChange(val);
+        }
+    };
+
+    const pickContact = (c: ContactNumber) => {
+        setContactPickerOpen(false);
+        setContactQuery('');
+        setMomoText(c.number);
+        setPickedContactName(c.name);
+        onPhoneChange(c.number);
+    };
+
+    // Anything else that clears or sets the number (switching method, reset) keeps the text in step.
+    useEffect(() => {
+        if (!contactQuery) setMomoText(phoneNumber);
+    }, [phoneNumber, contactQuery]);
 
     const getTotal = () => makeExpenseList
         ? lineItems.reduce((s, i) => s + Number(i.estimated_amount), 0)
@@ -849,16 +883,25 @@ export default function NewRequisitionScreen() {
                                     </View>
                                 ) : paymentMethod === 'mobile' ? (
                                     <View style={styles.field}>
-                                        <Text style={styles.label}>Phone Number</Text>
+                                        <Text style={styles.label}>Phone Number or Contact</Text>
                                         <View style={styles.phoneWrap}>
                                             <TextInput
-                                                style={styles.phoneInput}
-                                                value={phoneNumber}
-                                                onChangeText={onPhoneChange}
-                                                placeholder="Enter phone number"
+                                                style={[styles.phoneInput, { paddingRight: momoOperator ? 128 : 56 }]}
+                                                value={momoText}
+                                                onChangeText={onMomoTextChange}
+                                                placeholder="Number, or search a contact by name"
                                                 placeholderTextColor={colors.textFaint}
-                                                keyboardType="phone-pad"
+                                                autoCapitalize="none"
+                                                autoCorrect={false}
                                             />
+                                            <Pressable
+                                                style={[styles.contactsBtn, { right: momoOperator ? 78 : 10 }]}
+                                                onPress={() => setContactPickerOpen(true)}
+                                                hitSlop={8}
+                                                accessibilityLabel="Choose from contacts"
+                                            >
+                                                <BookUser size={18} color={colors.blue} />
+                                            </Pressable>
                                             {!!momoOperator && (
                                                 <View style={styles.operatorBadge}>
                                                     <Text style={[
@@ -870,6 +913,10 @@ export default function NewRequisitionScreen() {
                                                 </View>
                                             )}
                                         </View>
+                                        {!!contactQuery && <ContactSuggestions query={contactQuery} book={contactBook} onPick={pickContact} />}
+                                        {!!pickedContactName && !contactQuery && (
+                                            <Text style={styles.pickedContact}>Sending to {pickedContactName}</Text>
+                                        )}
                                     </View>
                                 ) : (
                                     <>
@@ -1049,6 +1096,13 @@ export default function NewRequisitionScreen() {
                 title="Select Department"
                 items={orgDepartments.map((d) => ({ id: d.id, label: d.name }))}
                 onSelect={(item) => { setDepartment(item.label); setDeptPickerOpen(false); }}
+            />
+
+            <ContactPickerSheet
+                visible={contactPickerOpen}
+                onClose={() => setContactPickerOpen(false)}
+                onPick={pickContact}
+                book={contactBook}
             />
 
             <PickerSheet
@@ -1248,6 +1302,8 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: colors.border, borderRadius: radius.lg, paddingHorizontal: 18, paddingRight: 80, height: 52,
     },
     operatorBadge: { position: 'absolute', right: 14, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
+    contactsBtn: { position: 'absolute', width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: '#EAF1FF' },
+    pickedContact: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.textMuted, marginTop: 6 },
     operatorBadgeText: { fontFamily: fonts.bodyBold, fontSize: 9, letterSpacing: 0.5 },
     holderCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#EEF4FF', borderWidth: 1, borderColor: 'rgba(0,106,255,0.1)', borderRadius: radius.lg, padding: 14 },
     holderLabel: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.blue, textTransform: 'uppercase', letterSpacing: 0.5 },
