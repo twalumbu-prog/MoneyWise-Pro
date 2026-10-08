@@ -1,3 +1,4 @@
+import { matchesRecordedInternalTransfer } from '../services/internalTransferMatch.service';
 import { Request, Response } from 'express';
 import { LencoService, classifyLencoFailureReason } from '../services/lenco.service';
 import { isLencoAccountId, ensureValidLencoAccountId } from '../services/lencoAccountLink.service';
@@ -2572,6 +2573,13 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 if (txnType === 'debit' && (
                     descLower.includes('split payment') ||
                     txnRefRaw.toUpperCase().startsWith('SPLIT-') ||
+                // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
+                if (await matchesRecordedInternalTransfer(orgId, walletId, {
+                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate,
+                })) {
+                    continue;
+                }
+
                     descLower.includes('split-inflow') ||
                     descLower.includes('split-inflow payment') ||
                     descLower.includes('to blue opus software')
