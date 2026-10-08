@@ -394,6 +394,22 @@ async function forwardPayment(automation: Automation, action: ForwardPaymentActi
     const plan = planTransfer(amount, balance - reserved, action.fee_mode ?? 'AUTO');
     if ('error' in plan) throw new Error(plan.error);
 
+    // The ledger can drift from the real Lenco balance (a booked-but-never-funded deposit, a duplicate
+    // row). Never send money the Lenco account doesn't hold: fail here, loudly, instead of at Lenco.
+    const { data: lencoOrg } = await supabase
+        .from('organizations')
+        .select('lenco_subaccount_id, lenco_secret_key, payment_test_mode')
+        .eq('id', automation.organization_id)
+        .maybeSingle();
+    if (lencoOrg && !lencoOrg.payment_test_mode && lencoOrg.lenco_subaccount_id && lencoOrg.lenco_secret_key) {
+        const real = await LencoService.getAccountBalance(lencoOrg.lenco_subaccount_id, lencoOrg.lenco_secret_key).catch(() => null);
+        const available = Number(real?.availableBalance ?? real?.balance ?? NaN);
+        const needed = plan.transfer + plan.fee;
+        if (Number.isFinite(available) && available + 0.005 < needed) {
+            throw new Error(`The Lenco account holds ${money(available)} but ${money(needed)} is needed (${money(plan.transfer)} + ${money(plan.fee)} fee). The wallet ledger may be ahead of the real balance, so nothing was sent.`);
+        }
+    }
+
     const requisitionId = await ensureRequisition(automation, action, run, plan.transfer);
 
     // A retry may plan a different amount than the first attempt did.
