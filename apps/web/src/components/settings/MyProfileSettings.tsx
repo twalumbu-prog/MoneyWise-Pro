@@ -7,6 +7,7 @@ import {
     Loader2
 } from 'lucide-react';
 import { apiFetch } from '../../lib/api';
+import { useBankAccountLookup } from '../../hooks/useBankAccountLookup';
 
 interface PaymentInfo {
     bank_name?: string;
@@ -44,6 +45,15 @@ export const MyProfileSettings: React.FC = () => {
     useEffect(() => {
         loadProfile();
     }, []);
+
+    // Look the account holder up from Lenco as soon as there is a bank and an account number.
+    const lookup = useBankAccountLookup(paymentInfo.bank_name || '', paymentInfo.bank_account_number || '');
+    useEffect(() => {
+        if (lookup.status === 'found') setPaymentInfo(prev => prev.bank_account_name === lookup.name ? prev : { ...prev, bank_account_name: lookup.name });
+    }, [lookup.status, lookup.name]);
+    const bankChoices = lookup.banks.length
+        ? Array.from(new Set([...(paymentInfo.bank_name ? [paymentInfo.bank_name] : []), ...lookup.banks.map(b => b.name)]))
+        : BANK_OPTIONS;
 
     const loadProfile = async () => {
         try {
@@ -163,7 +173,7 @@ export const MyProfileSettings: React.FC = () => {
                                         className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all"
                                     >
                                         <option value="">Select a bank...</option>
-                                        {BANK_OPTIONS.map(bank => (
+                                        {bankChoices.map(bank => (
                                             <option key={bank} value={bank}>{bank}</option>
                                         ))}
                                     </select>
@@ -186,9 +196,13 @@ export const MyProfileSettings: React.FC = () => {
                                         name="bank_account_name"
                                         value={paymentInfo.bank_account_name}
                                         onChange={handlePaymentChange}
-                                        placeholder="Name as it appears on bank statement"
-                                        className="block w-full px-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all"
+                                        readOnly={lookup.status === 'found'}
+                                        placeholder={lookup.status === 'checking' ? 'Looking up account…' : 'Filled in automatically from the bank'}
+                                        className={`block w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-[#006AFF]/20 focus:border-[#006AFF] outline-none transition-all ${lookup.status === 'found' ? 'bg-emerald-50/50 font-semibold' : 'bg-white'}`}
                                     />
+                                    {lookup.status === 'checking' && <p className="mt-1.5 text-xs text-gray-400 flex items-center"><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Verifying with the bank…</p>}
+                                    {lookup.status === 'found' && <p className="mt-1.5 text-xs text-emerald-600 flex items-center"><CheckCircle className="h-3 w-3 mr-1" /> Verified with the bank</p>}
+                                    {lookup.status === 'failed' && <p className="mt-1.5 text-xs text-amber-600 flex items-center"><AlertCircle className="h-3 w-3 mr-1" /> Couldn't verify this account. Check the bank and number, or type the name yourself.</p>}
                                 </div>
                             </div>
                         </div>

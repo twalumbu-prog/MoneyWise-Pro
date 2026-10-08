@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { investmentService, ZAMBIA_BANK_NAMES } from 'core';
+import { useBankAccountLookup } from '../../hooks/useBankAccountLookup';
 import { Landmark, ShieldCheck, Mail, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 /**
@@ -31,6 +32,14 @@ export const InvestorPayouts: React.FC = () => {
         setName(data.accountName ?? '');
         setForward(data.forwardDeposits);
     }, [data]);
+
+    const lookup = useBankAccountLookup(bank, number);
+    useEffect(() => {
+        if (lookup.status === 'found') setName(lookup.name);
+    }, [lookup.status, lookup.name]);
+    const bankChoices = lookup.banks.length
+        ? Array.from(new Set([...(bank ? [bank] : []), ...lookup.banks.map(b => b.name)]))
+        : ZAMBIA_BANK_NAMES;
 
     const save = useMutation({
         mutationFn: () => investmentService.savePayoutSettings({
@@ -79,7 +88,7 @@ export const InvestorPayouts: React.FC = () => {
                     <label className={label}>Bank</label>
                     <select value={bank} onChange={e => setBank(e.target.value)} className={input}>
                         <option value="">Select a bank…</option>
-                        {ZAMBIA_BANK_NAMES.map(b => <option key={b} value={b}>{b}</option>)}
+                        {bankChoices.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                 </div>
                 <div>
@@ -91,8 +100,15 @@ export const InvestorPayouts: React.FC = () => {
                     <input value={number} onChange={e => setNumber(e.target.value)} inputMode="numeric" className={input} />
                 </div>
                 <div>
-                    <label className={label}>Account name <span className="font-normal text-gray-400">(optional)</span></label>
-                    <input value={name} onChange={e => setName(e.target.value)} placeholder="Filled in from the bank when you save" className={input} />
+                    <label className={label}>Account name</label>
+                    <input
+                        value={name} onChange={e => setName(e.target.value)} readOnly={lookup.status === 'found'}
+                        placeholder={lookup.status === 'checking' ? 'Looking up account…' : 'Filled in automatically from the bank'}
+                        className={`${input} ${lookup.status === 'found' ? 'bg-emerald-50/50 font-semibold' : ''}`}
+                    />
+                    {lookup.status === 'checking' && <p className="mt-1 text-[11px] text-gray-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Verifying with the bank…</p>}
+                    {lookup.status === 'found' && <p className="mt-1 text-[11px] text-emerald-600 flex items-center gap-1"><CheckCircle2 size={12} /> Verified with the bank</p>}
+                    {lookup.status === 'failed' && <p className="mt-1 text-[11px] text-amber-600 flex items-center gap-1"><AlertCircle size={12} /> Couldn't verify this account. Check the bank and number.</p>}
                 </div>
                 <p className="flex items-center gap-1.5 text-[11px] text-gray-500"><ShieldCheck size={13} className="text-emerald-600" /> We verify the account with the bank before saving.</p>
             </div>
