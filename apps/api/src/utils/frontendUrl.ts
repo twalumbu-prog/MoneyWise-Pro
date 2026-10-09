@@ -55,6 +55,9 @@ export function getFrontendUrl(req?: Request): string {
         }
     }
 
-    if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL.replace(/\/$/, '');
-    return process.env.NODE_ENV === 'production' ? PROD_URL : DEV_URL;
+    const isProd = process.env.NODE_ENV === 'production' || !!process.env.VERCEL;
+    const configured = process.env.FRONTEND_URL?.trim().replace(/\/$/, '');
+    // A localhost FRONTEND_URL copied into the deployed env must never reach real users.
+    if (configured && !(isProd && /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(configured))) return configured;
+    return isProd ? PROD_URL : DEV_URL;
 }

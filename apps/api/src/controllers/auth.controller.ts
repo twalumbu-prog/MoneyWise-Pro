@@ -2,6 +2,7 @@ import express from 'express';
 import { supabase } from '../lib/supabase';
 import { seedDefaultAccounts, seedPersonalAccounts, purgeBusinessTemplateAccounts } from '../services/account-provisioning.service';
 import { captureEvent } from '../utils/analytics';
+import { getFrontendUrl } from '../utils/frontendUrl';
 import { emailService } from '../services/email.service';
 
 interface RegisterUserRequest {
@@ -12,11 +13,6 @@ interface RegisterUserRequest {
     role: 'REQUESTOR' | 'AUTHORISER' | 'ACCOUNTANT' | 'CASHIER' | 'ADMIN';
 }
 
-const getFrontendUrl = () => {
-    if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
-    if (process.env.NODE_ENV === 'production') return 'https://moneywise.blueopus.cloud';
-    return 'http://localhost:5173';
-};
 
 export const registerUser = async (req: any, res: any): Promise<any> => {
     try {
@@ -411,7 +407,7 @@ export const forgotPassword = async (req: any, res: any): Promise<any> => {
             type: 'recovery',
             email: normalizedEmail,
             options: {
-                redirectTo: `${getFrontendUrl()}/reset-password`,
+                redirectTo: `${getFrontendUrl(req)}/reset-password`,
             },
         });
 

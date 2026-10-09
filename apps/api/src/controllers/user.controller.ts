@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { getFrontendUrl } from '../utils/frontendUrl';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
@@ -291,13 +292,7 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
             }
         }
 
-        const getFrontendUrl = () => {
-            if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
-            if (process.env.NODE_ENV === 'production') return 'https://moneywise.blueopus.cloud';
-            return 'http://localhost:5173';
-        };
-
-        const FRONTEND_URL = getFrontendUrl();
+        const FRONTEND_URL = getFrontendUrl(req);
 
         // 1. Create the invited auth user and mint an invite link via Supabase Auth,
         // but don't let Supabase send its own invite email (unreliable) — we deliver
@@ -615,13 +610,7 @@ export const resendInvite = async (req: AuthRequest, res: any): Promise<any> => 
             return res.status(400).json({ error: 'Can only resend invitations to users with INVITED status' });
         }
 
-        const getFrontendUrl = () => {
-            if (process.env.FRONTEND_URL) return process.env.FRONTEND_URL;
-            if (process.env.NODE_ENV === 'production') return 'https://moneywise.blueopus.cloud';
-            return 'http://localhost:5173';
-        };
-
-        const FRONTEND_URL = getFrontendUrl();
+        const FRONTEND_URL = getFrontendUrl(req);
 
         // Workaround for Supabase Auth not supporting re-sending invites directly:
         // Delete the existing INVITED user completely and create a new invite.

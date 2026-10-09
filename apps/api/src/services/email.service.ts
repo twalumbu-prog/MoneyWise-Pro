@@ -1,4 +1,5 @@
 import { Resend } from 'resend';
+import { getFrontendUrl } from '../utils/frontendUrl';
 import { supabase } from '../lib/supabase';
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
@@ -23,8 +24,7 @@ const FROM_ADDRESS = process.env.EMAIL_FROM || 'MoneyWise <notifications@moneywi
 // Falling back to localhost in production would send email recipients on other
 // machines to a dead address — fall back to the real production domain instead,
 // matching the pattern used in auth.controller.ts / user.controller.ts.
-const FRONTEND_URL = process.env.FRONTEND_URL
-    || (process.env.NODE_ENV === 'production' ? 'https://moneywise.blueopus.cloud' : 'http://localhost:5173');
+const FRONTEND_URL = getFrontendUrl();
 
 export type NotificationType =
     | 'NEW_REQUISITION'
