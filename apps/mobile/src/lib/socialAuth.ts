@@ -24,14 +24,18 @@ export class SocialAuthCancelled extends Error { constructor() { super('cancelle
 
 const REDIRECT = 'moneywise://auth/callback';
 
-function load<T>(name: string): T | null {
-    try { return require(name) as T; } catch { return null; }
+// Metro needs every require() to name its module literally, so each native module gets its own guarded loader.
+function loadAppleAuth(): any | null {
+    try { return require('expo-apple-authentication'); } catch { return null; }
+}
+function loadWebBrowser(): any | null {
+    try { return require('expo-web-browser'); } catch { return null; }
 }
 
 /** Whether the native Apple sheet exists on this device/build. */
 export async function appleNativeAvailable(): Promise<boolean> {
     if (Platform.OS !== 'ios') return false;
-    const mod = load<any>('expo-apple-authentication');
+    const mod = loadAppleAuth();
     if (!mod) return false;
     try { return await mod.isAvailableAsync(); } catch { return false; }
 }
@@ -42,7 +46,7 @@ const randomNonce = () => {
 };
 
 async function signInWithAppleNative(): Promise<void> {
-    const Apple = load<any>('expo-apple-authentication');
+    const Apple = loadAppleAuth();
     if (!Apple) throw new Error('Sign in with Apple isn’t available in this version of the app.');
     const rawNonce = randomNonce();
     const hashed = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
@@ -82,7 +86,7 @@ function tokensFromUrl(url: string): { access_token?: string; refresh_token?: st
 }
 
 async function signInWithBrowser(provider: SocialProvider): Promise<void> {
-    const Browser = load<any>('expo-web-browser');
+    const Browser = loadWebBrowser();
     if (!Browser) throw new Error('This sign-in method isn’t available in this version of the app.');
 
     const { data, error } = await supabase.auth.signInWithOAuth({
