@@ -11,6 +11,7 @@ import {
 } from 'lucide-react-native';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, radius, fonts } from '../../src/theme/tokens';
+import { SocialButtons } from '../../src/components/auth/SocialButtons';
 import { MoneywiseMark } from '../../src/components/icons/MoneywiseMark';
 import { WalletCardsIcon } from '../../src/components/icons/WalletCardsIcon';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
@@ -555,6 +556,8 @@ export default function LoginScreen() {
                                         {isSignup ? 'Sign in instead' : 'Sign Up Now'}
                                     </Text>
                                 </Pressable>
+
+                                <SocialButtons onError={setMessage} />
                             </>
                         )}
                     </AnimatedTabContent>

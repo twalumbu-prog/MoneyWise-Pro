@@ -35,6 +35,7 @@ const Schedules = React.lazy(() => import('./pages/Schedules').then(m => ({ defa
 const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m => ({ default: m.InvestHome })));
 const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').then(m => ({ default: m.InvestCompany })));
 const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
+import { CompleteProfile } from './pages/CompleteProfile';
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { RealtimeCacheSync } from './components/RealtimeCacheSync';
@@ -92,7 +93,7 @@ const onboardingDoneCache = new Set<string>();
 // post-signup transition into onboarding feel seamless instead of flashing the
 // real dashboard for a frame first.
 const HomeRedirect = () => {
-    const { userRole, userStatus, organizationId } = useAuth();
+    const { userRole, userStatus, organizationId, userOrganizations, organizationsLoaded } = useAuth();
     const [needsOnboarding, setNeedsOnboarding] = useState<boolean | null>(null);
 
     useEffect(() => {
@@ -127,6 +128,11 @@ const HomeRedirect = () => {
     if (userStatus === 'PENDING_APPROVAL') {
         // Handled by ProtectedRoute but just for safety
         return null;
+    }
+
+    // Signed in with Google/Apple but no organization yet → choose personal or business first.
+    if (organizationsLoaded && !userOrganizations.some((uo: any) => uo.status === 'ACTIVE' || !uo.status)) {
+        return <Navigate to="/complete-profile" replace />;
     }
 
     if (needsOnboarding === null) {
@@ -174,6 +180,7 @@ function App() {
                     <React.Suspense fallback={<div className="min-h-screen flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-indigo-[#006AFF]" /></div>}>
                     <Routes>
                         <Route path="/login" element={<Login />} />
+                        <Route path="/complete-profile" element={<ProtectedRoute><CompleteProfile /></ProtectedRoute>} />
                         <Route path="/join" element={<Join />} />
                         <Route path="/reset-password" element={<ResetPassword />} />
                         <Route path="/privacy" element={<PrivacyPolicy />} />

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Loader2, Search, Eye, EyeOff, Mail } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 
 export const Login: React.FC = () => {
     const [isSignup, setIsSignup] = useState(false);
@@ -83,6 +84,20 @@ export const Login: React.FC = () => {
         const timer = setTimeout(searchOrgs, 400);
         return () => clearTimeout(timer);
     }, [searchQuery]);
+
+    const [socialBusy, setSocialBusy] = useState<'google' | 'apple' | null>(null);
+    const handleSocial = async (provider: 'google' | 'apple') => {
+        setSocialBusy(provider);
+        setMessage('');
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider,
+            options: { redirectTo: `${window.location.origin}/`, ...(provider === 'google' ? { queryParams: { prompt: 'select_account' } } : {}) },
+        });
+        if (error) {
+            setMessage(`Couldn't sign in with ${provider === 'apple' ? 'Apple' : 'Google'}: ${error.message}`);
+            setSocialBusy(null);
+        } // otherwise the browser is already on its way to the provider
+    };
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -598,6 +613,32 @@ export const Login: React.FC = () => {
                             )}
                         </button>
                     </form>
+
+                    {/* Google / Apple. One button both signs a returning person in and a new one up; an email
+                        already registered with a password is merged into that same account by Supabase. */}
+                    <div className="mt-6">
+                        <div className="flex items-center gap-3 mb-3">
+                            <div className="flex-1 h-px bg-gray-200" />
+                            <span className="text-xs text-gray-400 font-medium">or continue with</span>
+                            <div className="flex-1 h-px bg-gray-200" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {(['google', 'apple'] as const).map((provider) => (
+                                <button
+                                    key={provider}
+                                    type="button"
+                                    disabled={!!socialBusy}
+                                    onClick={() => handleSocial(provider)}
+                                    className={`flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-60 ${provider === 'apple' ? 'bg-black text-white hover:bg-neutral-800' : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'}`}
+                                >
+                                    {socialBusy === provider ? <Loader2 className="h-4 w-4 animate-spin" /> : provider === 'apple'
+                                        ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M16.37 1.43c0 1.14-.46 2.22-1.2 3-.78.84-2.06 1.5-3.1 1.41-.13-1.1.42-2.25 1.15-3 .8-.86 2.17-1.5 3.15-1.41zM20.9 17.1c-.55 1.27-.81 1.84-1.52 2.96-1 1.56-2.4 3.5-4.13 3.51-1.55.02-1.95-1-4.05-.99-2.1.01-2.54 1.01-4.09.99-1.73-.02-3.06-1.77-4.06-3.33C-.25 15.6-.54 10.5 1.2 7.9c1.24-1.85 3.2-2.94 5.04-2.94 1.87 0 3.05 1.02 4.6 1.02 1.5 0 2.41-1.02 4.58-1.02 1.64 0 3.37.9 4.6 2.44-4.04 2.2-3.38 7.95.88 9.7z"/></svg>
+                                        : <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z"/><path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/><path fill="#34A853" d="M24 48c6.5 0 12-2.1 16-5.8l-7.5-5.8c-2.1 1.4-4.8 2.3-8.5 2.3-6.3 0-11.6-4.1-13.5-9.9l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/></svg>}
+                                    {provider === 'apple' ? 'Apple' : 'Google'}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
 
                     <div className="mt-8 pt-6 border-t border-gray-100">
                         <div className="relative">

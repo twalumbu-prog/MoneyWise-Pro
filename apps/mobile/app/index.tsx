@@ -22,7 +22,7 @@ const isPersonalOrg = (name?: string | null) => {
  */
 export default function Index() {
     const insets = useSafeAreaInsets();
-    const { session, loading, userStatus, userRole, organizationId, userOrganizations, switchOrganization, signOut } = useAuth();
+    const { session, loading, userStatus, userRole, organizationId, userOrganizations, organizationsLoaded, switchOrganization, signOut } = useAuth();
     const [orgPicked, setOrgPicked] = useState(false);
     const [switchingId, setSwitchingId] = useState<string | null>(null);
     const [switchError, setSwitchError] = useState<string | null>(null);
@@ -112,6 +112,12 @@ export default function Index() {
 
         return () => { cancelled = true; };
     }, [session, userStatus, userRole, organizationId, orgPicked]);
+
+    // Signed in through Google/Apple but no organization yet: pick personal or business. This MUST come
+    // before the spinner below, which would otherwise wait forever on onboarding state for such a user.
+    if (!loading && organizationsLoaded && session && userStatus !== 'PENDING_APPROVAL' && activeOrgs.length === 0) {
+        return <Redirect href="/complete-profile" />;
+    }
 
     if (loading || (session && userRole && needsOnboarding === null && userStatus !== 'PENDING_APPROVAL')) {
         return (

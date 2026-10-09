@@ -27,6 +27,8 @@ interface AuthContextValue {
     organizationId: string | null;
     organizationName: string | null;
     userOrganizations: UserOrganization[];
+    /** True once the organizations list has really been fetched (or restored), so "no organizations" can be trusted. */
+    organizationsLoaded: boolean;
     refreshUserOrganizations: () => Promise<UserOrganization[] | void>;
     switchOrganization: (organizationId: string) => Promise<void>;
     signInWithPassword: (identifier: string, password: string, preferredAccountType?: 'INDIVIDUAL' | 'BUSINESS') => Promise<void>;
@@ -102,6 +104,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [organizationName, setOrganizationName] = useState<string | null>(null);
     const [userOrganizations, setUserOrganizations] = useState<UserOrganization[]>([]);
+    const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
 
     const mounted = useRef(true);
     const loadingRef = useRef(true);
@@ -133,6 +136,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setOrganizationId(snap.organizationId);
             setOrganizationName(snap.organizationName);
             setUserOrganizations(snap.userOrganizations ?? []);
+            setOrganizationsLoaded((snap.userOrganizations ?? []).length > 0);
             setActiveOrganizationId(snap.organizationId);
         };
 
@@ -263,6 +267,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 await loadProfile(next.user.id);
             } else {
                 cacheStore.remove(SNAPSHOT_KEY).catch(() => undefined);
+                setOrganizationsLoaded(false);
                 setUserName(null);
                 setUserRole(null);
                 setUserStatus(null);
@@ -391,6 +396,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (res.ok) {
                 const list = ((await res.json()) || []) as UserOrganization[];
                 setUserOrganizations(list);
+                setOrganizationsLoaded(true);
                 return list;
             }
         } catch (err) {
@@ -437,6 +443,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ]).catch((err) => console.warn('[Push] Unregister on sign-out background warning:', err));
 
         setActiveOrganizationId(null);
+        setOrganizationsLoaded(false);
         setSession(null);
         setUser(null);
         setUserName(null);
@@ -461,7 +468,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         <AuthContext.Provider
             value={{
                 user, session, loading, userName, userRole, userStatus,
-                organizationId, organizationName, userOrganizations, refreshUserOrganizations, switchOrganization,
+                organizationId, organizationName, userOrganizations, organizationsLoaded, refreshUserOrganizations, switchOrganization,
                 signInWithPassword, signUp, joinOrganization, signOut,
             }}
         >

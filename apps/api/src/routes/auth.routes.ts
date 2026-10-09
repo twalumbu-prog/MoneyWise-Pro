@@ -12,6 +12,7 @@ import {
     ensurePersonalWorkspace,
     deleteMyAccount
 } from '../controllers/auth.controller';
+import { completeSocialSignup, saveSocialProfile } from '../controllers/socialAuth.controller';
 import { requireAuth } from '../middleware/auth';
 
 const router = Router();
@@ -30,6 +31,9 @@ router.post('/complete-invitation', requireAuth, completeInvitation);
 router.get('/my-organizations', requireAuth, getMyOrganizations);
 router.post('/switch-organization', requireAuth, switchOrganization);
 router.post('/ensure-personal-workspace', requireAuth, ensurePersonalWorkspace);
+// Social sign-in (Google / Apple): finish a brand-new social user's account.
+router.post('/social-profile', requireAuth, saveSocialProfile);
+router.post('/complete-social-signup', requireAuth, completeSocialSignup);
 router.delete('/account', requireAuth, deleteMyAccount);
 
 export default router;

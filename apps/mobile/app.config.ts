@@ -61,6 +61,9 @@ const PLUGINS: ExpoConfig['plugins'] = [
     // dictation. Reasonable for a 2026 app: iOS 16 shipped September
     // 2022, so this excludes only very old, unsupported hardware.
     ['expo-build-properties', { ios: { deploymentTarget: '16.4' } }],
+    // Sign in with Apple (App Store guideline 4.8 requires it whenever another social login is offered).
+    'expo-apple-authentication',
+    'expo-web-browser',
     [
         'expo-speech-recognition',
         {
@@ -108,6 +111,8 @@ const config: ExpoConfig = {
     ios: {
         bundleIdentifier: BUNDLE_ID,
         supportsTablet: false,
+        // The Sign in with Apple capability needs a paid team; a free personal-team local build can't carry it.
+        ...(PERSONAL_TEAM_BUILD ? {} : { usesAppleSignIn: true }),
         ...(PERSONAL_TEAM_BUILD
             ? { appleTeamId: PERSONAL_TEAM_ID }
             : { associatedDomains: [`applinks:${WEB_ORIGIN.replace('https://', '')}`] }),

@@ -49,6 +49,8 @@ interface AuthContextType {
     notificationCounts: NotificationCounts;
     refreshNotifications: () => Promise<void>;
     userOrganizations: any[];
+    /** True once the organizations list has really been fetched, so "no organizations" can be trusted. */
+    organizationsLoaded: boolean;
     refreshUserOrganizations: () => Promise<void>;
     switchOrganization: (organizationId: string) => Promise<void>;
     signIn: (email: string) => Promise<void>;
@@ -67,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [loading, setLoading] = useState(true);
     const [userRole, setUserRole] = useState<string | null>(null);
     const [userStatus, setUserStatus] = useState<string | null>(null);
+    const [organizationsLoaded, setOrganizationsLoaded] = useState(false);
     const [organizationId, setOrganizationId] = useState<string | null>(null);
     const [organizationName, setOrganizationName] = useState<string | null>(null);
     const [organizationLogoUrl, setOrganizationLogoUrl] = useState<string | null>(null);
@@ -420,6 +423,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (response.ok) {
                 const data = await response.json();
                 setUserOrganizations(data || []);
+                setOrganizationsLoaded(true);
             }
         } catch (error) {
             console.error('Failed to fetch user organizations:', error);
@@ -481,13 +485,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setOrganizationName(null);
         setOrganizationLogoUrl(null);
         setUserOrganizations([]);
+        setOrganizationsLoaded(false);
     };
 
     return (
         <AuthContext.Provider value={{
             user, userName, session, userRole, userStatus, organizationId, organizationName, organizationLogoUrl, loading,
             notificationCounts, refreshNotifications,
-            userOrganizations, refreshUserOrganizations, switchOrganization,
+            userOrganizations, organizationsLoaded, refreshUserOrganizations, switchOrganization,
             signIn, signInWithPassword, signUpWithPassword, joinOrganization, signUp, signOut
         }}>
             {children}
