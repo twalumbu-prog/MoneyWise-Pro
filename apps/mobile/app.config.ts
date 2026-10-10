@@ -1,4 +1,12 @@
 import type { ExpoConfig } from 'expo/config';
+import { existsSync } from 'fs';
+
+/**
+ * Android push (FCM): Firebase's google-services.json, either as an EAS file env var
+ * (GOOGLE_SERVICES_JSON) or checked in at apps/mobile/google-services.json. Absent until the Firebase
+ * project exists — builds keep working, Android just can't mint push tokens. See docs/android-push-setup.md.
+ */
+const GOOGLE_SERVICES_FILE = process.env.GOOGLE_SERVICES_JSON || (existsSync('./google-services.json') ? './google-services.json' : undefined);
 
 /**
  * Bundle identifier is reverse-DNS of the production web app,
@@ -130,6 +138,7 @@ const config: ExpoConfig = {
 
     android: {
         package: BUNDLE_ID,
+        ...(GOOGLE_SERVICES_FILE ? { googleServicesFile: GOOGLE_SERVICES_FILE } : {}),
         // The source icon already bakes in its own navy background, so it's
         // used as the foreground layer as-is rather than a transparent cutout
         // over adaptiveIcon's backgroundColor.

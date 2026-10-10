@@ -1,11 +1,11 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
-    Modal, TextInput, Alert, Switch, RefreshControl,
+    Modal, TextInput, Alert, RefreshControl, useWindowDimensions,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ChevronLeft, Plus, Edit2, Trash2, X } from 'lucide-react-native';
+import { ChevronLeft, Plus, Edit2, Trash2, X, Check, MoreVertical } from 'lucide-react-native';
 import { accountService } from 'core';
 import type { Account } from 'core';
 import { AnimatedSegmented } from '../../src/components/AnimatedTabs';
@@ -16,6 +16,84 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
 
 type ManagementTab = 'NET_WORTH' | 'PROFIT_LOSS';
+
+
+/** Square checkbox on the far left of each account card — checked means the account is active. */
+const Checkbox: React.FC<{ checked: boolean; onPress: () => void }> = ({ checked, onPress }) => (
+    <Pressable
+        onPress={onPress}
+        hitSlop={10}
+        style={[cbStyles.box, checked && cbStyles.boxChecked]}
+        accessibilityRole="checkbox"
+        accessibilityState={{ checked }}
+        accessibilityLabel={checked ? 'Active — tap to deactivate' : 'Inactive — tap to activate'}
+    >
+        {checked && <Check size={14} color="#FFFFFF" strokeWidth={3} />}
+    </Pressable>
+);
+
+/** Three-dot button that opens a small dropdown anchored under it (not a bottom sheet). */
+const AccountMenu: React.FC<{ onEdit: () => void; onDelete: () => void }> = ({ onEdit, onDelete }) => {
+    const btnRef = useRef<View>(null);
+    const { width: screenW, height: screenH } = useWindowDimensions();
+    const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+    const MENU_W = 160;
+    const MENU_H = 96;
+
+    const open = () => {
+        btnRef.current?.measureInWindow((x, y, w, h) => {
+            const below = y + h + 4;
+            // Flip upward if there isn't room under the button.
+            const top = below + MENU_H > screenH - 16 ? Math.max(16, y - MENU_H - 4) : below;
+            setPos({ top, right: Math.max(12, screenW - (x + w)) });
+        });
+    };
+    const close = () => setPos(null);
+
+    return (
+        <>
+            <Pressable ref={btnRef} onPress={open} hitSlop={8} style={styles.iconBtn} accessibilityLabel="Account actions">
+                <MoreVertical size={18} color={colors.textMuted} />
+            </Pressable>
+            <Modal visible={!!pos} transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
+                <Pressable style={StyleSheet.absoluteFill} onPress={close}>
+                    {pos && (
+                        <View style={[menuStyles.menu, { top: pos.top, right: pos.right, width: MENU_W }]}>
+                            <Pressable style={menuStyles.item} onPress={() => { close(); onEdit(); }}>
+                                <Edit2 size={16} color={colors.text} />
+                                <Text style={menuStyles.itemText}>Edit</Text>
+                            </Pressable>
+                            <View style={menuStyles.divider} />
+                            <Pressable style={menuStyles.item} onPress={() => { close(); onDelete(); }}>
+                                <Trash2 size={16} color={colors.danger} />
+                                <Text style={[menuStyles.itemText, { color: colors.danger }]}>Delete</Text>
+                            </Pressable>
+                        </View>
+                    )}
+                </Pressable>
+            </Modal>
+        </>
+    );
+};
+
+const cbStyles = StyleSheet.create({
+    box: {
+        width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: colors.borderStrong,
+        backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center',
+    },
+    boxChecked: { backgroundColor: colors.blue, borderColor: colors.blue },
+});
+
+const menuStyles = StyleSheet.create({
+    menu: {
+        position: 'absolute', backgroundColor: colors.surface, borderRadius: radius.md,
+        borderWidth: 1, borderColor: colors.border, paddingVertical: 4,
+        shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8,
+    },
+    item: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12 },
+    itemText: { fontFamily: fonts.bodyMedium, fontSize: 14, color: colors.text },
+    divider: { height: 1, backgroundColor: colors.border },
+});
 
 export default function ChartOfAccountsScreen() {
     const insets = useSafeAreaInsets();
@@ -224,6 +302,10 @@ export default function ChartOfAccountsScreen() {
                         return (
                             <View key={acc.id} style={[styles.accCard, !acc.is_active && styles.accCardInactive]}>
                                 <View style={styles.accLeft}>
+                                    <Checkbox
+                                        checked={!!acc.is_active}
+                                        onPress={() => toggleActiveMutation.mutate({ account: acc, active: !acc.is_active })}
+                                    />
                                     <AccountGlyph name={acc.name} type={acc.type} logoUrl={(acc as any).logo_url} size={20} />
                                     <View style={{ flex: 1 }}>
                                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -240,20 +322,7 @@ export default function ChartOfAccountsScreen() {
                                     </View>
                                 </View>
 
-                                <View style={styles.accRight}>
-                                    <Switch
-                                        value={acc.is_active}
-                                        onValueChange={(active) => toggleActiveMutation.mutate({ account: acc, active })}
-                                        trackColor={{ false: '#E5E7EB', true: '#93C5FD' }}
-                                        thumbColor={acc.is_active ? colors.blue : '#9CA3AF'}
-                                    />
-                                    <Pressable onPress={() => openEditModal(acc)} style={styles.iconBtn}>
-                                        <Edit2 size={16} color={colors.textMuted} />
-                                    </Pressable>
-                                    <Pressable onPress={() => handleDelete(acc)} style={styles.iconBtn}>
-                                        <Trash2 size={16} color={colors.danger} />
-                                    </Pressable>
-                                </View>
+                                <AccountMenu onEdit={() => openEditModal(acc)} onDelete={() => handleDelete(acc)} />
                             </View>
                         );
                     })

@@ -4,7 +4,8 @@ import {
     ScrollView, Switch, KeyboardAvoidingView, Alert,
 } from 'react-native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Target } from 'lucide-react-native';
+import { useRouter } from 'expo-router';
+import { Target, Pencil } from 'lucide-react-native';
 import { accountService, budgetService } from 'core';
 import type { Account } from 'core';
 import { ScreenHeader } from '../src/components/ScreenHeader';
@@ -37,6 +38,7 @@ export const budgetsActivatedKey = (organizationId: string | null) => `budgets_a
  * but as one page covering every category instead of a modal per account.
  */
 export default function BudgetsScreen() {
+    const router = useRouter();
     const qc = useQueryClient();
     const { organizationId } = useAuth();
     const monthRange = useMemo(() => currentMonthRange(), []);
@@ -112,7 +114,15 @@ export default function BudgetsScreen() {
 
     return (
         <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.canvas }} behavior="padding">
-            <ScreenHeader title="Budgets" />
+            <ScreenHeader
+                title="Budgets"
+                right={
+                    <Pressable onPress={() => router.push('/settings/chart-of-accounts')} hitSlop={10} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} accessibilityLabel="Edit chart of accounts">
+                        <Pencil size={15} color={colors.blue} />
+                        <Text style={{ fontFamily: fonts.bodyBold, fontSize: 14, color: colors.blue }}>Edit</Text>
+                    </Pressable>
+                }
+            />
 
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
                 <View style={styles.activateCard}>
