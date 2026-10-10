@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
-    ActivityIndicator, KeyboardAvoidingView, Modal, FlatList, Image,
+    ActivityIndicator, KeyboardAvoidingView, Modal, FlatList, Image, Keyboard, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, Stack } from 'expo-router';
@@ -320,6 +320,13 @@ export default function NewRequisitionScreen() {
     const contactBook = useContactBook();
     const [momoText, setMomoText] = useState('');
     const [contactQuery, setContactQuery] = useState('');
+    // The Back/Next bar rides up above the keyboard and covers the suggestions — hide it while typing.
+    const [keyboardUp, setKeyboardUp] = useState(false);
+    useEffect(() => {
+        const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', () => setKeyboardUp(true));
+        const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
+        return () => { show.remove(); hide.remove(); };
+    }, []);
     const [contactPickerOpen, setContactPickerOpen] = useState(false);
     const [pickedContactName, setPickedContactName] = useState('');
 
@@ -336,6 +343,7 @@ export default function NewRequisitionScreen() {
     };
 
     const pickContact = (c: ContactNumber) => {
+        Keyboard.dismiss();
         setContactPickerOpen(false);
         setContactQuery('');
         setMomoText(c.number);
@@ -1063,7 +1071,7 @@ export default function NewRequisitionScreen() {
                 </AnimatedTabContent>
             </ScrollView>
 
-            {activeTab === 'basic' && (
+            {activeTab === 'basic' && !keyboardUp && (
                 <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
                     {stage !== 4 ? (
                         <View style={styles.footerRow}>

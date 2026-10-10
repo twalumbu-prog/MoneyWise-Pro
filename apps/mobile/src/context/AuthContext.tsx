@@ -253,7 +253,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setLoading(false);
         }, 9000);
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, next) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+          // Never await Supabase calls inside this callback: setSession() (used by the Google/Apple browser
+          // sign-in) holds the auth lock while listeners run, so getSession()/queries here would deadlock
+          // until their timeouts and leave the profile and organizations empty. Defer to the next tick.
+          setTimeout(async () => {
             if (!mounted.current) return;
             if (!next) {
                 // A signed-out event only counts when nothing is stored any more (signOut clears the
@@ -276,6 +280,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUserOrganizations([]);
             }
             if (mounted.current) setLoading(false);
+          }, 0);
         });
 
         return () => {

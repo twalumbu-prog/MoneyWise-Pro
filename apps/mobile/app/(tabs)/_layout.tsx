@@ -49,6 +49,7 @@ export default function TabsLayout() {
         <Tabs
             screenOptions={{
                 headerShown: false,
+                tabBarHideOnKeyboard: true,
                 // Cross-fade + slight horizontal shift between tabs instead of
                 // the flat instant swap — react-navigation v7's built-in tab
                 // transition (bottom-tabs only offers 'none' | 'fade' | 'shift').
