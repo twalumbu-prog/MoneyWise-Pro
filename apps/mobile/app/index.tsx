@@ -4,6 +4,7 @@ import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { onboardingService } from 'core';
 import { useAuth } from '../src/context/AuthContext';
+import { socialOrgPickPending, clearSocialOrgPick } from '../src/lib/socialAuth';
 import { colors, fonts, radius } from '../src/theme/tokens';
 
 // Orgs whose onboarding is known-finished this session — avoids re-checking on every visit.
@@ -59,6 +60,7 @@ export default function Index() {
         setSwitchError(null);
         try {
             await switchOrganization(orgId);
+            clearSocialOrgPick();
             setOrgPicked(true);
         } catch (err: any) {
             setSwitchError(err?.message || 'Failed to switch organization');
@@ -150,7 +152,7 @@ export default function Index() {
     }
 
     // Only prompt for organization selection if the user does NOT have a valid active organization selected
-    if (!hasValidActiveOrg && activeOrgs.length > 1 && !orgPicked) {
+    if ((!hasValidActiveOrg || socialOrgPickPending()) && activeOrgs.length > 1 && !orgPicked) {
         return (
             <View style={[styles.root, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
                 <ScrollView

@@ -105,9 +105,24 @@ async function signInWithBrowser(provider: SocialProvider): Promise<void> {
     if (sessionError) throw sessionError;
 }
 
+/**
+ * Set while a Google/Apple sign-in is in flight and until the person picks an account: a social login
+ * has no "last used" workspace to resume, so people with several organizations choose one instead of
+ * being dropped into their default (usually the small personal workspace).
+ */
+let orgPickPending = false;
+export const socialOrgPickPending = () => orgPickPending;
+export const clearSocialOrgPick = () => { orgPickPending = false; };
+
 /** Signs in (or up — a new Google/Apple login simply creates the account). Throws SocialAuthCancelled if the person backs out. */
 export async function signInWithSocial(provider: SocialProvider): Promise<void> {
-    if (provider === 'apple' && (await appleNativeAvailable())) return signInWithAppleNative();
-    return signInWithBrowser(provider);
+    orgPickPending = true;
+    try {
+        if (provider === 'apple' && (await appleNativeAvailable())) return await signInWithAppleNative();
+        return await signInWithBrowser(provider);
+    } catch (e) {
+        orgPickPending = false;
+        throw e;
+    }
 }
 
