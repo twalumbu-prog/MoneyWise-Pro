@@ -231,7 +231,7 @@ export default function LoginScreen() {
                                             ]}
                                             numberOfLines={1}
                                         >
-                                            For Businesses (PRO)
+                                            For Businesses
                                         </Text>
                                     </View>
                                 ),
@@ -544,20 +544,17 @@ export default function LoginScreen() {
                                     )}
                                 </Pressable>
 
-                                {/* OR Divider */}
-                                <Text style={styles.orDividerText}>OR</Text>
+                                <SocialButtons onError={setMessage} />
 
                                 {/* Secondary Action Button (Sign Up Now / Sign in instead) */}
                                 <Pressable
-                                    style={styles.secondaryButton}
+                                    style={[styles.secondaryButton, { marginTop: 14 }]}
                                     onPress={() => switchMode(isSignup ? 'login' : 'signup')}
                                 >
                                     <Text style={styles.secondaryButtonText}>
                                         {isSignup ? 'Sign in instead' : 'Sign Up Now'}
                                     </Text>
                                 </Pressable>
-
-                                <SocialButtons onError={setMessage} />
                             </>
                         )}
                     </AnimatedTabContent>
