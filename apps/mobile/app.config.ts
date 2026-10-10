@@ -114,7 +114,9 @@ const config: ExpoConfig = {
     // calls a native module the installed binary doesn't have. Bump only when
     // native dependencies change.
     runtimeVersion: { policy: 'appVersion' },
-    updates: { fallbackToCacheTimeout: 0 },
+    // OTA: JS-only changes ship with `eas update --channel production` — no store build. runtimeVersion follows
+    // the app version, so a native change (new module, permission) must bump `version` and ship as a real build.
+    updates: { url: 'https://u.expo.dev/d844c494-6997-4b34-aad1-194ddb3e6362', fallbackToCacheTimeout: 0 },
 
     ios: {
         bundleIdentifier: BUNDLE_ID,
