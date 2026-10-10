@@ -182,6 +182,11 @@ export const RequisitionMessageCard: React.FC<{
         }
 
         if (isDisbursal) {
+            // This prompt is a permanent chat message written when the requisition is created. Once the
+            // money has moved (DISBURSED/PROCESSING/RECEIVED…, e.g. paid straight through Lenco) the
+            // "Funds Disbursed" message tells the story — an open "how would you like to disburse" with
+            // payout buttons would contradict it. It is only actionable while the requisition is AUTHORISED.
+            if (status && status !== 'AUTHORISED') return null;
             const isPayroll = requisitionData?.type === 'PAYROLL';
             return (
                 <View style={styles.cardWrap}>
