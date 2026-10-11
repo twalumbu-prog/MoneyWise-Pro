@@ -207,15 +207,27 @@ async function settleWalletTransfer(c: any): Promise<'CONFIRMED' | 'PENDING' | '
     const meta = (c.meta || {}) as any;
     const { data: goal } = await supabase.from('savings_goals').select('*').eq('id', c.goal_id).maybeSingle();
     const { data: member } = await supabase.from('savings_group_members').select('organization_id').eq('goal_id', c.goal_id).eq('user_id', c.user_id).maybeSingle();
-    if (!goal || !member?.organization_id) return 'PENDING';
-    const { data: org } = await supabase.from('organizations').select('lenco_secret_key').eq('id', member.organization_id).maybeSingle();
+    if (!goal) return 'PENDING';
+
+    const wallet = meta.sourceWalletId ? meta : await loadTransferSource(c.reference);
+    // The organization that PAID is the one that owns the wallet the money left — NOT necessarily the one on
+    // the member row (that is where the person joined from; people belong to several organizations and may
+    // pay from another). Asking Lenco under the wrong organization's key answers "Transfer was not found",
+    // which used to leave real, completed transfers pending and finally marked them FAILED.
+    let payerOrgId: string | null = member?.organization_id ?? null;
+    if (wallet?.sourceWalletId) {
+        const { data: w } = await supabase.from('organization_wallets').select('organization_id').eq('id', wallet.sourceWalletId).maybeSingle();
+        if (w?.organization_id) payerOrgId = w.organization_id;
+    }
+    if (!payerOrgId) return 'PENDING';
+
+    const { data: org } = await supabase.from('organizations').select('lenco_secret_key').eq('id', payerOrgId).maybeSingle();
     let status: any = null;
     try { status = await LencoService.getTransferStatus(c.reference, (org as any)?.lenco_secret_key || undefined); } catch { return 'PENDING'; }
     const st = String(status?.status || '').toLowerCase();
     if (st === 'successful') {
-        const wallet = meta.sourceWalletId ? meta : await loadTransferSource(c.reference);
         if (!wallet?.sourceWalletId) return 'PENDING';
-        await bookWalletTransfer(c, goal, member.organization_id, wallet.sourceWalletId, wallet.sourceWalletName || 'MoneyWise wallet', Number(c.amount));
+        await bookWalletTransfer(c, goal, payerOrgId, wallet.sourceWalletId, wallet.sourceWalletName || 'MoneyWise wallet', Number(c.amount));
         return 'CONFIRMED';
     }
     if (st === 'failed' || st === 'declined' || st === 'rejected') {
@@ -527,6 +539,22 @@ export const savingsService = {
             outcome = await settleWalletTransfer(contribution).catch(() => 'PENDING' as const);
         }
         return { status: outcome, reference, balance: await walletBalance(goal.organization_id, goal.wallet_id) };
+    },
+
+    /**
+     * Re-check one wallet contribution against Lenco and book it if the transfer really completed. Used to
+     * repair contributions wrongly left PENDING/FAILED (a FAILED row is only reopened when Lenco says the
+     * transfer was successful, so a genuinely failed payment can never be booked).
+     */
+    async recheckWalletContribution(contributionId: string) {
+        const { data: c } = await supabase.from('savings_contributions').select('*').eq('id', contributionId).maybeSingle();
+        if (!c || !String(c.reference || '').startsWith('SVT-')) throw new SavingsError('NOT_FOUND', 'Wallet contribution not found', 404);
+        if (c.status === 'CONFIRMED') return { status: 'CONFIRMED' };
+        if (c.status === 'FAILED') await supabase.from('savings_contributions').update({ status: 'PENDING' }).eq('id', c.id);
+        const status = await settleWalletTransfer({ ...c, status: 'PENDING', created_at: new Date().toISOString() });
+        // If Lenco did not confirm it, put a FAILED row back the way it was.
+        if (status !== 'CONFIRMED' && c.status === 'FAILED') await supabase.from('savings_contributions').update({ status: 'FAILED' }).eq('id', c.id);
+        return { status };
     },
 
     /** "Transfer": move money back out of the savings wallet. Owner organization only. */

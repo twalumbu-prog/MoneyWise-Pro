@@ -329,35 +329,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                     setUserOrganizations(orgs);
                 }
 
-                if (preferredAccountType === 'INDIVIDUAL') {
-                    const personalOrgs = orgs.filter((o) => isPersonalOrg(o.organization?.name));
-                    if (personalOrgs.length === 0) {
-                        await signOut();
-                        throw new Error(
-                            "You do not have a Personal Account associated with this email. Please switch to 'For Businesses' or create a Personal Account using 'Sign Up Now'."
-                        );
-                    }
-                    if (personalOrgs.length === 1) {
-                        await switchOrganization(personalOrgs[0].organization.id);
-                    }
-                } else if (preferredAccountType === 'BUSINESS') {
-                    const bizOrgs = orgs.filter((o) => !isPersonalOrg(o.organization?.name));
-                    if (bizOrgs.length === 0) {
-                        await signOut();
-                        throw new Error(
-                            "You do not have a Business Account associated with this email. Please switch to 'For Individuals' or create a Business Account using 'Sign Up Now'."
-                        );
-                    }
-                    if (bizOrgs.length === 1) {
-                        await switchOrganization(bizOrgs[0].organization.id);
-                    }
+                // The For Individuals / For Businesses tab is only a hint for which account to open. It must
+                // never reject a correct password: someone whose only account is the other kind (the tab
+                // defaults to Individuals) used to be signed straight back out. With no match they simply
+                // continue, and the app opens their account (or the picker when they have several).
+                const wanted = preferredAccountType === 'INDIVIDUAL'
+                    ? orgs.filter((o) => isPersonalOrg(o.organization?.name))
+                    : orgs.filter((o) => !isPersonalOrg(o.organization?.name));
+                if (wanted.length === 1) {
+                    await switchOrganization(wanted[0].organization.id);
                 }
             } catch (err: any) {
-                if (err.message?.includes('You do not have a')) {
-                    throw err;
-                }
-                console.warn('[AuthContext] Strict account verification error:', err);
-                throw err;
+                // Picking the preferred account is best-effort; the password already worked.
+                console.warn('[AuthContext] Could not pre-select the account after login:', err);
             }
         }
     };
