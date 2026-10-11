@@ -1,3 +1,4 @@
+import { maybeAutoCategorizePersonalById } from '../services/personalRequisitionClassifier.service';
 import { Response } from 'express';
 import { waitUntil } from '@vercel/functions';
 import { AuthRequest } from '../middleware/auth';
@@ -399,6 +400,18 @@ export const getRequisitionById = async (req: any, res: any): Promise<any> => {
     try {
         const { id } = req.params;
         const organization_id = (req as any).user.organization_id;
+
+        // Personal accounts: a paid requisition that hasn't been categorised yet (AI was slow, the transfer
+        // confirmed later, or it predates this) is categorised now, so what you open is already in the reports.
+        try {
+            const { data: pre } = await supabase.from('requisitions')
+                .select('status, organization_id, line_items(account_id)').eq('id', id).maybeSingle();
+            const uncategorised = ((pre as any)?.line_items || []).some((l: any) => !l.account_id);
+            if (pre && (pre as any).organization_id === organization_id
+                && (['DISBURSED', 'RECEIVED', 'EXPENSED', 'CATEGORIZING'].includes((pre as any).status) || ((pre as any).status === 'COMPLETED' && uncategorised))) {
+                await Promise.race([maybeAutoCategorizePersonalById(id), new Promise(r => setTimeout(r, 20_000))]);
+            }
+        } catch { /* never block opening a requisition */ }
 
         // Fetch requisition with line items and account details
         const { data, error } = await supabase
@@ -2594,27 +2607,32 @@ export const updateLineItemAccount = async (req: AuthRequest, res: Response): Pr
     try {
         const { itemId } = req.params;
         const { accountId } = req.body;
+        const userOrgId = (req as any).user?.organization_id;
 
         if (!itemId || !accountId) {
             return res.status(400).json({ error: 'itemId and accountId are required' });
         }
 
+        // The line item and the account must both belong to the caller's organization.
+        const { data: li } = await supabase
+            .from('line_items')
+            .select('description, requisition_id, requisition:requisitions!inner(organization_id)')
+            .eq('id', itemId)
+            .maybeSingle();
+        const orgId = (li?.requisition as any)?.organization_id;
+        if (!li || !orgId || (userOrgId && orgId !== userOrgId)) return res.status(404).json({ error: 'Line item not found' });
+        const { data: acct } = await supabase.from('accounts').select('id, code, name, qb_account_id').eq('id', accountId).eq('organization_id', orgId).maybeSingle();
+        if (!acct) return res.status(400).json({ error: 'That account is not in your chart of accounts' });
+
         const { error } = await supabase
             .from('line_items')
-            .update({ account_id: accountId })
+            .update({ account_id: accountId, qb_account_id: (acct as any).qb_account_id || null, qb_account_name: (acct as any).name || null, updated_at: new Date().toISOString() })
             .eq('id', itemId);
 
         if (error) throw error;
 
         // LEARNING: an inline single-item correction is an authoritative signal —
         // teach org memory immediately so this description auto-fills next time.
-        const { data: li } = await supabase
-            .from('line_items')
-            .select('description, requisition_id, requisition:requisitions!inner(organization_id)')
-            .eq('id', itemId)
-            .single();
-
-        const orgId = (li?.requisition as any)?.organization_id;
         if (li?.description && orgId) {
             memoryService.learn({
                 organizationId: orgId,
@@ -2625,11 +2643,24 @@ export const updateLineItemAccount = async (req: AuthRequest, res: Response): Pr
             }).catch(err => console.error('[AI Learning] inline correction learn failed:', err));
         }
 
-        // Re-post the GL so this classification moves the entry out of Suspense
-        // into the real account instead of leaving the journal stale.
+        // Re-post the GL so the edit reaches the reports immediately (awaited: the caller refreshes reports next).
         if (li?.requisition_id) {
-            ledgerService.repostForRequisition(li.requisition_id)
+            await ledgerService.repostForRequisition(li.requisition_id)
                 .catch(err => console.error(`[Ledger] repost after inline account correction failed for req ${li.requisition_id}:`, err?.message));
+
+            // Keep the categorisation card in step with the edit.
+            try {
+                const { data: msg } = await supabase.from('requisition_messages').select('id, metadata')
+                    .eq('requisition_id', li.requisition_id).contains('metadata', { stage: 'AI_REVIEW' })
+                    .order('created_at', { ascending: false }).limit(1).maybeSingle();
+                const items = (msg?.metadata as any)?.items;
+                if (msg && Array.isArray(items)) {
+                    const next = items.map((it: any) => it.id === itemId
+                        ? { ...it, account_id: accountId, category_code: (acct as any).code, category_name: (acct as any).name, is_manual: true, confidence: 1, created_account: false, reasoning: 'Changed by you.' }
+                        : it);
+                    await RequisitionMessageService.updateMessage((msg as any).id, { metadata: { ...(msg.metadata as any), items: next } } as any);
+                }
+            } catch (e: any) { console.warn('[updateLineItemAccount] could not refresh the categorisation card:', e?.message); }
         }
 
         res.json({ success: true });

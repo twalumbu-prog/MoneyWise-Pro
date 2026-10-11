@@ -136,6 +136,16 @@ export default function ChartOfAccountsScreen() {
 
     const displayedAccounts = activeTab === 'NET_WORTH' ? netWorthAccounts : profitLossAccounts;
 
+    // Grouped by account type, like the Budgets screen: Income / Expenses, or Assets / Liabilities / Equity.
+    const groups = useMemo(() => {
+        const defs: { type: Account['type']; label: string }[] = activeTab === 'NET_WORTH'
+            ? [{ type: 'ASSET', label: 'Assets' }, { type: 'LIABILITY', label: 'Liabilities' }, { type: 'EQUITY', label: 'Equity' }]
+            : [{ type: 'INCOME', label: 'Income' }, { type: 'EXPENSE', label: 'Expenses' }];
+        return defs
+            .map((d) => ({ ...d, items: displayedAccounts.filter((a) => a.type === d.type).sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true })) }))
+            .filter((g) => g.items.length > 0);
+    }, [activeTab, displayedAccounts]);
+
     const openCreateModal = () => {
         setEditingAccount(null);
         setCode('');
@@ -297,35 +307,38 @@ export default function ChartOfAccountsScreen() {
                         </Pressable>
                     </View>
                 ) : (
-                    displayedAccounts.map((acc) => {
-                        const { cleanName } = extractEmojiAndName(acc.name);
-                        return (
-                            <View key={acc.id} style={[styles.accCard, !acc.is_active && styles.accCardInactive]}>
-                                <View style={styles.accLeft}>
-                                    <Checkbox
-                                        checked={!!acc.is_active}
-                                        onPress={() => toggleActiveMutation.mutate({ account: acc, active: !acc.is_active })}
-                                    />
-                                    <AccountGlyph name={acc.name} type={acc.type} logoUrl={(acc as any).logo_url} size={20} />
-                                    <View style={{ flex: 1 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                            <Text style={styles.accName} numberOfLines={1}>{cleanName}</Text>
-                                            <View style={[styles.typeBadge, { backgroundColor: acc.type === 'EXPENSE' || acc.type === 'LIABILITY' ? '#FEE2E2' : '#DCFCE7' }]}>
-                                                <Text style={[styles.typeBadgeText, { color: acc.type === 'EXPENSE' || acc.type === 'LIABILITY' ? colors.danger : colors.positive }]}>
-                                                    {acc.type}
-                                                </Text>
+                    groups.map((g) => (
+                        <View key={g.type} style={{ gap: 10 }}>
+                            <Text style={styles.sectionLabel}>{g.label.toUpperCase()}</Text>
+                            <View style={styles.list}>
+                                {g.items.map((acc, idx) => {
+                                    const { cleanName } = extractEmojiAndName(acc.name);
+                                    const bad = acc.type === 'EXPENSE' || acc.type === 'LIABILITY';
+                                    return (
+                                        <View key={acc.id} style={[styles.row, idx > 0 && styles.rowBorder]}>
+                                            <Checkbox
+                                                checked={!!acc.is_active}
+                                                onPress={() => toggleActiveMutation.mutate({ account: acc, active: !acc.is_active })}
+                                            />
+                                            <View style={[styles.rowMain, !acc.is_active && styles.rowInactive]}>
+                                                <AccountGlyph name={acc.name} type={acc.type} logoUrl={(acc as any).logo_url} size={20} />
+                                                <View style={{ flex: 1, minWidth: 0 }}>
+                                                    <Text style={styles.accName} numberOfLines={1}>{cleanName}</Text>
+                                                    <Text style={styles.accCode} numberOfLines={1}>
+                                                        Code: {acc.code}{acc.subtype ? ` • ${acc.subtype}` : ''}
+                                                    </Text>
+                                                    <View style={[styles.typeBadge, { backgroundColor: bad ? '#FEE2E2' : '#DCFCE7' }]}>
+                                                        <Text style={[styles.typeBadgeText, { color: bad ? colors.danger : colors.positive }]}>{acc.type}</Text>
+                                                    </View>
+                                                </View>
                                             </View>
+                                            <AccountMenu onEdit={() => openEditModal(acc)} onDelete={() => handleDelete(acc)} />
                                         </View>
-                                        <Text style={styles.accCode}>
-                                            Code: {acc.code} {acc.subtype ? `• ${acc.subtype}` : ''}
-                                        </Text>
-                                    </View>
-                                </View>
-
-                                <AccountMenu onEdit={() => openEditModal(acc)} onDelete={() => handleDelete(acc)} />
+                                    );
+                                })}
                             </View>
-                        );
-                    })
+                        </View>
+                    ))
                 )}
             </ScrollView>
 
@@ -450,7 +463,7 @@ export default function ChartOfAccountsScreen() {
 }
 
 const styles = StyleSheet.create({
-    root: { flex: 1, backgroundColor: colors.canvasAlt },
+    root: { flex: 1, backgroundColor: colors.canvas },
     header: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
         paddingHorizontal: 16, paddingBottom: 12, backgroundColor: colors.surface,
@@ -472,6 +485,12 @@ const styles = StyleSheet.create({
     segmentText: { fontFamily: fonts.bodyBold, fontSize: 12, color: colors.textMuted },
     segmentTextActive: { color: colors.text },
 
+    sectionLabel: { fontFamily: fonts.bodyBold, fontSize: 11, color: colors.textFaint, letterSpacing: 0.6, marginTop: 4 },
+    list: { backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' },
+    row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, gap: 12 },
+    rowBorder: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+    rowMain: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
+    rowInactive: { opacity: 0.45 },
     accCard: {
         flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
         backgroundColor: colors.surface, borderRadius: radius.lg, padding: 14,
@@ -482,7 +501,7 @@ const styles = StyleSheet.create({
     accName: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     accCode: { fontFamily: fonts.body, fontSize: 11, color: colors.textMuted, marginTop: 2 },
 
-    typeBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    typeBadge: { alignSelf: 'flex-start', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginTop: 5 },
     typeBadgeText: { fontFamily: fonts.bodyBold, fontSize: 9 },
 
     accRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },

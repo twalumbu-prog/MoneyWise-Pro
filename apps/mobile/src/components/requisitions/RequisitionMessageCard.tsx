@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import {
     ChevronDown, Check, X, User, FileText, Building2, RefreshCw, Coins, Wallet,
@@ -42,6 +43,7 @@ export const RequisitionMessageCard: React.FC<{
     onReceiptUploaded: () => void;
 }> = ({ message, isOwn, canAction, requisitionData, isInitial, onApprove, onReject, actingOn, onDisbursed, onReceiptUploaded }) => {
     const { userRole, user } = useAuth();
+    const queryClient = useQueryClient();
     const [expanded, setExpanded] = useState(!!isInitial);
     const [isApprovingAI, setIsApprovingAI] = useState(false);
     const [isReloadingAI, setIsReloadingAI] = useState(false);
@@ -269,6 +271,29 @@ export const RequisitionMessageCard: React.FC<{
             };
 
             const hasCategory = (item: any) => !!(item.category_code || item.category_name);
+            // Personal accounts: the AI already applied this and it is in the reports. Rows stay editable,
+            // and a change is saved (and re-posted to the reports) the moment it is picked — no Approve step.
+            const autoApplied = !!message.metadata?.autoApplied;
+            const rowsLocked = isCompleted && !autoApplied;
+
+            const applyEdit = async (idx: number, acc: any) => {
+                const item = items[idx];
+                if (!item?.id) return;
+                const before = editableItems;
+                setEditableItems((prev) => (prev.length ? prev : items).map((it: any, i: number) => i === idx
+                    ? { ...it, account_id: acc.id, category_code: acc.code, category_name: acc.name, is_manual: true, confidence: 1, created_account: false }
+                    : it));
+                try {
+                    await requisitionService.updateLineItemAccount(item.id, acc.id);
+                    queryClient.invalidateQueries({ queryKey: ['report'] });
+                    queryClient.invalidateQueries({ queryKey: ['report-chart'] });
+                    queryClient.invalidateQueries({ queryKey: ['cashbook'] });
+                    onDisbursed();
+                } catch (e: any) {
+                    setEditableItems(before);
+                    Alert.alert('Could not change the category', e?.message ?? 'Please try again.');
+                }
+            };
 
             const methodLabel = (item: any) => {
                 if (item.is_manual) return 'Manual override';
@@ -286,15 +311,15 @@ export const RequisitionMessageCard: React.FC<{
                             <View style={styles.stageHeader}>
                                 <View style={styles.stageIcon}><Building2 size={13} color={colors.blue} /></View>
                                 <Text style={styles.stageTitle}>AI Categorization Assistant</Text>
-                                {!isCompleted && (
+                                {!isCompleted && !autoApplied && (
                                     <Pressable onPress={reload} disabled={isReloadingAI} hitSlop={8}>
                                         <RefreshCw size={14} color={colors.textFaint} />
                                     </Pressable>
                                 )}
-                                {isCompleted && (
+                                {(isCompleted || autoApplied) && (
                                     <View style={[styles.badgePill, styles.badgePillApproved]}>
                                         <Check size={9} color="#059669" />
-                                        <Text style={[styles.badgePillText, { color: '#059669' }]}>{isFullyCompleted ? 'Posted' : 'Categorized'}</Text>
+                                        <Text style={[styles.badgePillText, { color: '#059669' }]}>{autoApplied ? 'In your reports' : isFullyCompleted ? 'Posted' : 'Categorized'}</Text>
                                     </View>
                                 )}
                             </View>
@@ -306,15 +331,15 @@ export const RequisitionMessageCard: React.FC<{
                             ) : (
                                 <>
                                     <Text style={styles.stageBody}>
-                                        {isCompleted ? 'The following account mapping was approved.' : 'The AI suggested the following account mapping. Tap a row to change the account.'}
+                                        {autoApplied ? (message.content || 'Categorised and added to your reports. Tap a category to change it.') : isCompleted ? 'The following account mapping was approved.' : 'The AI suggested the following account mapping. Tap a row to change the account.'}
                                     </Text>
                                     <View style={styles.itemsTable}>
                                         {items.map((item: any, idx: number) => (
                                             <Pressable
                                                 key={idx}
                                                 style={[styles.itemRow, idx > 0 && styles.itemRowBorder]}
-                                                onPress={() => { if (!isCompleted) setAccountPickerIdx(idx); }}
-                                                disabled={isCompleted}
+                                                onPress={() => { if (!rowsLocked) setAccountPickerIdx(idx); }}
+                                                disabled={rowsLocked}
                                             >
                                                 <View style={{ flex: 1 }}>
                                                     <Text style={styles.itemDesc} numberOfLines={2}>{item.description}</Text>
@@ -324,11 +349,11 @@ export const RequisitionMessageCard: React.FC<{
                                                             : 'Needs a category — tap to choose'}
                                                     </Text>
                                                 </View>
-                                                {!isCompleted && <ChevronDown size={14} color={colors.textFaint} style={{ transform: [{ rotate: '-90deg' }] }} />}
+                                                {!rowsLocked && <ChevronDown size={14} color={colors.textFaint} style={{ transform: [{ rotate: '-90deg' }] }} />}
                                             </Pressable>
                                         ))}
                                     </View>
-                                    {!isCompleted && (
+                                    {!isCompleted && !autoApplied && (
                                         <Pressable style={styles.acceptBtn} onPress={approve} disabled={isApprovingAI}>
                                             {isApprovingAI ? <ActivityIndicator color="#FFFFFF" /> : <Text style={styles.acceptBtnText}>Approve Categorizations</Text>}
                                         </Pressable>
@@ -349,6 +374,7 @@ export const RequisitionMessageCard: React.FC<{
                             if (accountPickerIdx === null) return;
                             const acc = chartAccounts.find((c) => c.id === a.id);
                             if (!acc) return;
+                            if (autoApplied) { const idx = accountPickerIdx; setAccountPickerIdx(null); void applyEdit(idx, acc); return; }
                             setEditableItems((prev) => prev.map((it, i) => i === accountPickerIdx
                                 ? { ...it, account_id: acc.id, category_code: acc.code, category_name: acc.name, is_manual: true, confidence: 1 }
                                 : it));

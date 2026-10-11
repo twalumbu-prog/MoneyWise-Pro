@@ -1,3 +1,4 @@
+import { maybeAutoCategorizePersonal, maybeAutoCategorizePersonalById } from '../services/personalRequisitionClassifier.service';
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
@@ -475,6 +476,9 @@ export const disburseRequisition = async (req: any, res: any): Promise<any> => {
                 console.error('[Notification Error] Failed to send scheduled PoP email (cash):', err)
             );
         }
+
+        // 8. Personal accounts: categorise straight away (AI), post to the ledger and reports — no approval step.
+        await maybeAutoCategorizePersonal(id, organizationId, cashier_id);
 
     } catch (error: any) {
         console.error('Error disbursing requisition:', error);
@@ -1248,6 +1252,7 @@ function scheduleDeferredLedgerFinalization(
                     .eq('status', 'PROCESSING'); // guard: don't clobber a concurrent state change
 
                 console.log(`[Deferred Finalization] ✅ Ledger finalized and status set to RECEIVED for ${requisitionId}.`);
+                await maybeAutoCategorizePersonalById(requisitionId);
                 return; // Done — no further retries needed
             }
 
@@ -2631,6 +2636,7 @@ export const pollProcessingDisbursements = async (req: any, res: any): Promise<a
                         .update({ status: 'RECEIVED', updated_at: new Date().toISOString() })
                         .eq('id', reqId)
                         .eq('status', 'PROCESSING');
+                    await maybeAutoCategorizePersonalById(reqId);
                     results.push({ requisitionId: reqId, action: 'finalized', lencoStatus: 'successful' });
                     continue;
                 }
