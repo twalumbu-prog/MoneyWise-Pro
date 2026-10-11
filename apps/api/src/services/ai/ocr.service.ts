@@ -166,13 +166,13 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export const ocrService = {
     async analyzeReceipt(imageUrl?: string, imageData?: Buffer | Uint8Array): Promise<ReceiptOcrData> {
-        const hasGemini = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY');
+        const hasGemini = false; // direct Google access is retired — vision goes through OpenRouter
         // OpenRouter only needs an API key; the model is configured via the DB (ai_model_settings),
         // not required to be an env var anymore.
         const hasOpenRouterVision = !!(process.env.OPENROUTER_API_KEY);
 
         if (!hasGemini && !hasOpenRouterVision) {
-            console.warn('[OCR Service] No vision provider configured (GEMINI_API_KEY or OPENROUTER_API_KEY+OPENROUTER_OCR_MODEL).');
+            console.warn('[OCR Service] No vision provider configured (OPENROUTER_API_KEY).');
             return { error: 'AI analysis not configured', confidence: 0 };
         }
 
@@ -267,8 +267,7 @@ export const ocrService = {
 
     async matchExtractedItems(requestedItems: any[], extractedItems: any[]): Promise<any> {
         const { callAllCategorizationProviders } = await import('./ai.provider');
-        const hasAny = !!(process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== 'YOUR_GEMINI_API_KEY')
-            || !!process.env.OPENROUTER_API_KEY
+        const hasAny = !!process.env.OPENROUTER_API_KEY
             || !!process.env.PERPLEXITY_API_KEY;
         if (!hasAny) return null;
 

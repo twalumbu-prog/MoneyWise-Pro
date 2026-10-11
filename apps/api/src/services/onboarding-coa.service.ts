@@ -7,7 +7,7 @@
  *   3. Business-specific revenue/cost accounts derived from the store
  *      categories (Step 6) and products (Step 7).
  *
- * When GEMINI_API_KEY is configured the merged draft is refined by the model
+ * When OPENROUTER_API_KEY is configured the merged draft is refined by the model
  * (dedupe, naming polish, industry-specific additions). The deterministic merge
  * is always computed first and is the fallback, so generation never fails hard.
  *
@@ -16,7 +16,6 @@
  * balance sheet and stays hidden during onboarding.
  */
 
-const GEMINI_MODEL = process.env.GEMINI_CATEGORIZATION_MODEL || 'gemini-2.5-flash';
 
 export type PlSection =
     | 'Revenue'
@@ -261,11 +260,10 @@ export function assignCodes(drafts: DraftAccount[]): GeneratedAccount[] {
     });
 }
 
-/** Ask Gemini to refine the baseline draft. Throws on any failure — callers fall back. */
-async function refineWithGemini(input: CoaGenerationInput, baseline: DraftAccount[]): Promise<DraftAccount[]> {
-    const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-    if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
-        throw new Error('Gemini not configured');
+/** Ask the AI to refine the baseline draft. Throws on any failure — callers fall back. */
+export async function refineWithAI(input: CoaGenerationInput, baseline: DraftAccount[]): Promise<DraftAccount[]> {
+    if (!process.env.OPENROUTER_API_KEY) {
+        throw new Error('AI model not configured');
     }
 
     const prompt = `You are an expert accountant setting up a Profit & Loss chart of accounts for a small business on MoneyWise, an accounting platform used in Zambia.
@@ -287,23 +285,12 @@ Refine this draft:
 Respond with ONLY a JSON array of objects with exactly these keys:
 "name" (string), "subtype" (one of "Revenue", "Cost of Sales", "Operating Expenses", "Other Income", "Other Expenses"), "description" (short string).`;
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
-        }),
-    });
-    if (!response.ok) throw new Error(`Gemini API status ${response.status}`);
+    const { openRouterComplete } = await import('./ai/ai.provider');
+    const text = await openRouterComplete(prompt, { model: process.env.OPENROUTER_COA_MODEL || 'google/gemini-2.5-flash', timeoutMs: 40_000 });
 
-    const data: any = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) throw new Error('Empty response from Gemini');
-
-    const parsed = JSON.parse(text.replace(/```json\n?|\n?```/g, '').trim());
-    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('Gemini returned no accounts');
+    let parsed: any = JSON.parse(text.replace(/```json\n?|\n?```/g, '').trim());
+    if (!Array.isArray(parsed) && Array.isArray(parsed?.accounts)) parsed = parsed.accounts;
+    if (!Array.isArray(parsed) || parsed.length === 0) throw new Error('AI returned no accounts');
 
     // Strict validation: drop anything malformed, dedupe by name.
     const seen = new Set<string>();
@@ -322,7 +309,7 @@ Respond with ONLY a JSON array of objects with exactly these keys:
 
     // Sanity floor: a refinement that gutted the chart is worse than the baseline.
     if (refined.length < 8 || !refined.some(a => a.subtype === 'Revenue')) {
-        throw new Error('Gemini refinement failed validation');
+        throw new Error('AI refinement failed validation');
     }
     return refined;
 }
@@ -336,7 +323,7 @@ export async function generateOnboardingCoa(
 ): Promise<{ accounts: GeneratedAccount[]; method: 'AI' | 'TEMPLATE' }> {
     const baseline = buildBaselineCoa(input);
     try {
-        const refined = await refineWithGemini(input, baseline);
+        const refined = await refineWithAI(input, baseline);
         return { accounts: assignCodes(refined), method: 'AI' };
     } catch (err: any) {
         console.warn('[Onboarding COA] AI refinement unavailable, using template merge:', err.message);

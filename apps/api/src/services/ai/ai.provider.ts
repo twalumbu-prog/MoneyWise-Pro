@@ -355,7 +355,7 @@ export async function callAllOcrProviders(
 
     // ── Parallel backup: always add Gemini Vision when it's not already primary ─
     // This mirrors how callAllCategorizationProviders works and provides redundancy.
-    if (primary !== 'gemini' && geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+    if (process.env.ENABLE_GEMINI_BACKUP === 'true' && primary !== 'gemini' && geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
         const backupOcrModel = process.env.GEMINI_OCR_MODEL || 'gemini-2.5-flash-lite';
         tasks.push(callGeminiVision(backupOcrModel, prompt, imageBase64, mimeType).catch(e => { throw e; }));
     }
@@ -399,4 +399,39 @@ export async function callAllOcrProviders(
         }
     }
     return results;
+}
+
+/**
+ * One-shot text/JSON completion through OpenRouter, for the product's smaller AI features (highlight phrasing,
+ * chart-of-accounts drafting, …) — everything goes through OpenRouter so no direct Google key is needed.
+ * Model: OPENROUTER_TEXT_MODEL, else google/gemini-2.5-flash-lite. Returns the raw text (callers parse/validate).
+ */
+export async function openRouterComplete(
+    prompt: string,
+    opts: { system?: string; model?: string; jsonObject?: boolean; timeoutMs?: number } = {}
+): Promise<string> {
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) throw new Error('OPENROUTER_API_KEY not configured');
+    const model = opts.model || process.env.OPENROUTER_TEXT_MODEL || 'google/gemini-2.5-flash-lite';
+    const messages: LLMMessage[] = [
+        ...(opts.system ? [{ role: 'system' as const, content: opts.system }] : []),
+        { role: 'user', content: prompt },
+    ];
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? 20_000);
+    try {
+        const resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`, ...OR_HEADERS },
+            body: JSON.stringify({ model, messages, temperature: 0.2, ...(opts.jsonObject ? { response_format: { type: 'json_object' } } : {}) }),
+            signal: controller.signal as any,
+        });
+        if (!resp.ok) throw new Error(`OpenRouter ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+        const data: any = await resp.json();
+        const text = data.choices?.[0]?.message?.content;
+        if (!text) throw new Error('OpenRouter: empty response');
+        return String(text);
+    } finally {
+        clearTimeout(timer);
+    }
 }

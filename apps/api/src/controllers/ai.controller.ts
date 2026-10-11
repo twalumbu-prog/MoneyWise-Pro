@@ -7,6 +7,11 @@ const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 
 export const assistantChat = async (req: AuthRequest, res: Response) => {
     try {
+        // Retired: the Intelligence assistant is the streaming agent (/agent). This older Gemini-direct
+        // chat is no longer used by any client and the direct Google key is no longer configured.
+        if (process.env.ENABLE_LEGACY_GEMINI_ASSISTANT !== 'true') {
+            return res.status(410).json({ error: 'This endpoint has been replaced by the Intelligence assistant.' });
+        }
         const { message, history = [] } = req.body;
         const organizationId = req.user?.organization_id;
 

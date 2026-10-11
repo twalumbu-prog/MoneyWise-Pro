@@ -818,7 +818,7 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
                 const [orgResult, productsResult] = await Promise.all([
                     supabase
                         .from('organizations')
-                        .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+                        .select('name, logo_url, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode')
                         .eq('id', wallet.organization_id)
                         .single(),
                     supabase
@@ -876,7 +876,7 @@ export const getPublicWalletContext = async (req: Request, res: Response) => {
             },
             products: products || [],
             // Kill-switch for the own-UX mobile money checkout — see getPaymentLinkContext.
-            collections_api_enabled: process.env.LENCO_COLLECTIONS_API_ENABLED === 'true'
+            collections_api_enabled: collectionsApiEnabledFor(org)
         });
     } catch (error: any) {
         console.error('[Lenco Public Context] Error:', error);
@@ -929,7 +929,7 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
                 const [orgResult, walletResult] = await Promise.all([
                     supabase
                         .from('organizations')
-                        .select('name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+                        .select('name, logo_url, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode')
                         .eq('id', link.organization_id)
                         .single(),
                     supabase
@@ -993,7 +993,7 @@ export const getPaymentLinkContext = async (req: Request, res: Response) => {
             // Kill-switch for the own-UX mobile money checkout. When false/unset the
             // frontend uses the existing LencoPay widget. Flip LENCO_COLLECTIONS_API_ENABLED
             // on the API to switch every client instantly (no frontend redeploy).
-            collections_api_enabled: process.env.LENCO_COLLECTIONS_API_ENABLED === 'true'
+            collections_api_enabled: collectionsApiEnabledFor(org)
         });
     } catch (error: any) {
         console.error('[Lenco Payment Link Context] Error:', error);
@@ -1281,7 +1281,7 @@ export const logInternalWalletDepositIntent = async (req: Request, res: Response
 const VALID_MOMO_OPERATORS = ['airtel', 'mtn', 'zamtel', 'tnm'];
 
 /** Resolve {organizationId, secretKey} from a public walletId — shared by every public-collection endpoint. */
-async function resolveOrgFromWallet(walletId: string): Promise<{ organizationId: string; secretKey?: string } | null> {
+async function resolveOrgFromWallet(walletId: string): Promise<{ organizationId: string; secretKey?: string; hasOwnKey?: boolean } | null> {
     const { data: wallet, error: walletError } = await supabase
         .from('organization_wallets')
         .select('organization_id')
@@ -1295,7 +1295,19 @@ async function resolveOrgFromWallet(walletId: string): Promise<{ organizationId:
         .eq('id', wallet.organization_id)
         .maybeSingle();
 
-    return { organizationId: wallet.organization_id, secretKey: org?.lenco_secret_key || process.env.LENCO_SECRET_KEY };
+    return { organizationId: wallet.organization_id, secretKey: org?.lenco_secret_key || process.env.LENCO_SECRET_KEY, hasOwnKey: !!org?.lenco_secret_key };
+}
+
+/**
+ * The Collections API has no account parameter — funds settle into whichever Lenco
+ * account owns the secret key. An org without its own key would fall back to the
+ * master key and its customers' money would land in the master's default account
+ * (Blue Opus, Jul–Sep 2026: payments settled into the "BLUE OPUS DEMO" account
+ * instead of the merchant's own till). Only offer the own-UX checkout to orgs that
+ * have their own key; everyone else stays on the LencoPay widget.
+ */
+function collectionsApiEnabledFor(org: { lenco_secret_key?: string | null } | null | undefined): boolean {
+    return process.env.LENCO_COLLECTIONS_API_ENABLED === 'true' && !!org?.lenco_secret_key;
 }
 
 export const initiatePublicMobileMoneyCollection = async (req: Request, res: Response) => {
@@ -1311,6 +1323,11 @@ export const initiatePublicMobileMoneyCollection = async (req: Request, res: Res
 
         const resolved = await resolveOrgFromWallet(walletId);
         if (!resolved) return res.status(404).json({ error: 'Wallet not found' });
+        // Never charge a customer through the master key: the money would settle
+        // into the master's default account, not this merchant's (see collectionsApiEnabledFor).
+        if (!resolved.hasOwnKey) {
+            return res.status(409).json({ error: 'Direct mobile money checkout is not available for this business. Please pay with the standard checkout.' });
+        }
 
         const collection = await LencoService.initiateMobileMoneyCollection({
             amount: Number(amount),
@@ -1421,7 +1438,7 @@ export const getQuickLinkContext = async (req: Request, res: Response) => {
     try {
         const { data: org, error: orgError } = await supabase
             .from('organizations')
-            .select('id, name, logo_url, lenco_subaccount_id, lenco_public_key, payment_test_mode')
+            .select('id, name, logo_url, lenco_subaccount_id, lenco_public_key, lenco_secret_key, payment_test_mode')
             .eq('public_username', username)
             .maybeSingle();
 
@@ -1453,7 +1470,7 @@ export const getQuickLinkContext = async (req: Request, res: Response) => {
                 lenco_public_key: org.lenco_public_key || null,
                 payment_test_mode: org.payment_test_mode || false
             },
-            collections_api_enabled: process.env.LENCO_COLLECTIONS_API_ENABLED === 'true'
+            collections_api_enabled: collectionsApiEnabledFor(org)
         });
     } catch (error: any) {
         console.error('[Lenco Quick Link] Context error:', error);
@@ -2553,6 +2570,13 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 const txnDate = (txn.datetime || '').split('T')[0];
                 const isPreCutoff = !!(syncCutoffDate && txnDate && txnDate < syncCutoffDate);
                 if (isPreCutoff && txnType !== 'credit') {
+                    continue;
+                }
+
+                // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
+                if (await matchesRecordedInternalTransfer(orgId, walletId, {
+                    id: txnId, type: txnType, amount: txnType === 'credit' ? txnAmount : txnGross, date: txnDate,
+                })) {
                     continue;
                 }
 

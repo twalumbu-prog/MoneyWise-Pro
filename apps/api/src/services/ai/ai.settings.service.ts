@@ -29,12 +29,12 @@ export interface AIModelSettings {
 }
 
 const DEFAULTS: AIModelSettings = {
-    categorization_provider: (process.env.AI_CATEGORIZATION_PROVIDER as any) || 'gemini',
-    categorization_model:    process.env.GEMINI_CATEGORIZATION_MODEL       || 'gemini-2.5-flash',
+    categorization_provider: (process.env.AI_CATEGORIZATION_PROVIDER as any) || 'openrouter',
+    categorization_model:    process.env.OPENROUTER_CATEGORIZATION_MODEL    || 'qwen/qwen-2.5-72b-instruct',
     autocomplete_provider:   (process.env.AI_AUTOCOMPLETE_PROVIDER as any)  || 'openrouter',
     autocomplete_model:      process.env.OPENROUTER_AUTOCOMPLETE_MODEL      || 'deepseek/deepseek-r1',
-    ocr_provider:            (process.env.AI_OCR_PROVIDER as any)           || 'gemini',
-    ocr_model:               'gemini-2.5-flash-lite',
+    ocr_provider:            (process.env.AI_OCR_PROVIDER as any)           || 'openrouter',
+    ocr_model:               'google/gemini-2.5-flash',
     perplexity_mode:         'agent',
 };
 

@@ -16,7 +16,6 @@ import {
     sendWeeklyHighlightsToAllOrgs,
 } from '../services/weeklyHighlights.service';
 
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
 
 interface HighlightCard {
     id: string;
@@ -222,21 +221,19 @@ export function buildHighlightCards(
 }
 
 /**
- * Optionally warm up the phrasing with Gemini. Achievement cards are held back
+ * Optionally warm up the phrasing with the AI model. Achievement cards are held back
  * from the model — their wording is celebratory and exact, and a rewrite tends
  * to soften or mangle the record figures. Falls back to the deterministic copy
  * whenever the model is unavailable or returns something unusable.
  */
-async function phraseWithAI(cards: HighlightCard[], personal = false): Promise<HighlightCard[]> {
-    const geminiApiKey = process.env.GEMINI_API_KEY;
-    if (!geminiApiKey) return cards;
+export async function phraseWithAI(cards: HighlightCard[], personal = false): Promise<HighlightCard[]> {
+    if (!process.env.OPENROUTER_API_KEY) return cards;
 
     const locked = cards.filter(c => c.id.startsWith('achievement-'));
     const rewritable = cards.filter(c => !c.id.startsWith('achievement-'));
     if (rewritable.length === 0) return cards;
 
     try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${geminiApiKey}`;
         const prompt = `You are a friendly financial assistant for ${personal ? 'a person managing their own personal money (not a business — never say sales, customers, profit or business)' : 'a small-business owner'} using MoneyWise.
 Rewrite each of these raw financial signals as an upbeat, bite-size highlight. Keep each body under 30 words, plain and encouraging, currency stays in Kwacha (K). Do NOT invent numbers or change any figure — only rephrase what's given.
 Return STRICT JSON: {"cards":[{"id","title","body","tone"}]}. Keep the same id and tone for each signal, same order.
@@ -244,22 +241,11 @@ Return STRICT JSON: {"cards":[{"id","title","body","tone"}]}. Keep the same id a
 SIGNALS:
 ${JSON.stringify(rewritable)}`;
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                contents: [{ role: 'user', parts: [{ text: prompt }] }],
-                generationConfig: { responseMimeType: 'application/json' },
-            }),
-        });
-
-        if (!response.ok) return cards;
-
-        const data = await response.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        const { openRouterComplete } = await import('../services/ai/ai.provider');
+        const text = await openRouterComplete(prompt, { jsonObject: true });
         if (!text) return cards;
 
-        const parsed = JSON.parse(text);
+        const parsed = JSON.parse(text.replace(/```json\n?|\n?```/g, '').trim());
         if (!Array.isArray(parsed.cards) || parsed.cards.length === 0) return cards;
 
         const cleaned: HighlightCard[] = parsed.cards
@@ -273,7 +259,7 @@ ${JSON.stringify(rewritable)}`;
 
         return cleaned.length > 0 ? [...locked, ...cleaned] : cards;
     } catch (aiErr) {
-        console.error('[Highlights] Gemini phrasing failed, using raw signals:', aiErr);
+        console.error('[Highlights] AI phrasing failed, using raw signals:', aiErr);
         return cards;
     }
 }
