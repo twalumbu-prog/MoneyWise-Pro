@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert,
@@ -69,7 +70,7 @@ export default function ProfileSettingsScreen() {
                             style={styles.input}
                             value={payment.bank_account_number ?? ''}
                             onChangeText={(v) => set({ bank_account_number: v })}
-                            keyboardType="number-pad"
+                            keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID}
                             placeholder="0123456789"
                             placeholderTextColor={colors.textFaint}
                         />
@@ -92,7 +93,7 @@ export default function ProfileSettingsScreen() {
                             style={styles.input}
                             value={payment.mobile_money_number ?? ''}
                             onChangeText={(v) => set({ mobile_money_number: v })}
-                            keyboardType="phone-pad"
+                            keyboardType="phone-pad" inputAccessoryViewID={KB_DONE_ID}
                             placeholder="09xxxxxxxx"
                             placeholderTextColor={colors.textFaint}
                         />

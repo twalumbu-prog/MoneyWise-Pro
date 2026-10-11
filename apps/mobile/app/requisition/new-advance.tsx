@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, Modal,
     KeyboardAvoidingView, 
@@ -109,7 +110,7 @@ export default function NewSalaryAdvanceScreen() {
                         </Pressable>
 
                         <Text style={[styles.label, styles.spaced]}>Advance Amount (K)</Text>
-                        <TextInput style={styles.input} value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textFaint} />
+                        <TextInput style={styles.input} value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint} />
 
                         <Text style={[styles.label, styles.spaced]}>Reason for Advance (optional)</Text>
                         <TextInput style={[styles.input, styles.multiline]} value={reason} onChangeText={setReason} multiline placeholder="Briefly explain why this advance is needed…" placeholderTextColor={colors.textFaint} />

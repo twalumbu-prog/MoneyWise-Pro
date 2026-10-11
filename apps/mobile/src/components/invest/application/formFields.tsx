@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { KB_DONE_ID } from '../../KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, Modal, FlatList, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Image,
 } from 'react-native';
@@ -148,7 +149,7 @@ export const DateField: React.FC<{
                 <TextInput
                     value={day}
                     onChangeText={(t) => { const v = digits(t).slice(0, 2); setDay(v); emit(v, month, year); if (v.length === 2) monthRef.current?.focus(); }}
-                    placeholder="DD" placeholderTextColor={colors.textFaint} keyboardType="number-pad" maxLength={2}
+                    placeholder="DD" placeholderTextColor={colors.textFaint} keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} maxLength={2}
                     style={[styles.input, styles.dateBox, !!error && styles.inputError]} accessibilityLabel={`${label} day`}
                 />
                 <Text style={styles.dateSep}>/</Text>
@@ -156,7 +157,7 @@ export const DateField: React.FC<{
                     ref={monthRef}
                     value={month}
                     onChangeText={(t) => { const v = digits(t).slice(0, 2); setMonth(v); emit(day, v, year); if (v.length === 2) yearRef.current?.focus(); }}
-                    placeholder="MM" placeholderTextColor={colors.textFaint} keyboardType="number-pad" maxLength={2}
+                    placeholder="MM" placeholderTextColor={colors.textFaint} keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} maxLength={2}
                     style={[styles.input, styles.dateBox, !!error && styles.inputError]} accessibilityLabel={`${label} month`}
                 />
                 <Text style={styles.dateSep}>/</Text>
@@ -164,7 +165,7 @@ export const DateField: React.FC<{
                     ref={yearRef}
                     value={year}
                     onChangeText={(t) => { const v = digits(t).slice(0, 4); setYear(v); emit(day, month, v); }}
-                    placeholder="YYYY" placeholderTextColor={colors.textFaint} keyboardType="number-pad" maxLength={4}
+                    placeholder="YYYY" placeholderTextColor={colors.textFaint} keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} maxLength={4}
                     style={[styles.input, styles.dateBox, styles.dateYear, !!error && styles.inputError]} accessibilityLabel={`${label} year`}
                 />
             </View>

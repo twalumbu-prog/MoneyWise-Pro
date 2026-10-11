@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { KB_DONE_ID } from '../../../../src/components/KeyboardDoneBar';
 import {
     View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
     TextInput, Alert, Modal, KeyboardAvoidingView, 
@@ -310,7 +311,7 @@ const BreakdownEditor: React.FC<{
         {items.map((a, i) => (
             <View key={i} style={styles.breakdownEditRow}>
                 <TextInput style={[styles.input, { flex: 1 }]} value={a.name} onChangeText={(v) => onChangeName(i, v)} placeholder="Name" placeholderTextColor={colors.textFaint} />
-                <TextInput style={[styles.input, { width: 90 }]} value={String(a.amount || '')} onChangeText={(v) => onChangeAmount(i, v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textFaint} />
+                <TextInput style={[styles.input, { width: 90 }]} value={String(a.amount || '')} onChangeText={(v) => onChangeAmount(i, v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint} />
                 <Pressable onPress={() => onRemove(i)} hitSlop={8}><Trash2 size={16} color={colors.danger} /></Pressable>
             </View>
         ))}
@@ -333,7 +334,7 @@ const DeductionEditor: React.FC<{
             <View key={i} style={{ marginBottom: 10 }}>
                 <View style={styles.breakdownEditRow}>
                     <TextInput style={[styles.input, { flex: 1 }]} value={d.name} onChangeText={(v) => onChangeName(i, v)} placeholder="Name" placeholderTextColor={colors.textFaint} />
-                    <TextInput style={[styles.input, { width: 90 }]} value={String(d.amount || '')} onChangeText={(v) => onChangeAmount(i, v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textFaint} />
+                    <TextInput style={[styles.input, { width: 90 }]} value={String(d.amount || '')} onChangeText={(v) => onChangeAmount(i, v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint} />
                     <Pressable onPress={() => onRemove(i)} hitSlop={8}><Trash2 size={16} color={colors.danger} /></Pressable>
                 </View>
                 <View style={[styles.chips, { marginTop: 6 }]}>

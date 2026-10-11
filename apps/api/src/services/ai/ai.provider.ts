@@ -236,7 +236,8 @@ export async function callAllCategorizationProviders(
 
     // Always add Gemini as parallel backup when it's not already the primary,
     // to power the agreement-boost logic and provide redundancy.
-    if (primary !== 'gemini' && geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
+    // Off by default: the direct Google key is no longer relied on (set ENABLE_GEMINI_BACKUP=true to bring it back).
+    if (process.env.ENABLE_GEMINI_BACKUP === 'true' && primary !== 'gemini' && geminiKey && geminiKey !== 'YOUR_GEMINI_API_KEY') {
         const backupModel = process.env.GEMINI_CATEGORIZATION_MODEL || 'gemini-2.5-flash';
         tasks.push(callGeminiText(backupModel, messages).catch(e => { throw e; }));
     }

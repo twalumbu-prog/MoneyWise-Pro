@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    View, Text, FlatList, StyleSheet, KeyboardAvoidingView, Pressable, Alert,
+    View, Text, FlatList, StyleSheet, Pressable, Alert, Keyboard, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardHeight } from '../../src/hooks/useKeyboardHeight';
 import { useNavigation } from 'expo-router';
 import { BarChart3, PenSquare, ChevronLeft, Plus } from 'lucide-react-native';
 import { useQuery } from '@tanstack/react-query';
@@ -58,6 +59,7 @@ export default function BiScreen() {
     const [attaching, setAttaching] = useState(false);
     const abortRef = useRef<AbortController | null>(null);
     const listRef = useRef<FlatList<ChatMessage>>(null);
+    const kbHeight = useKeyboardHeight();
 
     const { data: modelData } = useQuery({
         queryKey: ['agent-models'],
@@ -239,11 +241,9 @@ export default function BiScreen() {
     };
 
     return (
-        <KeyboardAvoidingView
-            style={styles.root}
-            behavior="padding"
-            keyboardVerticalOffset={insets.top}
-        >
+        // The tab bar hides while the keyboard is up, so the screen reaches the bottom edge: lift the whole
+        // layout by exactly the keyboard's height and the composer (with Send) rides right on top of it.
+        <View style={[styles.root, { paddingBottom: kbHeight }]}>
             {inChat ? (
                 <View style={[styles.chatHeader, { paddingTop: insets.top + 12 }]}>
                     <Pressable onPress={newChat} hitSlop={10} accessibilityLabel="Back to Intelligence">
@@ -287,18 +287,21 @@ export default function BiScreen() {
             {tab === 'assistant' && (
                 <>
                     {messages.length === 0 ? (
-                        <View style={styles.hero}>
+                        // A plain view never takes the keyboard away by itself: tapping the empty area does.
+                        <Pressable style={styles.hero} onPress={Keyboard.dismiss} accessible={false}>
                             <Text style={styles.heroTitle}>How can I help you today?</Text>
                             <Text style={styles.heroBody}>
                                 Spending trends, category breakdowns, a chart for the board meeting — ask in plain language.
                             </Text>
-                        </View>
+                        </Pressable>
                     ) : (
                         <FlatList
                             ref={listRef}
                             data={messages}
                             keyExtractor={(m) => m.id}
                             contentContainerStyle={styles.list}
+                            keyboardShouldPersistTaps="handled"
+                            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
                             renderItem={({ item }) => <MessageBubble message={item} />}
                             onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
                         />
@@ -321,7 +324,7 @@ export default function BiScreen() {
                         attachment={attachment} attaching={attaching}
                         onAttach={pickAttachment} onRemoveAttachment={() => setAttachment(null)}
                     />
-                    <View style={{ height: insets.bottom + 12 }} />
+                    <View style={{ height: kbHeight > 0 ? 8 : insets.bottom + 12 }} />
                 </>
             )}
 
@@ -339,7 +342,7 @@ export default function BiScreen() {
                     onCreate={startNewAutomation}
                 />
             )}
-        </KeyboardAvoidingView>
+        </View>
     );
 }
 

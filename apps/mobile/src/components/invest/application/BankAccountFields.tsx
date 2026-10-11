@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { KB_DONE_ID } from '../../KeyboardDoneBar';
 import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import { CheckCircle, AlertCircle } from 'lucide-react-native';
@@ -87,7 +88,7 @@ export const BankAccountFields: React.FC<{
                     onChangeText={(t) => onChange({ bank_account_number: t.replace(/[^0-9A-Za-z-]/g, ''), bank_account_name: '' })}
                     placeholder="Enter account number"
                     placeholderTextColor={colors.textFaint}
-                    keyboardType="number-pad"
+                    keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID}
                     style={[styles.input, !!numberError && styles.inputError]}
                     accessibilityLabel="Account number"
                 />

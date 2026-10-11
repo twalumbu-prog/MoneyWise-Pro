@@ -1,14 +1,16 @@
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const AI_TEST_MODE = process.env.AI_TEST_MODE === 'true';
 
-// gemini-embedding-001 supports Matryoshka truncation, so we request 1536 dims
-// to stay compatible with the existing vector(1536) column / match_ai_memory RPC.
-const EMBEDDING_MODEL = process.env.GEMINI_EMBEDDING_MODEL || 'gemini-embedding-001';
+// Embeddings go through OpenRouter (no direct Google key / billing needed). The model is still Google's
+// gemini-embedding-001, truncated to 1536 dims to fit the existing vector(1536) column / match_ai_memory RPC.
+// NOTE: vectors from this endpoint are NOT interchangeable with ones made earlier through Google's own API
+// (that call used taskType SEMANTIC_SIMILARITY) — see scripts/reembed_memory.ts, which re-embedded the memory.
+const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'google/gemini-embedding-001';
 const EMBEDDING_DIMENSIONS = Number(process.env.EMBEDDING_DIMENSIONS || 1536);
 
 export class EmbeddingService {
     /**
-     * Generate a vector embedding for a given text using Google Gemini.
+     * Generate a vector embedding for a given text through OpenRouter.
      */
     async generateEmbedding(text: string): Promise<number[] | null> {
         if (AI_TEST_MODE) {
@@ -20,41 +22,48 @@ export class EmbeddingService {
             return mockVector;
         }
 
-        if (!GEMINI_API_KEY || GEMINI_API_KEY === 'YOUR_GEMINI_API_KEY') {
-            console.warn('[EmbeddingService] Gemini API key missing or default. Skipping embedding.');
+        if (!OPENROUTER_API_KEY) {
+            console.warn('[EmbeddingService] OPENROUTER_API_KEY missing. Skipping embedding.');
             return null;
         }
 
-        try {
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent?key=${GEMINI_API_KEY}`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    model: `models/${EMBEDDING_MODEL}`,
-                    content: { parts: [{ text: text.replace(/\n/g, ' ') }] },
-                    taskType: 'SEMANTIC_SIMILARITY',
-                    outputDimensionality: EMBEDDING_DIMENSIONS,
-                }),
-            });
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10_000);
+            try {
+                const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+                        'HTTP-Referer': 'https://moneywise.blueopus.cloud',
+                        'X-Title': 'MoneyWise Pro',
+                    },
+                    body: JSON.stringify({ model: EMBEDDING_MODEL, input: text.replace(/\n/g, ' '), dimensions: EMBEDDING_DIMENSIONS }),
+                    signal: controller.signal as any,
+                });
+                clearTimeout(timer);
 
-            if (!response.ok) {
-                const error = await response.text();
-                console.error('[EmbeddingService] Gemini Error:', error);
-                return null;
-            }
+                if (!response.ok) {
+                    const error = await response.text();
+                    console.error(`[EmbeddingService] OpenRouter ${response.status}:`, error.slice(0, 300));
+                    if (response.status >= 500 || response.status === 429) continue; // transient: one retry
+                    return null;
+                }
 
-            const data = await response.json();
-            const values = data?.embedding?.values;
-            if (!Array.isArray(values)) {
-                console.warn('[EmbeddingService] Gemini returned no embedding values.');
-                return null;
+                const data: any = await response.json();
+                const values = data?.data?.[0]?.embedding;
+                if (!Array.isArray(values) || values.length !== EMBEDDING_DIMENSIONS) {
+                    console.warn('[EmbeddingService] OpenRouter returned an unexpected embedding.');
+                    return null;
+                }
+                return values;
+            } catch (err) {
+                clearTimeout(timer);
+                if (attempt === 1) console.error('[EmbeddingService] Fetch Error:', err);
             }
-            return values;
-        } catch (err) {
-            console.error('[EmbeddingService] Fetch Error:', err);
-            return null;
         }
+        return null;
     }
 
     /**

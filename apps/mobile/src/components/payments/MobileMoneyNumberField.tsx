@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { KB_DONE_ID } from '../KeyboardDoneBar';
 import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
 import { Check, AlertCircle } from 'lucide-react-native';
 import { lencoService, detectMobileNetwork } from 'core';
@@ -57,7 +58,7 @@ export const MobileMoneyNumberField: React.FC<{
                 onChangeText={(t) => onChangePhone(phoneFromPrefixedInput(t))}
                 placeholder="97 123 4567"
                 placeholderTextColor={colors.textFaint}
-                keyboardType="number-pad"
+                keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID}
                 accessibilityLabel="Mobile money number"
             />
             {!!operator && <Text style={[styles.operator, { color: OPERATOR_COLOR[operator.toUpperCase()] || colors.text }]}>{operator.toUpperCase()}</Text>}

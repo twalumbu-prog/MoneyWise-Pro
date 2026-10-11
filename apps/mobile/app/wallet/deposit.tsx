@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, KeyboardAvoidingView, 
@@ -131,7 +132,7 @@ export default function DepositScreen() {
                         style={[styles.input, styles.amountInput]}
                         value={amount}
                         onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
-                        keyboardType="decimal-pad"
+                        keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                         placeholder="0.00"
                         placeholderTextColor={colors.textFaint}
                     />

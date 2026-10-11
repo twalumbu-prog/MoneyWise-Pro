@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { KB_DONE_ID } from '../KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Modal,
     ScrollView, Alert,
@@ -119,6 +120,7 @@ export const Composer: React.FC<{
                 placeholderTextColor={colors.textFaint}
                 multiline
                 maxLength={4000}
+                inputAccessoryViewID={KB_DONE_ID}
             />
 
             <View style={styles.controlRow}>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { KB_DONE_ID } from '../../../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, KeyboardAvoidingView, 
@@ -343,11 +344,11 @@ export default function RunPayrollScreen() {
                                     <View style={styles.row2}>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.label}>Taxable (K)</Text>
-                                            <TextInput style={styles.input} value={String(item.taxable_allowances || '')} onChangeText={(v) => updateItem(idx, { taxable_allowances: Number(v.replace(/[^0-9.]/g, '')) || 0 })} keyboardType="decimal-pad" placeholderTextColor={colors.textFaint} />
+                                            <TextInput style={styles.input} value={String(item.taxable_allowances || '')} onChangeText={(v) => updateItem(idx, { taxable_allowances: Number(v.replace(/[^0-9.]/g, '')) || 0 })} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholderTextColor={colors.textFaint} />
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.label}>Non-taxable (K)</Text>
-                                            <TextInput style={styles.input} value={String(item.non_taxable_allowances || '')} onChangeText={(v) => updateItem(idx, { non_taxable_allowances: Number(v.replace(/[^0-9.]/g, '')) || 0 })} keyboardType="decimal-pad" placeholderTextColor={colors.textFaint} />
+                                            <TextInput style={styles.input} value={String(item.non_taxable_allowances || '')} onChangeText={(v) => updateItem(idx, { non_taxable_allowances: Number(v.replace(/[^0-9.]/g, '')) || 0 })} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholderTextColor={colors.textFaint} />
                                         </View>
                                     </View>
                                 </View>
@@ -383,7 +384,7 @@ export default function RunPayrollScreen() {
                                         style={styles.input}
                                         value={String(val || '')}
                                         onChangeText={(v) => setValueForStep(idx, step, Number(v.replace(/[^0-9.]/g, '')) || 0)}
-                                        keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textFaint}
+                                        keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint}
                                     />
                                 </View>
                             );

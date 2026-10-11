@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { KeyboardDoneBar } from '../src/components/KeyboardDoneBar';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -86,6 +87,7 @@ export default function RootLayout() {
             >
                 <AuthProvider>
                     <StatusBar style="dark" />
+                    <KeyboardDoneBar />
                     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
                         <Stack.Screen name="index" />
                         <Stack.Screen name="(auth)" />

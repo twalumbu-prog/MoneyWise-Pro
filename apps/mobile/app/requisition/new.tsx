@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, KeyboardAvoidingView, Modal, FlatList, Image, Keyboard, Platform,
@@ -23,6 +24,8 @@ import { cacheStoreSync } from '../../src/platform/storage';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
 import { ContactSuggestions, ContactPickerSheet, useContactBook } from '../../src/components/payments/ContactPicker';
+import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
+import { useKeyboardHeight } from '../../src/hooks/useKeyboardHeight';
 import type { ContactNumber } from '../../src/lib/contacts';
 
 const PREF_USE_MY_ACCOUNT = 'reqwizard_use_my_account';
@@ -134,7 +137,6 @@ export default function NewRequisitionScreen() {
     // Stage 3
     const [paymentMethod, setPaymentMethod] = useState<'moneywise' | 'mobile' | 'bank'>('moneywise');
     const [bankId, setBankId] = useState('');
-    const [bankPickerOpen, setBankPickerOpen] = useState(false);
     const [accountNumber, setAccountNumber] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('');
     const [momoOperator, setMomoOperator] = useState('');
@@ -171,7 +173,6 @@ export default function NewRequisitionScreen() {
 
     const { data: banksRaw } = useQuery({ queryKey: ['lenco-banks'], queryFn: () => lencoService.getBanks() });
     const banks: any[] = Array.isArray(banksRaw) ? banksRaw : (banksRaw?.data || []);
-    const selectedBankName: string | undefined = banks.find((b) => String(b.id ?? b.code) === bankId)?.name;
 
     const { data: profile, isLoading: loadingProfile } = useQuery({
         queryKey: ['my-profile'], queryFn: () => userService.getMyProfile(),
@@ -327,6 +328,21 @@ export default function NewRequisitionScreen() {
         const hide = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide', () => setKeyboardUp(false));
         return () => { show.remove(); hide.remove(); };
     }, []);
+    // Lift a field to the top of the visible area when it is being typed into, so the matches that appear
+    // beneath it (banks, contacts) are never hidden behind the keyboard — small phones included.
+    const kbHeight = useKeyboardHeight();
+    const scrollRef = useRef<ScrollView>(null);
+    const scrollY = useRef(0);
+    const phoneFieldRef = useRef<View>(null);
+    const bankFieldRef = useRef<View>(null);
+    const bringIntoView = (target: React.RefObject<View | null>) => {
+        setTimeout(() => {
+            target.current?.measureInWindow((_x, y) => {
+                const wanted = insets.top + 90;               // just under the header
+                if (y > wanted + 4) scrollRef.current?.scrollTo({ y: scrollY.current + (y - wanted), animated: true });
+            });
+        }, 60);
+    };
     const [contactPickerOpen, setContactPickerOpen] = useState(false);
     const [pickedContactName, setPickedContactName] = useState('');
 
@@ -531,7 +547,14 @@ export default function NewRequisitionScreen() {
                 }))}
             />
 
-            <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <ScrollView
+                ref={scrollRef}
+                contentContainerStyle={[styles.scroll, kbHeight > 0 && { paddingBottom: kbHeight + 120 }]}
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                onScroll={(e) => { scrollY.current = e.nativeEvent.contentOffset.y; }}
+                scrollEventThrottle={16}
+            >
                 <AnimatedTabContent tabKey={activeTab} index={TABS.findIndex((t) => t.value === activeTab)}>
                 {activeTab !== 'basic' ? (
                     <View style={styles.comingSoon}>
@@ -698,7 +721,7 @@ export default function NewRequisitionScreen() {
                                                     style={styles.itemPriceInput}
                                                     value={item.unit_price ? String(item.unit_price) : ''}
                                                     onChangeText={(v) => updateLineItem(item.id, { unit_price: Number(v.replace(/[^0-9.]/g, '')) || 0 })}
-                                                    keyboardType="decimal-pad"
+                                                    keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                                                     placeholder="0.00"
                                                     placeholderTextColor={colors.textFaint}
                                                 />
@@ -736,7 +759,7 @@ export default function NewRequisitionScreen() {
                                             style={styles.amountInput}
                                             value={manualAmount}
                                             onChangeText={(v) => setManualAmount(v.replace(/[^0-9.]/g, ''))}
-                                            keyboardType="decimal-pad"
+                                            keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                                             placeholder="0.00"
                                             placeholderTextColor={colors.textFaint}
                                             autoFocus
@@ -901,7 +924,7 @@ export default function NewRequisitionScreen() {
                                     <View style={styles.field}>
                                         <Text style={styles.label}>Phone Number or Contact</Text>
                                         <Text style={styles.fieldHint}>Enter a number to verify the account holder, or type a name to search your contacts.</Text>
-                                        <View style={styles.phoneWrap}>
+                                        <View ref={phoneFieldRef} style={styles.phoneWrap} collapsable={false}>
                                             <TextInput
                                                 style={[styles.phoneInput, { paddingRight: momoOperator ? 128 : 56 }]}
                                                 value={momoText}
@@ -910,6 +933,7 @@ export default function NewRequisitionScreen() {
                                                 placeholderTextColor={colors.textFaint}
                                                 autoCapitalize="none"
                                                 autoCorrect={false}
+                                                onFocus={() => bringIntoView(phoneFieldRef)}
                                             />
                                             <Pressable
                                                 style={[styles.contactsBtn, { right: momoOperator ? 78 : 10 }]}
@@ -939,15 +963,18 @@ export default function NewRequisitionScreen() {
                                     <>
                                         <View style={styles.field}>
                                             <Text style={styles.label}>Bank</Text>
-                                            <Pressable style={styles.selectInput} onPress={() => setBankPickerOpen(true)}>
-                                                <View style={styles.selectInputMain}>
-                                                    {!!selectedBankName && <BankAvatar name={selectedBankName} size={22} />}
-                                                    <Text style={[styles.selectInputText, !bankId && styles.selectInputPlaceholder]}>
-                                                        {selectedBankName || 'Select Bank'}
-                                                    </Text>
-                                                </View>
-                                                <ChevronDown size={16} color={colors.textFaint} />
-                                            </Pressable>
+                                            <View ref={bankFieldRef} collapsable={false}>
+                                                <InlineSearchSelect
+                                                    items={banks.map((b) => ({ id: String(b.id ?? b.code), label: b.name }))}
+                                                    selectedId={bankId || null}
+                                                    placeholder="Select Bank"
+                                                    searchPlaceholder="Search banks…"
+                                                    onSelect={(item) => setBankId(item.id)}
+                                                    renderIcon={(label) => <BankAvatar name={label} size={22} />}
+                                                    onOpen={() => bringIntoView(bankFieldRef)}
+                                                    onQueryChange={() => bringIntoView(bankFieldRef)}
+                                                />
+                                            </View>
                                         </View>
                                         <View style={styles.field}>
                                             <Text style={styles.label}>Account Number</Text>
@@ -957,7 +984,7 @@ export default function NewRequisitionScreen() {
                                                 onChangeText={setAccountNumber}
                                                 placeholder="Enter account number"
                                                 placeholderTextColor={colors.textFaint}
-                                                keyboardType="number-pad"
+                                                keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID}
                                             />
                                         </View>
                                     </>
@@ -1120,16 +1147,6 @@ export default function NewRequisitionScreen() {
                 onClose={() => setContactPickerOpen(false)}
                 onPick={pickContact}
                 book={contactBook}
-            />
-
-            <PickerSheet
-                visible={bankPickerOpen}
-                onClose={() => setBankPickerOpen(false)}
-                title="Select Bank"
-                items={banks.map((b) => ({ id: String(b.id ?? b.code), label: b.name }))}
-                searchable
-                onSelect={(item) => { setBankId(item.id); setBankPickerOpen(false); }}
-                renderIcon={(label) => <BankAvatar name={label} size={28} />}
             />
 
             <PickerSheet

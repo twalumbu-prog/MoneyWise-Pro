@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator,
     KeyboardAvoidingView, 
@@ -158,7 +159,7 @@ export default function NewStaffLoanScreen() {
                         <TextInput style={styles.input} value={employeeId} onChangeText={setEmployeeId} placeholder="e.g. EMP-001" placeholderTextColor={colors.textFaint} />
 
                         <Text style={[styles.label, styles.spaced]}>Loan Amount (K)</Text>
-                        <TextInput style={styles.input} value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textFaint} />
+                        <TextInput style={styles.input} value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint} />
 
                         <Text style={[styles.label, styles.spaced]}>Repayment Period</Text>
                         <View style={styles.periodGrid}>

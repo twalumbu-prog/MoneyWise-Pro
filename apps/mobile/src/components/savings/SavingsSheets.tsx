@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { KB_DONE_ID } from '../KeyboardDoneBar';
 import {
     Modal, View, Text, TextInput, Pressable, StyleSheet, KeyboardAvoidingView, ActivityIndicator, Image, ScrollView
 } from 'react-native';
@@ -50,7 +51,7 @@ const AmountInput: React.FC<{ value: string; onChange: (v: string) => void; erro
                 onChangeText={(t) => onChange(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))}
                 placeholder="0.00"
                 placeholderTextColor={colors.textFaint}
-                keyboardType="decimal-pad"
+                keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                 style={styles.amountInput}
                 accessibilityLabel="Amount"
             />
@@ -181,7 +182,7 @@ export const CreateSavingsSheet: React.FC<{ visible: boolean; kind: SavingsKind;
             <Text style={styles.label}>{copy.targetLabel}{copy.targetOptional ? ' (optional)' : ''}</Text>
             <View style={[styles.amountBox, { marginBottom: 16 }]}>
                 <Text style={styles.currency}>K</Text>
-                <TextInput value={target} onChangeText={(t) => setTarget(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))} placeholder="0.00" placeholderTextColor={colors.textFaint} keyboardType="decimal-pad" style={styles.amountInput} />
+                <TextInput value={target} onChangeText={(t) => setTarget(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1'))} placeholder="0.00" placeholderTextColor={colors.textFaint} keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} style={styles.amountInput} />
             </View>
 
             {showDetails && (

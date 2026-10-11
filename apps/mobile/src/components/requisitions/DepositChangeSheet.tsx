@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { KB_DONE_ID } from '../KeyboardDoneBar';
 import { View, Text, TextInput, Pressable, StyleSheet, Modal, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CheckCircle2, X } from 'lucide-react-native';
@@ -125,7 +126,7 @@ export const DepositChangeSheet: React.FC<{
                                 <View style={styles.phonePrefix}><Text style={styles.phonePrefixText}>+260</Text></View>
                                 <TextInput
                                     style={styles.phoneInput} value={prefixedInputValue(phone)} onChangeText={(t) => setPhone(phoneFromPrefixedInput(t))}
-                                    keyboardType="number-pad" placeholder="97 123 4567" placeholderTextColor={colors.textFaint}
+                                    keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="97 123 4567" placeholderTextColor={colors.textFaint}
                                 />
                                 {operator && <Text style={styles.operatorTag}>{operator}</Text>}
                             </View>

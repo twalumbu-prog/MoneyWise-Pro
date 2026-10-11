@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { KB_DONE_ID } from '../KeyboardDoneBar';
 import { View, Text, StyleSheet, Pressable, TextInput, Modal, FlatList, ScrollView } from 'react-native';
 import { Lock, ChevronDown, Search, Check } from 'lucide-react-native';
 import { BusinessProfile } from 'core';
@@ -82,7 +83,7 @@ export const StepContact: React.FC<Props> = ({ profile, onSave, onBack, saving }
                             onChangeText={(t) => { setNational(t); setFieldError(null); }}
                             placeholder="(077) 725-3009"
                             placeholderTextColor={colors.textFaint}
-                            keyboardType="phone-pad"
+                            keyboardType="phone-pad" inputAccessoryViewID={KB_DONE_ID}
                             style={styles.phoneInput}
                         />
                     </View>

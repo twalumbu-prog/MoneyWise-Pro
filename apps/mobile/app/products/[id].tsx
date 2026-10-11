@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, Image, KeyboardAvoidingView, 
@@ -132,7 +133,7 @@ export default function ProductEditScreen() {
                             <TextInput
                                 style={styles.input} value={price}
                                 onChangeText={(v) => setPrice(v.replace(/[^0-9.]/g, ''))}
-                                keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textFaint}
+                                keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint}
                                 editable={type !== 'SERVICE_VARIABLE'}
                             />
                         </>

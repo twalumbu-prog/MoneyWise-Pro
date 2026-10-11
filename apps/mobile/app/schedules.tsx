@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
+import { KB_DONE_ID } from '../src/components/KeyboardDoneBar';
 import {
     View, Text, ScrollView, Pressable, StyleSheet, ActivityIndicator,
     RefreshControl, Modal, TextInput, Alert, KeyboardAvoidingView, 
@@ -570,7 +571,7 @@ const ScheduleFormModal: React.FC<{ initial?: ScheduledItem | null; onClose: () 
                     style={styles.input}
                     value={amount}
                     onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))}
-                    keyboardType="decimal-pad"
+                    keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                     placeholder="0.00"
                     placeholderTextColor={colors.textFaint}
                 />
@@ -638,7 +639,7 @@ const ScheduleFormModal: React.FC<{ initial?: ScheduledItem | null; onClose: () 
                                     style={[styles.input, { flex: 1 }]}
                                     value={recipientAccount}
                                     onChangeText={setRecipientAccount}
-                                    keyboardType="phone-pad"
+                                    keyboardType="phone-pad" inputAccessoryViewID={KB_DONE_ID}
                                     placeholder="0971234567"
                                     placeholderTextColor={colors.textFaint}
                                 />
@@ -652,7 +653,7 @@ const ScheduleFormModal: React.FC<{ initial?: ScheduledItem | null; onClose: () 
                                 style={styles.input}
                                 value={recipientAccount}
                                 onChangeText={setRecipientAccount}
-                                keyboardType="number-pad"
+                                keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID}
                                 placeholder="1234567890"
                                 placeholderTextColor={colors.textFaint}
                             />

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { KB_DONE_ID } from '../KeyboardDoneBar';
 import {
     View, Text, Pressable, TextInput, StyleSheet, ActivityIndicator,
     Alert, Image, Modal,
@@ -247,7 +248,7 @@ export const ExpenseTracker: React.FC<{
                                         <Text style={styles.inputLabel}>ACTUAL (K)</Text>
                                         <TextInput
                                             style={[styles.amountInput, hasDiscrepancy && styles.amountInputError]}
-                                            keyboardType="decimal-pad"
+                                            keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                                             value={String(item.actual_amount ?? '')}
                                             onChangeText={(val) => {
                                                 const newItems = [...expenseItems];

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { KB_DONE_ID } from '../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, KeyboardAvoidingView, 
@@ -68,7 +69,7 @@ export default function LogReceivedScreen() {
                         style={[styles.input, styles.amountInput]}
                         value={amount}
                         onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))}
-                        keyboardType="decimal-pad"
+                        keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                         placeholder="0.00"
                         placeholderTextColor={colors.textFaint}
                     />
@@ -115,7 +116,7 @@ export default function LogReceivedScreen() {
                         onChangeText={setContactDetails}
                         placeholder="Phone or email"
                         placeholderTextColor={colors.textFaint}
-                        keyboardType="phone-pad"
+                        keyboardType="phone-pad" inputAccessoryViewID={KB_DONE_ID}
                     />
                 </View>
 

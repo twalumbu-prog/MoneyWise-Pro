@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, KeyboardAvoidingView, 
 } from 'react-native';
@@ -205,7 +206,7 @@ export default function LencoTransferScreen() {
                 <Text style={styles.label}>Amount to Transfer (K)</Text>
                 <TextInput
                     style={styles.input} value={amount} onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))}
-                    keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={colors.textFaint}
+                    keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="0.00" placeholderTextColor={colors.textFaint}
                 />
 
                 <View style={styles.feeCard}>
@@ -220,7 +221,7 @@ export default function LencoTransferScreen() {
                     <View style={styles.phonePrefix}><Text style={styles.phonePrefixText}>+260</Text></View>
                     <TextInput
                         style={styles.phoneInput} value={prefixedInputValue(phone)} onChangeText={(t) => setPhone(phoneFromPrefixedInput(t))}
-                        keyboardType="number-pad" placeholder="97 123 4567" placeholderTextColor={colors.textFaint}
+                        keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="97 123 4567" placeholderTextColor={colors.textFaint}
                     />
                     {operator && <Text style={styles.operatorTag}>{operator}</Text>}
                 </View>

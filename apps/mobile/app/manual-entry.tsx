@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { KB_DONE_ID } from '../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet, ActivityIndicator, KeyboardAvoidingView, Modal, FlatList,
 } from 'react-native';
@@ -127,7 +128,7 @@ export default function ManualEntryScreen() {
                             onChangeText={(t) => { setAmount(t.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1')); setErrors((x) => ({ ...x, amount: '' })); }}
                             placeholder="0.00"
                             placeholderTextColor={colors.textFaint}
-                            keyboardType="decimal-pad"
+                            keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                             style={[styles.amountInput, !!errors.amount && { color: colors.danger }]}
                             accessibilityLabel="Amount"
                         />

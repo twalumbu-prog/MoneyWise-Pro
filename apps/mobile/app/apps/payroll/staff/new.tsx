@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { KB_DONE_ID } from '../../../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, KeyboardAvoidingView, Switch,
@@ -171,7 +172,7 @@ export default function AddStaffScreen() {
                                 ))}
                             </View>
                             <Text style={[styles.label, styles.spaced]}>Account number</Text>
-                            <TextInput style={styles.input} value={bankAccountNumber} onChangeText={setBankAccountNumber} keyboardType="number-pad" placeholderTextColor={colors.textFaint} />
+                            <TextInput style={styles.input} value={bankAccountNumber} onChangeText={setBankAccountNumber} keyboardType="number-pad" inputAccessoryViewID={KB_DONE_ID} placeholderTextColor={colors.textFaint} />
                             <VerificationRow busy={bankResolving} name={bankResolvedName} error={bankResolveError} />
                         </>
                     )}
@@ -185,7 +186,7 @@ export default function AddStaffScreen() {
                     {mobileEnabled && (
                         <>
                             <Text style={[styles.label, styles.spaced]}>Number</Text>
-                            <TextInput style={styles.input} value={mobileNumber} onChangeText={setMobileNumber} keyboardType="phone-pad" placeholder="09xxxxxxxx" placeholderTextColor={colors.textFaint} />
+                            <TextInput style={styles.input} value={mobileNumber} onChangeText={setMobileNumber} keyboardType="phone-pad" inputAccessoryViewID={KB_DONE_ID} placeholder="09xxxxxxxx" placeholderTextColor={colors.textFaint} />
                             {!!mobileNetwork && (
                                 <View style={[styles.networkPill, { borderColor: NETWORK_COLOR[mobileNetwork] }]}>
                                     <Text style={[styles.networkPillText, { color: NETWORK_COLOR[mobileNetwork] }]}>{mobileNetwork}</Text>

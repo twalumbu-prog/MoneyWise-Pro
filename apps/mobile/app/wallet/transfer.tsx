@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, KeyboardAvoidingView, 
@@ -96,7 +97,7 @@ export default function TransferScreen() {
                         style={[styles.input, styles.amountInput, overdrawn && styles.inputError]}
                         value={amount}
                         onChangeText={(v) => setAmount(v.replace(/[^0-9.]/g, ''))}
-                        keyboardType="decimal-pad"
+                        keyboardType="decimal-pad" inputAccessoryViewID={KB_DONE_ID}
                         placeholder="0.00"
                         placeholderTextColor={colors.textFaint}
                     />
