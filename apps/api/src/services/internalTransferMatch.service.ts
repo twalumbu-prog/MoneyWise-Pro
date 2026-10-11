@@ -18,7 +18,7 @@ const ENTRY_KEY = (entryId: string) => `onus_entry:${entryId}`;
 
 export async function matchesRecordedInternalTransfer(
     orgId: string,
-    walletId: string,
+    _walletId: string,
     txn: { id: string; type: 'credit' | 'debit' | string; amount: number; date: string },
 ): Promise<boolean> {
     try {
@@ -33,7 +33,8 @@ export async function matchesRecordedInternalTransfer(
             .from('cashbook_entries')
             .select('id')
             .eq('organization_id', orgId)
-            .eq('wallet_id', walletId)
+            // Any wallet of the org: Lenco only knows the org's one account, while savings contributions
+            // are booked into the goal's own sub-wallet (not the main wallet the sync is looking at).
             .eq('account_type', 'MONEYWISE_WALLET')
             .or('external_reference.like.INVW-%,external_reference.like.SVT-%')
             .gte(amountCol, txn.amount - 0.01)
