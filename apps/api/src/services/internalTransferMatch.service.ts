@@ -19,7 +19,7 @@ const ENTRY_KEY = (entryId: string) => `onus_entry:${entryId}`;
 export async function matchesRecordedInternalTransfer(
     orgId: string,
     _walletId: string,
-    txn: { id: string; type: 'credit' | 'debit' | string; amount: number; date: string },
+    txn: { id: string; type: 'credit' | 'debit' | string; amount: number; date: string; description?: string },
 ): Promise<boolean> {
     try {
         if (!txn.id || !(txn.amount > 0)) return false;
@@ -43,12 +43,12 @@ export async function matchesRecordedInternalTransfer(
             .gte('created_at', since)
             .order('created_at', { ascending: true })
             .limit(10);
-        if (!rows?.length) return false;
+        if (!rows?.length) return deferIfBookingPending(txn);
 
         const { data: used } = await supabase.from('app_settings').select('key').in('key', rows.map(r => ENTRY_KEY(r.id)));
         const usedKeys = new Set((used ?? []).map(u => u.key));
         const free = rows.find(r => !usedKeys.has(ENTRY_KEY(r.id)));
-        if (!free) return false;
+        if (!free) return deferIfBookingPending(txn);
 
         const now = new Date().toISOString();
         const { error } = await supabase.from('app_settings').insert([
@@ -65,4 +65,23 @@ export async function matchesRecordedInternalTransfer(
         console.error('[Lenco Sync] internal transfer match failed (continuing normally):', err.message);
         return false;
     }
+}
+
+/**
+ * Lenco can report the transfer before we have booked it (the booking waits for Lenco to confirm the
+ * transfer, which for an on-us move is usually seconds but has taken much longer). If a pending wallet
+ * savings contribution or investment of exactly this amount is waiting to be booked, leave the Lenco
+ * transaction for a later sync instead of logging it as an unknown inflow/expense that the booking would
+ * then duplicate. Bounded to 6 hours so a transfer that is never booked still reaches the ledger.
+ */
+async function deferIfBookingPending(txn: { amount: number; description?: string }): Promise<boolean> {
+    if (!/^(savings|investment):/i.test((txn.description || '').trim())) return false;
+    const since = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+    const [sav, inv] = await Promise.all([
+        supabase.from('savings_contributions').select('id', { count: 'exact', head: true })
+            .eq('status', 'PENDING').eq('method', 'WALLET').eq('amount', txn.amount).gte('created_at', since),
+        supabase.from('investments').select('id', { count: 'exact', head: true })
+            .eq('status', 'PENDING').eq('method', 'WALLET').eq('amount_paid', txn.amount).gte('created_at', since),
+    ]);
+    return (sav.count ?? 0) + (inv.count ?? 0) > 0;
 }

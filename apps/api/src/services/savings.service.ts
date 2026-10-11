@@ -622,7 +622,7 @@ export const savingsService = {
             .from('savings_contributions')
             .select('*, goal:savings_goals(organization_id)')
             .eq('status', 'PENDING')
-            .eq('method', 'MOBILE_MONEY')
+            .in('method', ['MOBILE_MONEY', 'WALLET'])
             .order('created_at', { ascending: true })
             .limit(25);
         const out = { checked: 0, confirmed: 0, failed: 0 };
@@ -631,7 +631,11 @@ export const savingsService = {
             const goal = Array.isArray(c.goal) ? c.goal[0] : c.goal;
             if (!goal?.organization_id) continue;
             out.checked++;
-            const st = await settleContribution(c, goal.organization_id).catch(() => 'PENDING');
+            // Wallet-to-wallet contributions (SVT-) used to be settled only when the contributor next opened
+            // Savings, so a transfer Lenco hadn't confirmed within the inline wait stayed pending for days.
+            const st = String(c.reference || '').startsWith('SVT-')
+                ? await settleWalletTransfer(c).catch(() => 'PENDING' as const)
+                : await settleContribution(c, goal.organization_id).catch(() => 'PENDING');
             if (st === 'CONFIRMED') out.confirmed++;
             if (st === 'FAILED') out.failed++;
         }
