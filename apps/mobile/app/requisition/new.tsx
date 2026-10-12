@@ -1,14 +1,14 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, KeyboardAvoidingView, Modal, FlatList, Image, Keyboard, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle,
+    X, ArrowRight, ArrowLeft, Plus, Minus, Trash2, User, List, AlertCircle, ArrowDownToLine,
     CheckCircle, Smartphone, Building2, Mail, ChevronDown, Search,
     ShieldCheck, BookUser,
 } from 'lucide-react-native';
@@ -190,14 +190,16 @@ export default function NewRequisitionScreen() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [wallets.length]);
 
-    useEffect(() => {
+    // Re-read the balance every time this screen comes back into view, so topping up in the wallet and returning
+    // here clears the "insufficient funds" alert straight away.
+    useFocusEffect(useCallback(() => {
         if (!autoAuthorize || useMyAccount || !selectedWalletId) { setSelectedWalletBalance(null); return; }
         let cancelled = false;
         cashbookService.getBalance('MONEYWISE_WALLET', undefined, selectedWalletId)
             .then((balance: any) => { if (!cancelled) setSelectedWalletBalance(Number(balance) || 0); })
             .catch(() => { if (!cancelled) setSelectedWalletBalance(null); });
         return () => { cancelled = true; };
-    }, [autoAuthorize, useMyAccount, selectedWalletId]);
+    }, [autoAuthorize, useMyAccount, selectedWalletId]));
 
     // MoneyWise Pay autosuggest search
     useEffect(() => {
@@ -1069,11 +1071,6 @@ export default function NewRequisitionScreen() {
                                             <Text style={styles.selectInputText}>{wallets.find((w) => w.id === selectedWalletId)?.name || 'Select Wallet'}</Text>
                                             <ChevronDown size={16} color={colors.textFaint} />
                                         </Pressable>
-                                        {isWalletBalanceInsufficient && (
-                                            <Text style={styles.insufficientText}>
-                                                This wallet only has {formatKwacha(selectedWalletBalance || 0)} available — this request needs {formatKwacha(total)}. Choose another wallet or top it up first.
-                                            </Text>
-                                        )}
                                     </View>
                                 )}
 
@@ -1100,6 +1097,28 @@ export default function NewRequisitionScreen() {
 
             {activeTab === 'basic' && !keyboardUp && (
                 <View style={[styles.footer, { paddingBottom: insets.bottom + 20 }]}>
+                    {stage === 4 && isWalletBalanceInsufficient && (
+                        <View style={styles.fundsAlert} accessibilityRole="alert">
+                            <View style={styles.fundsAlertIcon}><AlertCircle size={20} color={colors.danger} /></View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.fundsAlertTitle}>Insufficient funds</Text>
+                                <Text style={styles.fundsAlertBody}>
+                                    {selectedWalletBalance && selectedWalletBalance > 0
+                                        ? `Your wallet has ${formatKwacha(selectedWalletBalance)} but this needs ${formatKwacha(total)}. Add ${formatKwacha(total - selectedWalletBalance)} to continue`
+                                        : `Your wallet is empty and this needs ${formatKwacha(total)}. Add money to continue`}
+                                    {wallets.length > 1 ? ', or send from another wallet.' : '.'}
+                                </Text>
+                                <Pressable
+                                    style={({ pressed }) => [styles.fundsAlertBtn, pressed && { opacity: 0.85 }]}
+                                    onPress={() => router.push({ pathname: '/wallet/deposit', params: { amount: String(Math.ceil(Math.max(0, total - (selectedWalletBalance || 0)))), walletId: selectedWalletId ?? '' } })}
+                                    accessibilityLabel="Deposit funds"
+                                >
+                                    <ArrowDownToLine size={16} color="#FFFFFF" />
+                                    <Text style={styles.fundsAlertBtnText}>Deposit funds</Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    )}
                     {stage !== 4 ? (
                         <View style={styles.footerRow}>
                             <Pressable style={styles.backBtn} onPress={handleBack}>
@@ -1357,6 +1376,18 @@ const styles = StyleSheet.create({
     reviewItemDesc: { fontFamily: fonts.bodyMedium, fontSize: 13, color: colors.textMuted, flex: 1, marginRight: 12 },
     reviewTotalRow: { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.border },
     reviewTotalLabel: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.text },
+    fundsAlert: {
+        flexDirection: 'row', gap: 12, backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FECACA',
+        borderRadius: radius.lg, padding: 14, marginBottom: 12,
+    },
+    fundsAlertIcon: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#FEE2E2', alignItems: 'center', justifyContent: 'center' },
+    fundsAlertTitle: { fontFamily: fonts.bodyBold, fontSize: 15, color: '#991B1B' },
+    fundsAlertBody: { fontFamily: fonts.body, fontSize: 13, lineHeight: 18, color: '#7F1D1D', marginTop: 3 },
+    fundsAlertBtn: {
+        alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: colors.blue,
+        borderRadius: radius.pill, paddingHorizontal: 16, paddingVertical: 10, marginTop: 12,
+    },
+    fundsAlertBtnText: { fontFamily: fonts.bodyBold, fontSize: 13, color: '#FFFFFF' },
     insufficientText: { fontFamily: fonts.bodyMedium, fontSize: 11, color: '#92400E', backgroundColor: '#FFFBEB', borderRadius: radius.md, paddingHorizontal: 10, paddingVertical: 8, marginTop: 4 },
     footer: { paddingHorizontal: 24, paddingTop: 12, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surface },
     footerRow: { flexDirection: 'row', alignItems: 'center', gap: 14 },

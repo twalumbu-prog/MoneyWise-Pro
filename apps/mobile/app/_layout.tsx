@@ -1,6 +1,7 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { BrandSplash } from '../src/components/BrandSplash';
 import { KeyboardDoneBar } from '../src/components/KeyboardDoneBar';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Animated, Easing, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -49,11 +50,22 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 const SessionGate: React.FC = () => {
     const { loading } = useAuth();
     const isRestoring = useIsRestoring();
-    if (!loading && !isRestoring) return null;
+    const busy = loading || isRestoring;
+    const opacity = useRef(new Animated.Value(1)).current;
+    const [gone, setGone] = useState(false);
+
+    // Once there is nothing left to flash, fade the splash away to reveal the app instead of cutting to it.
+    useEffect(() => {
+        if (busy) { setGone(false); opacity.setValue(1); return; }
+        Animated.timing(opacity, { toValue: 0, duration: 450, easing: Easing.out(Easing.quad), useNativeDriver: true })
+            .start(({ finished }) => { if (finished) setGone(true); });
+    }, [busy, opacity]);
+
+    if (gone) return null;
     return (
-        <View style={styles.splash}>
-            <ActivityIndicator size="large" color={colors.blue} />
-        </View>
+        <Animated.View style={[styles.splash, { opacity }]} pointerEvents={busy ? 'auto' : 'none'}>
+            <BrandSplash />
+        </Animated.View>
     );
 };
 
@@ -148,6 +160,6 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
     splash: {
         ...StyleSheet.absoluteFillObject,
-        alignItems: 'center', justifyContent: 'center', backgroundColor: colors.canvas,
+        backgroundColor: '#FFFFFF',
     },
 });

@@ -5,7 +5,7 @@ import {
     ActivityIndicator, KeyboardAvoidingView, 
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, useLocalSearchParams } from 'expo-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Smartphone, CreditCard, AlertCircle } from 'lucide-react-native';
 import { cashbookService, formatKwacha } from 'core';
@@ -33,9 +33,11 @@ export default function DepositScreen() {
     const { organizationId } = useAuth();
 
     const [method, setMethod] = useState<'MOBILE_MONEY' | 'CARD'>('MOBILE_MONEY');
-    const [amount, setAmount] = useState('');
+    // Arriving from "Insufficient funds" on the send screen pre-fills the shortfall and the wallet to top up.
+    const params = useLocalSearchParams<{ amount?: string; walletId?: string }>();
+    const [amount, setAmount] = useState(params.amount && Number(params.amount) > 0 ? String(params.amount) : '');
     const [purpose, setPurpose] = useState('');
-    const [walletId, setWalletId] = useState('');
+    const [walletId, setWalletId] = useState(params.walletId ? String(params.walletId) : '');
     const [phone, setPhone] = useState('');
 
     const { data: wallets = [] } = useQuery({

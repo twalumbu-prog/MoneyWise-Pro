@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
 import type { Widget } from 'core';
 import { WidgetView } from './WidgetView';
+import { AssistantMarkdown } from './AssistantMarkdown';
 import { colors, fonts, radius } from '../../theme/tokens';
 
 export interface ChatMessage {
@@ -27,7 +28,9 @@ export const MessageBubble: React.FC<{ message: ChatMessage }> = ({ message }) =
                         </Text>
                     </View>
                 ) : (
-                    <Text style={[styles.text, isUser && styles.textUser]}>{message.content}</Text>
+                    isUser
+                        ? <Text style={[styles.text, styles.textUser]}>{message.content}</Text>
+                        : <AssistantMarkdown content={message.content} streaming={message.streaming} />
                 )}
             </View>
             {message.widgets.map((w, i) => <WidgetView key={i} widget={w} />)}

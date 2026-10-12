@@ -71,7 +71,7 @@ const ConfettiOverlay: React.FC = () => {
     );
 };
 
-export const CompletionScreen: React.FC = () => {
+export const CompletionScreen: React.FC<{ isPersonal?: boolean }> = ({ isPersonal = false }) => {
     const router = useRouter();
 
     return (
@@ -90,7 +90,9 @@ export const CompletionScreen: React.FC = () => {
 
                 <Text style={styles.title}>Welcome to MoneyWise!</Text>
                 <Text style={styles.subtitle}>
-                    Your business is now ready to receive payments, build your store, and manage your finances.
+                    {isPersonal
+                        ? 'Your personal account is ready. Track your spending, set budgets, save towards your goals and send money in seconds.'
+                        : 'Your business is now ready to receive payments, build your store, and manage your finances.'}
                 </Text>
 
                 <PrimaryButton

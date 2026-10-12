@@ -173,7 +173,7 @@ export default function OnboardingScreen() {
     }
 
     if (step === 10) {
-        return <CompletionScreen />;
+        return <CompletionScreen isPersonal={isPersonal} />;
     }
 
     // Header title for Personal Onboarding

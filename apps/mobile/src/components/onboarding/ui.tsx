@@ -37,7 +37,11 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
                 <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
                 <View style={styles.btnRow}>
-                    <Text style={[styles.btnText, textStyle]}>{children}</Text>
+                    {/* Plain text is wrapped; a Text + icon pair is laid out as a row so the icon sits level with the words
+                        (an icon inside a <Text> is treated as inline text and drops to the baseline). */}
+                    {typeof children === 'string' || typeof children === 'number'
+                        ? <Text style={[styles.btnText, textStyle]}>{children}</Text>
+                        : children}
                 </View>
             )}
         </Pressable>

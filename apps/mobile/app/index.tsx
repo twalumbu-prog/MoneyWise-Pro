@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
+import { BrandSplash } from '../src/components/BrandSplash';
 import { View, Text, Pressable, ActivityIndicator, StyleSheet, ScrollView } from 'react-native';
 import { Redirect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -122,11 +123,7 @@ export default function Index() {
     }
 
     if (loading || (session && userRole && needsOnboarding === null && userStatus !== 'PENDING_APPROVAL')) {
-        return (
-            <View style={styles.centre}>
-                <ActivityIndicator size="large" color={colors.blue} />
-            </View>
-        );
+        return <BrandSplash />;
     }
 
     if (!session) return <Redirect href="/(auth)/login" />;

@@ -303,8 +303,9 @@ export default function ReportingScreen() {
                 <Text style={styles.title}>Reporting</Text>
                 {isPersonal && (
                     <View style={styles.headerActions}>
-                        <Pressable style={styles.iconBtn} onPress={() => router.push('/budgets')} accessibilityLabel="Budget Settings">
-                            <Settings size={18} color={colors.textMuted} />
+                        <Pressable style={({ pressed }) => [styles.budgetsBtn, pressed && { opacity: 0.7 }]} onPress={() => router.push('/budgets')} accessibilityLabel="Budgets">
+                            <Settings size={18} color={colors.blue} />
+                            <Text style={styles.budgetsText}>Budgets</Text>
                         </Pressable>
                         <Pressable
                             style={styles.iconBtn}
@@ -632,7 +633,12 @@ const styles = StyleSheet.create({
     scroll: { paddingHorizontal: 20, paddingBottom: 100, gap: 14 },
     title: { fontFamily: fonts.display, fontSize: 30, color: '#000000' },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-    headerActions: { flexDirection: 'row', gap: 8 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    budgetsBtn: {
+        height: 40, paddingLeft: 12, paddingRight: 16, borderRadius: 20, backgroundColor: colors.surface,
+        borderWidth: 1, borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 7,
+    },
+    budgetsText: { fontFamily: fonts.bodyBold, fontSize: 14, color: '#000000' },
     iconBtn: {
         width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface,
         borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center',

@@ -34,7 +34,26 @@ config.resolver.disableHierarchicalLookup = true;
 
 // Resolve ESM explicit extensions (.js, .mjs, etc.) in node_modules imports
 // to prevent Metro from looking for file.js.js or file.js.ts
+//
+// Narrow exception to disableHierarchicalLookup above: markdown-it (used by the assistant's Markdown renderer) needs its
+// OWN nested copies of `entities` (v2) and `linkify-it`; the hoisted `entities` is v4 and lacks the paths it requires.
+// Only these packages, only when imported from inside markdown-it, so React etc. can never be duplicated.
+const MARKDOWN_IT_NESTED = new Set(['entities', 'linkify-it']);
+const nestedForMarkdownIt = (origin, moduleName) => {
+    if (!origin || !origin.includes(`${path.sep}node_modules${path.sep}markdown-it${path.sep}`)) return null;
+    const pkg = moduleName.split('/')[0];
+    if (!MARKDOWN_IT_NESTED.has(pkg)) return null;
+    const root = origin.slice(0, origin.indexOf(`${path.sep}node_modules${path.sep}markdown-it${path.sep}`)) + `${path.sep}node_modules${path.sep}markdown-it`;
+    const nested = path.join(root, 'node_modules', moduleName);
+    return require('fs').existsSync(path.join(root, 'node_modules', pkg)) ? nested : null;
+};
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+    const nested = nestedForMarkdownIt(context.originModulePath, moduleName);
+    if (nested) {
+        const { resolveRequest: _skip, ...ctx } = context;
+        return metroResolver.resolve(ctx, nested, platform);
+    }
     let targetName = moduleName;
     if ((moduleName.startsWith('./') || moduleName.startsWith('../')) && (moduleName.endsWith('.js') || moduleName.endsWith('.mjs'))) {
         targetName = moduleName.replace(/\.(m)?js$/, '');
