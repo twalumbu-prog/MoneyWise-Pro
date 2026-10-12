@@ -182,12 +182,12 @@ async function downloadInvoice(invoice: Invoice) {
 
         <div class="line">
             <span class="desc">Monthly Subscription (Premium)</span>
-            <span class="amt">ZMW ${(invoice.gross_zmw - Math.max(0, invoice.gross_zmw - 250)).toFixed(2)}</span>
+            <span class="amt">ZMW ${(invoice.gross_zmw >= 1000 ? invoice.gross_zmw - 500 : invoice.gross_zmw).toFixed(2)}</span>
         </div>
-        ${invoice.gross_zmw > 250 ? `
+        ${invoice.gross_zmw >= 1000 ? `
         <div class="line">
             <span class="desc">Master Fees Integration<br/><small style="font-size:10px;color:#888">Add-on billed each cycle while Master Fees is connected</small></span>
-            <span class="amt">ZMW ${(invoice.gross_zmw - 250).toFixed(2)}</span>
+            <span class="amt">ZMW 500.00</span>
         </div>` : ''}
         ${invoice.credits_zmw > 0 ? `
         <div class="line credit">
@@ -285,7 +285,7 @@ export const SubscriptionBilling: React.FC = () => {
     if (!subscription) return null;
 
     const isPremium = subscription.plan_id === 'premium';
-    const pricing = subscription.pricing ?? { base: 250, masterfees: 0, total: 250 };
+    const pricing = subscription.pricing ?? { base: 500, masterfees: 0, total: 500 };
     const creditsPct = Math.min(100, (subscription.fee_credits_zmw / pricing.total) * 100);
     const periodPct = subscription.periodPercent;
     const nextPaymentDate = formatDate(subscription.current_period_end);

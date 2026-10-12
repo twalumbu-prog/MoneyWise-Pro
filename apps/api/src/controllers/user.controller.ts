@@ -6,6 +6,7 @@ import { captureEvent } from '../utils/analytics';
 import { emailService } from '../services/email.service';
 import { pushService } from '../services/push.service';
 import { matchUserToStaff } from '../lib/staffUserMatching';
+import { assertCanAddMember, PlanLimitError } from '../services/entitlements.service';
 
 const INVITE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
@@ -162,6 +163,16 @@ export const createUser = async (req: AuthRequest, res: any): Promise<any> => {
         // Only Admin can create/invite users
         if (userRole !== 'ADMIN') {
             return res.status(403).json({ error: 'Only admins can add users' });
+        }
+
+        // Plan enforcement: the Free plan is capped at 1 team member.
+        try {
+            await assertCanAddMember(organization_id);
+        } catch (planErr: any) {
+            if (planErr instanceof PlanLimitError) {
+                return res.status(planErr.httpStatus).json({ error: planErr.message, code: planErr.code });
+            }
+            throw planErr;
         }
 
         const workflowId = `invite-${Date.now()}`;

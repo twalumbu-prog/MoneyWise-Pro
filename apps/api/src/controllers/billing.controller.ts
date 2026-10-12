@@ -2,20 +2,35 @@ import { Request, Response } from 'express';
 import { supabase } from '../lib/supabase';
 import { captureEvent } from '../utils/analytics';
 import { LencoService } from '../services/lenco.service';
+import { cashbookService } from '../services/cashbook.service';
+import { countOrgMembers } from '../services/entitlements.service';
 
-const SUBSCRIPTION_PRICE = 250; // K250/month base
+const SUBSCRIPTION_PRICE = 500; // K500/month base (Premium)
 const MASTERFEES_ADDON_PRICE = 500; // +K500 each billing cycle while Master Fees is integrated
+// MoneyWise's own settlement merchant (Blue Opus Software) — subscription revenue lands here.
+const SETTLEMENT_TILL_NUMBER = process.env.MONEYWISE_SETTLEMENT_TILL_NUMBER || '9838830';
 
 // ──────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────
 
-function invoiceNumber(orgId: string): string {
-    const now = new Date();
-    const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
+/** Invoice numbers are keyed to the billing period (not "now") so back-dated and rolled-over invoices never collide. */
+function invoiceNumber(orgId: string, periodStart: string): string {
+    const ym = `${periodStart.slice(0, 4)}${periodStart.slice(5, 7)}`;
     const short = orgId.replace(/-/g, '').slice(0, 6).toUpperCase();
     return `INV-${ym}-${short}`;
 }
+
+/** YYYY-MM-DD + one calendar month (clamped to the target month's last day). */
+function addOneMonth(date: string): string {
+    const [y, m, d] = date.split('-').map(Number);
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const next = new Date(Date.UTC(y, m, 1));
+    next.setUTCDate(Math.min(d, lastDay));
+    return next.toISOString().slice(0, 10);
+}
+
+const todayStr = () => new Date().toISOString().split('T')[0];
 
 /**
  * Billable price for an org's billing cycle: the base plan plus the Master Fees
@@ -91,7 +106,7 @@ async function ensureCurrentInvoice(sub: any): Promise<void> {
         return;
     }
 
-    const invNum = invoiceNumber(sub.organization_id);
+    const invNum = invoiceNumber(sub.organization_id, sub.current_period_start);
 
     await supabase
         .from('subscription_invoices')
@@ -120,6 +135,9 @@ export async function getSubscription(req: Request, res: Response) {
         const organizationId = (req as any).user?.organization_id;
         if (!organizationId) return res.status(400).json({ error: 'No organization found for this user' });
         const sub = await ensureSubscription(organizationId);
+
+        // Confirm any wallet payment Lenco accepted but we haven't booked yet
+        await settleProcessingInvoices(organizationId).catch(e => console.error('[Billing] settle error:', e.message));
 
         // Ensure a live invoice exists for this billing period (premium only)
         await ensureCurrentInvoice(sub);
@@ -183,9 +201,8 @@ export async function upgradeToPremium(req: Request, res: Response) {
             return res.status(400).json({ error: 'Already on Premium plan' });
         }
 
-        const today = new Date().toISOString().split('T')[0];
-        const periodEnd = new Date(new Date().setMonth(new Date().getMonth() + 1))
-            .toISOString().split('T')[0];
+        const today = todayStr();
+        const periodEnd = addOneMonth(today);
 
         const { data, error } = await supabase
             .from('organization_subscriptions')
@@ -230,6 +247,24 @@ export async function downgradeToFree(req: Request, res: Response) {
 
         if (sub.plan_id === 'free') {
             return res.status(400).json({ error: 'Already on Free plan' });
+        }
+
+        // Enforcement: you can't shed Premium while still using Premium features or owing money.
+        const { count: unpaid } = await supabase
+            .from('subscription_invoices')
+            .select('id', { count: 'exact', head: true })
+            .eq('subscription_id', sub.id)
+            .eq('status', 'pending')
+            .gt('net_zmw', 0);
+        if ((unpaid || 0) > 0) {
+            return res.status(409).json({ error: 'Please settle your outstanding invoices before downgrading.' });
+        }
+        const { data: mf } = await supabase.from('integrations').select('id').eq('organization_id', organizationId).eq('provider', 'MASTERFEES').maybeSingle();
+        if (mf) {
+            return res.status(409).json({ error: 'Disconnect Master Fees before downgrading — it is a Premium feature.' });
+        }
+        if ((await countOrgMembers(organizationId)) > 1) {
+            return res.status(409).json({ error: 'The Free plan allows 1 team member. Remove other team members before downgrading.' });
         }
 
         const { data, error } = await supabase
@@ -371,7 +406,7 @@ export async function generateInvoice(req: Request, res: Response) {
         const netAmount = Math.max(0, grossAmount - credits);
         const dueDate = sub.current_period_end;
 
-        const invNumber = invoiceNumber(organizationId);
+        const invNumber = invoiceNumber(organizationId, sub.current_period_start);
 
         const { data: invoice, error: invErr } = await supabase
             .from('subscription_invoices')
@@ -394,10 +429,10 @@ export async function generateInvoice(req: Request, res: Response) {
 
         if (invErr) throw new Error(invErr.message);
 
-        // Auto-deduct from org wallet if enabled and amount > 0
+        // Auto-pay from the org wallet if enabled and amount > 0
         if (netAmount > 0 && sub.auto_pay_enabled) {
-            const walletDeducted = await attemptWalletAutoDeduction(organizationId, sub.id, invoice.id, netAmount);
-            if (walletDeducted) {
+            const result = await payInvoiceFromWallet(organizationId, invoice);
+            if (result.status === 'paid') {
                 return res.json({ invoice: { ...invoice, status: 'paid', paid_via: 'wallet_auto' } });
             }
         }
@@ -409,85 +444,183 @@ export async function generateInvoice(req: Request, res: Response) {
     }
 }
 
+// ──────────────────────────────────────────────
+// Wallet payment — real Lenco transfer to the Blue Opus settlement merchant
+// ──────────────────────────────────────────────
+
+const subPayWalletKey = (ref: string) => `subscription_pay:${ref}`;
+
+/** Same balance the wallet list shows in the UI (cashbook_entries has no is_deleted column). */
+async function getWalletBalance(organizationId: string, walletId?: string | null): Promise<number> {
+    return Number(await cashbookService.getCurrentBalance(organizationId, 'MONEYWISE_WALLET', walletId || undefined)) || 0;
+}
+
+async function mainWalletId(organizationId: string): Promise<string | null> {
+    const { data } = await supabase
+        .from('organization_wallets')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('is_main', true)
+        .maybeSingle();
+    return data?.id ?? null;
+}
+
+export type WalletPayResult =
+    | { status: 'paid' }
+    | { status: 'processing'; reference: string }
+    | { status: 'insufficient'; walletBalance: number }
+    | { status: 'error'; message: string };
+
 /**
- * Try to deduct the subscription amount from the org's MoneyWise wallet balance.
- * Returns true if successful, false if insufficient funds.
+ * Books a confirmed subscription payment: marks the invoice paid and posts the
+ * wallet debit. Safe to call repeatedly — the invoice is claimed with a
+ * status guard and the ledger row is keyed by the transfer reference.
+ * Paying an invoice never moves the billing period; the cycle engine owns that.
  */
-async function attemptWalletAutoDeduction(
-    organizationId: string,
-    subscriptionId: string,
-    invoiceId: string,
-    amount: number,
-    walletId?: string
-): Promise<boolean> {
+async function finalizeWalletPayment(invoice: any, reference: string): Promise<void> {
+    const orgId = invoice.organization_id;
+    const now = new Date().toISOString();
+
+    const { data: claimed } = await supabase
+        .from('subscription_invoices')
+        .update({ status: 'paid', paid_at: now, paid_via: 'wallet_auto', lenco_reference: reference })
+        .eq('id', invoice.id)
+        .eq('status', 'pending')
+        .select('id')
+        .maybeSingle();
+    if (!claimed) return; // someone else already finalized it
+
+    const { data: saved } = await supabase.from('app_settings').select('value').eq('key', subPayWalletKey(reference)).maybeSingle();
+    const walletId = (saved?.value as any)?.walletId || (await mainWalletId(orgId));
+
+    const { data: existing } = await supabase
+        .from('cashbook_entries')
+        .select('id')
+        .eq('organization_id', orgId)
+        .eq('external_reference', reference)
+        .maybeSingle();
+    if (!existing) {
+        await cashbookService.createEntry(orgId, {
+            description: `MoneyWise Subscription - Premium Plan (${invoice.invoice_number}) | Ref: ${reference}`,
+            credit: Number(invoice.net_zmw),
+            debit: 0,
+            account_type: 'MONEYWISE_WALLET',
+            entry_type: 'EXPENSE',
+            status: 'COMPLETED',
+            date: now.split('T')[0],
+            reference_number: `SUB-${invoice.id.slice(0, 8).toUpperCase()}`,
+            external_reference: reference,
+            ...(walletId ? { wallet_id: walletId } : {}),
+        } as any);
+    }
+
+    // Subscription is in good standing again if nothing else is overdue.
+    await refreshSubscriptionStatus(invoice.subscription_id);
+    console.log(`[Billing] Invoice ${invoice.invoice_number} paid from wallet (${reference}) for org ${orgId}`);
+}
+
+/**
+ * Pays one pending invoice from the org's MoneyWise wallet by sweeping the
+ * money to the Blue Opus settlement merchant over Lenco (an on-us transfer),
+ * then booking the wallet debit once Lenco confirms. The transfer reference is
+ * stored on the invoice BEFORE sending and reused on retries, so a retry can
+ * never move the money twice (Lenco rejects a duplicate reference).
+ */
+async function payInvoiceFromWallet(organizationId: string, invoice: any, walletId?: string | null): Promise<WalletPayResult> {
     try {
-        // Get balance for the specified wallet (or all MONEYWISE_WALLET entries if no walletId)
-        let balanceQuery = supabase
-            .from('cashbook_entries')
-            .select('debit, credit')
-            .eq('organization_id', organizationId)
-            .eq('account_type', 'MONEYWISE_WALLET')
-            .eq('is_deleted', false);
-        if (walletId) balanceQuery = balanceQuery.eq('wallet_id', walletId);
-        const { data: balanceRows } = await balanceQuery;
+        const { data: org } = await supabase
+            .from('organizations')
+            .select('lenco_subaccount_id, lenco_secret_key')
+            .eq('id', organizationId)
+            .single();
+        if (!org?.lenco_subaccount_id) return { status: 'error', message: 'This organization has no MoneyWise wallet account yet.' };
+        const secretKey = org.lenco_secret_key || undefined;
 
-        const walletBalance = (balanceRows || []).reduce(
-            (acc: number, r: any) => acc + (r.debit || 0) - (r.credit || 0), 0
-        );
-
-        if (walletBalance < amount) {
-            console.log(`[Billing] Insufficient wallet balance (K${walletBalance.toFixed(2)}) for K${amount.toFixed(2)} subscription. Invoice remains pending.`);
-            return false;
+        // Resume a previous attempt before sending anything new.
+        let reference: string | null = String(invoice.lenco_reference || '').startsWith('PG-SUB-') ? invoice.lenco_reference : null;
+        if (reference) {
+            const prev = await LencoService.getTransferStatus(reference, secretKey).catch(() => null);
+            const st = String(prev?.status || '').toLowerCase();
+            if (st === 'successful') { await finalizeWalletPayment(invoice, reference); return { status: 'paid' }; }
+            if (prev && st !== 'failed' && st !== 'declined' && st !== 'rejected') return { status: 'processing', reference };
+            if (st === 'failed' || st === 'declined' || st === 'rejected') reference = null; // genuinely failed → fresh reference
+            // prev === null => Lenco never saw it; safe to re-send with the SAME reference.
         }
 
-        // Post a debit entry to the wallet
-        const now = new Date().toISOString();
-        const { error: entryErr } = await supabase
-            .from('cashbook_entries')
-            .insert({
-                organization_id: organizationId,
-                description: `MoneyWise Subscription - Premium Plan`,
-                credit: amount,
-                debit: 0,
-                account_type: 'MONEYWISE_WALLET',
-                entry_type: 'EXPENSE',
-                status: 'COMPLETED',
-                date: now.split('T')[0],
-                created_at: now,
-                reference_number: `SUB-${invoiceId.slice(0, 8).toUpperCase()}`,
-                ...(walletId ? { wallet_id: walletId } : {}),
-            });
+        const amount = Math.round(Number(invoice.net_zmw) * 100) / 100;
+        const sourceWalletId = walletId || (await mainWalletId(organizationId));
+        const balance = await getWalletBalance(organizationId, sourceWalletId);
+        if (balance < amount) {
+            console.log(`[Billing] Insufficient wallet balance (K${balance.toFixed(2)}) for K${amount.toFixed(2)} subscription. Invoice remains pending.`);
+            return { status: 'insufficient', walletBalance: Math.round(balance * 100) / 100 };
+        }
 
-        if (entryErr) throw new Error(entryErr.message);
+        if (!reference) {
+            reference = `PG-SUB-${Date.now()}-${invoice.id.replace(/-/g, '').slice(0, 6)}`;
+        }
+        await supabase.from('subscription_invoices').update({ lenco_reference: reference }).eq('id', invoice.id);
+        await supabase.from('app_settings').upsert({
+            key: subPayWalletKey(reference),
+            value: { walletId: sourceWalletId, invoiceId: invoice.id },
+            description: 'Pending subscription wallet payment (safe to delete once settled).',
+            updated_at: new Date().toISOString(),
+        }, { onConflict: 'key' });
 
-        // Mark invoice as paid
-        await supabase
-            .from('subscription_invoices')
-            .update({ status: 'paid', paid_at: now, paid_via: 'wallet_auto' })
-            .eq('id', invoiceId);
+        await LencoService.transferToLencoMerchant(
+            { amount, reference, tillNumber: SETTLEMENT_TILL_NUMBER, narration: `Subscription ${invoice.invoice_number} ${reference}`.slice(0, 60) },
+            org.lenco_subaccount_id,
+            secretKey,
+        );
 
-        // Roll subscription period forward
-        const nextStart = new Date().toISOString().split('T')[0];
-        const nextEnd = new Date(new Date().setMonth(new Date().getMonth() + 1))
-            .toISOString().split('T')[0];
-
-        await supabase
-            .from('organization_subscriptions')
-            .update({
-                fee_credits_zmw: 0,
-                current_period_start: nextStart,
-                current_period_end: nextEnd,
-                status: 'active',
-                updated_at: now,
-            })
-            .eq('id', subscriptionId);
-
-        console.log(`[Billing] Auto-deducted K${amount.toFixed(2)} from wallet for org ${organizationId}`);
-        return true;
+        // On-us transfers normally settle within seconds; otherwise a later view/tick settles it.
+        for (let i = 0; i < 6; i++) {
+            await new Promise(r => setTimeout(r, 1500));
+            const st = await LencoService.getTransferStatus(reference, secretKey).catch(() => null);
+            const s = String(st?.status || '').toLowerCase();
+            if (s === 'successful') { await finalizeWalletPayment(invoice, reference); return { status: 'paid' }; }
+            if (s === 'failed' || s === 'declined' || s === 'rejected') {
+                return { status: 'error', message: st?.reasonForFailure || 'The wallet transfer was not completed.' };
+            }
+        }
+        return { status: 'processing', reference };
     } catch (err: any) {
-        console.error('[Billing] attemptWalletAutoDeduction error:', err.message);
-        return false;
+        console.error('[Billing] payInvoiceFromWallet error:', err.message);
+        return { status: 'error', message: err.message };
     }
+}
+
+/** Settles invoices whose wallet transfer was accepted by Lenco but not yet confirmed locally. Idempotent. */
+async function settleProcessingInvoices(organizationId: string): Promise<void> {
+    const { data: pending } = await supabase
+        .from('subscription_invoices')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .eq('status', 'pending')
+        .like('lenco_reference', 'PG-SUB-%');
+    if (!pending?.length) return;
+    const { data: org } = await supabase.from('organizations').select('lenco_secret_key').eq('id', organizationId).maybeSingle();
+    for (const inv of pending) {
+        const st = await LencoService.getTransferStatus(inv.lenco_reference, org?.lenco_secret_key || undefined).catch(() => null);
+        if (String(st?.status || '').toLowerCase() === 'successful') {
+            await finalizeWalletPayment(inv, inv.lenco_reference).catch(e => console.error('[Billing] settle failed:', e.message));
+        }
+    }
+}
+
+/** active ⇄ past_due: an org is past due while any invoice is unpaid after its due date. */
+async function refreshSubscriptionStatus(subscriptionId: string): Promise<void> {
+    const { count } = await supabase
+        .from('subscription_invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('subscription_id', subscriptionId)
+        .eq('status', 'pending')
+        .gt('net_zmw', 0)
+        .lt('due_date', todayStr());
+    await supabase
+        .from('organization_subscriptions')
+        .update({ status: (count || 0) > 0 ? 'past_due' : 'active', updated_at: new Date().toISOString() })
+        .eq('id', subscriptionId)
+        .neq('status', 'cancelled');
 }
 
 // ──────────────────────────────────────────────
@@ -511,39 +644,20 @@ export async function initiateInvoicePayment(req: Request, res: Response) {
         if (invoice.status !== 'pending') return res.status(400).json({ error: 'Invoice is already paid or voided' });
         if (invoice.net_zmw <= 0) return res.status(400).json({ error: 'Nothing to pay on this invoice' });
 
-        const { data: sub } = await supabase
-            .from('organization_subscriptions')
-            .select('id')
-            .eq('organization_id', organizationId)
-            .single();
+        const result = await payInvoiceFromWallet(organizationId, invoice, walletId);
 
-        if (!sub) return res.status(404).json({ error: 'Subscription not found' });
-
-        const paid = await attemptWalletAutoDeduction(organizationId, sub.id, invoiceId, invoice.net_zmw, walletId);
-
-        if (!paid) {
-            // Return current balance of the selected wallet so the frontend can show it
-            const walletFilter = walletId
-                ? supabase.from('cashbook_entries').select('debit, credit')
-                    .eq('organization_id', organizationId)
-                    .eq('account_type', 'MONEYWISE_WALLET')
-                    .eq('wallet_id', walletId)
-                    .eq('is_deleted', false)
-                : supabase.from('cashbook_entries').select('debit, credit')
-                    .eq('organization_id', organizationId)
-                    .eq('account_type', 'MONEYWISE_WALLET')
-                    .eq('is_deleted', false);
-
-            const { data: balanceRows } = await walletFilter;
-            const walletBalance = (balanceRows || []).reduce(
-                (acc: number, r: any) => acc + (r.debit || 0) - (r.credit || 0), 0
-            );
-
+        if (result.status === 'insufficient') {
             return res.status(402).json({
                 error: 'Insufficient wallet balance',
-                walletBalance: Math.round(walletBalance * 100) / 100,
+                walletBalance: result.walletBalance,
                 required: invoice.net_zmw,
             });
+        }
+        if (result.status === 'processing') {
+            return res.status(202).json({ success: true, processing: true, message: 'Payment sent — waiting for confirmation from the wallet provider.' });
+        }
+        if (result.status === 'error') {
+            return res.status(502).json({ error: result.message });
         }
 
         res.json({ success: true, message: 'Payment processed from MoneyWise wallet' });
@@ -670,22 +784,8 @@ export async function checkInvoiceMobileMoneyStatus(req: Request, res: Response)
                 .update({ status: 'paid', paid_at: now, paid_via: 'mobile_money' })
                 .eq('id', invoiceId);
 
-            // Roll subscription period forward
-            if (subId) {
-                const nextStart = now.split('T')[0];
-                const nextEnd = new Date(new Date().setMonth(new Date().getMonth() + 1))
-                    .toISOString().split('T')[0];
-                await supabase
-                    .from('organization_subscriptions')
-                    .update({
-                        fee_credits_zmw: 0,
-                        current_period_start: nextStart,
-                        current_period_end: nextEnd,
-                        status: 'active',
-                        updated_at: now,
-                    })
-                    .eq('id', subId);
-            }
+            // Paying an invoice never moves the billing period — the cycle engine owns that.
+            if (subId) await refreshSubscriptionStatus(subId);
 
             return res.json({ status: 'paid' });
         }
@@ -728,10 +828,9 @@ export async function getInvoiceReceipt(req: Request, res: Response) {
             .eq('id', organizationId)
             .single();
 
-        // Invoices store only the gross total; anything above the base price is the
-        // Master Fees add-on. Invoices issued before the add-on existed stay at K250.
+        // Invoices store only the gross total: base plan + (while integrated) the Master Fees add-on.
         const gross = Number(invoice.gross_zmw) || 0;
-        const masterfees = Math.max(0, gross - SUBSCRIPTION_PRICE);
+        const masterfees = gross >= SUBSCRIPTION_PRICE + MASTERFEES_ADDON_PRICE ? gross - SUBSCRIPTION_PRICE : 0;
 
         res.json({
             receipt: {
@@ -742,6 +841,98 @@ export async function getInvoiceReceipt(req: Request, res: Response) {
         });
     } catch (err: any) {
         console.error('[Billing] getInvoiceReceipt error:', err.message);
+        res.status(500).json({ error: err.message });
+    }
+}
+
+// ──────────────────────────────────────────────
+// Billing cycle engine (cron)
+// POST /billing/tick  — protected by LENCO_SYNC_SECRET like the other internal sweeps.
+//
+// Until now nothing rolled billing periods or generated invoices on a schedule:
+// periods only moved when an invoice was paid, and invoices only appeared when
+// someone opened the billing page. This closes every elapsed period, issues its
+// invoice, starts the next period, flags overdue orgs as past_due, and — only
+// when called with ?autoPay=true — charges pending invoices to the org wallet.
+// ──────────────────────────────────────────────
+export async function billingTick(req: Request, res: Response) {
+    const authHeader = req.headers['authorization'] || '';
+    const secret = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    if (!secret || secret !== process.env.LENCO_SYNC_SECRET) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    const autoPay = String(req.query.autoPay || req.body?.autoPay || '') === 'true';
+    const summary = { checked: 0, periodsClosed: 0, paid: 0, processing: 0, insufficient: 0, pastDue: 0, errors: [] as string[] };
+
+    try {
+        const { data: subs, error } = await supabase
+            .from('organization_subscriptions')
+            .select('*')
+            .eq('plan_id', 'premium')
+            .neq('status', 'cancelled');
+        if (error) throw new Error(error.message);
+
+        for (const original of subs || []) {
+            summary.checked++;
+            try {
+                let sub: any = original;
+
+                // Close every elapsed period (cap guards against runaway loops on bad data).
+                for (let i = 0; i < 24 && sub.current_period_end <= todayStr(); i++) {
+                    await ensureCurrentInvoice(sub);
+                    const nextStart = sub.current_period_end;
+                    const { data: advanced, error: advErr } = await supabase
+                        .from('organization_subscriptions')
+                        .update({
+                            current_period_start: nextStart,
+                            current_period_end: addOneMonth(nextStart),
+                            fee_credits_zmw: 0,
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq('id', sub.id)
+                        .select()
+                        .single();
+                    if (advErr) throw new Error(advErr.message);
+                    sub = advanced;
+                    summary.periodsClosed++;
+                }
+                await ensureCurrentInvoice(sub);
+                await settleProcessingInvoices(sub.organization_id);
+
+                if (autoPay && sub.auto_pay_enabled) {
+                    const { data: due } = await supabase
+                        .from('subscription_invoices')
+                        .select('*')
+                        .eq('subscription_id', sub.id)
+                        .eq('status', 'pending')
+                        .gt('net_zmw', 0)
+                        .lte('due_date', todayStr())
+                        .order('period_start', { ascending: true });
+                    for (const inv of due || []) {
+                        const r = await payInvoiceFromWallet(sub.organization_id, inv);
+                        if (r.status === 'paid') summary.paid++;
+                        else if (r.status === 'processing') summary.processing++;
+                        else if (r.status === 'insufficient') summary.insufficient++;
+                        else summary.errors.push(`${sub.organization_id}/${inv.invoice_number}: ${r.message}`);
+                    }
+                }
+
+                await refreshSubscriptionStatus(sub.id);
+            } catch (orgErr: any) {
+                summary.errors.push(`${original.organization_id}: ${orgErr.message}`);
+            }
+        }
+
+        const { count } = await supabase
+            .from('organization_subscriptions')
+            .select('id', { count: 'exact', head: true })
+            .eq('status', 'past_due');
+        summary.pastDue = count || 0;
+
+        res.json({ success: true, autoPay, ...summary });
+    } catch (err: any) {
+        console.error('[Billing] tick failed:', err.message);
         res.status(500).json({ error: err.message });
     }
 }

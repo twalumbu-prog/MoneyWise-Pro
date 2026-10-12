@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
 import { supabase } from '../lib/supabase';
+import { assertPremium, PlanLimitError } from '../services/entitlements.service';
 import {
     MasterFeesClient,
     getMasterFeesIntegration,
@@ -122,6 +123,18 @@ export const masterFeesDiag = async (req: AuthRequest, res: Response) => {
 // ── OAuth flow ────────────────────────────────────────────────────────────────
 
 /**
+ * Plan enforcement: Master Fees is a Premium feature (K500 add-on on top of the
+ * Premium plan). A NEW connection requires Premium; re-authorising an existing
+ * connection is always allowed so orgs connected before enforcement aren't
+ * locked out of fixing their credentials. Throws PlanLimitError.
+ */
+async function assertCanConnectMasterFees(organizationId: string): Promise<void> {
+    const existing = await getMasterFeesIntegration(organizationId);
+    if (existing) return;
+    await assertPremium(organizationId, 'Connecting Master Fees');
+}
+
+/**
  * GET /integrations/masterfees/oauth/url
  * Returns the Master Fees consent URL to redirect the user to for 1-click OAuth setup.
  * Embeds `state=org:<orgId>` so the callback can identify which org is connecting.
@@ -129,11 +142,13 @@ export const masterFeesDiag = async (req: AuthRequest, res: Response) => {
 export const getMasterFeesOAuthUrl = async (req: AuthRequest, res: Response) => {
     try {
         const organizationId = req.user.organization_id;
+        await assertCanConnectMasterFees(organizationId);
         const callbackUrl = `${getApiBaseUrl()}/integrations/masterfees/oauth/callback`;
         const state = `org:${organizationId}`;
         const url = `${MF_OAUTH_BASE}?client_id=moneywise&redirect_uri=${encodeURIComponent(callbackUrl)}&state=${encodeURIComponent(state)}`;
         res.json({ url });
     } catch (error: any) {
+        if (error instanceof PlanLimitError) return res.status(error.httpStatus).json({ error: error.message, code: error.code });
         res.status(500).json({ error: error.message });
     }
 };
@@ -171,6 +186,7 @@ export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
     }
 
     try {
+        await assertCanConnectMasterFees(organizationId);
         const config: MasterFeesConfig = {
             schoolId: String(school_id).trim(),
             publicKey: String(public_key).trim(),
@@ -214,6 +230,7 @@ export const masterFeesOAuthCallback = async (req: Request, res: Response) => {
 export const connectMasterFees = async (req: AuthRequest, res: Response) => {
     try {
         const organizationId = req.user.organization_id;
+        await assertCanConnectMasterFees(organizationId);
         const { schoolId, publicKey, baseUrl } = req.body || {};
         if (!schoolId || !publicKey) {
             return res.status(400).json({ error: 'schoolId and publicKey are required.' });
@@ -248,6 +265,7 @@ export const connectMasterFees = async (req: AuthRequest, res: Response) => {
 
         res.json({ connected: true, schoolName: config.schoolName, lencoMode: config.lencoMode, categories: ping.categories?.length || 0 });
     } catch (error: any) {
+        if (error instanceof PlanLimitError) return res.status(error.httpStatus).json({ error: error.message, code: error.code });
         res.status(400).json({ error: error.message });
     }
 };

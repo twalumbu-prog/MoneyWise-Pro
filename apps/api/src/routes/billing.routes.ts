@@ -9,9 +9,13 @@ import {
     initiateInvoiceMobileMoneyPayment,
     checkInvoiceMobileMoneyStatus,
     getInvoiceReceipt,
+    billingTick,
 } from '../controllers/billing.controller';
 
 const router = Router();
+
+// Cron entry point — secured inside the handler via LENCO_SYNC_SECRET, so it sits before requireAuth.
+router.post('/tick', billingTick);
 
 router.use(requireAuth);
 
