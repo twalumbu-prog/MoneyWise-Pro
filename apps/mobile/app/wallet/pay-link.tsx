@@ -11,6 +11,7 @@ import { organizationService } from 'core';
 import { WEB_ORIGIN } from '../../src/platform';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { useAuth } from '../../src/context/AuthContext';
+import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 type Tab = 'store' | 'quickpay';
@@ -26,7 +27,10 @@ type Tab = 'store' | 'quickpay';
 export default function PayLinkScreen() {
     const { walletId, walletName } = useLocalSearchParams<{ walletId: string; walletName?: string }>();
     const { organizationId } = useAuth();
-    const [tab, setTab] = useState<Tab>('store');
+    const { isPersonal } = usePersonalAccount();
+    const [tabState, setTab] = useState<Tab>('store');
+    // Personal accounts have no store: Quick Pay is the only link.
+    const tab: Tab = isPersonal ? 'quickpay' : tabState;
     const [copied, setCopied] = useState(false);
 
     const { data: org } = useQuery({ queryKey: ['organization', organizationId], queryFn: () => organizationService.getOrganization(), enabled: !!organizationId });
@@ -61,7 +65,7 @@ export default function PayLinkScreen() {
             <ScrollView contentContainerStyle={styles.scroll}>
                 <Text style={styles.walletName}>{walletName}</Text>
 
-                <View style={styles.tabRow}>
+                {!isPersonal && <View style={styles.tabRow}>
                     <Pressable style={[styles.tabBtn, tab === 'store' && styles.tabBtnActive]} onPress={() => setTab('store')}>
                         <Store size={15} color={tab === 'store' ? colors.text : colors.textFaint} />
                         <Text style={[styles.tabText, tab === 'store' && styles.tabTextActive]}>Store</Text>
@@ -70,7 +74,7 @@ export default function PayLinkScreen() {
                         <Zap size={15} color={tab === 'quickpay' ? colors.text : colors.textFaint} />
                         <Text style={[styles.tabText, tab === 'quickpay' && styles.tabTextActive]}>Quick Pay</Text>
                     </Pressable>
-                </View>
+                </View>}
 
                 {tab === 'quickpay' && quickLinkLoading ? (
                     <View style={styles.centerBox}>

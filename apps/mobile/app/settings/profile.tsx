@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userService } from 'core';
 import type { PaymentInfo } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
+import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
 const BANK_OPTIONS = ['Absa Bank', 'Access Bank', 'Atlas Mara', 'Ecobank', 'FNB', 'Indo-Zambia Bank', 'Investrust', 'Stanbic Bank', 'Standard Chartered', 'ZANACO', 'Zambia Industrial Commercial Bank'];
@@ -64,7 +65,14 @@ export default function ProfileSettingsScreen() {
                     <View style={styles.card}>
                         <Text style={styles.sectionTitle}>Bank details</Text>
                         <Text style={styles.label}>Bank</Text>
-                        <ChipRow options={BANK_OPTIONS} value={payment.bank_name} onSelect={(v) => set({ bank_name: v })} />
+                        <InlineSearchSelect
+                            items={BANK_OPTIONS.map((b) => ({ id: b, label: b }))}
+                            selectedId={payment.bank_name || null}
+                            placeholder="Select bank"
+                            searchPlaceholder="Search banks…"
+                            maxVisible={12}
+                            onSelect={(i) => set({ bank_name: i.id })}
+                        />
                         <Text style={[styles.label, styles.spaced]}>Account number</Text>
                         <TextInput
                             style={styles.input}
@@ -87,7 +95,13 @@ export default function ProfileSettingsScreen() {
                     <View style={styles.card}>
                         <Text style={styles.sectionTitle}>Mobile money</Text>
                         <Text style={styles.label}>Provider</Text>
-                        <ChipRow options={MOMO_OPTIONS} value={payment.mobile_money_provider} onSelect={(v) => set({ mobile_money_provider: v })} />
+                        <InlineSearchSelect
+                            items={MOMO_OPTIONS.map((m) => ({ id: m, label: m }))}
+                            selectedId={payment.mobile_money_provider || null}
+                            placeholder="Select provider"
+                            searchPlaceholder="Search providers…"
+                            onSelect={(i) => set({ mobile_money_provider: i.id })}
+                        />
                         <Text style={[styles.label, styles.spaced]}>Number</Text>
                         <TextInput
                             style={styles.input}
@@ -121,16 +135,6 @@ export default function ProfileSettingsScreen() {
         </View>
     );
 }
-
-const ChipRow: React.FC<{ options: string[]; value?: string; onSelect: (v: string) => void }> = ({ options, value, onSelect }) => (
-    <View style={styles.chips}>
-        {options.map((o) => (
-            <Pressable key={o} onPress={() => onSelect(o)} style={[styles.chip, value === o && styles.chipActive]}>
-                <Text style={[styles.chipText, value === o && styles.chipTextActive]} numberOfLines={1}>{o}</Text>
-            </Pressable>
-        ))}
-    </View>
-);
 
 const styles = StyleSheet.create({
     root: { flex: 1, backgroundColor: colors.canvas },

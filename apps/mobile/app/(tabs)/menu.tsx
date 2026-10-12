@@ -1,4 +1,4 @@
-import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Linking } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Linking, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -8,6 +8,7 @@ import {
 import { userService, investmentService } from 'core';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../src/context/AuthContext';
+import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
 import { OtherServiceIcon } from '../../src/components/icons/OtherServiceIcon';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -19,15 +20,9 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
 export default function MenuScreen() {
     const insets = useSafeAreaInsets();
     const router = useRouter();
-    const { user, userRole, userName, organizationId, organizationName, userOrganizations, signOut } = useAuth();
+    const { user, userRole, userName, organizationName, signOut } = useAuth();
 
-    const currentOrg = userOrganizations.find((uo) => uo.organization?.id === organizationId)?.organization;
-    const activeOrgName = currentOrg?.name || organizationName || '';
-
-    const isPersonal = activeOrgName.toLowerCase().includes('workspace') ||
-        activeOrgName.toLowerCase().includes('personal') ||
-        activeOrgName.toLowerCase().includes('individual') ||
-        activeOrgName.toLowerCase().includes('private');
+    const { isPersonal, logoUrl } = usePersonalAccount();
 
     // Only an admin of an investment company has investor deposits to forward.
     const { data: payoutSettings } = useQuery({
@@ -87,7 +82,11 @@ export default function MenuScreen() {
             <Text style={styles.title}>Menu</Text>
 
             <View style={styles.profileCard}>
-                <View style={styles.avatar}><User size={26} color={colors.textMuted} /></View>
+                {logoUrl ? (
+                    <Image source={{ uri: logoUrl }} style={isPersonal ? styles.avatarPersonalImg : styles.avatarImg} />
+                ) : (
+                    <View style={isPersonal ? styles.avatarPersonal : styles.avatar}><User size={isPersonal ? 34 : 26} color={colors.textMuted} /></View>
+                )}
                 <View style={styles.profileMain}>
                     {isPersonal ? (
                         <>
@@ -272,6 +271,13 @@ const styles = StyleSheet.create({
         width: 56, height: 56, borderRadius: 28, backgroundColor: colors.canvasAlt,
         alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.borderStrong,
     },
+    // Personal accounts get a larger photo with a blue ring so it reads clearly.
+    avatarImg: { width: 56, height: 56, borderRadius: 28, borderWidth: 1, borderColor: colors.borderStrong },
+    avatarPersonal: {
+        width: 84, height: 84, borderRadius: 42, backgroundColor: colors.canvasAlt,
+        alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: colors.blue,
+    },
+    avatarPersonalImg: { width: 84, height: 84, borderRadius: 42, borderWidth: 3, borderColor: colors.blue },
     profileMain: { flex: 1, gap: 2 },
     orgName: { fontFamily: fonts.bodyBold, fontSize: 17, color: colors.navy },
     role: { fontFamily: fonts.bodyBold, fontSize: 10, color: colors.textFaint, letterSpacing: 1.2 },
@@ -286,8 +292,11 @@ const styles = StyleSheet.create({
     rowMain: { flex: 1, gap: 2 },
     rowLabel: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     rowSub: { fontFamily: fonts.body, fontSize: 12, color: colors.textFaint },
-    grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8 },
-    gridItem: { width: '33.33%', alignItems: 'center', gap: 8, paddingVertical: 14 },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, gap: 10 },
+    gridItem: {
+        width: '31%', flexGrow: 1, alignItems: 'center', gap: 8, paddingVertical: 14,
+        borderWidth: 1, borderColor: '#E5E7EB', borderRadius: radius.lg, backgroundColor: colors.surface,
+    },
     gridLabel: { fontFamily: fonts.bodyMedium, fontSize: 12, color: colors.text },
     signOut: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,

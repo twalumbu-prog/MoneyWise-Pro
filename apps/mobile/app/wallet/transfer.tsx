@@ -12,6 +12,8 @@ import { cashbookService, formatKwacha } from 'core';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 import { useGoBack } from '../../src/hooks/useGoBack';
+import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
+import { InlineSearchSelect } from '../../src/components/InlineSearchSelect';
 
 type Mode = 'BETWEEN' | 'INTO';
 
@@ -34,7 +36,10 @@ export default function TransferScreen() {
     const safeBack = useGoBack();
     const qc = useQueryClient();
 
-    const [mode, setMode] = useState<Mode>('BETWEEN');
+    const { isPersonal } = usePersonalAccount();
+    // Personal accounts only ever move money between their own wallets.
+    const [modeState, setMode] = useState<Mode>('BETWEEN');
+    const mode: Mode = isPersonal ? 'BETWEEN' : modeState;
     const [sourceId, setSourceId] = useState<string | null>(null);
     const [destId, setDestId] = useState<string | null>(null);
     const [sourceType, setSourceType] = useState<'CASH' | 'BANK' | 'AIRTEL_MONEY'>('CASH');
@@ -79,7 +84,7 @@ export default function TransferScreen() {
             <ScreenHeader title="Transfer" />
 
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-                <View style={styles.segment}>
+                {!isPersonal && <View style={styles.segment}>
                     {([['BETWEEN', 'Between wallets'], ['INTO', 'Cash into wallet']] as const).map(([m, label]) => (
                         <Pressable
                             key={m}
@@ -89,7 +94,7 @@ export default function TransferScreen() {
                             <Text style={[styles.segmentText, mode === m && styles.segmentTextActive]}>{label}</Text>
                         </Pressable>
                     ))}
-                </View>
+                </View>}
 
                 <View style={styles.card}>
                     <Text style={styles.label}>Amount (K)</Text>
@@ -113,24 +118,36 @@ export default function TransferScreen() {
                 {mode === 'BETWEEN' ? (
                     <View style={styles.card}>
                         <Text style={styles.label}>From</Text>
-                        <WalletPicker
-                            wallets={wallets}
-                            selectedId={sourceId}
-                            onSelect={setSourceId}
-                            excludeId={destId}
-                        />
+                        {isPersonal ? (
+                            <InlineSearchSelect
+                                items={wallets.filter((w) => String(w.id) !== destId).map((w) => ({ id: String(w.id), label: `${w.name} · ${formatKwacha(Number(w.balance ?? 0))}` }))}
+                                selectedId={sourceId}
+                                placeholder="Select wallet"
+                                searchPlaceholder="Search wallets…"
+                                maxVisible={10}
+                                onSelect={(i) => setSourceId(i.id)}
+                            />
+                        ) : (
+                            <WalletPicker wallets={wallets} selectedId={sourceId} onSelect={setSourceId} excludeId={destId} />
+                        )}
 
                         <View style={styles.arrowRow}>
                             <ArrowDown size={18} color={colors.textFaint} />
                         </View>
 
                         <Text style={styles.label}>To</Text>
-                        <WalletPicker
-                            wallets={wallets}
-                            selectedId={destId}
-                            onSelect={setDestId}
-                            excludeId={sourceId}
-                        />
+                        {isPersonal ? (
+                            <InlineSearchSelect
+                                items={wallets.filter((w) => String(w.id) !== sourceId).map((w) => ({ id: String(w.id), label: `${w.name} · ${formatKwacha(Number(w.balance ?? 0))}` }))}
+                                selectedId={destId}
+                                placeholder="Select wallet"
+                                searchPlaceholder="Search wallets…"
+                                maxVisible={10}
+                                onSelect={(i) => setDestId(i.id)}
+                            />
+                        ) : (
+                            <WalletPicker wallets={wallets} selectedId={destId} onSelect={setDestId} excludeId={sourceId} />
+                        )}
 
                         {wallets.length < 2 && !isLoading && (
                             <Text style={styles.hint}>

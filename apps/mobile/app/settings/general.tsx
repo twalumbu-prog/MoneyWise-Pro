@@ -10,6 +10,7 @@ import { organizationService, departmentService, requireCapability, getCore } fr
 import type { Organization, Department } from 'core';
 import { uploadToBucket } from '../../src/lib/uploads';
 import { useAuth } from '../../src/context/AuthContext';
+import { usePersonalAccount } from '../../src/hooks/usePersonalAccount';
 import { ScreenHeader } from '../../src/components/ScreenHeader';
 import { colors, fonts, radius } from '../../src/theme/tokens';
 
@@ -19,7 +20,9 @@ import { colors, fonts, radius } from '../../src/theme/tokens';
  */
 export default function GeneralSettingsScreen() {
     const qc = useQueryClient();
-    const { userRole } = useAuth();
+    const { userRole, refreshUserOrganizations } = useAuth();
+    const { isPersonal } = usePersonalAccount();
+    const photoWord = isPersonal ? 'profile photo' : 'logo';
     const isAdmin = userRole === 'ADMIN';
 
     const { data: org, isLoading: orgLoading } = useQuery({
@@ -82,8 +85,9 @@ export default function GeneralSettingsScreen() {
             const { data } = getCore().supabase.storage.from('organization-logos').getPublicUrl(path);
             await organizationService.updateOrganization({ logo_url: data.publicUrl });
             qc.invalidateQueries({ queryKey: ['organization'] });
+            await refreshUserOrganizations(); // so the Menu shows the new picture straight away
         } catch (e: any) {
-            Alert.alert('Could not update logo', e?.message ?? 'Please try again.');
+            Alert.alert(`Could not update ${photoWord}`, e?.message ?? 'Please try again.');
         } finally {
             setUploadingLogo(false);
         }
@@ -111,23 +115,23 @@ export default function GeneralSettingsScreen() {
             ) : (
                 <ScrollView contentContainerStyle={styles.scroll}>
                     <View style={styles.card}>
-                        <Text style={styles.sectionTitle}>Logo</Text>
+                        <Text style={styles.sectionTitle}>{isPersonal ? 'Profile photo' : 'Logo'}</Text>
                         <Pressable onPress={changeLogo} style={styles.logoRow} disabled={uploadingLogo}>
                             {org?.logo_url ? (
-                                <Image source={{ uri: org.logo_url }} style={styles.logo} />
+                                <Image source={{ uri: org.logo_url }} style={isPersonal ? styles.photoRing : styles.logo} />
                             ) : (
-                                <View style={[styles.logo, styles.logoPlaceholder]}>
-                                    <Text style={styles.logoPlaceholderText}>Logo</Text>
+                                <View style={[isPersonal ? styles.photoRing : styles.logo, styles.logoPlaceholder]}>
+                                    <Text style={styles.logoPlaceholderText}>{isPersonal ? 'Photo' : 'Logo'}</Text>
                                 </View>
                             )}
                             <Text style={styles.logoCta}>
-                                {uploadingLogo ? 'Uploading…' : 'Change logo'}
+                                {uploadingLogo ? 'Uploading…' : isPersonal ? 'Change profile photo' : 'Change logo'}
                             </Text>
                         </Pressable>
                     </View>
 
                     <View style={styles.card}>
-                        <Text style={styles.sectionTitle}>Organisation</Text>
+                        <Text style={styles.sectionTitle}>{isPersonal ? 'Personal details' : 'Organisation'}</Text>
                         <Field label="Name" value={form.name} onChange={(v) => set({ name: v })} />
                         <Field label="Email" value={form.email} onChange={(v) => set({ email: v })} keyboardType="email-address" />
                         <Field label="Phone" value={form.phone} onChange={(v) => set({ phone: v })} keyboardType="phone-pad" />
@@ -145,7 +149,7 @@ export default function GeneralSettingsScreen() {
                         </Pressable>
                     </View>
 
-                    <View style={styles.card}>
+                    {!isPersonal && <View style={styles.card}>
                         <View style={styles.deptHeader}>
                             <Text style={styles.sectionTitle}>Departments</Text>
                             <Switch
@@ -183,7 +187,7 @@ export default function GeneralSettingsScreen() {
                                 </View>
                             </>
                         )}
-                    </View>
+                    </View>}
                 </ScrollView>
             )}
         </View>
@@ -219,6 +223,7 @@ const styles = StyleSheet.create({
     sectionTitle: { fontFamily: fonts.bodyBold, fontSize: 14, color: colors.text },
     logoRow: { flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 10 },
     logo: { width: 56, height: 56, borderRadius: 14 },
+    photoRing: { width: 72, height: 72, borderRadius: 36, borderWidth: 3, borderColor: colors.blue },
     logoPlaceholder: { backgroundColor: colors.canvasAlt, alignItems: 'center', justifyContent: 'center' },
     logoPlaceholderText: { fontFamily: fonts.body, fontSize: 10, color: colors.textFaint },
     logoCta: { fontFamily: fonts.bodyBold, fontSize: 13, color: colors.blue },
