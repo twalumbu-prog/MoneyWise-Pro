@@ -26,6 +26,7 @@ import {
     setPostHogKeyHandler,
 } from '../controllers/admin.analytics.controller';
 import { getVercelLogs } from '../controllers/admin.logs.controller';
+import { getLedgerAudit, healLedger } from '../controllers/admin.ledger.controller';
 
 const router = Router();
 
@@ -55,5 +56,9 @@ router.get('/analytics/payment-links/attempts', getPaymentLinkAttemptsHandler);
 router.put('/analytics/posthog-key', setPostHogKeyHandler);
 
 router.get('/logs', getVercelLogs);
+
+// Ledger integrity: do the books tie to the wallets? (+ one-click repair)
+router.get('/ledger-audit/:orgId', getLedgerAudit);
+router.post('/ledger-audit/:orgId/heal', healLedger);
 
 export default router;

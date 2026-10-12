@@ -1,3 +1,4 @@
+import { healIfDue } from '../services/ledgerIntegrity.service';
 import { isPersonalOrganization } from '../lib/orgType';
 import { Response } from 'express';
 import { supabase } from '../lib/supabase';
@@ -136,6 +137,10 @@ export const getExpenditure = async (req: any, res: any): Promise<any> => {
         if (!startDate || !endDate) {
             return res.status(400).json({ error: 'start_date and end_date are required' });
         }
+
+        // Self-heal: make sure the ledger ties to the wallets before reading it (re-posts anything stale or
+        // missing, removes ghost postings). Throttled to once per org per 5 minutes; never blocks for long.
+        await Promise.race([healIfDue(organization_id), new Promise(r => setTimeout(r, 6_000))]).catch(() => undefined);
 
         // Double-entry GL path — used once an org's history is fully posted; otherwise
         // we fall through to the legacy per-type computation below (no regression).

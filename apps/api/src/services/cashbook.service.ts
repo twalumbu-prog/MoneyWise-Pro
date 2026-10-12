@@ -15,23 +15,23 @@ const notifyInflowAsync = (organizationId: string, entry: any) => {
         .catch(err => console.error(`[Cashbook] Inflow push failed for entry ${entry?.id}:`, err?.message));
 };
 
-// Fire-and-forget GL posting: never block or fail a cash write on a posting error
-// (the reconciliation safety net repairs any gaps). withTiming re-throws
-// unchanged, so the existing .catch(console.error) still catches it —
-// instrumentation only observes, it doesn't change this contract.
-const postJournalAsync = (cashbookEntryId: string, organizationId: string) => {
-    withTiming(
+// GL posting: a posting error never fails the cash write itself, but the posting is AWAITED by callers.
+// It used to be fire-and-forget; on a serverless host a background task can be frozen once the response is
+// sent, which left entries missing from the ledger (and Reports out of step with the wallets). The returned
+// promise never rejects. withTiming re-throws unchanged and is caught below — instrumentation only observes.
+const postJournalAsync = (cashbookEntryId: string, organizationId: string): Promise<void> => {
+    return withTiming(
         'accounting_journal_post',
         { feature: 'accounting_journal_post', workflow_id: cashbookEntryId, organization_id: organizationId, user_id: 'system', source_type: 'CASHBOOK' },
         () => ledgerService.repostForCashbookEntry(cashbookEntryId)
-    ).catch(err => console.error(`[Ledger] async repost failed for entry ${cashbookEntryId}:`, err?.message));
+    ).then(() => undefined, err => console.error(`[Ledger] async repost failed for entry ${cashbookEntryId}:`, err?.message));
 };
-const postJournalForRequisitionAsync = (requisitionId: string, organizationId: string) => {
-    withTiming(
+const postJournalForRequisitionAsync = (requisitionId: string, organizationId: string): Promise<void> => {
+    return withTiming(
         'accounting_journal_post',
         { feature: 'accounting_journal_post', workflow_id: requisitionId, organization_id: organizationId, user_id: 'system', source_type: 'REQUISITION' },
         () => ledgerService.repostForRequisition(requisitionId)
-    ).catch(err => console.error(`[Ledger] async repost failed for requisition ${requisitionId}:`, err?.message));
+    ).then(() => undefined, err => console.error(`[Ledger] async repost failed for requisition ${requisitionId}:`, err?.message));
 };
 
 export interface CashbookEntry {
@@ -198,7 +198,7 @@ export const cashbookService = {
             .single();
 
         // 4. Post the balanced journal entry for the GL (non-blocking).
-        postJournalAsync(data.id, organizationId);
+        await postJournalAsync(data.id, organizationId);
 
         const finalEntry = updatedData || data;
 
@@ -274,7 +274,7 @@ export const cashbookService = {
             (a.date < b.date || (a.date === b.date && a.created_at <= b.created_at)) ? a : b);
         await this.recalculateBalancesFrom(organizationId, earliest.date, earliest.created_at, accountType, walletId);
 
-        for (const row of rows) postJournalAsync(row.id, organizationId);
+        for (const row of rows) await postJournalAsync(row.id, organizationId);
 
         void broadcastInvalidate(organizationId, [
             'cashbook-overview', 'cashbook-entries', 'cashbook-balance',
@@ -430,7 +430,7 @@ export const cashbookService = {
             .single();
 
         // The PENDING intent is now COMPLETED — post its balanced journal entry.
-        postJournalAsync(intentId, organizationId);
+        await postJournalAsync(intentId, organizationId);
 
         if (!opts.skipInflowNotification) {
             notifyInflowAsync(organizationId, fresh || updated);
@@ -615,7 +615,7 @@ export const cashbookService = {
         console.log(`[Ledger Finalization] Ledger finalized for ${requisitionId}.`);
 
         // Re-post the GL for this requisition so the expense split reflects the fee line item.
-        postJournalForRequisitionAsync(requisitionId, disbursement.organization_id);
+        await postJournalForRequisitionAsync(requisitionId, disbursement.organization_id);
 
         // D. Trigger message repair to show DISBURSAL_SUCCESS card
         await RequisitionMessageService.repairLifecycleMessages(requisitionId).catch(err => 
@@ -886,7 +886,7 @@ export const cashbookService = {
                     .eq('id', adoptable.id);
 
                 await this.recalculateBalancesFrom(organizationId, adoptable.date, adoptable.created_at, adoptable.account_type || 'CASH', adoptable.wallet_id);
-                postJournalAsync(adoptable.id, organizationId);
+                await postJournalAsync(adoptable.id, organizationId);
             } else {
                 console.error(`[finalizeDisbursement] No disbursement ledger entry found for requisition ${requisitionId} and no unlinked outflow (gross K${grossDisbursed.toFixed(2)}) to adopt. Skipping ledger write to avoid double-counting — manual reconciliation required.`);
             }
@@ -914,7 +914,7 @@ export const cashbookService = {
         await this.recalculateBalancesFrom(organizationId, originalEntry.date, originalEntry.created_at, originalEntry.account_type || 'CASH', originalEntry.wallet_id);
 
         // 4. Re-post the GL with the finalized (actual) amount.
-        postJournalAsync(originalEntry.id, organizationId);
+        await postJournalAsync(originalEntry.id, organizationId);
     },
 
     /**
@@ -969,7 +969,7 @@ export const cashbookService = {
         await this.recalculateBalancesFrom(organizationId, entry.date, entry.created_at, entry.account_type || 'CASH', entry.wallet_id);
 
         // 5. Re-post the GL with the updated amount.
-        postJournalAsync(entry.id, organizationId);
+        await postJournalAsync(entry.id, organizationId);
 
         return entry;
     },

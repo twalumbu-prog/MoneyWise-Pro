@@ -51,7 +51,7 @@ const CODE_MASTERFEES_MANUAL_OTHER = 'QB-MF-MANUAL-OTHER';
 const CODE_OPENING_BALANCE_EQUITY = 'QB-76';
 const CODE_SUSPENSE = 'QB-SUSPENSE';
 
-interface CashbookRow {
+export interface CashbookRow {
     id: string;
     organization_id: string;
     date: string;
@@ -156,7 +156,39 @@ export async function ensureSavingsTransferAccount(orgId: string): Promise<strin
 }
 
 /** Resolve the ASSET account that represents the wallet/cash this entry moved. */
-async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
+export async function resolveCashAccountForEntry(ce: CashbookRow, opts: { create?: boolean } = {}): Promise<string | null> {
+    return resolveCashAccount(ce, opts.create !== false);
+}
+
+/** Creates a system ASSET account if the org doesn't have it (some organizations were set up without them). */
+async function ensureAssetAccount(orgId: string, code: string, name: string, subtype: string): Promise<string | null> {
+    const existing = await getAccountIdByCode(orgId, code);
+    if (existing) return existing;
+    const { data, error } = await supabase.from('accounts')
+        .insert({ organization_id: orgId, code, name, type: 'ASSET', subtype, description: 'Created automatically so wallet and cash movements can be posted to the ledger.' })
+        .select('id').single();
+    if (data) { accountCodeCache.set(`${orgId}:${code}`, data.id); return data.id; }
+    accountCodeCache.delete(`${orgId}:${code}`);
+    const again = await getAccountIdByCode(orgId, code); // a concurrent request may have created it
+    if (!again) console.error(`[Ledger] could not create ${name} (${code}) for org ${orgId}:`, error?.message);
+    return again;
+}
+
+/**
+ * Resolves the wallet/cash ASSET account an entry moved. If the organization has none of the accounts it needs,
+ * the right one is created — an entry used to be silently left out of the ledger (and Reports) forever.
+ */
+async function resolveCashAccount(ce: CashbookRow, create = true): Promise<string | null> {
+    const id = await resolveCashAccountInner(ce, create);
+    if (id) return id;
+    if (!create) return `__WILL_CREATE__:SYSTEM-${ce.account_type || 'CASH'}`;
+    const orgId = ce.organization_id;
+    if (ce.account_type === 'CASH') return ensureAssetAccount(orgId, 'CASH-ON-HAND', 'Cash on Hand', 'Cash');
+    if (ce.account_type === 'MONEYWISE_WALLET') return ensureAssetAccount(orgId, CODE_MAIN_WALLET, 'MoneyWise Wallet', 'Bank');
+    return ensureAssetAccount(orgId, CODE_UNCATEGORISED_ASSET, 'Uncategorised Asset', 'Other Asset');
+}
+
+async function resolveCashAccountInner(ce: CashbookRow, create = true): Promise<string | null> {
     const orgId = ce.organization_id;
 
     if (ce.account_type === 'MONEYWISE_WALLET') {
@@ -179,9 +211,24 @@ async function resolveCashAccount(ce: CashbookRow): Promise<string | null> {
                     : q.eq('name', wallet.name);
                 const { data: assetAcct } = await q.limit(1).maybeSingle();
                 if (assetAcct) return assetAcct.id;
+
+                // A sub-wallet with no account of its own used to fall back to the MAIN wallet's account, so the
+                // main wallet's ledger balance silently absorbed that sub-wallet's money. Give it its own asset
+                // account so every wallet's ledger balance equals the wallet's own balance.
+                const code = `WAL-${String(ce.wallet_id).slice(0, 8).toUpperCase()}`;
+                const existingByCode = await getAccountIdByCode(orgId, code);
+                if (existingByCode) return existingByCode;
+                if (!create) return `__WILL_CREATE__:${code}`; // read-only callers (the audit) never create accounts
+                const { data: created, error: createErr } = await supabase
+                    .from('accounts')
+                    .insert({ organization_id: orgId, code, name: wallet.name, type: 'ASSET', subtype: 'Wallet', description: 'Sub-wallet balance (created automatically so it is tracked separately from the main wallet).' })
+                    .select('id')
+                    .single();
+                if (created) { accountCodeCache.set(`${orgId}:${code}`, created.id); return created.id; }
+                if (createErr) console.error(`[Ledger] could not create the account for wallet ${wallet.name}:`, createErr.message);
             }
         }
-        // Main wallet (or unmatched sub-wallet) → the Main Wallet asset account.
+        // Main wallet (or a wallet whose account could not be created) → the Main Wallet asset account.
         return (await getAccountIdByCode(orgId, CODE_MAIN_WALLET))
             ?? (await getAccountIdByCode(orgId, CODE_UNCATEGORISED_ASSET));
     }
@@ -365,7 +412,9 @@ export const ledgerService = {
                 const acct = await resolveLineItemAccount(orgId, li);
                 add(acct, contraSign * amt);
             }
-        } else if (ce.account_id) {
+        } else if (ce.account_id && ce.account_id !== cashAcct) {
+            // (A category equal to the wallet's own account would cancel the cash leg to nothing and the entry would never post —
+            // treat it as unclassified instead.)
             add(ce.account_id, contraSign * amount);
         } else if (ce.entry_type === 'OPENING_BALANCE') {
             add(await getAccountIdByCode(orgId, CODE_OPENING_BALANCE_EQUITY), contraSign * amount);
