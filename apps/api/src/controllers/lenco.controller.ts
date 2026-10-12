@@ -2581,7 +2581,12 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 }
 
                 const descLower = txnDesc.toLowerCase();
-                const txnRefRaw = (txn.reference || txn.clientReference || '').trim();
+                // Subscription payments swept to Blue Opus carry their PG-SUB-… reference only in the
+                // narration (Lenco returns no reference for on-us merchant transfers), so recover it
+                // there — lets the payer's debit dedup against the row we booked and lets Blue Opus's
+                // inflow be categorised as Subscription Revenue.
+                const narrationSubRef = txnDesc.match(/PG-SUB-\d+-[A-Za-z0-9]+/i)?.[0] || '';
+                const txnRefRaw = (txn.reference || txn.clientReference || narrationSubRef || '').trim();
 
                 // A wallet-to-wallet investment / savings transfer we already booked ourselves: don't log it twice.
                 if (await matchesRecordedInternalTransfer(orgId, walletId, {
@@ -2614,7 +2619,7 @@ const runLencoSync = async (req: Request, res: Response, scopeOrgId?: string) =>
                 // Resolve merchant reference:
                 // For credit transactions, look up the DEP-... reference via the
                 // settlement map. Fall back to any reference the API gives us.
-                let resolvedRef = (txn.reference || txn.clientReference || '').trim();
+                let resolvedRef = (txn.reference || txn.clientReference || narrationSubRef || '').trim();
                 if (txnType === 'credit' && !resolvedRef && settlementToRef.has(txnId)) {
                     resolvedRef = settlementToRef.get(txnId)!;
                     console.log(`[Lenco Sync] Resolved merchant ref for txn ${txnId}: ${resolvedRef}`);
