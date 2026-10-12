@@ -72,8 +72,8 @@ function contraStale(ce: any, js: any[], itemAccounts: Map<string, Set<string> |
     if (ce.requisition_id) {
         const wanted = itemAccounts.get(ce.requisition_id);
         if (!wanted || wanted.size === 0) return false;           // not (fully) categorised yet — nothing to compare
-        for (const id of wanted) if (!present.has(id)) return true;
-        return false;
+        // A batch payout journals one line item per entry, so only flag when NONE of the categorised accounts is present.
+        return ![...wanted].some(id => present.has(id));
     }
     if (ce.account_id) return !present.has(ce.account_id);
     return false;
@@ -169,7 +169,7 @@ export async function auditOrganization(organizationId: string, opts: { sample?:
     const expectedByAcct = new Map<string, number>();
     const walletRows: AuditResult['wallets'] = [];
     for (const ce of entries) {
-        if (!isEligible(ce) || isMasterFees(ce)) continue;
+        if (!isEligible(ce)) continue; // (Master Fees entries count here: their cash legs are posted to the same wallet accounts)
         let cashId = entryCashAcct.get(ce.id);
         if (cashId === undefined) {
             const key = `${ce.account_type}|${ce.wallet_id}|${ce.mf_payment_channel}`;
@@ -234,6 +234,15 @@ export async function healOrganization(organizationId: string, opts: { deadlineM
         if (byId.has(j.source_id)) continue;
         await supabase.from('journal_entries').delete().eq('id', j.id);
         res.orphansRemoved++;
+    }
+
+    // Entries posted more than once (any kind, including Master Fees cash legs): keep the newest, drop the rest.
+    for (const [entryId, js] of journalsBySource) {
+        if (js.length < 2 || !byId.has(entryId)) continue;
+        if (Date.now() > deadline) break;
+        await ledgerService.collapseDuplicateJournals(entryId);
+        res.reposted++;
+        journalsBySource.set(entryId, [js[js.length - 1]]);
     }
 
     const cache = new Map<string, string | null>();

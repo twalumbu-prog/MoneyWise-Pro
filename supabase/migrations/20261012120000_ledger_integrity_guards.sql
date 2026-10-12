@@ -57,3 +57,25 @@ DELETE FROM public.journal_lines
 DELETE FROM public.journal_entries je
  WHERE je.source_type = 'CASHBOOK'
    AND NOT EXISTS (SELECT 1 FROM public.cashbook_entries ce WHERE ce.id = je.source_id);
+
+-- 4. One journal per source. Several servers can re-post the same cashbook entry at the same moment (the 5-minute
+--    Lenco sync, Master Fees sync, a report self-heal) and both inserts used to succeed, so the entry was counted twice
+--    (Twalumbu had ~1,000 doubled postings). First collapse existing duplicates (keep the newest), then make the
+--    database refuse a second one: the losing insert now simply fails and the entry stays posted exactly once.
+WITH ranked AS (
+    SELECT id, row_number() OVER (PARTITION BY organization_id, source_type, source_id ORDER BY created_at DESC, id DESC) AS rn
+      FROM public.journal_entries
+     WHERE source_id IS NOT NULL
+)
+DELETE FROM public.journal_lines WHERE journal_entry_id IN (SELECT id FROM ranked WHERE rn > 1);
+
+WITH ranked AS (
+    SELECT id, row_number() OVER (PARTITION BY organization_id, source_type, source_id ORDER BY created_at DESC, id DESC) AS rn
+      FROM public.journal_entries
+     WHERE source_id IS NOT NULL
+)
+DELETE FROM public.journal_entries WHERE id IN (SELECT id FROM ranked WHERE rn > 1);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_journal_entries_source
+    ON public.journal_entries (organization_id, source_type, source_id)
+    WHERE source_id IS NOT NULL;

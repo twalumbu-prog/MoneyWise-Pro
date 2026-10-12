@@ -32,10 +32,16 @@ Master Fees entries are journaled by their own integration and are excluded.
 2. Reports **self-heal on read** (`healIfDue`, at most once per org per 5 min).
 3. Missing wallet/cash ledger accounts are **created on demand**; every sub-wallet gets its own ledger account.
 4. A category equal to the wallet's own account no longer makes an entry unpostable.
-5. *Optional DB guard* — `supabase/manual/apply_ledger_integrity_guards.sql` (run once in the SQL editor): triggers that drop a
+5. *DB guard (recommended)* — `supabase/manual/apply_ledger_integrity_guards.sql` (run once in the SQL editor): triggers that drop a
    journal when its cashbook entry is deleted or zeroed. The app already heals these; the triggers stop scripts run from the
    SQL editor from reintroducing them.
 
 ## Practice
 * To neutralise or delete cashbook entries, prefer a script that then calls `ledgerService.repostForCashbookEntry(id)` (or run the
   heal afterwards). Neutralise-don't-delete still applies (see wallet-lenco-reconciliation).
+
+## Known open item — Twalumbu (Master Fees) duplicates
+Production re-posts Twalumbu's ~4,000 Master Fees cash entries from several servers at the same time, so duplicates reappear after
+every clean-up (894 at last audit). The in-process lock and "keep newest" collapse reduce it but cannot stop two *servers*.
+The unique index in `apply_ledger_integrity_guards.sql` (section 4) is the real fix — apply it, then run
+`ledger_audit.js --org <Twalumbu id> --fix` once. Until then Twalumbu's Net Worth/Reports are unreliable; the other 36 orgs are clean.
