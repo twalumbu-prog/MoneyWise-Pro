@@ -24,6 +24,7 @@ import { supabase } from '../lib/supabase';
  */
 
 const TOLERANCE = 0.005;
+const repostChains = new Map<string, Promise<void>>();
 
 // account-code → id cache, per org (codes are effectively static)
 const accountCodeCache = new Map<string, string | null>(); // key: `${org}:${code}`
@@ -341,6 +342,28 @@ export const ledgerService = {
      * Skips PENDING and zero-amount marker rows. Always idempotent.
      */
     async repostForCashbookEntry(entryId: string): Promise<void> {
+        // Serialise per entry within this process, so two callers (a sync, a report self-heal, a request) never
+        // interleave their delete-then-insert and leave the entry posted twice.
+        const prev = repostChains.get(entryId) ?? Promise.resolve();
+        const run = prev.catch(() => undefined).then(async () => {
+            await this.repostForCashbookEntryUnlocked(entryId);
+            await this.collapseDuplicateJournals(entryId);
+        });
+        repostChains.set(entryId, run);
+        try { await run; } finally { if (repostChains.get(entryId) === run) repostChains.delete(entryId); }
+    },
+
+    /** Across processes the in-memory lock can't help: after posting, keep only the newest journal for this entry. */
+    async collapseDuplicateJournals(entryId: string): Promise<void> {
+        const { data } = await supabase.from('journal_entries').select('id, created_at')
+            .eq('source_type', 'CASHBOOK').eq('source_id', entryId).order('created_at', { ascending: false });
+        if (!data || data.length < 2) return;
+        const extra = data.slice(1).map((j: any) => j.id);
+        await supabase.from('journal_lines').delete().in('journal_entry_id', extra);
+        await supabase.from('journal_entries').delete().in('id', extra);
+    },
+
+    async repostForCashbookEntryUnlocked(entryId: string): Promise<void> {
         const { data: ce } = await supabase
             .from('cashbook_entries')
             .select('id, organization_id, date, description, reference_number, debit, credit, account_type, wallet_id, account_id, requisition_id, entry_type, status, created_by, mf_payment_channel')

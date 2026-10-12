@@ -265,6 +265,10 @@ export async function healIfDue(organizationId: string, minIntervalMs = 5 * 60_0
     const now = Date.now();
     if (now - (lastHeal.get(organizationId) || 0) < minIntervalMs) return null;
     lastHeal.set(organizationId, now);
+    // Very large organizations are healed by the admin endpoint / CLI, not on a report read (too heavy, and two
+    // overlapping repairs of thousands of entries is exactly how duplicate postings happen).
+    const { count } = await supabase.from('cashbook_entries').select('id', { count: 'exact', head: true }).eq('organization_id', organizationId);
+    if ((count ?? 0) > 2500) return null;
     try { return await healOrganization(organizationId, { deadlineMs: now + deadlineMs }); }
     catch (e: any) { console.error(`[LedgerHeal] ${organizationId}:`, e?.message); return null; }
 }
