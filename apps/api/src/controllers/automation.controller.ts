@@ -134,7 +134,13 @@ export async function updateAutomation(req: Request, res: Response) {
             // Resuming must not sweep up deposits that arrived while it was off:
             // the user paused it, so anything received since is theirs to handle.
             if (req.body.status === 'ACTIVE' && automation.status === 'PAUSED') {
-                updates.watch_from = new Date().toISOString();
+                // The investor-payout automation is the exception: those deposits are investors' money that
+                // must reach the company's bank, so resuming catches up from the moment it was paused
+                // (updated_at). Resuming used to skip them, leaving a K500 investment stuck in the wallet.
+                const isInvestorPayout = (automation.trigger_config as any)?.managed_by === 'investor_payout_settings';
+                updates.watch_from = isInvestorPayout && automation.updated_at
+                    ? new Date(automation.updated_at).toISOString()
+                    : new Date().toISOString();
             }
         }
         if (typeof req.body.name === 'string' && req.body.name.trim()) updates.name = req.body.name.trim();

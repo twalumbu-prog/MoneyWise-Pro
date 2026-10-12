@@ -299,7 +299,7 @@ export const AutomationsTab: React.FC<{ onCreate: () => void }> = ({ onCreate })
     const handleToggle = async (a: Automation) => {
         try {
             await automationService.setStatus(a.id, a.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE');
-            showToast(a.status === 'ACTIVE' ? 'Paused.' : 'Resumed — only new deposits will be processed.');
+            showToast(a.status === 'ACTIVE' ? 'Paused.' : (a.trigger_config as any)?.managed_by === 'investor_payout_settings' ? 'Resumed — deposits received while paused will now be forwarded.' : 'Resumed — only new deposits will be processed.');
             refresh();
         } catch (err: any) { showToast(err.message, 'error'); }
     };
