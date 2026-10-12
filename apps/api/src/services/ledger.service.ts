@@ -432,7 +432,8 @@ export const ledgerService = {
             for (const li of lis || []) {
                 const amt = Number(li.actual_amount ?? li.estimated_amount ?? 0);
                 if (amt <= 0) continue;
-                const acct = await resolveLineItemAccount(orgId, li);
+                let acct = await resolveLineItemAccount(orgId, li);
+                if (acct && acct === cashAcct) acct = null; // an item pointing at the wallet's own account would net the cash leg to nothing: treat as unclassified
                 add(acct, contraSign * amt);
             }
         } else if (ce.account_id && ce.account_id !== cashAcct) {

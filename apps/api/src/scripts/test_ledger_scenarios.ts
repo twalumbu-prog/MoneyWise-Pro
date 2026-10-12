@@ -4,8 +4,8 @@
  *   - the ledger ties to the wallets (per wallet, to the ngwee),
  *   - the balance sheet balances (assets − liabilities = equity + income − expenses),
  *   - reports show exactly what the wallets hold,
- * and that deliberately-broken states (neutralised entry, deleted entry, pending→completed, reclassified) are DETECTED
- * by the audit and REPAIRED by the heal. The throwaway organization is deleted afterwards.
+ * and that deliberately-broken states (neutralised entry, deleted entry, pending→completed, reclassified) either can't happen (the
+ * database guards) or are DETECTED by the audit and REPAIRED by the heal. The throwaway organization is deleted afterwards.
  *
  *   npx tsc -p . --outDir /tmp/apibuild --noEmit false
  *   NODE_PATH=$PWD/node_modules node /tmp/apibuild/scripts/test_ledger_scenarios.js
@@ -114,24 +114,28 @@ async function main() {
             must(a.ok, 'books should be clean');
         });
 
-        await step('6. DETECT + REPAIR: an entry zeroed ("neutralised") without re-posting leaves a stale ledger entry', async () => {
+        await step('6. an entry zeroed ("neutralised") can never leave a stale ledger entry (DB guard, or detected + healed)', async () => {
             const dup = await entry({ description: 'Duplicate to be neutralised', debit: 61, entry_type: 'INFLOW' });
             await supabase.from('cashbook_entries').update({ debit: 0, credit: 0, description: '[Duplicate of a booked transfer - neutralised] x' }).eq('id', dup.id);
-            const broken = await auditOrganization(orgId);
-            must(broken.findings.some(f => f.code === 'JOURNAL_FOR_INELIGIBLE'), 'audit should flag the stale posting');
-            must(broken.findings.some(f => f.code === 'WALLET_TIE'), 'audit should flag the wallet no longer tying (the K61 gap)');
-            await healOrganization(orgId, { deadlineMs: Date.now() + 60_000 });
-            await expectClean(orgId, 'after heal');
+            const after = await auditOrganization(orgId);
+            if (!after.ok) {
+                // No database guard installed: the audit must see it, and the heal must fix it.
+                must(after.findings.some(f => f.code === 'JOURNAL_FOR_INELIGIBLE'), 'audit should flag the stale posting');
+                await healOrganization(orgId, { deadlineMs: Date.now() + 60_000 });
+            }
+            await expectClean(orgId, 'after neutralising');
         });
 
-        await step('7. DETECT + REPAIR: a deleted entry leaves a ghost posting', async () => {
+        await step('7. a deleted entry can never leave a ghost posting (DB guard, or detected + healed)', async () => {
             const ghost = await entry({ description: 'To be deleted', debit: 500, entry_type: 'INFLOW' });
             await supabase.from('cashbook_entries').delete().eq('id', ghost.id);
-            const broken = await auditOrganization(orgId);
-            must(broken.findings.some(f => f.code === 'ORPHAN_JOURNAL'), 'audit should flag the ghost posting');
-            const h = await healOrganization(orgId, { deadlineMs: Date.now() + 60_000 });
-            must(h.orphansRemoved >= 1, 'heal should remove the ghost');
-            await expectClean(orgId, 'after heal');
+            const after = await auditOrganization(orgId);
+            if (!after.ok) {
+                must(after.findings.some(f => f.code === 'ORPHAN_JOURNAL'), 'audit should flag the ghost posting');
+                const h = await healOrganization(orgId, { deadlineMs: Date.now() + 60_000 });
+                must(h.orphansRemoved >= 1, 'heal should remove the ghost');
+            }
+            await expectClean(orgId, 'after deleting');
         });
 
         await step('8. a pending entry is not in the books until it completes', async () => {

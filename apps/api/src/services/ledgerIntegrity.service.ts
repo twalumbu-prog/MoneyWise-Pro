@@ -46,7 +46,9 @@ export interface AuditResult {
 async function all<T = any>(build: () => any): Promise<T[]> {
     const out: T[] = [];
     for (let from = 0; ; from += 1000) {
-        const { data, error } = await build().range(from, from + 999);
+        // A stable order is essential: paging an unordered table that is being written to returns some rows twice and
+        // skips others, which shows up as phantom duplicate/missing postings.
+        const { data, error } = await build().order('id', { ascending: true }).range(from, from + 999);
         if (error) throw new Error(error.message);
         out.push(...(data || []));
         if (!data || data.length < 1000) break;
@@ -169,7 +171,7 @@ export async function auditOrganization(organizationId: string, opts: { sample?:
     const expectedByAcct = new Map<string, number>();
     const walletRows: AuditResult['wallets'] = [];
     for (const ce of entries) {
-        if (!isEligible(ce)) continue; // (Master Fees entries count here: their cash legs are posted to the same wallet accounts)
+        if (!isEligible(ce) || isMasterFees(ce)) continue;
         let cashId = entryCashAcct.get(ce.id);
         if (cashId === undefined) {
             const key = `${ce.account_type}|${ce.wallet_id}|${ce.mf_payment_channel}`;
@@ -188,7 +190,9 @@ export async function auditOrganization(organizationId: string, opts: { sample?:
         walletRows.push({ name: cashbookWallet?.name || a?.name || id, cashbook: r2(expected), ledger: r2(ledger), account: a?.name });
         if (Math.abs(ledger - expected) > TOL) tieBreaks.push(`${a?.name}: wallet K${r2(expected)} vs ledger K${r2(ledger)}`);
     }
-    if (tieBreaks.length) findings.push({ code: 'WALLET_TIE', severity: 'ERROR', fixable: true, count: tieBreaks.length, message: 'A wallet account in the ledger does not equal the money in the wallet.', sample: tieBreaks });
+    // Master Fees organizations route school-fee collections through the Master Fees integration's own cash accounts, so a wallet
+    // account there is not purely the cashbook: a difference is a warning to check in the Master Fees reconciliation, not drift.
+    if (tieBreaks.length) findings.push({ code: 'WALLET_TIE', severity: mfSkipped > 0 ? 'WARN' : 'ERROR', fixable: mfSkipped === 0, count: tieBreaks.length, message: 'A wallet account in the ledger does not equal the money in the wallet.', sample: tieBreaks });
 
     // 7. balance sheet identity
     const diff = (assets - liabilities) - (equity + income - expense);
