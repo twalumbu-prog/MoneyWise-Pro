@@ -124,7 +124,7 @@ export async function runQuickBooksAutoPost(
                     if (dryRun) { ids.push('(would-create)'); created++; continue; }
                     const r = await QuickBooksService.createInvoice(organizationId, { customerId: m.match!.id, txnDate: String(issued).slice(0, 10), lines: [{ amount: amt, itemId, description: it.description || '' }], privateNote: `${AUDIT_NOTE}${mfNum}` });
                     if (!r.success) { blocked = `QuickBooks rejected the invoice: ${JSON.stringify(r.error).slice(0, 200)}`; result.invoices.failed++; break; }
-                    ids.push(String(r.qbId)); created++; budget--;
+                    ids.push(String(r.qbId)); created++; budget--; customerInvoices.delete(m.match!.id); // the cached list is now stale
                 }
                 if (blocked) { if (ids.length && !dryRun) await markInvoice(rec.id, { qb_invoice_id: ids.join(',') }); await review(blocked); return; }
                 if (created) result.invoices.created++; else result.invoices.linked++;
@@ -178,7 +178,9 @@ export async function runQuickBooksAutoPost(
                 // customer = the customer who owns the linked QuickBooks invoice
                 const roster = await getRoster(organizationId); const m = matchStudentName(invRec.raw?.student?.full_name || '', roster);
                 if (m.tier !== 'EXACT' && m.tier !== 'CONTAINED') { await park(`Customer match is ${m.tier}`); continue; }
-                const custInvs = await getCust(m.match!.id); const lines: Array<{ invoiceId: string; amount: number }> = [];
+                let custInvs = await getCust(m.match!.id); const lines: Array<{ invoiceId: string; amount: number }> = [];
+                // an invoice created earlier in this same run may not be in the cached list yet — refresh once before judging it missing
+                if (qbIds.some(id => !custInvs.find(x => x.id === id))) { customerInvoices.delete(m.match!.id); custInvs = await getCust(m.match!.id); }
                 let bad = '';
                 items.forEach((it: any, idx: number) => { const q = custInvs.find(x => x.id === qbIds[idx]); const amt = items.length > 1 ? Number(it.amount) : amount; if (!q) bad = `QuickBooks invoice ${qbIds[idx]} was not found on ${m.match!.name}`; else if (q.balance + 0.01 < amt) bad = `QuickBooks invoice ${q.docNumber || q.id} has only ${money(q.balance)} open, payment is ${money(amt)}`; else lines.push({ invoiceId: q.id, amount: amt }); });
                 if (bad) { await park(bad); continue; }
