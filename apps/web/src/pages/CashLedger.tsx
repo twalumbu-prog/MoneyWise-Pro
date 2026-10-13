@@ -49,6 +49,7 @@ import RequisitionModal from '../components/requisitions/RequisitionModal';
 import DepositProofPreview from '../components/wallets/DepositProofPreview';
 import { Requisition } from '../services/requisition.service';
 import ExportLedgerModal from '../components/ExportLedgerModal';
+import { ApplyPaymentModal, ReceivableAllocationPanel, isReceivableAccount } from '../components/accounting/ApplyPaymentModal';
 import { exportToCSV, exportToExcel, exportToPDF } from '../utils/export.utils';
 import { SegmentedControl, AnimatedTabContent, TabPillGroup } from '../components/AnimatedTabs';
 import { useNewnessTracker, isNewSinceStored } from '../hooks/useNewnessTracker';
@@ -238,6 +239,8 @@ const renderMobileStatusIcon = (status: string) => {
 const CashLedger: React.FC = () => {
     const navigate = useNavigate();
     const [selectedEntry, setSelectedEntry] = useState<CashbookEntry | null>(null);
+    // Inflow being classified as Accounts Receivable → pick the customer invoice(s) it settles.
+    const [applyPayment, setApplyPayment] = useState<{ entry: CashbookEntry; accountId: string } | null>(null);
     // Which line-item/entry account dropdown currently has a save in flight —
     // drives the inline spinner in SearchableAccountSelect for instant feedback.
     const [savingAccountKey, setSavingAccountKey] = useState<string | null>(null);
@@ -2347,6 +2350,14 @@ Status: VERIFIED`;
                 onStatusChange={handleStatusChange}
             />
 
+            <ApplyPaymentModal
+                isOpen={!!applyPayment}
+                entry={applyPayment?.entry ?? null}
+                receivableAccountId={applyPayment?.accountId ?? null}
+                onClose={() => setApplyPayment(null)}
+                onDone={() => { loadData(); }}
+            />
+
             <ExportLedgerModal
                 isOpen={isExportModalOpen}
                 onClose={() => setIsExportModalOpen(false)}
@@ -2846,6 +2857,11 @@ Status: VERIFIED`;
                                                 value={entry.account_id || ''}
                                                 options={accounts}
                                                 onChange={(val) => {
+                                                    // Money received and classified to Accounts Receivable: choose which customer/invoice it settles.
+                                                    if (entry.entry_type === 'INFLOW' && isReceivableAccount(accounts.find(a => a.id === val))) {
+                                                        setApplyPayment({ entry, accountId: val });
+                                                        return;
+                                                    }
                                                     if (entry.status === 'UNACCOUNTED') {
                                                         const desc = editingNarration[entry.id] !== undefined ? editingNarration[entry.id] : entry.description.split(' | Ref:')[0];
                                                         let finalDesc = desc;
@@ -2860,6 +2876,12 @@ Status: VERIFIED`;
                                                 placeholder={entry.entry_type === 'INFLOW' ? 'Select Credit Account…' : 'Select Debit Account…'}
                                                 isSaving={savingAccountKey === entry.id}
                                             />
+                                            {entry.entry_type === 'INFLOW' && isReceivableAccount(accounts.find(a => a.id === entry.account_id)) && (
+                                                <ReceivableAllocationPanel
+                                                    entry={entry}
+                                                    onEdit={() => setApplyPayment({ entry, accountId: entry.account_id! })}
+                                                />
+                                            )}
                                         </div>
                                     </div>
                                     )}

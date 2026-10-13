@@ -1150,8 +1150,16 @@ const logWalletDepositIntentCore = async (req: Request, res: Response, allowPast
             throw error;
         }
 
+        // A credit invoice's pay link: the sale + any stay were recorded when the invoice was issued, so paying it
+        // must not log them a second time.
+        let isCreditInvoiceLink = false;
+        if (paymentLinkToken) {
+            const { data: cl } = await supabase.from('payment_links').select('credit_invoice_id').eq('token', paymentLinkToken).maybeSingle();
+            isCreditInvoiceLink = !!cl?.credit_invoice_id;
+        }
+
         // Log pending product sales + booking reservations if present
-        if (items && Array.isArray(items) && items.length > 0) {
+        if (!isCreditInvoiceLink && items && Array.isArray(items) && items.length > 0) {
             // Booking lines store nights as quantity and a server-recomputed amount.
             const salesData = items.map((item: any) => {
                 const isBooking = !!(item.check_in && item.check_out);

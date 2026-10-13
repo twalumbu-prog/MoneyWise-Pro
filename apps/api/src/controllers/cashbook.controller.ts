@@ -5,6 +5,7 @@ import { decisionRouter } from '../services/ai/decision.router';
 import { supabase } from '../lib/supabase';
 import { QuickBooksService } from '../services/quickbooks.service';
 import { ledgerService } from '../services/ledger.service';
+import { releaseAllocationsIfNotReceivable } from '../services/customerInvoice.service';
 import { calculatePlatformFee } from '../utils/platformFee';
 
 /**
@@ -263,29 +264,41 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
         const saleDate = paymentDate || new Date().toISOString().split('T')[0];
         const reference = `MSALE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        // Normalise + validate cart lines. Booking (accommodation) lines carry a stay.
+        // Normalise + validate cart lines. Booking (accommodation) lines carry a stay; custom lines
+        // (a free-text item the cashier typed in — no catalogue product) carry their own name + income account.
         const lines = items
-            .map((it: any) => ({
-                id: it.id,
+            .map((it: any, idx: number) => ({
+                id: it.custom ? `custom-${idx}` : it.id,
+                custom: !!it.custom,
+                customName: it.custom ? String(it.name || '').trim().slice(0, 200) : null,
+                customIncome: it.custom && it.income_account_id ? String(it.income_account_id) : null,
                 qty: Math.max(0, Number(it.quantity) || 0),
                 unit: Math.max(0, Number(it.price) || 0),
-                check_in: it.check_in || null,
-                check_out: it.check_out || null
+                check_in: it.custom ? null : (it.check_in || null),
+                check_out: it.custom ? null : (it.check_out || null)
             }))
-            .filter((l: any) => l.id && l.qty > 0)
+            .filter((l: any) => l.id && l.qty > 0 && (!l.custom || (l.customName && l.unit > 0)))
             .map((l: any) => ({ ...l, lineTotal: l.qty * l.unit }));
+
+        // A custom line may only post to one of this organization's own income accounts.
+        const customIncomeIds = [...new Set(lines.filter((l: any) => l.customIncome).map((l: any) => l.customIncome))];
+        if (customIncomeIds.length > 0) {
+            const { data: okAccts } = await supabase.from('accounts').select('id').eq('organization_id', organizationId).eq('type', 'INCOME').in('id', customIncomeIds as string[]);
+            const ok = new Set((okAccts || []).map((a: any) => a.id));
+            if (customIncomeIds.some(id => !ok.has(id as string))) {
+                return res.status(400).json({ error: 'Choose one of your income accounts for the custom item.' });
+            }
+        }
 
         if (lines.length === 0) {
             return res.status(400).json({ error: 'No valid sale lines provided' });
         }
 
         // Resolve each product's income account + display name.
-        const productIds = [...new Set(lines.map((l: any) => l.id))];
-        const { data: products } = await supabase
-            .from('products')
-            .select('id, name, income_account_id')
-            .eq('organization_id', organizationId)
-            .in('id', productIds);
+        const productIds = [...new Set(lines.filter((l: any) => !l.custom).map((l: any) => l.id))];
+        const { data: products } = productIds.length
+            ? await supabase.from('products').select('id, name, income_account_id').eq('organization_id', organizationId).in('id', productIds)
+            : { data: [] as any[] };
         const productMap = new Map((products || []).map((p: any) => [p.id, p]));
 
         // Booking pre-validation: a manual sale means the money is already collected, so
@@ -334,7 +347,7 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
         });
 
         // 1. Record the sale lines (money already collected → COMPLETED).
-        const salesData = lines.map((l: any) => ({
+        const salesData = lines.filter((l: any) => !l.custom).map((l: any) => ({
             organization_id: organizationId,
             product_id: l.id,
             customer_name: customerName || 'Walk-in Customer',
@@ -344,7 +357,7 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
             reference,
             status: 'COMPLETED'
         }));
-        const { error: salesError } = await supabase.from('product_sales').insert(salesData);
+        const { error: salesError } = salesData.length ? await supabase.from('product_sales').insert(salesData) : { error: null };
         if (salesError) {
             console.error('[Manual Sale] Failed to record product_sales:', salesError.message);
         }
@@ -352,12 +365,12 @@ export const recordManualSale = async (req: any, res: any): Promise<any> => {
         // 2. Group allocations by income account.
         const groups = new Map<string, { income: string | null; amount: number; names: string[] }>();
         for (const l of lines as any[]) {
-            const prod: any = productMap.get(l.id);
-            const income: string | null = prod?.income_account_id || null;
+            const prod: any = l.custom ? null : productMap.get(l.id);
+            const income: string | null = l.custom ? l.customIncome : (prod?.income_account_id || null);
             const key = income || 'NULL';
             const g = groups.get(key) || { income, amount: 0, names: [] };
             g.amount += l.allocated;
-            g.names.push(`${prod?.name || 'Item'} (x${l.qty})`);
+            g.names.push(`${l.custom ? l.customName : (prod?.name || 'Item')} (x${l.qty})`);
             groups.set(key, g);
         }
         const groupList = [...groups.values()].sort((a, b) => b.amount - a.amount);
@@ -822,6 +835,12 @@ export const updateEntryAccount = async (req: any, res: any): Promise<any> => {
 
         console.log(`[Ledger] ✅ Successfully updated entry account. Data:`, data);
 
+        // An inflow that had customer invoices applied must stop settling them once it leaves Accounts Receivable.
+        if (data?.[0]?.organization_id) {
+            await releaseAllocationsIfNotReceivable(data[0].organization_id, entryId, accountId)
+                .catch(err => console.error(`[Invoices] release after reclassification failed for ${entryId}:`, err?.message));
+        }
+
         // Re-post the GL so this categorization moves out of Suspense in real time.
         ledgerService.repostForCashbookEntry(entryId)
             .catch(err => console.error(`[Ledger] repost after categorization failed for ${entryId}:`, err?.message));
@@ -866,6 +885,11 @@ export const narrateEntry = async (req: any, res: any): Promise<any> => {
         if (error) {
             console.error('[Ledger] ❌ Error accounting entry:', error);
             throw error;
+        }
+
+        if (data?.[0]?.organization_id) {
+            await releaseAllocationsIfNotReceivable(data[0].organization_id, entryId, accountId || null)
+                .catch(err => console.error(`[Invoices] release after narration failed for ${entryId}:`, err?.message));
         }
 
         // Re-post the GL so the new categorization (or de-categorization) reflects immediately.

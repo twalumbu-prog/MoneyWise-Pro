@@ -3,6 +3,7 @@ import { cashbookService } from './cashbook.service';
 import { ledgerService } from './ledger.service';
 import { withTiming } from '../utils/analytics';
 import { QuickBooksService } from './quickbooks.service';
+import { settleCreditInvoiceByReference } from './customerInvoice.service';
 
 /**
  * Flip a one-time payment link tied to this collection reference to PAID so it
@@ -133,6 +134,10 @@ export async function applyProductRevenueRouting(orgId: string, reference: strin
         // outer catch, which preserves this function's original contract of
         // never throwing to its own callers.
         return await withTiming('revenue_routing', base, async () => {
+        // A payment made through a credit invoice's pay link settles the receivable — the revenue was already
+        // recognised when the invoice was issued, so it must not be routed to income again.
+        if (await settleCreditInvoiceByReference(orgId, reference)) return;
+
         // Already split on a prior run? Sibling entries carry a `::g` suffix.
         const { data: existingSiblings } = await supabase
             .from('cashbook_entries')

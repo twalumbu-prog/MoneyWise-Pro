@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Layout } from '../components/Layout';
 import { useNavigate } from 'react-router-dom';
-import { FileText, History, XCircle, X, Users, TrendingUp } from 'lucide-react';
+import { FileText, History, XCircle, X, Users, TrendingUp, Banknote, Receipt } from 'lucide-react';
 import { requisitionService } from '../services/requisition.service';
 import { useAuth } from '../context/AuthContext';
 import { RequisitionInbox } from '../components/RequisitionInbox';
@@ -24,6 +24,9 @@ import { departmentService } from '../services/department.service';
 import { SegmentedControl } from '../components/AnimatedTabs';
 import { InflowInbox, inflowTitle, InflowRow } from '../components/InflowInbox';
 import { InvoiceInbox } from '../components/InvoiceInbox';
+import { CreditInvoiceInbox } from '../components/CreditInvoiceInbox';
+import { CreditInvoiceDetailModal } from '../components/CreditInvoiceDetailModal';
+import { invoiceService, CustomerInvoice } from '../services/invoice.service';
 import { InvoiceDetailModal } from '../components/InvoiceDetailModal';
 import { InvoiceEditModal } from '../components/InvoiceEditModal';
 import { cashbookService } from '../services/cashbook.service';
@@ -95,6 +98,7 @@ export const RequisitionList: React.FC = () => {
     // Within the Inflows view: cash payments vs. sent invoice links
     const [inflowSubMode, setInflowSubMode] = useState<'cash' | 'invoices'>('cash');
     const [selectedInvoice, setSelectedInvoice] = useState<PaymentLink | null>(null);
+    const [selectedCreditInvoice, setSelectedCreditInvoice] = useState<CustomerInvoice | null>(null);
     const [editingInvoice, setEditingInvoice] = useState<PaymentLink | null>(null);
     const [selectedInflow, setSelectedInflow] = useState<InflowRow | null>(null);
     // Inflows are fetched up front too (not just when the tab is opened) so the
@@ -161,6 +165,18 @@ export const RequisitionList: React.FC = () => {
     // root cause of invoices "sometimes not showing" after a tab switch.
     const invoicesLoading = invoicesInitialLoading || !organizationId;
 
+    // Credit sales (customer invoices on accounts receivable). Cash handlers only — the API enforces the same.
+    const {
+        data: creditInvoices = [],
+        isLoading: creditInvoicesInitialLoading,
+        refetch: refetchCreditInvoices,
+    } = useQuery<CustomerInvoice[]>({
+        queryKey: ['credit-invoices', organizationId],
+        queryFn: () => invoiceService.list(),
+        enabled: !!organizationId && isCashHandler,
+        staleTime: 60_000,
+    });
+
     const [searchQuery, setSearchQuery] = useState('');
     const [activeTab, setActiveTab] = useState<string[]>(['ALL']);
     const [isNewRequisitionOpen, setIsNewRequisitionOpen] = useState(false); // State for mobile action sheet
@@ -218,6 +234,14 @@ export const RequisitionList: React.FC = () => {
     useEffect(() => {
         if (searchParams.get('new') === 'true') {
             setIsRequisitionWizardOpen(true);
+        }
+        // Deep link from the credit-sale success screen: Inflows → Invoices.
+        if (searchParams.get('inflows') === 'invoices') {
+            setInboxMode('inflows');
+            setInflowSubMode('invoices');
+            const next = new URLSearchParams(searchParams);
+            next.delete('inflows');
+            setSearchParams(next, { replace: true });
         }
 
         const id = searchParams.get('id');
@@ -395,6 +419,24 @@ export const RequisitionList: React.FC = () => {
         });
     }, [invoices, searchQuery, sortOrder]);
 
+    const sortedCreditInvoices = React.useMemo(() => {
+        const q = searchQuery.toLowerCase();
+        return creditInvoices
+            .filter(inv => inv.status !== 'VOID')
+            .filter(inv =>
+                inv.customer_name.toLowerCase().includes(q) ||
+                inv.invoice_number.toLowerCase().includes(q) ||
+                (inv.customer_phone || '').toLowerCase().includes(q) ||
+                (inv.customer_email || '').toLowerCase().includes(q))
+            .sort((a, b) => {
+                const da = new Date(a.created_at || '').getTime();
+                const db = new Date(b.created_at || '').getTime();
+                return sortOrder === 'desc' ? db - da : da - db;
+            });
+    }, [creditInvoices, searchQuery, sortOrder]);
+    const invoiceTabCount = sortedInvoices.length + sortedCreditInvoices.length;
+
+
     // Inflows: filter by the (cleaned) title or receipt number, then sort by date.
     const sortedInflows = React.useMemo(() => {
         const q = searchQuery.toLowerCase();
@@ -477,6 +519,24 @@ export const RequisitionList: React.FC = () => {
             iconColor: '#0F172A',
             onSelect: () => setIsDesktopPayrollOpen(true),
         }] : []),
+    ];
+
+    // Inflows "New Sale" dropdown: a cash sale (paid now) or a credit sale (invoice, paid later).
+    const desktopSaleMenuItems: NewMenuItem[] = [
+        {
+            label: 'Cash Sale',
+            description: 'Customer pays now — cash, mobile money or bank',
+            icon: Banknote,
+            iconColor: '#059669',
+            onSelect: () => navigate('/sales/new'),
+        },
+        {
+            label: 'Credit Sale',
+            description: 'Invoice the customer and collect payment later',
+            icon: Receipt,
+            iconColor: '#0058DB',
+            onSelect: () => navigate('/sales/new?mode=credit'),
+        },
     ];
 
     return (
@@ -664,7 +724,7 @@ export const RequisitionList: React.FC = () => {
                             showNew={inboxMode === 'outflows' || isCashHandler}
                             newLabel={inboxMode === 'inflows' ? 'New Sale' : 'New Request'}
                             onNew={() => navigate(inboxMode === 'inflows' ? '/sales/new' : '/requisitions/new')}
-                            newMenuItems={inboxMode === 'outflows' ? desktopNewMenuItems : undefined}
+                            newMenuItems={inboxMode === 'outflows' ? desktopNewMenuItems : desktopSaleMenuItems}
                             showTabs={inboxMode === 'outflows'}
                             tabs={TABS}
                             activeTab={activeTab}
@@ -675,13 +735,13 @@ export const RequisitionList: React.FC = () => {
                             sortOrder={sortOrder}
                             onToggleSort={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
                             onOpenFilters={() => setIsFilterSheetOpen(true)}
-                            onRefresh={() => inboxMode === 'inflows' ? loadInflows() : loadRequisitions()}
+                            onRefresh={() => inboxMode === 'inflows' ? (loadInflows(), refetchCreditInvoices()) : loadRequisitions()}
                             hasActiveFilters={hasActiveDesktopFilters}
                             leftContent={inboxMode === 'inflows' && !isRequestor ? (
                                 <div className="flex items-center gap-1 p-1 bg-[#F3F5FC] rounded-[10px]">
                                     {([
                                         { value: 'cash', label: 'Cash', count: sortedInflows.length },
-                                        { value: 'invoices', label: 'Invoices', count: sortedInvoices.length },
+                                        { value: 'invoices', label: 'Invoices', count: invoiceTabCount },
                                     ] as const).map(tab => (
                                         <button
                                             key={tab.value}
@@ -785,6 +845,11 @@ export const RequisitionList: React.FC = () => {
                                             <div className="bg-gray-50/60 rounded-2xl p-24 text-center">
                                                 <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-gray-100 border-t-[#0058DB] mb-6"></div>
                                                 <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading invoices...</p>
+                                            </div>
+                                        )}
+                                        {!creditInvoicesInitialLoading && sortedCreditInvoices.length > 0 && (
+                                            <div className="mb-3">
+                                                <CreditInvoiceInbox invoices={sortedCreditInvoices} onRowClick={setSelectedCreditInvoice} />
                                             </div>
                                         )}
                                         {!invoicesLoading && (
@@ -934,7 +999,7 @@ export const RequisitionList: React.FC = () => {
                                             label: (
                                                 <span className="inline-flex items-center gap-1.5">
                                                     Invoices
-                                                    <span className="text-[9px] opacity-60">({sortedInvoices.length})</span>
+                                                    <span className="text-[9px] opacity-60">({invoiceTabCount})</span>
                                                 </span>
                                             ),
                                         },
@@ -1026,13 +1091,18 @@ export const RequisitionList: React.FC = () => {
                                         <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Loading invoices...</p>
                                     </div>
                                 )}
-                                {!invoicesLoading && sortedInvoices.length === 0 && (
+                                {sortedCreditInvoices.length > 0 && (
+                                    <div className="bg-white rounded-[20px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.08)] outline outline-1 outline-offset-[-1px] outline-gray-200">
+                                        <CreditInvoiceInbox invoices={sortedCreditInvoices} onRowClick={setSelectedCreditInvoice} />
+                                    </div>
+                                )}
+                                {!invoicesLoading && sortedInvoices.length === 0 && sortedCreditInvoices.length === 0 && (
                                     <div className="bg-white shadow-sm border border-gray-100 rounded-3xl p-24 text-center">
                                         <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-gray-50 mb-6 border border-gray-100">
                                             <FileText className="h-10 w-10 text-gray-200" />
                                         </div>
                                         <h3 className="text-xl font-bold text-brand-navy">No invoices yet</h3>
-                                        <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Create an invoice from the New Sale flow to send a payment link.</p>
+                                        <p className="text-gray-400 mt-2 max-w-sm mx-auto font-medium">Record a credit sale from New Sale to invoice a customer.</p>
                                     </div>
                                 )}
                                 {sortedInvoices.length > 0 && (
@@ -1062,6 +1132,13 @@ export const RequisitionList: React.FC = () => {
                 invoice={selectedInvoice}
                 isOpen={!!selectedInvoice}
                 onClose={() => setSelectedInvoice(null)}
+            />
+
+            <CreditInvoiceDetailModal
+                invoice={selectedCreditInvoice}
+                isOpen={!!selectedCreditInvoice}
+                onClose={() => setSelectedCreditInvoice(null)}
+                onChanged={() => { refetchCreditInvoices(); }}
             />
 
             <InvoiceEditModal
@@ -1151,6 +1228,7 @@ export const RequisitionList: React.FC = () => {
                     <div className="p-5 space-y-3 overflow-y-auto pb-10">
                         {inboxMode === 'inflows' ? (
                             isCashHandler ? (
+                                <>
                                 <button
                                     onClick={() => {
                                         setIsNewRequisitionOpen(false);
@@ -1162,10 +1240,26 @@ export const RequisitionList: React.FC = () => {
                                         <ShoppingBag className="h-6 w-6 text-emerald-600" />
                                     </div>
                                     <div>
-                                        <div className="font-bold text-gray-900 text-base">New Sale</div>
-                                        <div className="text-xs text-emerald-600/70 font-medium">Ring up products & take payment</div>
+                                        <div className="font-bold text-gray-900 text-base">Cash Sale</div>
+                                        <div className="text-xs text-emerald-600/70 font-medium">Ring up products & take payment now</div>
                                     </div>
                                 </button>
+                                <button
+                                    onClick={() => {
+                                        setIsNewRequisitionOpen(false);
+                                        navigate('/sales/new?mode=credit');
+                                    }}
+                                    className="w-full flex items-center p-4 text-left bg-white hover:bg-gray-50 rounded-2xl transition-all group active:scale-[0.98]"
+                                >
+                                    <div className="p-3 bg-white rounded-xl mr-4 shadow-sm group-hover:shadow-md transition-shadow">
+                                        <Receipt className="h-6 w-6 text-[#0058DB]" />
+                                    </div>
+                                    <div>
+                                        <div className="font-bold text-gray-900 text-base">Credit Sale</div>
+                                        <div className="text-xs text-[#0058DB]/70 font-medium">Invoice the customer, collect later</div>
+                                    </div>
+                                </button>
+                                </>
                             ) : (
                                 <div className="text-center p-4 text-gray-400 text-sm">
                                     You don't have permission to record sales.

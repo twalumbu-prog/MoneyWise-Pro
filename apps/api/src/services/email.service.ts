@@ -701,6 +701,137 @@ export const emailService = {
     },
 
     /**
+     * E-invoice for a credit sale: the invoice summary in the body and the PDF attached. Unlike
+     * sendPaymentLinkInvoice there is no "Pay now" button — the customer settles it with the business
+     * (cash, mobile money, bank) and the business applies the payment to this invoice.
+     */
+    async sendCustomerInvoice(params: {
+        to: string;
+        orgName: string;
+        orgLogoUrl?: string | null;
+        customerName: string;
+        invoiceNumber: string;
+        issueDate: string;
+        followUpDate: string;
+        items: { name: string; quantity: number; unit_price: number; check_in?: string; check_out?: string }[];
+        total: number;
+        amountPaid: number;
+        pdf: Buffer;
+        /** Absolute one-time "Pay now" URL, when the invoice has an active payment link. */
+        payUrl?: string | null;
+    }) {
+        const { to, orgName, orgLogoUrl, customerName, invoiceNumber, issueDate, followUpDate, items, total, amountPaid, pdf, payUrl } = params;
+        const FONT_STACK = "'DM Sans','Figtree',-apple-system,sans-serif";
+        const esc = (s: string) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const money = (n: number) => `K${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+        const prettyDate = (iso: string) => {
+            const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+            return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }) : iso;
+        };
+        const balance = Math.max(0, total - (amountPaid || 0));
+
+        const rows = items.map(it => {
+            const stay = it.check_in && it.check_out ? `${esc(it.check_in)} → ${esc(it.check_out)} · ${it.quantity} night(s)` : `x${it.quantity}`;
+            return `
+                <tr>
+                    <td style="padding:14px 22px; border-bottom:1px solid #F0F2F4; font-size:14px; color:#16181D; font-weight:600;">
+                        ${esc(it.name)}
+                        <div style="font-size:12px; color:#7A8189; font-weight:500; margin-top:2px;">${stay}</div>
+                    </td>
+                    <td style="padding:14px 22px; border-bottom:1px solid #F0F2F4; font-size:14px; font-weight:700; text-align:right; white-space:nowrap;">${money(it.unit_price * it.quantity)}</td>
+                </tr>`;
+        }).join('');
+
+        const html = `
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+            <body style="margin:0; background:#EAECEF; font-family:${FONT_STACK}; color:#16181D;">
+                <div style="max-width:640px; margin:0 auto; padding:32px 16px;">
+                    <div style="background:#fff; border:1px solid #E2E5E9; border-radius:14px; overflow:hidden; box-shadow:0 30px 60px -30px rgba(22,24,29,0.28);">
+                        <div style="padding:30px 44px 8px; text-align:center;">
+                            ${orgLogoUrl ? `<img src="${esc(orgLogoUrl)}" alt="${esc(orgName)}" style="height:40px; width:auto; max-width:140px; object-fit:contain; margin-bottom:10px;">` : ''}
+                            <div style="font-size:19px; font-weight:800; letter-spacing:-0.02em;">${esc(orgName)}</div>
+                        </div>
+                        <div style="padding:20px 44px 8px; text-align:center;">
+                            <div style="font-size:15px; font-weight:700; color:#006AFF;">Invoice ${esc(invoiceNumber)}</div>
+                            <div style="font-size:15px; color:#5C636B; margin-top:8px;">Hi ${esc(customerName)}, here is your invoice from <strong style="color:#16181D;">${esc(orgName)}</strong>. A PDF copy is attached.</div>
+                            <div style="margin:18px auto 4px;">
+                                <div style="font-size:12px; color:#7A8189; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;">Amount due</div>
+                                <div style="font-size:48px; font-weight:900; letter-spacing:-0.03em; line-height:1.1;">${money(balance)}</div>
+                                <div style="font-size:13px; color:#5C636B; margin-top:6px;">Invoice date ${esc(prettyDate(issueDate))} · Payment follow-up <strong style="color:#16181D;">${esc(prettyDate(followUpDate))}</strong></div>
+                            </div>
+                        </div>
+                        <div style="padding:12px 44px 4px;">
+                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #EAECEF; border-radius:16px; border-collapse:separate; overflow:hidden;">
+                                ${rows}
+                                <tr>
+                                    <td style="padding:16px 22px; font-size:15px; font-weight:800;">Total</td>
+                                    <td style="padding:16px 22px; font-size:15px; font-weight:900; text-align:right;">${money(total)}</td>
+                                </tr>
+                            </table>
+                        </div>
+                        ${payUrl ? `<div style="padding:26px 44px 0; text-align:center;">
+                            <a href="${esc(payUrl)}" style="display:block; background:#006AFF; color:#fff; font-size:16px; font-weight:800; padding:17px 24px; border-radius:12px; text-decoration:none; font-family:${FONT_STACK};">Pay now</a>
+                            <div style="font-size:12px; color:#9AA0A7; margin-top:12px; word-break:break-all;">${esc(payUrl)}</div>
+                        </div>` : ''}
+                        <div style="margin-top:22px; padding:20px 44px 30px; border-top:1px solid #F0F2F4; text-align:center;">
+                            <div style="font-size:12px; color:#9AA0A7; line-height:1.6;">${payUrl ? 'Pay securely online with the button above, or contact' : 'Please contact'} ${esc(orgName)} to arrange payment. Powered by MoneyWise.</div>
+                        </div>
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        const sent = await this.sendEmail({
+            to,
+            subject: `Invoice ${invoiceNumber} from ${orgName} — ${money(balance)} due`,
+            html,
+            attachments: [{ filename: `${invoiceNumber}.pdf`, content: pdf }],
+        });
+        console.log(`[EmailService] Customer invoice ${invoiceNumber} ${sent ? 'sent' : 'not sent (no RESEND_API_KEY)'} to ${to}`);
+        return sent;
+    },
+
+    /** Tells the finance team which credit-sale invoices have reached their follow-up date. Returns true if sent. */
+    async notifyInvoiceFollowUps(organizationId: string, invoices: Array<{ invoiceNumber: string; customerName: string; customerPhone?: string | null; followUpDate: string; balance: number }>): Promise<boolean> {
+        if (!invoices.length) return false;
+        const recipients = await this.getEmailsByRoles(organizationId, ['ADMIN', 'ACCOUNTANT', 'CASHIER']);
+        if (!recipients.length) return false;
+        const esc = (x: string) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const money = (n: number) => `K${Number(n).toLocaleString('en-ZM', { minimumFractionDigits: 2 })}`;
+        const today = new Date().toISOString().split('T')[0];
+        const daysLate = (d: string) => Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${d}T00:00:00Z`)) / 86400000);
+        const total = invoices.reduce((s, i) => s + i.balance, 0);
+        const rows = invoices.map(i => `
+            <tr>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;"><strong>${esc(i.customerName)}</strong><br><span style="color:#6b7280;font-size:12px;">${esc(i.invoiceNumber)}${i.customerPhone ? ` · ${esc(i.customerPhone)}` : ''}</span></td>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;">${daysLate(i.followUpDate) > 0 ? `${daysLate(i.followUpDate)} day(s) overdue` : 'Follow up today'}</td>
+                <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;text-align:right;">${money(i.balance)}</td>
+            </tr>`).join('');
+        const body = `
+            <h2 style="color:#006AFF;">Payments to follow up</h2>
+            <p><strong>${invoices.length} invoice${invoices.length !== 1 ? 's have' : ' has'}</strong> reached the follow-up date and ${invoices.length !== 1 ? 'are' : 'is'} still unpaid — ${money(total)} outstanding.</p>
+            <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+                <thead><tr style="background:#f9fafb;">
+                    <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb;">CUSTOMER</th>
+                    <th style="padding:8px 12px;text-align:left;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb;">STATUS</th>
+                    <th style="padding:8px 12px;text-align:right;font-size:12px;color:#6b7280;border-bottom:2px solid #e5e7eb;">BALANCE</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+            <a href="${FRONTEND_URL}/requisitions?inflows=invoices" style="display:inline-block;padding:12px 24px;background-color:#006AFF;color:white;text-decoration:none;border-radius:8px;font-weight:bold;margin-top:8px;">Open invoices</a>
+        `;
+        const sent = await this.sendEmail({
+            to: recipients,
+            subject: `${invoices.length} invoice${invoices.length !== 1 ? 's' : ''} to follow up — ${money(total)} outstanding`,
+            html: this.wrapTemplate(body),
+        });
+        return !!sent;
+    },
+
+    /**
      * Assemble the digital-product delivery for a paid order: for each DIGITAL
      * product bought, either attach its file(s) to the email (small) or, once a
      * running size budget is exceeded, hand back a time-limited signed download

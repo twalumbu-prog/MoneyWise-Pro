@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import jsPDF from 'jspdf';
@@ -30,6 +30,11 @@ import {
     Link2,
     Receipt,
     X,
+    PencilLine,
+    Pencil,
+    FileText,
+    Send,
+    Clock,
 } from 'lucide-react';
 import { calculatePlatformFee } from 'shared';
 import { SegmentedControl } from '../components/AnimatedTabs';
@@ -37,6 +42,10 @@ import BookingCalendar from '../components/BookingCalendar';
 import { productService, paymentLinkService, Product, BookingRange, isBookingProductType, getBookingTerminology } from '../services/product.service';
 import { organizationService, Organization } from '../services/organization.service';
 import { cashbookService } from '../services/cashbook.service';
+import { accountService, Account } from '../services/account.service';
+import { invoiceService, CustomerInvoice, InvoicePayLink } from '../services/invoice.service';
+import { CustomerPicker } from '../components/sales/CustomerPicker';
+import { CustomItemModal, CustomLine } from '../components/sales/CustomItemModal';
 import { lencoService } from '../services/lenco.service';
 import { useDebounce } from 'use-debounce';
 import { useVirtualizer } from '@tanstack/react-virtual';
@@ -81,12 +90,16 @@ const parseMethod = (value: string): ParsedMethod => {
 
 export const NewSale: React.FC = () => {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const [searchParams] = useSearchParams();
     // "Link mode": instead of charging now, build an invoice and generate a
     // one-time payment link (optionally emailed). Opened from the wallet Share
     // modal's "OTP Link" button, which passes the settlement wallet.
     const isLinkMode = searchParams.get('mode') === 'link';
     const linkWalletId = searchParams.get('wallet');
+    // "Credit mode": a credit sale / invoice. Revenue is recorded now against Accounts Receivable and the
+    // customer pays later (the payment is applied to the invoice from the wallet). No payment step.
+    const isCreditMode = searchParams.get('mode') === 'credit';
 
     type Step = 'LOADING' | 'SHOP' | 'CART' | 'PAYMENT' | 'VERIFYING' | 'SUCCESS' | 'ERROR';
     const [step, setStep] = useState<Step>('LOADING');
@@ -111,6 +124,16 @@ export const NewSale: React.FC = () => {
         queryKey: ['wallets', 'current'],
         queryFn: async () => (await cashbookService.getWallets().catch(() => [])) || [],
     });
+    const accountsQuery = useQuery<Account[]>({
+        queryKey: ['accounts', orgQuery.data?.id],
+        queryFn: () => accountService.getAll(),
+        enabled: !!orgQuery.data?.id,
+        staleTime: 5 * 60_000,
+    });
+    const incomeAccounts = React.useMemo(
+        () => (accountsQuery.data || []).filter(a => a.type === 'INCOME' && a.is_active !== false),
+        [accountsQuery.data]
+    );
     const org = orgQuery.data ?? null;
     const products = productsQuery.data ?? [];
     const mainWalletId = React.useMemo(() => {
@@ -149,6 +172,28 @@ export const NewSale: React.FC = () => {
     const [customerName, setCustomerName] = useState('');
     const [customerPhone, setCustomerPhone] = useState('');
     const [customerEmail, setCustomerEmail] = useState('');
+    // CRM link: set when the customer was picked from (or added to) the CRM.
+    const [customerId, setCustomerId] = useState<string | null>(null);
+
+    // Custom (non-catalogue) lines — "Custom receipt" on a cash sale, "Custom invoice" on a credit sale.
+    const [customLines, setCustomLines] = useState<CustomLine[]>([]);
+    const [customModalOpen, setCustomModalOpen] = useState(false);
+    const [editingCustom, setEditingCustom] = useState<CustomLine | null>(null);
+
+    // Credit sale
+    const [followUpDate, setFollowUpDate] = useState('');
+    const [invoiceNotes, setInvoiceNotes] = useState('');
+    const [emailEInvoice, setEmailEInvoice] = useState(true);
+    const [isRecordingCredit, setIsRecordingCredit] = useState(false);
+    const [createPayLink, setCreatePayLink] = useState(true);
+    const [payLink, setPayLink] = useState<InvoicePayLink | null>(null);
+    const [payLinkBusy, setPayLinkBusy] = useState(false);
+    const [payLinkCopied, setPayLinkCopied] = useState(false);
+    const [creditResult, setCreditResult] = useState<(CustomerInvoice & { customer_created: boolean; email_sent: boolean; email_error: string | null; pay_link_error: string | null }) | null>(null);
+    const [resendEmail, setResendEmail] = useState('');
+    const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+    const [invoiceNotice, setInvoiceNotice] = useState<string | null>(null);
+    const [isDownloadingInvoice, setIsDownloadingInvoice] = useState(false);
 
     // Link mode: invoice-link generation state.
     const [sendEmail, setSendEmail] = useState(true);
@@ -235,9 +280,17 @@ export const NewSale: React.FC = () => {
         })
         .filter(li => li.quantity > 0);
 
-    const subtotal = lineItems.reduce((s, li) => s + li.total, 0);
+    const customTotal = customLines.reduce((s, c) => s + c.quantity * c.unitPrice, 0);
+    const subtotal = lineItems.reduce((s, li) => s + li.total, 0) + customTotal;
     // A booking counts as one cart item regardless of nights.
-    const cartCount = lineItems.reduce((n, li) => n + (li.isBooking ? 1 : li.quantity), 0);
+    const cartCount = lineItems.reduce((n, li) => n + (li.isBooking ? 1 : li.quantity), 0)
+        + customLines.reduce((n, c) => n + (Number.isInteger(c.quantity) ? c.quantity : 1), 0);
+    // One flat list for the receipt PDF (catalogue + custom lines).
+    const receiptLines = [
+        ...lineItems.map(li => ({ name: li.product.name, quantity: li.quantity, unitPrice: li.unitPrice, total: li.total })),
+        ...customLines.map(c => ({ name: c.name, quantity: c.quantity, unitPrice: c.unitPrice, total: c.quantity * c.unitPrice })),
+    ];
+    const cartIsEmpty = lineItems.length === 0 && customLines.length === 0;
     const pendingDonations = lineItems.filter(li => li.isDonation && li.unitPrice <= 0);
 
     const processingFee = subtotal > 0 ? calculatePlatformFee(subtotal) : 0;
@@ -260,10 +313,21 @@ export const NewSale: React.FC = () => {
 
     const productNarration = lineItems.map(li => `${li.product.name} (x${li.quantity})`).join(', ');
 
+    // ── Custom lines ─────────────────────────────────────────────────────────
+    const saveCustomLine = (line: CustomLine) => {
+        setCustomLines(prev => prev.some(c => c.id === line.id) ? prev.map(c => c.id === line.id ? line : c) : [...prev, line]);
+        setCustomModalOpen(false);
+        setEditingCustom(null);
+        setError(null);
+    };
+    const setCustomQty = (id: string, qty: number) =>
+        setCustomLines(prev => qty <= 0 ? prev.filter(c => c.id !== id) : prev.map(c => c.id === id ? { ...c, quantity: qty } : c));
+    const openCustomModal = (line?: CustomLine) => { setEditingCustom(line || null); setCustomModalOpen(true); };
+
     // ── Step transitions ─────────────────────────────────────────────────────
     const goToCart = () => {
         setError(null);
-        if (lineItems.length === 0) { setError('Add at least one product to the cart.'); return; }
+        if (cartIsEmpty) { setError('Add at least one product or custom item to the cart.'); return; }
         setStep('CART');
     };
 
@@ -276,7 +340,135 @@ export const NewSale: React.FC = () => {
         // Link mode collects the customer's name on the Payment step itself.
         if (!isLinkMode && !customerName.trim()) { setError('Enter the customer name to continue.'); return; }
         setManualAmount(subtotal.toFixed(2));
+        // Custom items aren't in the catalogue, so they can only be taken manually (not through MoneyWise POS).
+        if (customLines.length > 0) setPaymentTab('MANUAL');
         setStep('PAYMENT');
+    };
+
+    // ── Credit sale (invoice) ────────────────────────────────────────────────
+    const addDays = (days: number) => {
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const localToday = addDays(0);
+
+    const handleRecordCredit = async () => {
+        setError(null);
+        if (cartIsEmpty) { setError('Add at least one product or custom item.'); return; }
+        if (pendingDonations.length > 0) { setError(`Enter an amount for: ${pendingDonations.map(li => li.product.name).join(', ')}`); return; }
+        if (!customerName.trim()) { setError('Enter the customer name to continue.'); return; }
+        if (!followUpDate) { setError('Enter the payment follow-up date.'); return; }
+        if (followUpDate < localToday) { setError('The follow-up date cannot be in the past.'); return; }
+        const wantsEmail = emailEInvoice && !!customerEmail.trim();
+        if (customerEmail.trim() && !/^\S+@\S+\.\S+$/.test(customerEmail.trim())) { setError('Enter a valid customer email, or clear the field.'); return; }
+
+        const startedAt = Date.now();
+        try {
+            setIsRecordingCredit(true);
+            const res = await invoiceService.create({
+                items: [
+                    ...lineItems.map(li => ({
+                        product_id: li.product.id,
+                        quantity: li.quantity,
+                        price: li.unitPrice,
+                        ...(li.isBooking && li.booking ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut } : {}),
+                    })),
+                    ...customLines.map(c => ({ custom: true, name: c.name, quantity: c.quantity, price: c.unitPrice, income_account_id: c.incomeAccountId })),
+                ],
+                customer: { id: customerId, name: customerName.trim(), phone: customerPhone.trim() || null, email: customerEmail.trim() || null },
+                follow_up_date: followUpDate,
+                issue_date: localToday,
+                notes: invoiceNotes.trim() || null,
+                send_email: wantsEmail,
+                create_pay_link: createPayLink,
+            });
+            setCreditResult(res);
+            setPayLink(res.pay_link);
+            // The receivable account may have just been created, and the invoice + CRM lists have changed.
+            queryClient.invalidateQueries({ queryKey: ['accounts'] });
+            queryClient.invalidateQueries({ queryKey: ['credit-invoices'] });
+            queryClient.invalidateQueries({ queryKey: ['open-invoices'] });
+            queryClient.invalidateQueries({ queryKey: ['crm'] });
+            setResendEmail(res.customer_email || '');
+            trackEvent('credit_sale', 'invoice', 'succeeded', {
+                workflow_id: res.id,
+                organization_id: org?.id || 'unknown',
+                total: res.total,
+                item_count: lineItems.length + customLines.length,
+                emailed: !!res.email_sent,
+                duration_ms: Date.now() - startedAt,
+            });
+            setStep('SUCCESS');
+        } catch (err: any) {
+            console.error('Record credit sale failed:', err);
+            setError(err?.message || 'Failed to record the credit sale. Please try again.');
+        } finally {
+            setIsRecordingCredit(false);
+        }
+    };
+
+    const handleSendInvoice = async () => {
+        if (!creditResult) return;
+        setInvoiceNotice(null);
+        const email = resendEmail.trim();
+        if (!/^\S+@\S+\.\S+$/.test(email)) { setInvoiceNotice('Enter a valid email address.'); return; }
+        try {
+            setIsSendingInvoice(true);
+            await invoiceService.send(creditResult.id, email);
+            setInvoiceNotice(`Invoice sent to ${email}.`);
+        } catch (err: any) {
+            setInvoiceNotice(err?.message || 'Could not send the invoice.');
+        } finally {
+            setIsSendingInvoice(false);
+        }
+    };
+
+    const handleDownloadInvoice = async () => {
+        if (!creditResult) return;
+        try {
+            setIsDownloadingInvoice(true);
+            const blob = await invoiceService.downloadPdf(creditResult.id);
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${creditResult.invoice_number}.pdf`;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(url), 5000);
+        } catch (err: any) {
+            setInvoiceNotice(err?.message || 'Could not download the invoice.');
+        } finally {
+            setIsDownloadingInvoice(false);
+        }
+    };
+
+    const handleCreatePayLink = async () => {
+        if (!creditResult) return;
+        try {
+            setPayLinkBusy(true);
+            setPayLink(await invoiceService.payLink(creditResult.id));
+        } catch (err: any) {
+            setInvoiceNotice(err?.message || 'Could not create the payment link.');
+        } finally {
+            setPayLinkBusy(false);
+        }
+    };
+
+    const copyPayLink = async () => {
+        if (!payLink) return;
+        try {
+            await navigator.clipboard.writeText(payLink.url);
+            setPayLinkCopied(true);
+            setTimeout(() => setPayLinkCopied(false), 2000);
+        } catch { /* clipboard blocked — the field is select-all as a fallback */ }
+    };
+
+    const resetForAnother = () => {
+        setPayLink(null); setPayLinkCopied(false);
+        setQuantities({}); setDonationAmounts({}); setBookingDates({}); setCustomLines([]);
+        setCustomerName(''); setCustomerPhone(''); setCustomerEmail(''); setCustomerId(null);
+        setFollowUpDate(''); setInvoiceNotes(''); setCreditResult(null); setInvoiceNotice(null); setError(null);
+        setStep('SHOP');
     };
 
     // ── Manual sale ──────────────────────────────────────────────────────────
@@ -299,14 +491,17 @@ export const NewSale: React.FC = () => {
             setIsSubmitting(true);
             setError(null);
             const res = await cashbookService.recordManualSale({
-                items: lineItems.map(li => ({
-                    id: li.product.id,
-                    quantity: li.quantity,
-                    price: li.unitPrice,
-                    ...(li.isBooking && li.booking
-                        ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
-                        : {}),
-                })),
+                items: [
+                    ...lineItems.map(li => ({
+                        id: li.product.id,
+                        quantity: li.quantity,
+                        price: li.unitPrice,
+                        ...(li.isBooking && li.booking
+                            ? { check_in: li.booking.checkIn, check_out: li.booking.checkOut }
+                            : {}),
+                    })),
+                    ...customLines.map(c => ({ custom: true, name: c.name, quantity: c.quantity, price: c.unitPrice, income_account_id: c.incomeAccountId })),
+                ],
                 amount,
                 paymentDate,
                 accountType,
@@ -325,7 +520,7 @@ export const NewSale: React.FC = () => {
                 payment_channel: 'manual',
                 method_label: label,
                 total: amount,
-                item_count: lineItems.length,
+                item_count: lineItems.length + customLines.length,
                 customer_name: customerName.trim(),
                 receipt_number: res.referenceNumber,
                 duration_ms: Date.now() - saleStartedAt,
@@ -610,8 +805,8 @@ export const NewSale: React.FC = () => {
 
             let y = 86;
             doc.setFont('Helvetica', 'normal'); doc.setTextColor('#334155');
-            lineItems.forEach((li) => {
-                doc.text(li.product.name, 24, y);
+            receiptLines.forEach((li) => {
+                doc.text(li.name, 24, y);
                 doc.text(String(li.quantity), 110, y, { align: 'center' });
                 doc.text(li.unitPrice.toFixed(2), 145, y, { align: 'right' });
                 doc.text(li.total.toFixed(2), 186, y, { align: 'right' });
@@ -660,7 +855,7 @@ export const NewSale: React.FC = () => {
     // Link mode reuses the sale flow's SHOP/CART screens, but its accent stays
     // blue/black/grey (matching the rest of the app) instead of the sale flow's
     // green "money received" cue.
-    const accent = isLinkMode
+    const accent = (isLinkMode || isCreditMode)
         ? { iconBg: 'bg-blue-50', iconText: 'text-blue-600', spinner: 'text-blue-500', cardBorder: 'border-blue-300', cardBg: 'bg-blue-50/40', priceText: 'text-blue-600', solidBtn: 'bg-blue-600', qtyBtn: 'bg-blue-500', focusBorder: 'focus:border-blue-400' }
         : { iconBg: 'bg-emerald-50', iconText: 'text-emerald-600', spinner: 'text-emerald-500', cardBorder: 'border-emerald-300', cardBg: 'bg-emerald-50/40', priceText: 'text-emerald-600', solidBtn: 'bg-emerald-600', qtyBtn: 'bg-emerald-500', focusBorder: 'focus:border-emerald-400' };
 
@@ -675,7 +870,7 @@ export const NewSale: React.FC = () => {
                 {org && <p className="text-[11px] font-semibold text-slate-400 truncate">{org.name}</p>}
             </div>
             <div className={`h-9 w-9 rounded-xl ${accent.iconBg} ${accent.iconText} flex items-center justify-center flex-shrink-0`}>
-                {isLinkMode ? <Receipt size={18} /> : <ShoppingBag size={18} />}
+                {isLinkMode ? <Receipt size={18} /> : isCreditMode ? <FileText size={18} /> : <ShoppingBag size={18} />}
             </div>
         </div>
     );
@@ -707,8 +902,8 @@ export const NewSale: React.FC = () => {
                 {/* ── SHOP ── */}
                 {step === 'SHOP' && (
                     <>
-                        <Header title="New Sale" onBack={() => navigate('/requisitions')} />
-                        <div className="px-5 pt-4 pb-2">
+                        <Header title={isCreditMode ? 'New Credit Sale' : 'New Sale'} onBack={() => navigate('/requisitions')} />
+                        <div className="px-5 pt-4 pb-2 space-y-2.5">
                             <div className="flex items-center bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3">
                                 <Search size={18} className="text-slate-400 mr-2" />
                                 <input
@@ -718,6 +913,17 @@ export const NewSale: React.FC = () => {
                                     className="flex-1 bg-transparent outline-none text-sm font-semibold text-slate-700 placeholder:text-slate-400"
                                 />
                             </div>
+                            <button
+                                type="button"
+                                onClick={() => openCustomModal()}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50 hover:border-slate-400 text-xs font-bold transition-colors"
+                            >
+                                <PencilLine size={14} />
+                                {isCreditMode ? 'Create custom invoice' : 'Create custom receipt'}
+                                {customLines.length > 0 && (
+                                    <span className="px-1.5 py-0.5 rounded-md bg-slate-900 text-white text-[10px] font-black">{customLines.length}</span>
+                                )}
+                            </button>
                         </div>
                         <div ref={parentRef} className="flex-1 overflow-y-auto px-5 pb-32">
                             {filteredCatalog.length === 0 ? (
@@ -895,29 +1101,100 @@ export const NewSale: React.FC = () => {
                                         </button>
                                     </div>
                                 ))}
+                                {customLines.map(c => (
+                                    <div key={c.id} className="flex items-center gap-3 bg-slate-50 rounded-2xl p-3">
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-[13px] font-bold text-slate-800 truncate flex items-center gap-1.5">
+                                                <span className="truncate">{c.name}</span>
+                                                <span className="flex-shrink-0 text-[9px] font-black uppercase tracking-wide text-slate-500 bg-white border border-slate-200 rounded px-1 py-0.5">Custom</span>
+                                            </div>
+                                            <div className="text-[12px] font-semibold text-slate-400">K{c.unitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })} each</div>
+                                        </div>
+                                        <button onClick={() => openCustomModal(c)} className="h-9 w-9 rounded-xl bg-white border border-slate-200 text-slate-500 flex items-center justify-center" aria-label="Edit custom item">
+                                            <Pencil size={14} />
+                                        </button>
+                                        <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1">
+                                            <button onClick={() => setCustomQty(c.id, c.quantity - 1)} className="h-7 w-7 rounded-lg bg-slate-100 text-slate-600 flex items-center justify-center"><Minus size={14} /></button>
+                                            <span className="w-7 text-center text-sm font-black text-slate-800">{c.quantity}</span>
+                                            <button onClick={() => setCustomQty(c.id, c.quantity + 1)} className={`h-7 w-7 rounded-lg ${accent.qtyBtn} text-white flex items-center justify-center`}><Plus size={14} /></button>
+                                        </div>
+                                        <div className="w-16 text-right text-[13px] font-black text-slate-800">
+                                            K{(c.quantity * c.unitPrice).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </div>
+                                        <button onClick={() => setCustomQty(c.id, 0)} className="text-slate-300 hover:text-rose-500"><Trash2 size={16} /></button>
+                                    </div>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() => openCustomModal()}
+                                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl border border-dashed border-slate-300 text-slate-500 hover:bg-slate-50 text-xs font-bold"
+                                >
+                                    <PencilLine size={14} /> {isCreditMode ? 'Add custom invoice item' : 'Add custom receipt item'}
+                                </button>
                             </div>
 
                             {!isLinkMode && (
                             <div className="space-y-3 pt-2 border-t border-slate-100">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Customer details</label>
+                                <CustomerPicker
+                                    organizationId={org?.id}
+                                    value={{ customerId, name: customerName, phone: customerPhone, email: customerEmail }}
+                                    onChange={(c) => { setCustomerId(c.customerId); setCustomerName(c.name); setCustomerPhone(c.phone); setCustomerEmail(c.email); }}
+                                    showEmail={isCreditMode}
+                                    phonePlaceholder={isCreditMode ? 'Phone number' : 'Phone number (optional for cash)'}
+                                    focusClass={isCreditMode ? 'focus:border-blue-400' : 'focus:border-emerald-400'}
+                                />
+                            </div>
+                            )}
+
+                            {isCreditMode && (
+                            <div className="space-y-3 pt-2 border-t border-slate-100">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">Payment follow-up</label>
                                 <div className="relative">
-                                    <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                     <input
-                                        value={customerName}
-                                        onChange={e => setCustomerName(e.target.value)}
-                                        placeholder="Customer name"
-                                        className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400"
+                                        type="date"
+                                        value={followUpDate}
+                                        min={localToday}
+                                        onChange={e => setFollowUpDate(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
                                     />
                                 </div>
-                                <div className="relative">
-                                    <Smartphone size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                    <input
-                                        value={customerPhone}
-                                        onChange={e => setCustomerPhone(e.target.value)}
-                                        placeholder="Phone number (optional for cash)"
-                                        className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-emerald-400"
-                                    />
+                                <div className="flex gap-2">
+                                    {[7, 14, 30].map(d => (
+                                        <button
+                                            key={d}
+                                            type="button"
+                                            onClick={() => setFollowUpDate(addDays(d))}
+                                            className={`flex-1 py-2 rounded-xl text-[11px] font-bold border transition-colors ${followUpDate === addDays(d) ? 'bg-blue-600 border-blue-600 text-white' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}
+                                        >
+                                            In {d} days
+                                        </button>
+                                    ))}
                                 </div>
+                                <p className="text-[11px] text-slate-400 font-medium px-1 leading-relaxed">The date you’ll follow up on payment. It shows on the invoice and flags it as overdue once it has passed.</p>
+                                <textarea
+                                    value={invoiceNotes}
+                                    onChange={e => setInvoiceNotes(e.target.value)}
+                                    rows={2}
+                                    placeholder="Notes on the invoice (optional)"
+                                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400 resize-none"
+                                />
+                                <button type="button" onClick={() => setEmailEInvoice(v => !v)} className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5">
+                                    <span className="text-[13px] font-bold text-slate-700 flex items-center gap-2 text-left"><Mail size={15} className="text-slate-400 flex-shrink-0" /> Email the e-invoice to the customer</span>
+                                    <span className={`relative w-10 h-6 rounded-full flex-shrink-0 transition-colors ${emailEInvoice ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${emailEInvoice ? 'left-[18px]' : 'left-0.5'}`} />
+                                    </span>
+                                </button>
+                                <button type="button" onClick={() => setCreatePayLink(v => !v)} className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3.5">
+                                    <span className="text-[13px] font-bold text-slate-700 flex items-center gap-2 text-left"><Link2 size={15} className="text-slate-400 flex-shrink-0" /> Create a pay-by-link link to share</span>
+                                    <span className={`relative w-10 h-6 rounded-full flex-shrink-0 transition-colors ${createPayLink ? 'bg-blue-600' : 'bg-slate-300'}`}>
+                                        <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${createPayLink ? 'left-[18px]' : 'left-0.5'}`} />
+                                    </span>
+                                </button>
+                                {emailEInvoice && !customerEmail.trim() && (
+                                    <p className="text-[11px] text-amber-600 font-medium px-1">Add the customer’s email above to send the invoice — you can also send it after recording.</p>
+                                )}
                             </div>
                             )}
                         </div>
@@ -927,9 +1204,20 @@ export const NewSale: React.FC = () => {
                                 <span className="text-lg font-black text-slate-900">K{subtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
                             {error && <p className="text-xs font-semibold text-rose-600 text-center">{error}</p>}
-                            <button onClick={goToPayment} className={`w-full py-4 rounded-2xl ${accent.solidBtn} text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.99]`}>
-                                Continue to Payment <ArrowRight size={18} />
-                            </button>
+                            {isCreditMode ? (
+                                <button
+                                    onClick={handleRecordCredit}
+                                    disabled={isRecordingCredit}
+                                    className={`w-full py-4 rounded-2xl ${accent.solidBtn} text-white font-black text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]`}
+                                >
+                                    {isRecordingCredit ? <Loader2 size={18} className="animate-spin" /> : <FileText size={18} />}
+                                    Record Credit Sale
+                                </button>
+                            ) : (
+                                <button onClick={goToPayment} className={`w-full py-4 rounded-2xl ${accent.solidBtn} text-white font-black text-sm flex items-center justify-center gap-2 active:scale-[0.99]`}>
+                                    Continue to Payment <ArrowRight size={18} />
+                                </button>
+                            )}
                         </div>
                     </>
                 )}
@@ -991,10 +1279,12 @@ export const NewSale: React.FC = () => {
                                 variant="pill"
                                 value={paymentTab}
                                 onChange={(v) => { setPaymentTab(v as 'MANUAL' | 'POS'); setError(null); }}
-                                options={[
-                                    { value: 'MANUAL', label: 'Manual' },
-                                    { value: 'POS', label: 'MoneyWise POS' },
-                                ]}
+                                options={customLines.length > 0
+                                    ? [{ value: 'MANUAL', label: 'Manual (custom items)' }]
+                                    : [
+                                        { value: 'MANUAL', label: 'Manual' },
+                                        { value: 'POS', label: 'MoneyWise POS' },
+                                    ]}
                             />
 
                             {paymentTab === 'MANUAL' ? (
@@ -1229,7 +1519,99 @@ export const NewSale: React.FC = () => {
                 )}
 
                 {/* ── SUCCESS: recorded sale ── */}
-                {step === 'SUCCESS' && !(isLinkMode && generatedLink) && (
+                {step === 'SUCCESS' && isCreditMode && creditResult && (
+                    <div className="flex-1 flex flex-col items-center p-8 min-h-[70vh] text-center overflow-y-auto">
+                        <div className="h-20 w-20 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mb-5 mt-4 animate-in zoom-in-75 duration-300">
+                            <FileText size={38} strokeWidth={2.2} />
+                        </div>
+                        <h3 className="text-xl font-black text-slate-900">Credit Sale Recorded</h3>
+                        <p className="text-xs text-slate-400 font-semibold mt-1">Invoice {creditResult.invoice_number}</p>
+
+                        <div className="bg-slate-50 border border-slate-100 rounded-2xl p-5 text-left text-xs space-y-2.5 w-full max-w-sm mt-6">
+                            <div className="flex justify-between font-semibold text-slate-400"><span>Customer</span><span className="font-bold text-slate-700">{creditResult.customer_name}</span></div>
+                            <div className="flex justify-between font-semibold text-slate-400"><span>Payment follow-up</span><span className="font-bold text-slate-700">{new Date(`${creditResult.follow_up_date}T00:00:00`).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}</span></div>
+                            <div className="flex justify-between font-semibold text-slate-400 pt-2 border-t border-slate-100"><span>Amount owed</span><span className="font-black text-blue-600">K{Number(creditResult.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
+                        </div>
+                        <div className="w-full max-w-sm mt-3 space-y-1.5 text-[11px] font-semibold text-slate-400 text-left px-1">
+                            <p className="flex items-start gap-1.5"><CheckCircle2 size={13} className="text-emerald-500 mt-px flex-shrink-0" /> Recorded as income and as an Accounts Receivable balance.</p>
+                            {creditResult.customer_created && <p className="flex items-start gap-1.5"><CheckCircle2 size={13} className="text-emerald-500 mt-px flex-shrink-0" /> {creditResult.customer_name} was added to your CRM.</p>}
+                            {creditResult.email_sent && <p className="flex items-start gap-1.5"><CheckCircle2 size={13} className="text-emerald-500 mt-px flex-shrink-0" /> E-invoice emailed to {creditResult.customer_email}.</p>}
+                            {!creditResult.email_sent && creditResult.email_error && <p className="flex items-start gap-1.5 text-amber-600"><AlertCircle size={13} className="mt-px flex-shrink-0" /> E-invoice not sent: {creditResult.email_error}</p>}
+                            <p className="flex items-start gap-1.5"><Clock size={13} className="text-slate-300 mt-px flex-shrink-0" /> When they pay, open the money in your wallet and classify it as Accounts Receivable to apply it to this invoice.</p>
+                        </div>
+
+                        <div className="w-full max-w-sm mt-5 text-left">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-2">Pay-by-link link</label>
+                            {payLink ? (
+                                <>
+                                    <div className="relative flex items-center">
+                                        <input
+                                            readOnly
+                                            value={payLink.url}
+                                            onFocus={e => e.currentTarget.select()}
+                                            className="w-full pl-4 pr-24 py-3.5 bg-white border border-slate-300 rounded-full text-xs font-medium text-gray-600 outline-none select-all"
+                                        />
+                                        <button
+                                            onClick={copyPayLink}
+                                            className={`absolute right-1.5 px-3.5 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${payLinkCopied ? 'bg-blue-600 text-white' : 'bg-zinc-100 text-black hover:bg-zinc-200'}`}
+                                        >
+                                            {payLinkCopied ? <><Check size={14} strokeWidth={3} /> Copied</> : <><Copy size={14} /> Copy</>}
+                                        </button>
+                                    </div>
+                                    <p className="text-[11px] text-slate-400 font-medium mt-1.5 px-1 leading-relaxed">The customer pays K{Number(payLink.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })} online and the payment is applied to this invoice automatically.</p>
+                                </>
+                            ) : (
+                                <button
+                                    onClick={handleCreatePayLink}
+                                    disabled={payLinkBusy}
+                                    className="w-full py-3 rounded-2xl border border-dashed border-slate-300 text-slate-600 hover:bg-slate-50 text-xs font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+                                >
+                                    {payLinkBusy ? <Loader2 size={14} className="animate-spin" /> : <Link2 size={14} />} Create pay-by-link link
+                                </button>
+                            )}
+                            {creditResult.pay_link_error && !payLink && <p className="text-[11px] font-semibold text-amber-600 mt-1.5 px-1">{creditResult.pay_link_error}</p>}
+                        </div>
+
+                        <div className="w-full max-w-sm mt-5 space-y-2.5 text-left">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400">{creditResult.email_sent ? 'Send a copy again' : 'Send the e-invoice'}</label>
+                            <div className="flex gap-2">
+                                <div className="relative flex-1">
+                                    <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                    <input
+                                        type="email"
+                                        value={resendEmail}
+                                        onChange={e => setResendEmail(e.target.value)}
+                                        placeholder="customer@email.com"
+                                        className="w-full pl-9 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-700 outline-none focus:border-blue-400"
+                                    />
+                                </div>
+                                <button
+                                    onClick={handleSendInvoice}
+                                    disabled={isSendingInvoice}
+                                    className="px-4 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center gap-1.5 disabled:opacity-50"
+                                >
+                                    {isSendingInvoice ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />} Send
+                                </button>
+                            </div>
+                            {invoiceNotice && <p className="text-[11px] font-semibold text-slate-500 px-1">{invoiceNotice}</p>}
+                        </div>
+
+                        <div className="w-full max-w-sm mt-5 space-y-2.5">
+                            <button
+                                onClick={handleDownloadInvoice}
+                                disabled={isDownloadingInvoice}
+                                className="w-full py-3.5 rounded-2xl bg-slate-900 text-white font-bold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                                {isDownloadingInvoice ? <Loader2 size={16} className="animate-spin" /> : <Download size={16} />}
+                                Download Invoice (PDF)
+                            </button>
+                            <button onClick={() => navigate('/requisitions?inflows=invoices')} className="w-full py-3.5 rounded-2xl bg-blue-600 text-white font-black text-sm">View Invoices</button>
+                            <button onClick={resetForAnother} className="w-full py-2.5 text-slate-400 font-bold text-xs uppercase tracking-wider">Record another credit sale</button>
+                        </div>
+                    </div>
+                )}
+
+                {step === 'SUCCESS' && !isCreditMode && !(isLinkMode && generatedLink) && (
                     <div className="flex-1 flex flex-col items-center justify-center p-8 min-h-[70vh] text-center">
                         <div className="h-20 w-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-5 animate-in zoom-in-75 duration-300">
                             <CheckCircle2 size={40} strokeWidth={2.5} />
@@ -1265,6 +1647,15 @@ export const NewSale: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            <CustomItemModal
+                isOpen={customModalOpen}
+                kind={isCreditMode ? 'invoice' : 'receipt'}
+                incomeAccounts={incomeAccounts}
+                initial={editingCustom}
+                onSave={saveCustomLine}
+                onClose={() => { setCustomModalOpen(false); setEditingCustom(null); }}
+            />
 
             {/* Booking date calendar overlay */}
             {calendarProduct && (

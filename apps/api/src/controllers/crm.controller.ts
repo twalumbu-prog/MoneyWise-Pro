@@ -72,6 +72,13 @@ export const listCustomers = async (req: any, res: Response): Promise<any> => {
             .eq('organization_id', organization_id)
             .order('created_at', { ascending: false });
 
+        // 5. Credit-sale invoices (accounts receivable) — outstanding balances count as owing.
+        const { data: creditInvoices = [] } = await supabase
+            .from('customer_invoices')
+            .select('id, customer_id, customer_name, customer_phone, customer_email, total, amount_paid, status')
+            .eq('organization_id', organization_id)
+            .in('status', ['OPEN', 'PARTIAL']);
+
         const activeLinksList = (links || []).filter(l => l.status === 'ACTIVE');
         const paidSalesList = (sales || []).filter(s => s.status !== 'FAILED');
         const paidLinksList = (links || []).filter(l => l.status === 'PAID');
@@ -196,8 +203,10 @@ export const listCustomers = async (req: any, res: Response): Promise<any> => {
         // Compute metrics for each customer
         const result: CustomerWithStats[] = uniqueCustomers.map(customer => {
             const matchingActiveLinks = activeLinksList.filter(l => isMatch(customer, l.customer_name, l.customer_phone, l.customer_email));
-            const openInvoicesCount = matchingActiveLinks.length;
-            const owingAmount = matchingActiveLinks.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+            const matchingCredit = (creditInvoices || []).filter(i => i.customer_id === customer.id || isMatch(customer, i.customer_name, i.customer_phone, i.customer_email));
+            const openInvoicesCount = matchingActiveLinks.length + matchingCredit.length;
+            const owingAmount = matchingActiveLinks.reduce((sum, l) => sum + Number(l.amount || 0), 0)
+                + matchingCredit.reduce((sum, i) => sum + Math.max(0, Number(i.total || 0) - Number(i.amount_paid || 0)), 0);
             const owingStatus = openInvoicesCount > 0 ? 'OWING' : 'CLEAR';
 
             const salesSpend = paidSalesList
@@ -394,9 +403,17 @@ export const getCustomer = async (req: any, res: Response): Promise<any> => {
             .select('*')
             .eq('organization_id', organization_id);
 
+        const { data: creditInvoices } = await supabase
+            .from('customer_invoices')
+            .select('customer_id, customer_name, customer_phone, customer_email, total, amount_paid')
+            .eq('organization_id', organization_id)
+            .in('status', ['OPEN', 'PARTIAL']);
+
         const matchingActiveLinks = (activeLinks || []).filter(l => isMatch(l.customer_name, l.customer_phone, l.customer_email));
-        const openInvoicesCount = matchingActiveLinks.length;
-        const owingAmount = matchingActiveLinks.reduce((sum, l) => sum + Number(l.amount || 0), 0);
+        const matchingCredit = (creditInvoices || []).filter(i => i.customer_id === foundCustomer!.id || isMatch(i.customer_name, i.customer_phone, i.customer_email));
+        const openInvoicesCount = matchingActiveLinks.length + matchingCredit.length;
+        const owingAmount = matchingActiveLinks.reduce((sum, l) => sum + Number(l.amount || 0), 0)
+            + matchingCredit.reduce((sum, i) => sum + Math.max(0, Number(i.total || 0) - Number(i.amount_paid || 0)), 0);
         const owingStatus = openInvoicesCount > 0 ? 'OWING' : 'CLEAR';
 
         const salesSpend = (paidSales || [])
@@ -586,6 +603,28 @@ export const getCustomerTransactions = async (req: any, res: Response): Promise<
                     status: l.status === 'ACTIVE' ? 'OWING' : l.status,
                     reference: l.token,
                     items: l.items || [],
+                });
+            }
+        });
+
+        // Add credit-sale invoices
+        const { data: creditInvoices = [] } = await supabase
+            .from('customer_invoices')
+            .select('*')
+            .eq('organization_id', organization_id)
+            .neq('status', 'VOID');
+        (creditInvoices || []).forEach(i => {
+            if (i.customer_id === id || isMatch(i.customer_name, i.customer_phone, i.customer_email)) {
+                const balance = Math.max(0, Number(i.total || 0) - Number(i.amount_paid || 0));
+                transactions.push({
+                    id: i.id,
+                    type: 'INVOICE',
+                    date: i.created_at,
+                    description: `Credit sale ${i.invoice_number}${balance > 0 && Number(i.amount_paid) > 0 ? ` (K${balance.toFixed(2)} outstanding)` : ''}`,
+                    amount: Number(i.total || 0),
+                    status: i.status === 'PAID' ? 'PAID' : 'OWING',
+                    reference: i.invoice_number,
+                    items: i.items || [],
                 });
             }
         });

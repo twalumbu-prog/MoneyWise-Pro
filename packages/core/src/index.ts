@@ -154,6 +154,17 @@ export type {
 } from './services/payroll.service';
 
 export { crmService } from './services/crm.service';
+
+export { invoiceService } from './services/invoice.service';
+export type {
+    CustomerInvoice,
+    InvoiceLine,
+    InvoiceStatus,
+    InvoicePaymentRow,
+    CreateCreditSaleInput,
+    EntryAllocation,
+    InvoicePayLink,
+} from './services/invoice.service';
 export type {
     Customer,
     CustomerTransaction,

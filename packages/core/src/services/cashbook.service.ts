@@ -189,7 +189,7 @@ export const cashbookService = {
     },
 
     async recordManualSale(payload: {
-        items: Array<{ id: string; quantity: number; price: number; check_in?: string; check_out?: string }>;
+        items: Array<{ id?: string; quantity: number; price: number; check_in?: string; check_out?: string; custom?: boolean; name?: string; income_account_id?: string | null }>;
         amount: number;
         paymentDate: string;
         accountType: 'CASH' | 'AIRTEL_MONEY' | 'BANK';

@@ -941,6 +941,53 @@ const getSalesSummary: ToolDefinition = {
     },
 };
 
+const listReceivables: ToolDefinition = {
+    name: 'list_receivables',
+    description:
+        'Accounts receivable: credit-sale invoices customers still owe, grouped by customer, with how overdue ' +
+        'each is (follow-up date passed). Use for "who owes us", "overdue invoices", or "what is receivable".',
+    effect: 'read',
+    parameters: {
+        type: 'object',
+        properties: {
+            customer: { type: 'string', description: 'Partial customer name match.' },
+            overdueOnly: { type: 'boolean', description: 'Only invoices whose follow-up date has passed.' },
+        },
+    },
+    handler: async (ctx, args) => {
+        let q = supabase
+            .from('customer_invoices')
+            .select('invoice_number, customer_name, issue_date, follow_up_date, total, amount_paid, status')
+            .eq('organization_id', ctx.organizationId)
+            .in('status', ['OPEN', 'PARTIAL'])
+            .order('follow_up_date', { ascending: true })
+            .limit(MAX_ROWS);
+        if (args.customer) q = q.ilike('customer_name', `%${args.customer}%`);
+        const { data, error } = await q;
+        if (error) throw new Error(error.message);
+
+        const today = new Date(`${ctx.today}T00:00:00Z`).getTime();
+        const rows = (data ?? []).map(i => {
+            const balance = Number((money(i.total) - money(i.amount_paid)).toFixed(2));
+            const daysOverdue = Math.round((today - new Date(`${i.follow_up_date}T00:00:00Z`).getTime()) / 86400000);
+            return { invoice: i.invoice_number, customer: i.customer_name, issued: i.issue_date, follow_up_date: i.follow_up_date, total: money(i.total), paid: money(i.amount_paid), balance, days_overdue: Math.max(0, daysOverdue), status: i.status };
+        }).filter(r => r.balance > 0 && (!args.overdueOnly || r.days_overdue > 0));
+
+        const byCustomer = new Map<string, { customer: string; owed: number; invoices: number; overdue: number }>();
+        for (const r of rows) {
+            const c = byCustomer.get(r.customer) ?? { customer: r.customer, owed: 0, invoices: 0, overdue: 0 };
+            c.owed += r.balance; c.invoices += 1; if (r.days_overdue > 0) c.overdue += r.balance;
+            byCustomer.set(r.customer, c);
+        }
+        return {
+            total_receivable: Number(rows.reduce((s, r) => s + r.balance, 0).toFixed(2)),
+            total_overdue: Number(rows.filter(r => r.days_overdue > 0).reduce((s, r) => s + r.balance, 0).toFixed(2)),
+            by_customer: [...byCustomer.values()].map(c => ({ ...c, owed: Number(c.owed.toFixed(2)), overdue: Number(c.overdue.toFixed(2)) })).sort((a, b) => b.owed - a.owed),
+            invoices: rows,
+        };
+    },
+};
+
 export const readTools: ToolDefinition[] = [
     getOrgOverview,
     searchRequisitions,
@@ -953,4 +1000,5 @@ export const readTools: ToolDefinition[] = [
     listScheduledItems,
     listAccounts,
     getSalesSummary,
+    listReceivables,
 ];
