@@ -569,7 +569,6 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
                 // per-minute tick.
                 const summary = await syncMasterfeesPayments(row.organization_id, perOrgDeadline, { onlyMissing: true, includeInvoices: true });
                 const foundActivity = summary.payments.posted + summary.payments.reclassified + (summary.payments.reversed ?? 0) + summary.invoices.posted > 0;
-                await recordMasterFeesSyncAttempt(row.organization_id, foundActivity);
                 // Automatic QuickBooks posting (invoices, then payments) for orgs that have opted in. Never throws into the sync.
                 let qb: any = undefined;
                 if ((row.config as any)?.qbAutoPost?.enabled) {
@@ -579,6 +578,9 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
                         if (r.invoices.failed || r.payments.failed) console.warn('[MasterFees→QB] failures', JSON.stringify(r.decisions.filter(d => d.outcome === 'FAILED').slice(0, 5)));
                     } catch (e: any) { qb = { error: e.message }; console.error('[MasterFees→QB] auto-post error:', e.message); }
                 }
+                // QuickBooks work counts as activity too, so the back-off keeps ticking quickly while a backlog is being posted.
+                const qbActivity = !!qb && ((qb.invoices?.created ?? 0) + (qb.invoices?.linked ?? 0) + (qb.payments?.posted ?? 0) > 0);
+                await recordMasterFeesSyncAttempt(row.organization_id, foundActivity || qbActivity);
                 results.push({ organizationId: row.organization_id, success: true, summary, qb });
             } catch (err: any) {
                 results.push({ organizationId: row.organization_id, success: false, error: err.message });
