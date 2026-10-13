@@ -118,9 +118,17 @@ export async function runQuickBooksAutoPost(
                 const mfNum = String(inv.invoice_number || inv.invoice_id).trim(); const index = buildMfNumberIndex(custInvs);
                 const items = (inv.items?.length ? inv.items : [{ description: mfNum, amount: inv.total_amount, category: '' }]).filter((i: any) => Number(i.amount) > 0);
                 const ids: string[] = []; let created = 0; let blocked = '';
+                // Master Fees discount / prize lines are negative. They reduce what is owed, so QuickBooks must carry the NET amount.
+                const discounts = (inv.items ?? []).filter((i: any) => Number(i.amount) < 0); const discTotal = discounts.reduce((sx: number, i: any) => sx + Number(i.amount), 0);
+                if (discTotal < 0 && items.length !== 1) { await review(`Invoice has a discount (${money(discTotal)}) across ${items.length} priced fee items — which item it reduces needs a person`); return; }
                 for (const it of items) {
-                    const amt = Number(it.amount); const link = findQbInvoiceForItem(mfNum, it.description || '', amt, custInvs, index, claimed, { mfTerm: inv.term ?? null });
+                    const gross = Number(it.amount); const amt = gross + (discTotal < 0 ? discTotal : 0);
+                    const link = findQbInvoiceForItem(mfNum, it.description || '', amt, custInvs, index, claimed, { mfTerm: inv.term ?? null });
                     if (link.tier !== 'NONE' && link.invoice) { ids.push(link.invoice.id); claimed.add(link.invoice.id); continue; }
+                    if (discTotal < 0) {
+                        const g = findQbInvoiceForItem(mfNum, it.description || '', gross, custInvs, index, claimed, { mfTerm: inv.term ?? null });
+                        if (g.tier !== 'NONE' && g.invoice) { blocked = `QuickBooks has this fee at the full ${money(gross)} (invoice #${g.invoice.docNumber || g.invoice.id}) but Master Fees applied a ${money(discTotal)} discount (net ${money(amt)}) — the discount needs applying in QuickBooks; not changed automatically`; break; }
+                    }
                     // not in QuickBooks — create only if nothing for the same fee exists around that date (monthly-pieces guard)
                     const fam = famOf(`${it.category || ''} ${it.description || ''}`); const issued = inv.date_issued || inv.due_date; const due = inv.due_date || issued;
                     const sameFee = custInvs.filter(q => (near(q.date, issued) || near(q.date, due)) && (qbTermOf(q) == null || inv.term == null || Number(qbTermOf(q)) === Number(inv.term))
@@ -130,7 +138,7 @@ export async function runQuickBooksAutoPost(
                     const choice = chooseQbItem(it.description || '', it.category || '', inv.student?.grade || ''); const itemId = choice.itemName ? resolveItemId(choice.itemName, await getItems(organizationId)) : null;
                     if (!itemId) { blocked = `No QuickBooks item mapping for "${it.description}" (${it.category || 'no category'})`; break; }
                     if (dryRun) { ids.push('(would-create)'); created++; continue; }
-                    const r = await QuickBooksService.createInvoice(organizationId, { customerId: m.match!.id, txnDate: String(issued).slice(0, 10), lines: [{ amount: amt, itemId, description: it.description || '' }], privateNote: `${AUDIT_NOTE}${mfNum}` });
+                    const r = await QuickBooksService.createInvoice(organizationId, { customerId: m.match!.id, txnDate: String(issued).slice(0, 10), lines: [{ amount: amt, itemId, description: `${it.description || ''}${discTotal < 0 ? ` (net of ${discounts.map((d: any) => `${String(d.description || 'discount').slice(0, 40)} ${d.amount}`).join('; ')})` : ''}` }], privateNote: `${AUDIT_NOTE}${mfNum}` });
                     if (!r.success) { blocked = `QuickBooks rejected the invoice: ${JSON.stringify(r.error).slice(0, 200)}`; result.invoices.failed++; break; }
                     ids.push(String(r.qbId)); created++; budget--; customerInvoices.delete(m.match!.id); // the cached list is now stale
                 }
