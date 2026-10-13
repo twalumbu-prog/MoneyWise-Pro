@@ -1641,4 +1641,43 @@ export class QuickBooksService {
                 })),
         }));
     }
+
+    /** Normalise a raw QuickBooks Invoice (same shape fetchInvoices returns). */
+    private static mapInvoice(inv: any) {
+        return {
+            id: inv.Id ?? '', docNumber: inv.DocNumber ?? '', date: inv.TxnDate ?? '',
+            customerId: inv.CustomerRef?.value ?? '', customerName: inv.CustomerRef?.name ?? '', customerEmail: inv.BillEmail?.Address ?? '',
+            memo: inv.CustomerMemo?.value ?? '', privateNote: inv.PrivateNote ?? '', totalAmt: inv.TotalAmt ?? 0, balance: inv.Balance ?? 0,
+            lines: (inv.Line ?? []).filter((l: any) => l.DetailType === 'SalesItemLineDetail' && (l.Amount ?? 0) > 0).map((l: any, i: number) => ({
+                lineNum: l.LineNum ?? i + 1, amount: l.Amount ?? 0, itemName: l.SalesItemLineDetail?.ItemRef?.name ?? '', itemId: l.SalesItemLineDetail?.ItemRef?.value ?? '',
+                description: l.Description ?? '', qty: l.SalesItemLineDetail?.Qty ?? 1, unitPrice: l.SalesItemLineDetail?.UnitPrice ?? l.Amount ?? 0,
+            })),
+        };
+    }
+
+    private static async runQuery(organizationId: string, query: string): Promise<any> {
+        const { accessToken, realmId } = await this.getValidToken(organizationId);
+        const { apiBase } = this.getEnv();
+        const res = await fetch(`${apiBase}/${realmId}/query?query=${encodeURIComponent(query)}&minorversion=65`, { headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' } });
+        if (!res.ok) throw new Error(`[QB query] failed (${res.status}): ${(await res.text()).slice(0, 300)}`);
+        return (await res.json()).QueryResponse ?? {};
+    }
+
+    /** Every invoice for ONE customer (cheap alternative to fetching the whole file per sync tick). */
+    static async fetchInvoicesForCustomer(organizationId: string, customerId: string) {
+        const safe = String(customerId).replace(/[^0-9]/g, '');
+        const out: any[] = [];
+        for (let pos = 1; ; pos += 500) {
+            const r = await this.runQuery(organizationId, `SELECT * FROM Invoice WHERE CustomerRef = '${safe}' STARTPOSITION ${pos} MAXRESULTS 500`);
+            const b: any[] = r.Invoice ?? []; out.push(...b); if (b.length < 500) break;
+        }
+        return out.map(i => this.mapInvoice(i));
+    }
+
+    /** A customer's QuickBooks payments since a date (raw shape: Id, TxnDate, TotalAmt, DepositToAccountRef, Line[].LinkedTxn). */
+    static async fetchPaymentsForCustomer(organizationId: string, customerId: string, sinceDate: string): Promise<any[]> {
+        const safe = String(customerId).replace(/[^0-9]/g, ''); const since = String(sinceDate).slice(0, 10).replace(/[^0-9-]/g, '');
+        const r = await this.runQuery(organizationId, `SELECT * FROM Payment WHERE CustomerRef = '${safe}' AND TxnDate >= '${since}' MAXRESULTS 500`);
+        return r.Payment ?? [];
+    }
 }

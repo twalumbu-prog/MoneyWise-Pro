@@ -16,6 +16,7 @@ import {
     purgeMasterFeesData,
     MasterFeesConfig,
 } from '../services/masterfees.service';
+import { runQuickBooksAutoPost } from '../services/masterfees_qb.service';
 
 // ── OAuth helpers ─────────────────────────────────────────────────────────────
 
@@ -566,10 +567,19 @@ export const syncAllMasterFees = async (req: Request, res: Response) => {
                 // demand via the "Sync Now" button (syncMasterFeesNow ->
                 // syncMasterfees, unchanged) — this only lightens the automatic
                 // per-minute tick.
-                const summary = await syncMasterfeesPayments(row.organization_id, perOrgDeadline, { onlyMissing: true });
-                const foundActivity = summary.payments.posted + summary.payments.reclassified > 0;
+                const summary = await syncMasterfeesPayments(row.organization_id, perOrgDeadline, { onlyMissing: true, includeInvoices: true });
+                const foundActivity = summary.payments.posted + summary.payments.reclassified + (summary.payments.reversed ?? 0) + summary.invoices.posted > 0;
                 await recordMasterFeesSyncAttempt(row.organization_id, foundActivity);
-                results.push({ organizationId: row.organization_id, success: true, summary });
+                // Automatic QuickBooks posting (invoices, then payments) for orgs that have opted in. Never throws into the sync.
+                let qb: any = undefined;
+                if ((row.config as any)?.qbAutoPost?.enabled) {
+                    try {
+                        const r = await runQuickBooksAutoPost(row.organization_id, { deadline: START + GLOBAL_BUDGET_MS });
+                        qb = { invoices: r.invoices, payments: r.payments, skipped: r.skipped };
+                        if (r.invoices.failed || r.payments.failed) console.warn('[MasterFees→QB] failures', JSON.stringify(r.decisions.filter(d => d.outcome === 'FAILED').slice(0, 5)));
+                    } catch (e: any) { qb = { error: e.message }; console.error('[MasterFees→QB] auto-post error:', e.message); }
+                }
+                results.push({ organizationId: row.organization_id, success: true, summary, qb });
             } catch (err: any) {
                 results.push({ organizationId: row.organization_id, success: false, error: err.message });
             }

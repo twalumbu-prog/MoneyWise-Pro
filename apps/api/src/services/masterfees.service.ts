@@ -178,6 +178,20 @@ export interface MasterFeesConfig {
      *  a quiet org backs off, since Master Fees' API returns unsorted results
      *  and can't be paginated incrementally — every sync is a full walk. */
     lastSyncActivityAt?: string;
+    /** Last time the incremental invoice pass completed (throttles it to INVOICE_DELTA_MIN_INTERVAL_MS). */
+    lastInvoiceSyncAt?: string;
+    /** Automatic QuickBooks posting (masterfees_qb.service.ts). Absent/disabled = off. */
+    qbAutoPost?: {
+        enabled: boolean;
+        /** Only items dated on/after this day are auto-posted (history is reconciled separately). YYYY-MM-DD */
+        from: string;
+        /** Decide and log, but write nothing to QuickBooks or the database. */
+        dryRun?: boolean;
+        /** Max QuickBooks writes per cron tick. Default 8. */
+        maxPerTick?: number;
+        /** cashbook mf_payment_channel -> QuickBooks bank account id, e.g. {'BANK:zanaco':'63','LENCO':'1150040065'} */
+        depositAccounts?: Record<string, string>;
+    };
     lastSyncError?: string | null;
     /** True when the most recent sync hit Master Fees' undocumented 1000-row
      *  API cap — see MF_ROW_CAP. Persisted so the "connected" status banner can
@@ -884,7 +898,10 @@ async function postInvoice(
     let allocated = 0;
     for (const item of items) {
         const amt = num(item.amount);
-        if (amt <= 0) continue;
+        // Negative lines are discounts / prizes ("Three-Child Discount", "Wheel Prize: 15% off"). They MUST reduce income:
+        // skipping them credited income at the gross figure while receivables were debited at the net total, so the journal
+        // never balanced and the whole invoice was refused (21 invoices / 20 payments hit this, found 2026-10-13).
+        if (Math.abs(amt) < TOLERANCE) continue;
         const category = resolveItemCategory(item, categoriesByName);
         const acct = await getIncomeAccountForCategory(organizationId, config, category);
         incomeByAccount.set(acct, (incomeByAccount.get(acct) || 0) + amt);
@@ -900,7 +917,8 @@ async function postInvoice(
 
     const lines = [
         { account_id: receivableId, debit: total, credit: 0 },
-        ...Array.from(incomeByAccount.entries()).map(([account_id, amt]) => ({ account_id, debit: 0, credit: amt })),
+        // positive net = income credit; negative net (discounts) = income debit
+        ...Array.from(incomeByAccount.entries()).map(([account_id, amt]) => (amt >= 0 ? { account_id, debit: 0, credit: amt } : { account_id, debit: -amt, credit: 0 })),
     ];
 
     const journalId = await postJournal(organizationId, {
@@ -1426,6 +1444,100 @@ export async function syncMasterfees(organizationId: string, deadline: number = 
     }
 }
 
+const INVOICE_DELTA_MIN_INTERVAL_MS = 5 * 60_000;
+
+/**
+ * Incremental invoice sync for the routine cron.
+ *
+ * Why this exists: on 2026-09-02 the cron was made payments-only because the FULL sync
+ * re-walked every already-synced invoice from the top on each pass and starved the payments
+ * loop of its time budget. The side effect was that invoices were then only ever synced
+ * when someone pressed "Sync Now" — after the 2026-09-21 cutover nobody did, so 572 invoices
+ * (K830k) never reached MoneyWise while their PAYMENTS kept arriving and clearing a
+ * receivable that had never been debited.
+ *
+ * This keeps the cheap property (an in-memory diff against masterfees_records, one bulk
+ * query, zero per-invoice DB work for unchanged invoices) and only posts what actually
+ * needs posting: new invoices, amount changes, and void-state changes. Status-only changes
+ * are flushed as grouped updates, exactly like the full sync.
+ */
+async function syncInvoicesDelta(
+    organizationId: string,
+    integrationId: string,
+    config: MasterFeesConfig,
+    client: MasterFeesClient,
+    summary: SyncSummary,
+    deadline: number,
+    opts: { force?: boolean } = {}
+): Promise<void> {
+    if (!opts.force && config.lastInvoiceSyncAt && Date.now() - new Date(config.lastInvoiceSyncAt).getTime() < INVOICE_DELTA_MIN_INTERVAL_MS) return;
+    try {
+        const invoices = await client.getInvoices();
+        if (invoices.length >= MF_ROW_CAP) { summary.truncated = true; summary.errors.push(`invoices: Hit the ${MF_ROW_CAP.toLocaleString()}-record pagination safety ceiling.`); }
+        const priorMap = await loadPriorRecords<PriorInvoiceRecord>(organizationId, 'INVOICE', 'amount, mf_status, journal_entry_id');
+        const needsWork = (inv: MFInvoice): boolean => {
+            const p = priorMap.get(inv.invoice_id);
+            if (!p) return true;
+            const total = num(inv.total_amount);
+            const voided = VOID_STATUSES.has(String(inv.status || '').toLowerCase());
+            const expectJournal = !(voided || total <= 0);
+            if (Math.abs(num(p.amount) - total) >= TOLERANCE || !!p.journal_entry_id !== expectJournal) return true;
+            return (p.mf_status || '') !== (inv.status || '');
+        };
+        const queue = invoices.filter(needsWork);
+        if (queue.length === 0) { await patchConfig(organizationId, { lastInvoiceSyncAt: new Date().toISOString() }); return; }
+
+        const categoriesByName = new Map<string, MFFeeCategory>();
+        try {
+            for (const c of await client.getFeeCategories()) {
+                if (c.name) categoriesByName.set(c.name.trim().toLowerCase(), c);
+                await getIncomeAccountForCategory(organizationId, config, c);
+            }
+        } catch (err: any) { summary.errors.push(`fee-categories: ${err.message}`); }
+
+        const statusUpdates: Array<{ mf_id: string; status: string }> = [];
+        let handled = 0; let deferred = false;
+        for (const inv of queue) {
+            if (Date.now() > deadline) { deferred = true; break; }
+            try {
+                const r = await postInvoice(organizationId, integrationId, config, inv, categoriesByName, priorMap, false, statusUpdates);
+                summary.invoices[r]++;
+            } catch (err: any) { summary.errors.push(`invoice ${inv.invoice_id}: ${err.message}`); }
+            handled++;
+        }
+        const byStatus = new Map<string, string[]>(); for (const u of statusUpdates) (byStatus.get(u.status) ?? byStatus.set(u.status, []).get(u.status)!).push(u.mf_id);
+        const now = new Date().toISOString();
+        for (const [status, ids] of byStatus) for (let i = 0; i < ids.length; i += 200)
+            await supabase.from('masterfees_records').update({ mf_status: status, synced_at: now }).eq('organization_id', organizationId).eq('record_type', 'INVOICE').in('mf_id', ids.slice(i, i + 200));
+        if (deferred) summary.errors.push(`invoices: time budget reached — ${queue.length - handled} invoices deferred to the next cycle.`);
+        else await patchConfig(organizationId, { lastInvoiceSyncAt: new Date().toISOString() });
+        if (summary.invoices.posted + summary.invoices.voided > 0) void broadcastInvalidate(organizationId, ['cashbook-overview', 'wallets']);
+    } catch (err: any) {
+        summary.errors.push(`invoices: ${err.message}`);
+    }
+}
+
+/**
+ * Invoices-only sync (ignores the 5-minute throttle). Same lock and same posting code as the
+ * routine pass — use it to catch up after an outage without touching payments.
+ */
+export async function syncMasterfeesInvoices(organizationId: string, deadline: number = Date.now() + 35_000): Promise<SyncSummary> {
+    const integration = await getMasterFeesIntegration(organizationId);
+    if (!integration) throw new Error('Master Fees is not connected for this organization.');
+    const summary: SyncSummary = {
+        invoices: { posted: 0, skipped: 0, voided: 0 },
+        payments: { posted: 0, reclassified: 0, deferred: 0, skipped: 0 },
+        errors: [], truncated: false,
+    };
+    if (!(await acquireSyncLock(integration.id))) { summary.errors.push('Skipped — a sync for this org is already in progress (concurrent cron tick).'); return summary; }
+    try {
+        const config = integration.config;
+        if (!config.receivableAccountId) { config.receivableAccountId = await getReceivableAccount(organizationId); await patchConfig(organizationId, { receivableAccountId: config.receivableAccountId }); }
+        await syncInvoicesDelta(organizationId, integration.id, config, new MasterFeesClient(config), summary, deadline, { force: true });
+    } finally { await releaseSyncLock(integration.id); }
+    return summary;
+}
+
 /**
  * Payments-only sync, with an optional "just the gap" filter.
  *
@@ -1449,7 +1561,7 @@ export async function syncMasterfees(organizationId: string, deadline: number = 
 export async function syncMasterfeesPayments(
     organizationId: string,
     deadline: number = Date.now() + 35_000,
-    opts: { onlyMissing?: boolean; onlyTransactionIds?: Set<string> } = {}
+    opts: { onlyMissing?: boolean; onlyTransactionIds?: Set<string>; includeInvoices?: boolean } = {}
 ): Promise<SyncSummary> {
     const integration = await getMasterFeesIntegration(organizationId);
     if (!integration) throw new Error('Master Fees is not connected for this organization.');
@@ -1477,6 +1589,13 @@ export async function syncMasterfeesPayments(
         if (!config.receivableAccountId) {
             config.receivableAccountId = await getReceivableAccount(organizationId);
             await patchConfig(organizationId, { receivableAccountId: config.receivableAccountId });
+        }
+
+        // Invoices FIRST, incrementally: only new / amount-changed / voided invoices are posted
+        // (see syncInvoicesDelta), cheap enough for the routine tick, and the receivable exists
+        // before payments clear it. Throttled by INVOICE_DELTA_MIN_INTERVAL_MS.
+        if (opts.includeInvoices) {
+            await syncInvoicesDelta(organizationId, integration.id, config, client, summary, deadline);
         }
 
         const transactions = await client.getTransactions();
