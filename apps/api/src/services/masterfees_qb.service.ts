@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 import { QuickBooksService } from './quickbooks.service';
-import { getMasterFeesIntegration, MasterFeesConfig } from './masterfees.service';
+import { getMasterFeesIntegration, MasterFeesConfig, acquireMasterFeesLock, releaseMasterFeesLock, touchMasterFeesLock } from './masterfees.service';
 import { matchStudentName, NameCandidate } from './masterfees_qb/name_match';
 import { buildMfNumberIndex, findQbInvoiceForItem, normDesc, qbTermOf, QbInvoiceLike } from './masterfees_qb/mf_qb_link';
 import { chooseQbItem, resolveItemId } from './masterfees_qb/fee_mapping';
@@ -34,7 +34,7 @@ export interface AutoPostDecision { kind: 'INVOICE' | 'PAYMENT'; id: string; lab
 export interface AutoPostResult {
     skipped?: string; dryRun: boolean;
     invoices: { linked: number; created: number; review: number; failed: number };
-    payments: { posted: number; review: number; waiting: number; failed: number };
+    payments: { posted: number; linked: number; review: number; waiting: number; failed: number };
     decisions: AutoPostDecision[];
 }
 
@@ -53,22 +53,11 @@ async function getItems(orgId: string): Promise<any[]> {
 const famOf = (t: string) => /bus|transport|route|drop|zone|between|\bchs\d|\blsk\d|\bptc\d|\bcmb\d/i.test(t) ? 'transport' : /canteen|lunch|meal/i.test(t) ? 'canteen' : /uniform/i.test(t) ? 'uniform' : /tuition|grade|class|primary|school fee/i.test(t) ? 'tuition' : 'other';
 const near = (qDate: string, ref: string) => { const x = day(qDate) - day(ref); return x >= -14 && x <= 60; };
 
-/** A claimed QuickBooks payment id is one already recorded against a MoneyWise entry. */
-async function claimedPaymentIds(orgId: string, ids: string[]): Promise<Set<string>> {
-    const claimed = new Set<string>(); if (!ids.length) return claimed;
-    const { data: au } = await supabase.from('masterfees_qb_payments').select('qb_payment_id').eq('organization_id', orgId).in('qb_payment_id', ids);
-    for (const r of au ?? []) claimed.add(String(r.qb_payment_id));
-    const refs = ids.map(i => `qb_deposit_id.ilike.%${i}%`).join(',');
-    const { data: cb } = await supabase.from('cashbook_entries').select('qb_deposit_id').eq('organization_id', orgId).or(refs);
-    for (const c of cb ?? []) for (const pid of String(c.qb_deposit_id || '').replace(/^PMT:/, '').split(';')) if (ids.includes(pid)) claimed.add(pid);
-    return claimed;
-}
-
 export async function runQuickBooksAutoPost(
     organizationId: string,
-    opts: { deadline?: number; maxItems?: number; dryRun?: boolean; from?: string; force?: boolean; depositAccounts?: Record<string, string>; only?: 'payments' | 'invoices' } = {}
+    opts: { deadline?: number; maxItems?: number; dryRun?: boolean; from?: string; force?: boolean; depositAccounts?: Record<string, string>; only?: 'payments' | 'invoices'; createFrom?: string } = {}
 ): Promise<AutoPostResult> {
-    const result: AutoPostResult = { dryRun: !!opts.dryRun, invoices: { linked: 0, created: 0, review: 0, failed: 0 }, payments: { posted: 0, review: 0, waiting: 0, failed: 0 }, decisions: [] };
+    const result: AutoPostResult = { dryRun: !!opts.dryRun, invoices: { linked: 0, created: 0, review: 0, failed: 0 }, payments: { posted: 0, linked: 0, review: 0, waiting: 0, failed: 0 }, decisions: [] };
     const integ = await getMasterFeesIntegration(organizationId); const cfg = (integ?.config as MasterFeesConfig | undefined)?.qbAutoPost;
     if (!integ || (!opts.force && !cfg?.enabled)) { result.skipped = 'qbAutoPost not enabled'; return result; }
     const from = opts.from ?? cfg?.from; if (!from) { result.skipped = 'qbAutoPost.from not set'; return result; }
@@ -77,11 +66,29 @@ export async function runQuickBooksAutoPost(
     const { data: qbInt } = await supabase.from('integrations').select('id').eq('organization_id', organizationId).eq('provider', 'QUICKBOOKS').maybeSingle();
     if (!qbInt) { result.skipped = 'QuickBooks not connected'; return result; }
     const depositAccounts = opts.depositAccounts ?? cfg?.depositAccounts ?? {};
+    // Only invoices dated on/after createFrom may be CREATED in QuickBooks; older ones are link-only (history is reconciled, not re-invoiced).
+    const createFrom = opts.createFrom ?? from;
+    // Exclusive: never overlap a Master Fees sync, the cron's own posting pass, or another bulk run (double-posting).
+    let locked = false;
+    if (!dryRun) { locked = await acquireMasterFeesLock(integ.id); if (!locked) { result.skipped = 'another sync or posting run holds the lock'; return result; } }
+    const beat = async () => { if (locked) await touchMasterFeesLock(integ.id); };
+    try {
 
     const markInvoice = async (recId: string, patch: Record<string, any>, mfId?: string) => { if (dryRun && mfId && patch.qb_sync_status) dryState.set(mfId, { status: patch.qb_sync_status, ids: patch.qb_invoice_id ?? '' }); if (!dryRun) await supabase.from('masterfees_records').update({ ...patch, qb_sync_at: new Date().toISOString() }).eq('id', recId); };
     const dryState = new Map<string, { status: string; ids: string }>(); // dry run: carry invoice decisions to the payment stage
     const customerInvoices = new Map<string, QbInvoiceLike[]>(); // per-run cache
     const getCust = async (id: string): Promise<QbInvoiceLike[]> => { if (!customerInvoices.has(id)) customerInvoices.set(id, (await QuickBooksService.fetchInvoicesForCustomer(organizationId, id)) as QbInvoiceLike[]); return customerInvoices.get(id)!; };
+
+    // QuickBooks payment ids already recorded against a MoneyWise entry (loaded once per run, kept current in memory).
+    let claimedAll: Set<string> | null = null;
+    const loadClaimed = async (): Promise<Set<string>> => {
+        if (claimedAll) return claimedAll; const set = new Set<string>();
+        for (const c of await pageAll((a, b) => supabase.from('cashbook_entries').select('qb_deposit_id').eq('organization_id', organizationId).like('qb_deposit_id', 'PMT:%').order('id').range(a, b))) for (const pid of String(c.qb_deposit_id).slice(4).split(';')) set.add(pid);
+        for (const r of await pageAll((a, b) => supabase.from('masterfees_qb_payments').select('qb_payment_id').eq('organization_id', organizationId).order('id').range(a, b))) set.add(String(r.qb_payment_id));
+        return (claimedAll = set);
+    };
+    const custPays = new Map<string, any[]>();
+    const getPays = async (custId: string): Promise<any[]> => { if (!custPays.has(custId)) custPays.set(custId, await QuickBooksService.fetchPaymentsForCustomer(organizationId, custId, new Date((day(from) - 45) * 86400000).toISOString().slice(0, 10))); return custPays.get(custId)!; };
 
     // ───────────────────────────── INVOICES ─────────────────────────────
     // Page through ALL candidates (a fixed .limit() in arbitrary order silently hides pending work once history grows).
@@ -98,6 +105,7 @@ export async function runQuickBooksAutoPost(
     });
     // Resolve ONE Master Fees invoice against QuickBooks: link to an existing invoice, or (only when allowCreate) create it.
     const processInvoice = async (rec: any, allowCreate: boolean): Promise<void> => {
+        await beat();
         const roster = await getRoster(organizationId);
             const inv = rec.raw ?? {}; const student = inv.student?.full_name || ''; const label = `${student} · ${money(Number(inv.total_amount))} · ${inv.date_issued || inv.due_date}`;
             const review = async (reason: string) => { result.invoices.review++; result.decisions.push({ kind: 'INVOICE', id: rec.mf_id, label, outcome: 'REVIEW', reason }); await markInvoice(rec.id, { qb_sync_status: 'REVIEW', qb_sync_error: reason }, rec.mf_id); };
@@ -134,7 +142,7 @@ export async function runQuickBooksAutoPost(
     };
     if (opts.only !== 'payments') for (const rec of pendingInv) {
         if (Date.now() > (deadline - 4000) || budget <= 0) break;
-        await processInvoice(rec, true);
+        await processInvoice(rec, String(rec.raw?.date_issued || rec.raw?.due_date || '').slice(0, 10) >= createFrom);
     }
 
     // ───────────────────────────── PAYMENTS ─────────────────────────────
@@ -151,6 +159,7 @@ export async function runQuickBooksAutoPost(
         });
         for (const rec of pending) {
             if (Date.now() > deadline - 3000 || budget <= 0) break;
+            await beat();
             const txn = rec.raw ?? {}; const cb = cbs.get(rec.cashbook_entry_id); const amount = Number(cb.debit);
             const label = `${txn.student?.full_name || cb.sender_name || ''} · ${money(amount)} · ${cb.date} · ${txn.reference || ''}`;
             const mark = async (patch: Record<string, any>) => { if (!dryRun) await supabase.from('cashbook_entries').update({ ...patch, qb_sync_at: new Date().toISOString() }).eq('id', cb.id); };
@@ -163,7 +172,7 @@ export async function runQuickBooksAutoPost(
                 // An older invoice nobody has looked up yet: resolve it now (link-only unless it is itself on/after the start date).
                 if (invRec && !dryState.has(txn.invoice_id) && !['SUCCESS', 'REVIEW'].includes(invRec.qb_sync_status || '') && invRec.journal_entry_id && Date.now() < deadline - 6000) {
                     const eff = String(invRec.raw?.date_issued || invRec.raw?.due_date || '').slice(0, 10);
-                    await processInvoice(invRec, eff >= from);
+                    await processInvoice(invRec, eff >= createFrom);
                     invRec = await loadInv();
                 }
                 if (invRec && dryRun && dryState.has(txn.invoice_id)) { const o = dryState.get(txn.invoice_id)!; (invRec as any).qb_sync_status = o.status; (invRec as any).qb_invoice_id = o.ids; }
@@ -181,24 +190,36 @@ export async function runQuickBooksAutoPost(
                 let custInvs = await getCust(m.match!.id); const lines: Array<{ invoiceId: string; amount: number }> = [];
                 // an invoice created earlier in this same run may not be in the cached list yet — refresh once before judging it missing
                 if (qbIds.some(id => !custInvs.find(x => x.id === id))) { customerInvoices.delete(m.match!.id); custInvs = await getCust(m.match!.id); }
+                // Is this payment already in QuickBooks (entered by hand / from the bank statement)? An UNCLAIMED same-amount payment for this
+                // customer, applied to this very invoice, within 45 days, is that payment -> link it instead of posting a duplicate.
+                const pays = await getPays(m.match!.id); const claimedSet = await loadClaimed();
+                const sameAmt = pays.filter((p: any) => Math.abs(Number(p.TotalAmt) - amount) < 0.005 && Math.abs(day(p.TxnDate) - day(cb.date)) <= 45);
+                const free = sameAmt.filter((p: any) => !claimedSet.has(String(p.Id)));
+                const appliedTo = (p: any): string[] => (p.Line ?? []).flatMap((l: any) => (l.LinkedTxn ?? []).map((t: any) => String(t.TxnId)));
+                const linkable = free.filter((p: any) => appliedTo(p).some(id => qbIds.includes(id))).sort((x: any, y: any) => Math.abs(day(x.TxnDate) - day(cb.date)) - Math.abs(day(y.TxnDate) - day(cb.date)));
+                if (linkable.length) {
+                    const lp = linkable[0]; claimedSet.add(String(lp.Id)); result.payments.linked++;
+                    result.decisions.push({ kind: 'PAYMENT', id: rec.mf_id, label, outcome: dryRun ? 'WOULD_LINK' : 'LINKED', qbId: String(lp.Id), reason: `existing QuickBooks payment ${lp.Id} (${lp.TxnDate}) applied to this invoice` });
+                    if (!dryRun) {
+                        await supabase.from('masterfees_qb_payments').insert({ organization_id: organizationId, cashbook_entry_id: cb.id, qb_customer_id: m.match!.id, qb_customer_name: m.match!.name, qb_payment_id: String(lp.Id), amount, qb_invoice_ids: appliedTo(lp), origin: 'LINKED' });
+                        await mark({ qb_sync_status: 'SUCCESS', qb_sync_error: null, qb_deposit_id: `PMT:${lp.Id}`, status: 'ACCOUNTED' });
+                    }
+                    continue;
+                }
                 let bad = '';
                 items.forEach((it: any, idx: number) => { const q = custInvs.find(x => x.id === qbIds[idx]); const amt = items.length > 1 ? Number(it.amount) : amount; if (!q) bad = `QuickBooks invoice ${qbIds[idx]} was not found on ${m.match!.name}`; else if (q.balance + 0.01 < amt) bad = `QuickBooks invoice ${q.docNumber || q.id} has only ${money(q.balance)} open, payment is ${money(amt)}`; else lines.push({ invoiceId: q.id, amount: amt }); });
                 if (bad) { await park(bad); continue; }
-                // already entered by hand? an unclaimed same-amount payment for this customer nearby
-                const pays = await QuickBooksService.fetchPaymentsForCustomer(organizationId, m.match!.id, new Date((day(cb.date) - 45) * 86400000).toISOString().slice(0, 10));
-                const sameAmt = pays.filter((p: any) => Math.abs(Number(p.TotalAmt) - amount) < 0.005 && Math.abs(day(p.TxnDate) - day(cb.date)) <= 45);
-                const claimed = await claimedPaymentIds(organizationId, sameAmt.map((p: any) => String(p.Id)));
-                const free = sameAmt.filter((p: any) => !claimed.has(String(p.Id)));
-                if (free.length) { await park(`Customer already has an unclaimed ${money(amount)} payment in QuickBooks nearby (payment ${free.map((p: any) => p.Id).join(', ')}) — it may be this same payment`); continue; }
+                if (free.length) { await park(`Customer has an unclaimed ${money(amount)} payment in QuickBooks nearby (payment ${free.map((p: any) => p.Id).join(', ')}) but it is not applied to this invoice — it may be this same payment`); continue; }
                 if (dryRun) { result.payments.posted++; result.decisions.push({ kind: 'PAYMENT', id: rec.mf_id, label, outcome: 'WOULD_POST', reason: `deposit ${deposit}, invoices ${lines.map(l => l.invoiceId).join(',')}` }); continue; }
                 const r = await QuickBooksService.createPayment(organizationId, { customerId: m.match!.id, txnDate: String(cb.date).slice(0, 10), depositToAccountId: deposit, lines, privateNote: `Master Fees payment via MoneyWise — ref ${cb.external_reference || cb.id}, ${channel} (MF txn ${rec.mf_id})` });
                 if (!r.success) { result.payments.failed++; result.decisions.push({ kind: 'PAYMENT', id: rec.mf_id, label, outcome: 'FAILED', reason: JSON.stringify(r.error).slice(0, 200) }); await mark({ qb_sync_status: 'FAILED', qb_sync_error: JSON.stringify(r.error).slice(0, 300) }); continue; }
-                budget--; result.payments.posted++;
+                budget--; result.payments.posted++; claimedSet.add(String(r.qbId)); custPays.delete(m.match!.id);
                 await supabase.from('masterfees_qb_payments').insert({ organization_id: organizationId, cashbook_entry_id: cb.id, qb_customer_id: m.match!.id, qb_customer_name: m.match!.name, qb_payment_id: r.qbId, amount, qb_invoice_ids: lines.map(l => l.invoiceId), origin: 'POSTED' });
                 await mark({ qb_sync_status: 'SUCCESS', qb_sync_error: null, qb_deposit_id: `PMT:${r.qbId}`, status: 'ACCOUNTED' });
                 result.decisions.push({ kind: 'PAYMENT', id: rec.mf_id, label, outcome: 'POSTED', qbId: String(r.qbId) });
             } catch (err: any) { result.payments.failed++; result.decisions.push({ kind: 'PAYMENT', id: rec.mf_id, label, outcome: 'FAILED', reason: err.message }); await mark({ qb_sync_status: 'FAILED', qb_sync_error: String(err.message).slice(0, 300) }); }
         }
     }
-    return result;
+        return result;
+    } finally { if (locked) await releaseMasterFeesLock(integ.id); }
 }

@@ -558,6 +558,14 @@ async function releaseSyncLock(integrationId: string): Promise<void> {
     await supabase.from('integrations').update({ sync_lock_at: null }).eq('id', integrationId);
 }
 
+/** Lock helpers for other Master Fees writers (QuickBooks auto-posting) so they never overlap a sync or each other. */
+export const acquireMasterFeesLock = (integrationId: string) => acquireSyncLock(integrationId);
+export const releaseMasterFeesLock = (integrationId: string) => releaseSyncLock(integrationId);
+/** Heartbeat: long runs refresh the lock so it never goes stale (120s) mid-run. */
+export async function touchMasterFeesLock(integrationId: string): Promise<void> {
+    await supabase.from('integrations').update({ sync_lock_at: new Date().toISOString() }).eq('id', integrationId);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Account provisioning (idempotent upsert into `accounts` by (code, org))
 // ─────────────────────────────────────────────────────────────────────────────
