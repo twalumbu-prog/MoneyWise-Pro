@@ -3,7 +3,7 @@ import { Key, Plus, Trash2, Copy, Check, ExternalLink, AlertCircle, Eye, EyeOff,
 import { supabase } from '../../lib/supabase';
 
 const API_URL = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/$/, '');
-const DOCS_URL = 'https://docs.moneywise.pro/api'; // opens the docs artifact
+const DOCS_URL = '/docs/api';
 
 async function apiFetch(path: string, options: RequestInit = {}) {
     const { data: { session } } = await supabase.auth.getSession();

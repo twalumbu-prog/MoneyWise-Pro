@@ -36,6 +36,7 @@ const Schedules = React.lazy(() => import('./pages/Schedules').then(m => ({ defa
 const InvestHome = React.lazy(() => import('./pages/invest/InvestHome').then(m => ({ default: m.InvestHome })));
 const InvestCompany = React.lazy(() => import('./pages/invest/InvestCompany').then(m => ({ default: m.InvestCompany })));
 const InvestProductDetail = React.lazy(() => import('./pages/invest/InvestProductDetail').then(m => ({ default: m.InvestProductDetail })));
+const ApiDocs = React.lazy(() => import('./pages/ApiDocs').then(m => ({ default: m.ApiDocs })));
 import { CompleteProfile } from './pages/CompleteProfile';
 import { Loader2 } from 'lucide-react';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
@@ -191,6 +192,8 @@ function App() {
                         <Route path="/pay/:wallet_id" element={<PayEntry />} />
                         <Route path="/pl/:token" element={<PublicPaymentLink />} />
                         <Route path="/savings/join/:code" element={<SavingsJoin />} />
+                        <Route path="/docs/api" element={<ApiDocs />} />
+                        <Route path="/api-docs" element={<Navigate to="/docs/api" replace />} />
                         <Route
                             path="/onboarding"
                             element={

@@ -551,6 +551,10 @@ app.get('/', (req: any, res: any) => {
     res.send('Money Wise Pro API is running securely');
 });
 
+app.get(['/docs', '/docs/api', '/api-docs'], (req: any, res: any) => {
+    res.redirect('https://moneywise.blueopus.cloud/docs/api');
+});
+
 // Global Error Handler
 app.use((err: any, req: any, res: any, next: any) => {
     console.error('[API Global Error]:', err);
