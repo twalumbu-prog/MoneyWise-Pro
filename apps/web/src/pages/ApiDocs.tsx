@@ -12,7 +12,11 @@ import {
     Layers,
     BookOpen,
     Search,
-    Terminal
+    Terminal,
+    Sparkles,
+    ChevronDown,
+    ChevronUp,
+    FileText
 } from 'lucide-react';
 
 interface EndpointParam {
@@ -36,6 +40,337 @@ interface EndpointDoc {
     exampleCurl?: string;
     exampleResponse: string;
 }
+
+const LLM_MARKDOWN_DOCS = `# MoneyWise Pro Public API (v1) Specification
+
+## System Context & Integration Guide
+This document contains the complete API specification for MoneyWise Pro. Use this reference when writing client SDKs, integration scripts, webhooks, or financial workflows for MoneyWise.
+
+### Core Architecture & Conventions
+- Production Base URL: https://moneywise.blueopus.cloud/api/v1
+- Interactive Documentation: https://moneywise.blueopus.cloud/docs/api
+- Default Currency: ZMW (Zambian Kwacha)
+- Content-Type: application/json
+- Authentication: Provide the secret API key in the 'Authorization: Bearer <key>' or 'X-Api-Key: <key>' header.
+- Key Format: Keys start with prefix 'mwp_live_' (e.g. mwp_live_9f8a7b6c5d4e...).
+- Scopes: Keys have either 'read', 'write', or both scopes.
+- Plan Requirement: The organization must have an active Premium subscription plan.
+
+---
+
+### Authentication Headers
+\`\`\`http
+Authorization: Bearer mwp_live_YOUR_API_KEY
+# or
+X-Api-Key: mwp_live_YOUR_API_KEY
+\`\`\`
+
+---
+
+### API Endpoints
+
+#### 1. Organization Profile
+- Method: GET
+- Path: /v1/organization
+- Scope Required: read
+- Description: Returns organization details, contact info, and default currency.
+- Response (200 OK):
+\`\`\`json
+{
+  "id": "e30209e7-5789-4089-a5f1-3ec70f4ec282",
+  "name": "Acme Enterprises Ltd",
+  "slug": "acme-enterprises",
+  "logo_url": "https://storage.moneywise.blueopus.cloud/logos/acme.png",
+  "email": "finance@acme.com",
+  "phone": "+260971234567",
+  "website": "https://acme.com",
+  "created_at": "2026-01-15T08:30:00Z",
+  "currency": "ZMW"
+}
+\`\`\`
+
+#### 2. List Wallets
+- Method: GET
+- Path: /v1/wallets
+- Scope Required: read
+- Description: Returns all wallets configured for the organization with live settled ledger balances.
+- Response (200 OK):
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "01948d3c-9a2d-7bb0-8041-698fbfad4b3c",
+      "name": "Main Operating Wallet",
+      "is_main": true,
+      "balance": 145000.50,
+      "currency": "ZMW",
+      "created_at": "2026-01-15T08:35:00Z"
+    }
+  ],
+  "count": 1
+}
+\`\`\`
+
+#### 3. Consolidated Balance Summary
+- Method: GET
+- Path: /v1/balance
+- Scope Required: read
+- Description: Returns total financial balance summed across all active wallets.
+- Response (200 OK):
+\`\`\`json
+{
+  "total_balance": 149850.50,
+  "currency": "ZMW",
+  "wallets": [
+    {
+      "id": "01948d3c-9a2d-7bb0-8041-698fbfad4b3c",
+      "name": "Main Operating Wallet",
+      "balance": 145000.50
+    }
+  ]
+}
+\`\`\`
+
+#### 4. List Transactions (Cashbook Ledger)
+- Method: GET
+- Path: /v1/transactions
+- Scope Required: read
+- Description: Returns cursor-paginated transaction entries from the ledger.
+- Query Parameters:
+  - limit (integer, default: 50, max: 200)
+  - cursor (string, base64url cursor from previous next_cursor)
+  - start_date (string, YYYY-MM-DD)
+  - end_date (string, YYYY-MM-DD)
+  - type (string: INFLOW | OUTFLOW | TRANSFER)
+  - status (string: COMPLETED | PENDING | REVERSED)
+  - wallet_id (UUID)
+  - account_id (UUID)
+  - ledger (string, default: MONEYWISE_WALLET)
+- Response (200 OK):
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "9a0f4410-a2e1-456d-8e65-728b74a38f32",
+      "date": "2026-10-14",
+      "description": "Customer payment for Invoice #1042",
+      "debit": 2500.00,
+      "credit": 0,
+      "balance_after": 149850.50,
+      "type": "INFLOW",
+      "status": "COMPLETED",
+      "ledger": "MONEYWISE_WALLET",
+      "account": {
+        "id": "18f5d130-9b64-4e2a-a92c-5b4d1ea407c1",
+        "code": "4000",
+        "name": "Sales Revenue"
+      },
+      "wallet_id": "01948d3c-9a2d-7bb0-8041-698fbfad4b3c",
+      "reference": "LNC-PAY-89211",
+      "created_at": "2026-10-14T11:20:00Z"
+    }
+  ],
+  "count": 1,
+  "next_cursor": "MjAyNi0xMC0xNHwyMDI2LTEwLTE0VDExOjIwOjAwWnw5YTBmNDQxMC1hMmUxLTQ1NmQtOGU2NS03MjhiNzRhMzhmMzI"
+}
+\`\`\`
+
+#### 5. List Chart of Accounts
+- Method: GET
+- Path: /v1/accounts
+- Scope Required: read
+- Query Parameters:
+  - type (string: ASSET | LIABILITY | EQUITY | REVENUE | EXPENSE)
+- Response (200 OK):
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "18f5d130-9b64-4e2a-a92c-5b4d1ea407c1",
+      "code": "1000",
+      "name": "Cash & Cash Equivalents",
+      "type": "ASSET",
+      "is_active": true,
+      "created_at": "2026-01-15T08:30:00Z"
+    }
+  ],
+  "count": 1
+}
+\`\`\`
+
+#### 6. List Requisitions
+- Method: GET
+- Path: /v1/requisitions
+- Scope Required: read
+- Query Parameters:
+  - status (string: PENDING | APPROVED | REJECTED | PAID | DISBURSED | SETTLED)
+  - start_date (string, YYYY-MM-DD)
+  - end_date (string, YYYY-MM-DD)
+  - limit (integer, default 50, max 200)
+- Response (200 OK):
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "402e1c94-b258-49f3-8f64-44dfd4193b2a",
+      "reference_number": "REQ-2026-0042",
+      "description": "Procurement of monthly network equipment",
+      "type": "EXPENSE",
+      "status": "APPROVED",
+      "estimated_total": 4500.00,
+      "actual_total": 4500.00,
+      "department": "IT Operations",
+      "created_at": "2026-10-12T09:00:00Z",
+      "updated_at": "2026-10-12T14:30:00Z"
+    }
+  ],
+  "count": 1
+}
+\`\`\`
+
+#### 7. Get Requisition by ID
+- Method: GET
+- Path: /v1/requisitions/:id
+- Scope Required: read
+- Path Parameters:
+  - id (UUID, required)
+- Response (200 OK):
+\`\`\`json
+{
+  "id": "402e1c94-b258-49f3-8f64-44dfd4193b2a",
+  "reference_number": "REQ-2026-0042",
+  "description": "Procurement of monthly network equipment",
+  "type": "EXPENSE",
+  "status": "APPROVED",
+  "estimated_total": 4500.00,
+  "actual_total": 4500.00,
+  "department": "IT Operations",
+  "payment_method": "MOBILE_MONEY",
+  "created_at": "2026-10-12T09:00:00Z",
+  "updated_at": "2026-10-12T14:30:00Z",
+  "line_items": [
+    {
+      "id": "e72fa231-180b-4d7a-8f85-3bca928e4e71",
+      "description": "Gigabit Ethernet Switch 24-Port",
+      "quantity": 2,
+      "unit_price": 2250.00,
+      "estimated_amount": 4500.00,
+      "actual_amount": 4500.00
+    }
+  ]
+}
+\`\`\`
+
+#### 8. List Products & Services
+- Method: GET
+- Path: /v1/products
+- Scope Required: read
+- Query Parameters:
+  - type (string)
+  - limit (integer, default 50, max 200)
+- Response (200 OK):
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "90bb2ef3-706d-4767-85b1-09de5394ef20",
+      "name": "Standard Consultation (1 hr)",
+      "description": "Professional advisory session",
+      "price": 750.00,
+      "type": "SERVICE",
+      "category": "Advisory",
+      "image_url": null,
+      "is_active": true,
+      "currency": "ZMW",
+      "created_at": "2026-03-01T10:00:00Z"
+    }
+  ],
+  "count": 1
+}
+\`\`\`
+
+#### 9. List Payment Links
+- Method: GET
+- Path: /v1/payment-links
+- Scope Required: read
+- Query Parameters:
+  - status (string: ACTIVE | PAID | CANCELLED)
+  - product_id (UUID)
+  - limit (integer, default 50, max 200)
+- Response (200 OK):
+\`\`\`json
+{
+  "data": [
+    {
+      "id": "673f8d22-d790-449e-b9bb-2287e02b7931",
+      "token": "dGhpc19pc19hX3VuaXF1ZV90b2tlbl9leGFtcGxl",
+      "product_id": "90bb2ef3-706d-4767-85b1-09de5394ef20",
+      "customer_name": "Mutale Banda",
+      "customer_phone": "+260977112233",
+      "customer_email": "mutale@example.com",
+      "amount": 750.00,
+      "status": "ACTIVE",
+      "reference": null,
+      "created_at": "2026-10-14T10:15:00Z",
+      "paid_at": null,
+      "currency": "ZMW",
+      "url": "https://moneywise.blueopus.cloud/pl/dGhpc19pc19hX3VuaXF1ZV90b2tlbl9leGFtcGxl"
+    }
+  ],
+  "count": 1
+}
+\`\`\`
+
+#### 10. Create Payment Link
+- Method: POST
+- Path: /v1/payment-links
+- Scope Required: write
+- Description: Generates a secure hosted checkout link that customers can open to pay online via Mobile Money (MTN, Airtel, Zamtel) or Visa/Mastercard.
+- Request Body (JSON):
+\`\`\`json
+{
+  "product_id": "90bb2ef3-706d-4767-85b1-09de5394ef20",
+  "customer_name": "Mutale Banda",
+  "customer_phone": "+260977112233",
+  "customer_email": "mutale@example.com",
+  "amount": 750.00
+}
+\`\`\`
+- Response (201 Created):
+\`\`\`json
+{
+  "id": "673f8d22-d790-449e-b9bb-2287e02b7931",
+  "token": "dGhpc19pc19hX3VuaXF1ZV90b2tlbl9leGFtcGxl",
+  "product_id": "90bb2ef3-706d-4767-85b1-09de5394ef20",
+  "customer_name": "Mutale Banda",
+  "customer_phone": "+260977112233",
+  "customer_email": "mutale@example.com",
+  "amount": 750.00,
+  "status": "ACTIVE",
+  "reference": null,
+  "created_at": "2026-10-14T10:15:00Z",
+  "paid_at": null,
+  "currency": "ZMW",
+  "url": "https://moneywise.blueopus.cloud/pl/dGhpc19pc19hX3VuaXF1ZV90b2tlbl9leGFtcGxl"
+}
+\`\`\`
+
+---
+
+### Error Handling & Response Format
+All error responses return a standardized JSON structure:
+\`\`\`json
+{
+  "error": "Short description of the error",
+  "hint": "Optional guidance on resolving the error"
+}
+\`\`\`
+- 400 Bad Request: Missing or malformed parameters (e.g. invalid date or UUID format).
+- 401 Unauthorized: Missing, invalid, or revoked API key (mwp_live_...).
+- 403 Forbidden: Insufficient scope (read vs write) or organization not on Premium plan.
+- 404 Not Found: Requested entity not found in your organization.
+- 500 Internal Server Error: Server-side error.
+`;
 
 const ENDPOINTS: EndpointDoc[] = [
     {
@@ -414,8 +749,10 @@ function CodeBlock({ code, language = 'bash' }: { code: string; language?: strin
 
 export const ApiDocs: React.FC = () => {
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeSection, setActiveSection] = useState<string>('overview');
+    const [activeSection, setActiveSection] = useState<string>('llm-context');
     const [copiedBaseUrl, setCopiedBaseUrl] = useState(false);
+    const [copiedLlmDocs, setCopiedLlmDocs] = useState(false);
+    const [showLlmPreview, setShowLlmPreview] = useState(false);
 
     const prodBaseUrl = 'https://moneywise.blueopus.cloud/api/v1';
 
@@ -423,6 +760,12 @@ export const ApiDocs: React.FC = () => {
         navigator.clipboard.writeText(prodBaseUrl);
         setCopiedBaseUrl(true);
         setTimeout(() => setCopiedBaseUrl(false), 2000);
+    };
+
+    const copyLlmMarkdown = () => {
+        navigator.clipboard.writeText(LLM_MARKDOWN_DOCS.trim());
+        setCopiedLlmDocs(true);
+        setTimeout(() => setCopiedLlmDocs(false), 2500);
     };
 
     const filteredEndpoints = ENDPOINTS.filter(ep => {
@@ -448,7 +791,7 @@ export const ApiDocs: React.FC = () => {
         <div className="min-h-screen bg-slate-50 text-slate-900 font-sans">
             {/* Top Navigation Bar */}
             <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
                         <Link
                             to="/settings?tab=api"
@@ -472,18 +815,33 @@ export const ApiDocs: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
+                        {/* Copy for LLM in header */}
+                        <button
+                            onClick={copyLlmMarkdown}
+                            className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg border transition-all shadow-sm ${
+                                copiedLlmDocs
+                                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                                    : 'bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white border-transparent'
+                            }`}
+                            title="Copy entire documentation formatted for LLMs and AI prompts"
+                        >
+                            {copiedLlmDocs ? <Check className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5" />}
+                            <span>{copiedLlmDocs ? 'Copied for LLM!' : 'Copy for LLM'}</span>
+                        </button>
+
                         <button
                             onClick={copyBaseUrl}
-                            className="hidden md:flex items-center gap-1.5 text-xs font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 transition-colors"
+                            className="hidden md:flex items-center gap-1.5 text-xs font-mono bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg border border-slate-200 transition-colors"
                         >
                             <span>Base: {prodBaseUrl}</span>
                             {copiedBaseUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
                         </button>
+
                         <Link
                             to="/settings?tab=api"
-                            className="text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5 shadow-sm"
+                            className="hidden sm:flex text-xs font-semibold bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 px-3 py-2 rounded-lg transition-colors items-center gap-1.5"
                         >
-                            <Key className="w-3.5 h-3.5" />
+                            <Key className="w-3.5 h-3.5 text-violet-600" />
                             Manage Keys
                         </Link>
                     </div>
@@ -515,10 +873,11 @@ export const ApiDocs: React.FC = () => {
                                 </p>
                                 <ul className="space-y-1">
                                     {[
-                                        { id: 'overview', label: 'Overview' },
+                                        { id: 'llm-context', label: 'Copy for LLM (AI Context)' },
+                                        { id: 'overview', label: 'Overview & Base URL' },
                                         { id: 'authentication', label: 'Authentication' },
                                         { id: 'scopes', label: 'Scopes & Permissions' },
-                                        { id: 'errors', label: 'Errors & Rate Limits' },
+                                        { id: 'errors', label: 'Errors & Status Codes' },
                                     ].map(item => (
                                         <li key={item.id}>
                                             <button
@@ -571,7 +930,69 @@ export const ApiDocs: React.FC = () => {
                 </aside>
 
                 {/* Right Content Area */}
-                <main className="flex-1 min-w-0 space-y-10">
+                <main className="flex-1 min-w-0 space-y-8">
+                    {/* TOP SECTION: LLM & AI Context Card */}
+                    <section
+                        id="llm-context"
+                        className="p-6 sm:p-7 rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 via-white to-indigo-50/50 shadow-sm relative overflow-hidden scroll-mt-24"
+                    >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <div className="space-y-1.5">
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-violet-100 text-violet-700 font-semibold text-[11px]">
+                                    <Sparkles className="w-3.5 h-3.5 text-violet-600" />
+                                    AI &amp; LLM Ready
+                                </div>
+                                <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+                                    Copy Full Documentation for LLM
+                                </h2>
+                                <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
+                                    Need to prompt Claude, ChatGPT, Cursor, Copilot, or an autonomous agent with the MoneyWise API?
+                                    Copy the complete formatted specification in one click.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 flex-shrink-0">
+                                <button
+                                    onClick={copyLlmMarkdown}
+                                    className={`flex items-center gap-2 text-xs sm:text-sm font-semibold px-4 py-2.5 rounded-xl shadow transition-all ${
+                                        copiedLlmDocs
+                                            ? 'bg-emerald-600 text-white'
+                                            : 'bg-violet-600 hover:bg-violet-700 text-white'
+                                    }`}
+                                >
+                                    {copiedLlmDocs ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                    <span>{copiedLlmDocs ? 'Copied to Clipboard!' : 'Copy Full Spec for LLM'}</span>
+                                </button>
+                                <button
+                                    onClick={() => setShowLlmPreview(v => !v)}
+                                    className="flex items-center gap-1.5 text-xs font-semibold px-3 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 transition-colors"
+                                >
+                                    <FileText className="w-3.5 h-3.5 text-slate-500" />
+                                    <span>{showLlmPreview ? 'Hide Preview' : 'Preview'}</span>
+                                    {showLlmPreview ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Collapsible Preview */}
+                        {showLlmPreview && (
+                            <div className="mt-5 pt-4 border-t border-violet-100">
+                                <div className="flex items-center justify-between text-xs text-slate-500 mb-2">
+                                    <span>Full Markdown context payload (ready to paste):</span>
+                                    <a
+                                        href="/llms.txt"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-violet-600 hover:underline font-medium"
+                                    >
+                                        Open raw /llms.txt &rarr;
+                                    </a>
+                                </div>
+                                <CodeBlock code={LLM_MARKDOWN_DOCS.trim()} language="markdown" />
+                            </div>
+                        )}
+                    </section>
+
                     {/* Getting Started: Overview */}
                     <section id="overview" className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm scroll-mt-24">
                         <div className="flex items-center gap-2 text-violet-600 font-bold text-xs uppercase tracking-wider mb-1">
