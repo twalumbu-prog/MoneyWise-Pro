@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
     View, Text, TextInput, Pressable, StyleSheet,
-    KeyboardAvoidingView, ActivityIndicator, ScrollView,
+    KeyboardAvoidingView, ActivityIndicator, ScrollView, Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -546,6 +546,27 @@ export default function LoginScreen() {
 
                                 <SocialButtons onError={setMessage} />
 
+                                {isSignup && (
+                                    <View style={styles.legalDisclaimer}>
+                                        <Text style={styles.legalDisclaimerText}>
+                                            By creating an account, you agree to our{' '}
+                                            <Text
+                                                style={styles.legalLink}
+                                                onPress={() => Linking.openURL('https://moneywise.blueopus.cloud/terms')}
+                                            >
+                                                Terms of Service
+                                            </Text>
+                                            {' '}and{' '}
+                                            <Text
+                                                style={styles.legalLink}
+                                                onPress={() => Linking.openURL('https://moneywise.blueopus.cloud/privacy')}
+                                            >
+                                                Privacy Policy
+                                            </Text>.
+                                        </Text>
+                                    </View>
+                                )}
+
                                 {/* Secondary Action Button (Sign Up Now / Sign in instead) */}
                                 <Pressable
                                     style={[styles.secondaryButton, { marginTop: 14 }]}
@@ -906,5 +927,21 @@ const styles = StyleSheet.create({
     boldText: {
         fontFamily: fonts.bodyBold,
         color: '#0F172A',
+    },
+    legalDisclaimer: {
+        marginTop: 14,
+        paddingHorizontal: 8,
+    },
+    legalDisclaimerText: {
+        fontSize: 11,
+        color: colors.textMuted,
+        textAlign: 'center',
+        lineHeight: 16,
+        fontFamily: fonts.body,
+    },
+    legalLink: {
+        color: colors.blue,
+        fontFamily: fonts.bodyMedium,
+        textDecorationLine: 'underline',
     },
 });

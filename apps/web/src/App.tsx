@@ -18,6 +18,7 @@ const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ defaul
 const ProductsServices = React.lazy(() => import('./pages/ProductsServices').then(m => ({ default: m.ProductsServices })));
 const Intelligence = React.lazy(() => import('./pages/Intelligence').then(m => ({ default: m.Intelligence })));
 const PrivacyPolicy = React.lazy(() => import('./pages/PrivacyPolicy').then(m => ({ default: m.PrivacyPolicy })));
+const DeleteAccount = React.lazy(() => import('./pages/DeleteAccount').then(m => ({ default: m.DeleteAccount })));
 const TermsOfService = React.lazy(() => import('./pages/TermsOfService').then(m => ({ default: m.TermsOfService })));
 const Disconnect = React.lazy(() => import('./pages/Disconnect').then(m => ({ default: m.Disconnect })));
 const Join = React.lazy(() => import('./pages/Join').then(m => ({ default: m.Join })));
@@ -184,6 +185,7 @@ function App() {
                         <Route path="/join" element={<Join />} />
                         <Route path="/reset-password" element={<ResetPassword />} />
                         <Route path="/privacy" element={<PrivacyPolicy />} />
+                        <Route path="/delete-account" element={<DeleteAccount />} />
                         <Route path="/terms" element={<TermsOfService />} />
                         <Route path="/disconnect" element={<Disconnect />} />
                         <Route path="/pay/:wallet_id" element={<PayEntry />} />
