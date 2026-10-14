@@ -12,12 +12,14 @@ import {
     confirmWalletActivation,
     completeOnboarding,
 } from '../controllers/onboarding.controller';
+import { getWalkthroughProgress } from '../controllers/walkthrough.controller';
 
 const router = Router();
 
 router.use(requireAuth);
 
 router.get('/state', getOnboardingState);
+router.get('/walkthrough', getWalkthroughProgress);
 router.put('/progress', saveProgress);
 router.put('/organization', updateOrganizationName);
 router.put('/profile', saveBusinessProfile);

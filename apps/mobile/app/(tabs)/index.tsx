@@ -17,7 +17,9 @@ import { INFLOW_TABS, getInflowTab, type InflowRow } from '../../src/components/
 import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { NewMenuSheet } from '../../src/components/requisitions/NewMenuSheet';
 import { AccountMenuSheet } from '../../src/components/requisitions/AccountMenuSheet';
-import { GuidedMissionsModal } from '../../src/components/onboarding/GuidedMissionsModal';
+import { WalkthroughCard } from '../../src/components/walkthrough/WalkthroughCard';
+import { WalkthroughModals } from '../../src/components/walkthrough/WalkthroughSheets';
+import { walkthroughUi } from '../../src/lib/walkthroughUi';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { useAuth } from '../../src/context/AuthContext';
 import { colors, fonts, radius } from '../../src/theme/tokens';
@@ -55,7 +57,6 @@ export default function InboxScreen() {
     const [selectedInflow, setSelectedInflow] = useState<InflowRow | null>(null);
     const [newMenuOpen, setNewMenuOpen] = useState(false);
     const [accountMenuOpen, setAccountMenuOpen] = useState(false);
-    const [missionsOpen, setMissionsOpen] = useState(false);
 
     const { data, isLoading, isError, error, refetch, isRefetching } = useQuery({
         queryKey: ['requisitions', organizationId],
@@ -159,8 +160,8 @@ export default function InboxScreen() {
                 <View style={styles.headerActions}>
                     <Pressable
                         style={styles.iconBtn}
-                        onPress={() => setMissionsOpen(true)}
-                        accessibilityLabel="Guided Missions"
+                        onPress={walkthroughUi.openList}
+                        accessibilityLabel="Getting started checklist"
                     >
                         <Trophy size={18} color={colors.blue} />
                     </Pressable>
@@ -288,6 +289,7 @@ export default function InboxScreen() {
             {mode === 'inflows' ? (
                 <SectionList
                     sections={inflowSections}
+                    ListHeaderComponent={<WalkthroughCard />}
                     keyExtractor={(item) => String(item.id)}
                     stickySectionHeadersEnabled={false}
                     contentContainerStyle={styles.list}
@@ -313,6 +315,7 @@ export default function InboxScreen() {
             ) : (
             <SectionList
                 sections={sections}
+                ListHeaderComponent={<WalkthroughCard />}
                 keyExtractor={(item) => String(item.id)}
                 stickySectionHeadersEnabled={false}
                 contentContainerStyle={styles.list}
@@ -365,7 +368,7 @@ export default function InboxScreen() {
 
             <AccountMenuSheet visible={accountMenuOpen} onClose={() => setAccountMenuOpen(false)} />
 
-            <GuidedMissionsModal visible={missionsOpen} onClose={() => setMissionsOpen(false)} />
+            <WalkthroughModals />
 
             <NewMenuSheet
                 visible={newMenuOpen}
