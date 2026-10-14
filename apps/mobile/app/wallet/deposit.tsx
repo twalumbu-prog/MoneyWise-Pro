@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
@@ -129,6 +130,7 @@ export default function DepositScreen() {
                 />
 
                 <View style={styles.card}>
+<TourTarget id="deposit-amount">
                     <Text style={styles.label}>Amount (K)</Text>
                     <TextInput
                         style={[styles.input, styles.amountInput]}
@@ -138,6 +140,7 @@ export default function DepositScreen() {
                         placeholder="0.00"
                         placeholderTextColor={colors.textFaint}
                     />
+                </TourTarget>
                     <Text style={[styles.label, styles.spaced]}>What is it for? (optional)</Text>
                     <TextInput
                         style={styles.input}

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { TourTarget } from '../src/components/walkthrough/TourTarget';
 import { KB_DONE_ID } from '../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator,
@@ -126,6 +127,7 @@ export default function BudgetsScreen() {
             />
 
             <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+                <TourTarget id="budgets-activate">
                 <View style={styles.activateCard}>
                     <View style={styles.activateIconWrap}>
                         <Target size={18} color={colors.blue} />
@@ -141,6 +143,7 @@ export default function BudgetsScreen() {
                         thumbColor="#FFFFFF"
                     />
                 </View>
+                </TourTarget>
 
                 {activated && (
                     isLoading ? (

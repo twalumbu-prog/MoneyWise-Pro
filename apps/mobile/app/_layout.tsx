@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { WalkthroughRoot } from '../src/components/walkthrough/WalkthroughRoot';
 import { BrandSplash } from '../src/components/BrandSplash';
 import { KeyboardDoneBar } from '../src/components/KeyboardDoneBar';
 import { Animated, Easing, StyleSheet } from 'react-native';
@@ -149,6 +150,7 @@ export default function RootLayout() {
                         <Stack.Screen name="apps/invest/register/[targetId]" options={{ animation: 'slide_from_bottom' }} />
                         <Stack.Screen name="apps/invest/applications" options={{ animation: 'slide_from_right' }} />
                     </Stack>
+                    <WalkthroughRoot />
                     <SessionGate />
                     <PushNotificationTapHandler />
                 </AuthProvider>

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { TourTarget } from '../../../src/components/walkthrough/TourTarget';
 import { View, Text, TextInput, Pressable, FlatList, StyleSheet } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Search, ChevronRight, BadgeCheck } from 'lucide-react-native';
@@ -53,6 +54,7 @@ export default function InvestHomeScreen() {
                 />
             </View>
 
+            <TourTarget id="invest-list">
             <AnimatedSegmented
                 value={tab}
                 onChange={(v) => setTab(v as InvestTab)}
@@ -64,6 +66,7 @@ export default function InvestHomeScreen() {
                     content: <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>,
                 }))}
             />
+            </TourTarget>
 
             <AnimatedTabContent tabKey={tab} index={TABS.findIndex((t) => t.id === tab)} style={{ flex: 1 }}>
             <FlatList

@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, SectionList, StyleSheet, ActivityIndicator,
     RefreshControl, TextInput, Pressable, ScrollView, Alert,
@@ -18,7 +19,6 @@ import { OfflineNotice } from '../../src/components/OfflineNotice';
 import { NewMenuSheet } from '../../src/components/requisitions/NewMenuSheet';
 import { AccountMenuSheet } from '../../src/components/requisitions/AccountMenuSheet';
 import { WalkthroughCard } from '../../src/components/walkthrough/WalkthroughCard';
-import { WalkthroughModals } from '../../src/components/walkthrough/WalkthroughSheets';
 import { walkthroughUi } from '../../src/lib/walkthroughUi';
 import { AnimatedSegmented, AnimatedTabContent } from '../../src/components/AnimatedTabs';
 import { useAuth } from '../../src/context/AuthContext';
@@ -356,19 +356,20 @@ export default function InboxScreen() {
             )}
             </AnimatedTabContent>
 
-            <Pressable
-                    style={[styles.fab, { bottom: 16 }]}
+            <TourTarget id="inbox-new" style={{ position: 'absolute', right: 20, bottom: 16, width: 56, height: 56, borderRadius: 28 }}>
+                <Pressable
+                    style={[styles.fab, { position: 'relative', right: 0, bottom: 0 }]}
                     onPress={() => setNewMenuOpen(true)}
                     accessibilityLabel="New"
                 >
                     <Plus size={24} color="#FFFFFF" />
-            </Pressable>
+                </Pressable>
+            </TourTarget>
 
             <InflowDetailSheet inflow={selectedInflow} onClose={() => setSelectedInflow(null)} />
 
             <AccountMenuSheet visible={accountMenuOpen} onClose={() => setAccountMenuOpen(false)} />
 
-            <WalkthroughModals />
 
             <NewMenuSheet
                 visible={newMenuOpen}

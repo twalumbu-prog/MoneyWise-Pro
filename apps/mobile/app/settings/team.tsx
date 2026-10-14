@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, Modal,
@@ -74,9 +75,11 @@ export default function TeamMembersScreen() {
         <View style={styles.root}>
             <Stack.Screen options={{ headerShown: false }} />
             <ScreenHeader title="Team Members" right={
-                <Pressable onPress={() => setAddOpen(true)} hitSlop={8} accessibilityLabel="Add team member">
-                    <Plus size={22} color={colors.blue} />
-                </Pressable>
+                <TourTarget id="team-add">
+                    <Pressable onPress={() => setAddOpen(true)} hitSlop={8} accessibilityLabel="Add team member">
+                        <Plus size={22} color={colors.blue} />
+                    </Pressable>
+                </TourTarget>
             } />
 
             {isLoading ? (

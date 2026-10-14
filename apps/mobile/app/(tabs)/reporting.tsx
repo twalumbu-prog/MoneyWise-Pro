@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator,
     Modal, TextInput, RefreshControl,
@@ -303,10 +304,12 @@ export default function ReportingScreen() {
                 <Text style={styles.title}>Reporting</Text>
                 {isPersonal && (
                     <View style={styles.headerActions}>
-                        <Pressable style={({ pressed }) => [styles.budgetsBtn, pressed && { opacity: 0.7 }]} onPress={() => router.push('/budgets')} accessibilityLabel="Budgets">
-                            <Settings size={18} color={colors.blue} />
-                            <Text style={styles.budgetsText}>Budgets</Text>
-                        </Pressable>
+                        <TourTarget id="reporting-budgets">
+                            <Pressable style={({ pressed }) => [styles.budgetsBtn, pressed && { opacity: 0.7 }]} onPress={() => router.push('/budgets')} accessibilityLabel="Budgets">
+                                <Settings size={18} color={colors.blue} />
+                                <Text style={styles.budgetsText}>Budgets</Text>
+                            </Pressable>
+                        </TourTarget>
                         <Pressable
                             style={styles.iconBtn}
                             onPress={() => { /* Sharing reports is coming soon. */ }}

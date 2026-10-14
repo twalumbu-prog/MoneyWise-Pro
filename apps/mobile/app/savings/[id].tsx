@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import { View, Text, Pressable, ScrollView, StyleSheet, Image, RefreshControl, ActivityIndicator, Alert, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams } from 'expo-router';
@@ -103,7 +104,7 @@ export default function SavingsDetailScreen() {
                             ? <Text style={styles.left}>{formatKwacha(item.targetAmount - item.balance)} to go</Text>
                             : item.targetAmount ? <Text style={[styles.left, { color: colors.positiveInk }]}>Target reached 🎉</Text> : null}
                         <View style={styles.actions}>
-                            <Btn icon={<Plus size={16} color="#FFFFFF" />} label="Add money" primary onPress={() => setAddOpen(true)} />
+                            <TourTarget id="savings-add" style={{ flex: 1 }}><Btn icon={<Plus size={16} color="#FFFFFF" />} label="Add money" primary onPress={() => setAddOpen(true)} /></TourTarget>
                             {owner && <Btn icon={<CreditCard size={15} color={colors.navy} />} label="Transfer" onPress={() => setTransferOpen(true)} />}
                         </View>
                     </View>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { TourTarget } from '../walkthrough/TourTarget';
 import { KB_DONE_ID } from '../KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Modal,
@@ -93,6 +94,7 @@ export const Composer: React.FC<{
     };
 
     return (
+        <TourTarget id="assistant-composer">
         <View style={styles.card}>
             {(attachment || attaching) && (
                 <View style={styles.attachmentRow}>
@@ -197,6 +199,7 @@ export const Composer: React.FC<{
                 </Pressable>
             </Modal>
         </View>
+        </TourTarget>
     );
 };
 

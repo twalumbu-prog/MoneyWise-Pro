@@ -2,7 +2,8 @@ import { Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 're
 import { useRouter } from 'expo-router';
 import { ArrowRight, CheckCircle2, Circle, Trophy, X } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useWalkthrough } from '../../hooks/useWalkthrough';
+import { useWalkthroughCore } from '../../hooks/useWalkthrough';
+import { TOURS, tour } from '../../lib/tour';
 import { useWalkthroughUi, walkthroughUi } from '../../lib/walkthroughUi';
 import { colors, fonts, radius } from '../../theme/tokens';
 
@@ -11,13 +12,20 @@ export const WalkthroughModals: React.FC = () => {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const ui = useWalkthroughUi();
-    const { tasks, completed, total, type, hidden, skip, unskip, setCardHidden } = useWalkthrough();
+    const { tasks, completed, total, type, hidden, skip, unskip, setCardHidden } = useWalkthroughCore();
 
     const step = ui.step ? tasks.find((t) => t.id === ui.step) ?? null : null;
     const stepIndex = step ? tasks.findIndex((t) => t.id === step.id) + 1 : 0;
     const pct = total ? Math.round((completed / total) * 100) : 0;
 
-    const go = (route: string) => { walkthroughUi.closeStep(); walkthroughUi.closeList(); router.push(route as any); };
+    // "Show me how": run the spotlight tour for this step, starting on the first screen it needs.
+    const startTour = (taskId: string, fallbackRoute: string) => {
+        walkthroughUi.closeStep(); walkthroughUi.closeList();
+        const first = TOURS[taskId]?.[0];
+        if (!first) { router.navigate(fallbackRoute as any); return; }
+        tour.start(taskId);
+        router.navigate(first.route as any);
+    };
 
     return (
         <>
@@ -54,8 +62,8 @@ export const WalkthroughModals: React.FC = () => {
                                     </View>
                                 ) : (
                                     <>
-                                        <Pressable style={({ pressed }) => [styles.cta, pressed && { opacity: 0.88 }]} onPress={() => go(step.route)}>
-                                            <Text style={styles.ctaText}>{step.cta}</Text>
+                                        <Pressable style={({ pressed }) => [styles.cta, pressed && { opacity: 0.88 }]} onPress={() => startTour(step.id, step.route)}>
+                                            <Text style={styles.ctaText}>Show me how</Text>
                                             <ArrowRight size={18} color="#FFFFFF" />
                                         </Pressable>
                                         <Pressable onPress={() => { skip(step.id); walkthroughUi.closeStep(); }} style={styles.skipBtn} hitSlop={8}>

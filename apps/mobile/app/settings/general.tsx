@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
     ActivityIndicator, Alert, Switch, Image,
@@ -116,7 +117,7 @@ export default function GeneralSettingsScreen() {
                 <ScrollView contentContainerStyle={styles.scroll}>
                     <View style={styles.card}>
                         <Text style={styles.sectionTitle}>{isPersonal ? 'Profile photo' : 'Logo'}</Text>
-                        <Pressable onPress={changeLogo} style={styles.logoRow} disabled={uploadingLogo}>
+                        <TourTarget id="settings-photo"><Pressable onPress={changeLogo} style={styles.logoRow} disabled={uploadingLogo}>
                             {org?.logo_url ? (
                                 <Image source={{ uri: org.logo_url }} style={isPersonal ? styles.photoRing : styles.logo} />
                             ) : (
@@ -127,9 +128,10 @@ export default function GeneralSettingsScreen() {
                             <Text style={styles.logoCta}>
                                 {uploadingLogo ? 'Uploading…' : isPersonal ? 'Change profile photo' : 'Change logo'}
                             </Text>
-                        </Pressable>
+                        </Pressable></TourTarget>
                     </View>
 
+                    <TourTarget id="settings-details">
                     <View style={styles.card}>
                         <Text style={styles.sectionTitle}>{isPersonal ? 'Personal details' : 'Organisation'}</Text>
                         <Field label="Name" value={form.name} onChange={(v) => set({ name: v })} />
@@ -148,6 +150,7 @@ export default function GeneralSettingsScreen() {
                                 : <Text style={styles.saveBtnText}>Save changes</Text>}
                         </Pressable>
                     </View>
+                    </TourTarget>
 
                     {!isPersonal && <View style={styles.card}>
                         <View style={styles.deptHeader}>

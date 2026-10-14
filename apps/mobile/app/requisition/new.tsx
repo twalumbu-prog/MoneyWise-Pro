@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import { KB_DONE_ID } from '../../src/components/KeyboardDoneBar';
 import {
     View, Text, TextInput, Pressable, ScrollView, StyleSheet,
@@ -607,6 +608,7 @@ export default function NewRequisitionScreen() {
                             <View style={styles.stageGap}>
                                 <Text style={styles.stageTitle}>Request Details</Text>
 
+                                <TourTarget id="send-form">
                                 <View style={styles.field}>
                                     <Text style={styles.label}>Purpose of funds</Text>
                                     <TextInput
@@ -617,6 +619,7 @@ export default function NewRequisitionScreen() {
                                         placeholderTextColor={colors.textFaint}
                                     />
                                 </View>
+                                </TourTarget>
 
                                 {useDepartments && (
                                     <View style={styles.field}>

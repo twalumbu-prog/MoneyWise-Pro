@@ -1,4 +1,5 @@
 import { View, Text, ScrollView, Pressable, StyleSheet, Alert, Linking, Image } from 'react-native';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import {
@@ -117,14 +118,15 @@ export default function MenuScreen() {
                     {services.map((s) => {
                         const Icon = s.icon;
                         return (
-                            <Pressable
-                                key={s.label}
-                                onPress={s.go}
-                                style={({ pressed }) => [styles.gridItem, pressed && { opacity: 0.6 }]}
-                            >
-                                <OtherServiceIcon><Icon size={22} color="#FFFFFF" strokeWidth={2} /></OtherServiceIcon>
-                                <Text style={styles.gridLabel}>{s.label}</Text>
-                            </Pressable>
+                            <TourTarget key={s.label} id={`menu-${s.label.toLowerCase()}`} style={{ width: '31%', flexGrow: 1 }}>
+                                <Pressable
+                                    onPress={s.go}
+                                    style={({ pressed }) => [styles.gridItem, { width: '100%' }, pressed && { opacity: 0.6 }]}
+                                >
+                                    <OtherServiceIcon><Icon size={22} color="#FFFFFF" strokeWidth={2} /></OtherServiceIcon>
+                                    <Text style={styles.gridLabel}>{s.label}</Text>
+                                </Pressable>
+                            </TourTarget>
                         );
                     })}
                 </View>
@@ -142,7 +144,7 @@ export default function MenuScreen() {
                         <Text style={styles.rowSub}>Your account & disbursement details</Text>
                     </View>
                 </Pressable>
-                <Pressable
+                <TourTarget id="menu-general"><Pressable
                     onPress={() => router.push('/settings/general')}
                     style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
                 >
@@ -151,7 +153,7 @@ export default function MenuScreen() {
                         <Text style={styles.rowLabel}>General Settings</Text>
                         <Text style={styles.rowSub}>{isPersonal ? 'Account settings' : 'Organisation & departments'}</Text>
                     </View>
-                </Pressable>
+                </Pressable></TourTarget>
                 <Pressable
                     onPress={() => router.push('/settings/chart-of-accounts')}
                     style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
@@ -163,7 +165,7 @@ export default function MenuScreen() {
                     </View>
                 </Pressable>
                 {!isPersonal && (
-                    <Pressable
+                    <TourTarget id="menu-team"><Pressable
                         onPress={() => router.push('/settings/team')}
                         style={({ pressed }) => [styles.row, styles.rowBorder, pressed && { opacity: 0.6 }]}
                     >
@@ -172,7 +174,7 @@ export default function MenuScreen() {
                             <Text style={styles.rowLabel}>Team Members</Text>
                             <Text style={styles.rowSub}>Manage staff access</Text>
                         </View>
-                    </Pressable>
+                    </Pressable></TourTarget>
                 )}
                 {!isPersonal && (
                     <Pressable

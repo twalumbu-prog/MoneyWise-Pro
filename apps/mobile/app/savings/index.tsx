@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import { View, Text, Pressable, ScrollView, StyleSheet, Image, RefreshControl, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
@@ -54,9 +55,11 @@ export default function SavingsScreen() {
                 </Pressable>
                 <Text style={styles.headerTitle}>Savings</Text>
                 <View style={[styles.headerSide, { alignItems: 'flex-end' }]}>
-                    <Pressable onPress={() => setCreateOpen(true)} hitSlop={12} accessibilityLabel={`Add ${current.label}`}>
-                        <Plus size={26} color={colors.blue} strokeWidth={2.5} />
-                    </Pressable>
+                    <TourTarget id="savings-create">
+                        <Pressable onPress={() => setCreateOpen(true)} hitSlop={12} accessibilityLabel={`Add ${current.label}`}>
+                            <Plus size={26} color={colors.blue} strokeWidth={2.5} />
+                        </Pressable>
+                    </TourTarget>
                 </View>
             </View>
 
@@ -92,6 +95,7 @@ export default function SavingsScreen() {
                         )}
                     </View>
 
+                    <TourTarget id="savings-list">
                     <View style={styles.listCard}>
                         {isPending ? (
                             <ActivityIndicator color={colors.blue} style={{ marginVertical: 40 }} />
@@ -107,6 +111,7 @@ export default function SavingsScreen() {
                             ))
                         )}
                     </View>
+                    </TourTarget>
                 </AnimatedTabContent>
             </ScrollView>
 

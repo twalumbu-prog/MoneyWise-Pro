@@ -16,7 +16,12 @@ export interface WalkthroughTaskState extends WalkthroughTask { complete: boolea
  * "skipped" and "hidden" are this device's preference. Returns `available: false` while loading, on an older server,
  * or on any error — callers simply render nothing, so a failure here can never get in the way of the Inbox.
  */
-export function useWalkthrough() {
+/**
+ * Same as useWalkthrough but with no dependency on a screen: safe to use in components mounted at the app root
+ * (the congratulations banner, the sheets, the tour). `refetchMs` keeps progress fresh so a step the person
+ * completes on their own is noticed within seconds.
+ */
+export function useWalkthroughCore(refetchMs: number | false = false) {
     const { organizationId } = useAuth();
     const { isPersonal } = usePersonalAccount();
     const qc = useQueryClient();
@@ -28,15 +33,10 @@ export function useWalkthrough() {
         queryFn: () => apiJson('/onboarding/walkthrough'),
         enabled: !!organizationId,
         staleTime: 15_000,
+        refetchInterval: refetchMs,
+        refetchIntervalInBackground: false,
         retry: false,
     });
-
-    // Coming back to the Inbox after doing a step re-reads progress, so the card moves on by itself.
-    useFocusEffect(useCallback(() => {
-        void qc.invalidateQueries({ queryKey: ['walkthrough', organizationId] });
-        setSkipped(readSkipped(organizationId));
-        setHidden(readHidden(organizationId));
-    }, [qc, organizationId]));
 
     const data = query.data;
     const type = data?.accountType ?? (isPersonal ? 'PERSONAL' : 'BUSINESS');
@@ -60,11 +60,27 @@ export function useWalkthrough() {
     }, [organizationId]);
     const setCardHidden = useCallback((v: boolean) => { writeHidden(organizationId, v); setHidden(v); }, [organizationId]);
 
+    const reload = useCallback(() => {
+        void qc.invalidateQueries({ queryKey: ['walkthrough', organizationId] });
+        setSkipped(readSkipped(organizationId));
+        setHidden(readHidden(organizationId));
+    }, [qc, organizationId]);
+
     return {
+        reload,
+        accountAgeDays: data?.accountAgeDays ?? null,
         available: !!data && tasks.length > 0,
         tasks, completed, total: tasks.length, next, type,
         hidden, showCard: !!data && !hidden && isNewAccount && !!next,
         skip, unskip, setCardHidden,
         refetch: query.refetch,
     };
+}
+
+/** For screens (the Inbox card): the core hook, refreshed whenever the screen comes back into view. */
+export function useWalkthrough() {
+    const core = useWalkthroughCore();
+    const { reload } = core;
+    useFocusEffect(useCallback(() => { reload(); }, [reload]));
+    return core;
 }

@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
+import { TourTarget } from '../../src/components/walkthrough/TourTarget';
 import {
     View, Text, StyleSheet, ScrollView, FlatList, Pressable, TextInput,
     ActivityIndicator, RefreshControl, NativeSyntheticEvent, NativeScrollEvent, Linking,
@@ -154,10 +155,12 @@ export default function WalletScreen() {
                     <View>
                         <View style={styles.titleRow}>
                             <Text style={[styles.title, { paddingHorizontal: 0, marginBottom: 0 }]}>Wallet</Text>
-                            <Pressable style={({ pressed }) => [styles.savingsBtn, pressed && { opacity: 0.7 }]} onPress={() => router.push('/savings')} accessibilityLabel="Savings">
-                                <PiggyBankIcon size={19} color={colors.blue} />
-                                <Text style={styles.savingsText}>Savings</Text>
-                            </Pressable>
+                            <TourTarget id="wallet-savings">
+                                <Pressable style={({ pressed }) => [styles.savingsBtn, pressed && { opacity: 0.7 }]} onPress={() => router.push('/savings')} accessibilityLabel="Savings">
+                                    <PiggyBankIcon size={19} color={colors.blue} />
+                                    <Text style={styles.savingsText}>Savings</Text>
+                                </Pressable>
+                            </TourTarget>
                         </View>
 
                         <AnimatedSegmented
@@ -215,7 +218,7 @@ export default function WalletScreen() {
 
                                 {!isRequestor && group === 'MONEYWISE' && (
                                     <View style={styles.actionBar}>
-                                        <Action icon={ArrowDownToLine} label="Deposit" onPress={() => router.push('/wallet/deposit')} />
+                                        <TourTarget id="wallet-deposit" style={{ flex: 1 }}><Action icon={ArrowDownToLine} label="Deposit" onPress={() => router.push('/wallet/deposit')} /></TourTarget>
                                         <View style={styles.actionDivider} />
                                         <Action icon={ArrowLeftRight} label="Transfer" onPress={() => router.push('/wallet/transfer')} />
                                         <View style={styles.actionDivider} />
